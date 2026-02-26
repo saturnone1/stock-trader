@@ -6,6 +6,7 @@ public interface ITradeRepository
 {
     Task<List<TradeRecord>> GetTradesAsync(PatternType? patternType = null,
         DateTime? from = null, DateTime? to = null, CancellationToken ct = default);
+    Task<List<TradeRecord>> GetRecentAsync(int limit = 5000, CancellationToken ct = default);
     Task AddTradeAsync(TradeRecord trade, CancellationToken ct = default);
     Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default);
     Task<Position?> GetPositionAsync(long id, CancellationToken ct = default);

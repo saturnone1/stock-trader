@@ -1,0 +1,157 @@
+using Microsoft.Extensions.Options;
+using StockTrader.Configuration;
+using StockTrader.Data.Repositories;
+using StockTrader.Services.Notification;
+
+namespace StockTrader.BackgroundServices;
+
+/// <summary>
+/// 매 거래일 설정된 시간(기본 16:30 ET)에 일일 요약 리포트를
+/// 활성화된 모든 알림 채널로 발송하는 백그라운드 서비스.
+/// </summary>
+public sealed class DailyReportService : BackgroundService
+{
+    private static readonly TimeZoneInfo EasternTime =
+        TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly INotificationDispatcher _dispatcher;
+    private readonly NotificationSettings _notificationSettings;
+    private readonly ILogger<DailyReportService> _logger;
+
+    public DailyReportService(
+        IServiceScopeFactory scopeFactory,
+        INotificationDispatcher dispatcher,
+        IOptions<NotificationSettings> notificationSettings,
+        ILogger<DailyReportService> logger)
+    {
+        _scopeFactory = scopeFactory;
+        _dispatcher = dispatcher;
+        _notificationSettings = notificationSettings.Value;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation(
+            "DailyReportService started. Report time: {Time} ET",
+            _notificationSettings.DailyReportTime);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                var delay = CalculateDelayToNextReport();
+                _logger.LogDebug(
+                    "Next daily report in {Hours:F1} hours", delay.TotalHours);
+
+                await Task.Delay(delay, stoppingToken);
+
+                if (stoppingToken.IsCancellationRequested) break;
+
+                await SendDailyReportAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in DailyReportService — will retry in 1 hour");
+                // 에러 발생 시 1시간 후 재시도 (무한 루프 방지)
+                await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+            }
+        }
+    }
+
+    private TimeSpan CalculateDelayToNextReport()
+    {
+        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTime);
+
+        if (!TimeSpan.TryParse(_notificationSettings.DailyReportTime, out var reportTime))
+            reportTime = TimeSpan.FromHours(16.5); // 기본 16:30
+
+        var todayReport = nowEt.Date + reportTime;
+
+        // 오늘 리포트 시간이 이미 지났으면 다음 영업일 리포트 시간으로 계산
+        var nextReport = nowEt < todayReport ? todayReport : todayReport.AddDays(1);
+
+        // 주말 스킵: 토요일 → 월요일, 일요일 → 월요일
+        while (nextReport.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            nextReport = nextReport.AddDays(1);
+
+        var nextReportUtc = TimeZoneInfo.ConvertTimeToUtc(nextReport, EasternTime);
+        var delay = nextReportUtc - DateTime.UtcNow;
+
+        // 음수 방지 (타이밍 경계 조건)
+        return delay < TimeSpan.Zero ? TimeSpan.FromMinutes(1) : delay;
+    }
+
+    private async Task SendDailyReportAsync(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+
+        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTime);
+        var today = DateOnly.FromDateTime(nowEt);
+        var todayStart = nowEt.Date.ToUniversalTime();
+        var todayEnd = todayStart.AddDays(1);
+
+        try
+        {
+            // 오늘 체결된 거래 조회
+            var todayTrades = await tradeRepo.GetTradesAsync(
+                patternType: null,
+                from: todayStart,
+                to: todayEnd,
+                ct: ct);
+
+            // 오늘 발생한 시그널/추천 조회 (최대 50개)
+            var recentRecs = await tradeRepo.GetRecentRecommendationsAsync(count: 50, ct: ct);
+            var todayRecs = recentRecs
+                .Where(r => r.GeneratedAt >= todayStart && r.GeneratedAt < todayEnd)
+                .ToList();
+
+            // 손익 계산
+            var dailyPnl = todayTrades.Sum(t => t.PnL);
+            var initialValue = todayTrades.Count > 0
+                ? todayTrades.Sum(t => t.EntryPrice * t.Quantity)
+                : 0m;
+            var dailyPnlPercent = initialValue > 0 ? (dailyPnl / initialValue) * 100m : 0m;
+
+            // 주요 시그널 요약 (상위 5건)
+            var topSignals = todayRecs
+                .Take(5)
+                .Select(r => $"{r.Symbol} ({r.PatternType}) @ ${r.EntryPrice:F2}")
+                .ToList();
+
+            // 체결 종목
+            var executedSymbols = todayTrades
+                .Select(t => t.Symbol)
+                .Distinct()
+                .ToList();
+
+            var report = new DailyReportData(
+                ReportDate: today,
+                TotalSignals: todayRecs.Count,
+                ExecutedTrades: todayTrades.Count,
+                DailyPnl: dailyPnl,
+                DailyPnlPercent: dailyPnlPercent,
+                TopSignals: topSignals,
+                ExecutedSymbols: executedSymbols,
+                MarketRegimeSummary: "N/A" // 레짐 정보는 런타임 캐시에만 존재
+            );
+
+            await _dispatcher.DispatchDailyReportAsync(report, ct);
+
+            _logger.LogInformation(
+                "Daily report sent: {Signals} signals, {Trades} trades, PnL ${Pnl:N2}",
+                todayRecs.Count, todayTrades.Count, dailyPnl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send daily report for {Date}", today);
+            throw; // 상위에서 재시도 처리
+        }
+    }
+}

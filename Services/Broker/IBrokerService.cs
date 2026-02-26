@@ -1,0 +1,62 @@
+using StockTrader.Models;
+
+namespace StockTrader.Services.Broker;
+
+/// <summary>
+/// 브로커 독립적인 주문 실행 인터페이스 (Ports &amp; Adapters 패턴의 Port).
+///
+/// 설계 원칙:
+/// - 모든 메서드는 도메인 모델(BrokerAccount, BrokerOrder, Position)을 반환
+/// - 브로커별 SDK 타입이 이 인터페이스 밖으로 노출되어서는 안 됨
+/// - 실패 시 예외를 throw하지 않고 null/false/빈 컬렉션 반환 (예외는 구현체에서 로깅 후 변환)
+/// </summary>
+public interface IBrokerService
+{
+    // ── 주문 실행 ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 브라켓 주문을 제출한다 (매수 + 익절 + 손절 동시 설정).
+    /// </summary>
+    /// <param name="recommendation">매매 추천 정보 (종목, 수량, 진입/목표/손절가)</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>주문 성공 여부. 실패 시 false (예외를 삼키지 않음 — 구현체가 로깅)</returns>
+    Task<bool> PlaceOrderAsync(TradeRecommendation recommendation, CancellationToken ct = default);
+
+    /// <summary>
+    /// 특정 주문을 취소한다.
+    /// </summary>
+    /// <param name="orderId">브로커가 부여한 주문 ID</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>취소 성공 여부</returns>
+    Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default);
+
+    // ── 포지션 조회 ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 현재 보유 중인 오픈 포지션 목록을 반환한다.
+    /// </summary>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>포지션 목록. 오류 시 빈 컬렉션 반환</returns>
+    Task<List<Position>> GetPositionsAsync(CancellationToken ct = default);
+
+    // ── 계좌 정보 ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 계좌 잔고 및 상태를 조회한다.
+    /// </summary>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>계좌 정보. 조회 실패 시 null</returns>
+    Task<BrokerAccount?> GetAccountAsync(CancellationToken ct = default);
+
+    // ── 주문 내역 ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 지정 기간의 주문 내역을 조회한다.
+    /// </summary>
+    /// <param name="from">조회 시작 시각 (UTC)</param>
+    /// <param name="to">조회 종료 시각 (UTC)</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>주문 목록. 오류 시 빈 컬렉션 반환</returns>
+    Task<List<BrokerOrder>> GetOrderHistoryAsync(DateTime from, DateTime to,
+        CancellationToken ct = default);
+}
