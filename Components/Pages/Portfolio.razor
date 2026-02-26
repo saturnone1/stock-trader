@@ -1,0 +1,438 @@
+@page "/portfolio"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Data.Repositories
+@inject ITradeRepository TradeRepo
+@inject IPatternStatsRepository StatsRepo
+
+<PageTitle>포트폴리오 분석 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">포트폴리오 분석</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">수익 곡선, 드로다운, 패턴별 성과를 한눈에 분석하세요.</MudText>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">포트폴리오 분석 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">전체 포트폴리오의 성과를 다양한 차트로 시각화합니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>수익 곡선</strong>: 누적 손익의 시간 흐름. 우상향이면 양호
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>드로다운</strong>: 최고점 대비 하락폭. -20% 이내면 양호
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>손익비</strong>: 총 수익 / 총 손실. 1.5 이상이면 양호
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>최대 낙폭</strong>: 최고점에서 최저점까지의 최대 하락. 감내 가능한 수준인지 확인
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+@* Period selector *@
+<MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center">
+    <MudDatePicker @bind-Date="_from" Label="시작일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+    <MudDatePicker @bind-Date="_to" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" Disabled="_loading">
+        @if (_loading)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+        }
+        분석
+    </MudButton>
+</MudStack>
+
+@if (_trades.Count == 0 && !_loading)
+{
+    <MudAlert Severity="Severity.Info">거래 기록이 없습니다. 거래가 실행된 후 포트폴리오 분석을 사용할 수 있습니다.</MudAlert>
+}
+
+@if (_trades.Count > 0)
+{
+    @* Summary metrics *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 손익</MudText>
+                    <MudText Typo="Typo.h6" Color="@(_totalPnl >= 0 ? Color.Success : Color.Error)">
+                        $@_totalPnl.ToString("N2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">승률</MudText>
+                    <MudText Typo="Typo.h6">@_winRate.ToString("P1")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudTooltip Text="최고점 대비 최대 하락폭. -20% 이내면 양호" Placement="Placement.Top">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">최대 낙폭 ⓘ</MudText>
+                    </MudTooltip>
+                    <MudText Typo="Typo.h6" Color="Color.Error">@_maxDrawdown.ToString("P2")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 거래</MudText>
+                    <MudText Typo="Typo.h6">@_trades.Count</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">평균 손익</MudText>
+                    <MudText Typo="Typo.h6" Color="@(_avgPnl >= 0 ? Color.Success : Color.Error)">
+                        $@_avgPnl.ToString("N2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudTooltip Text="총 수익 / 총 손실. 1.5 이상이면 양호" Placement="Placement.Top">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">손익비 ⓘ</MudText>
+                    </MudTooltip>
+                    <MudText Typo="Typo.h6" Color="@(_profitFactor >= 1 ? Color.Success : Color.Error)">
+                        @_profitFactor.ToString("F2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* Equity Curve *@
+    <MudText Typo="Typo.h6" Class="mb-2">수익 곡선</MudText>
+    <MudCard Class="mb-4 pa-3">
+        <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_equityOpts" Height="300">
+            <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
+                Items="_equityCurve"
+                SeriesType="ApexCharts.SeriesType.Area"
+                XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
+                YAggregate="@(e => e.Last().Value)"
+                Name="누적 손익" />
+        </ApexCharts.ApexChart>
+    </MudCard>
+
+    @* Drawdown Chart *@
+    <MudText Typo="Typo.h6" Class="mb-2">드로다운</MudText>
+    <MudCard Class="mb-4 pa-3">
+        <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_drawdownOpts" Height="250">
+            <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
+                Items="_drawdownCurve"
+                SeriesType="ApexCharts.SeriesType.Area"
+                XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
+                YAggregate="@(e => e.Last().Value)"
+                Name="드로다운 %" />
+        </ApexCharts.ApexChart>
+    </MudCard>
+
+    @* Pattern performance comparison *@
+    @if (_patternPerf.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">패턴별 성과 비교</MudText>
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="6">
+                <MudCard Class="pa-3">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 총 손익</MudText>
+                    <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_barOpts" Height="300">
+                        <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
+                            Items="_patternPerf"
+                            SeriesType="ApexCharts.SeriesType.Bar"
+                            XValue="@(p => p.Name)"
+                            YAggregate="@(p => p.First().TotalPnl)"
+                            Name="총 손익 ($)" />
+                    </ApexCharts.ApexChart>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudCard Class="pa-3">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 승률</MudText>
+                    <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_winRateOpts" Height="300">
+                        <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
+                            Items="_patternPerf"
+                            SeriesType="ApexCharts.SeriesType.Bar"
+                            XValue="@(p => p.Name)"
+                            YAggregate="@(p => p.First().WinRatePct)"
+                            Name="승률 (%)" />
+                    </ApexCharts.ApexChart>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Pattern detail table *@
+        <MudTable Items="_patternPerf" Dense="true" Hover="true" Striped="true" Class="mb-4">
+            <HeaderContent>
+                <MudTh>패턴</MudTh>
+                <MudTh>거래수</MudTh>
+                <MudTh>승률</MudTh>
+                <MudTh>총 손익</MudTh>
+                <MudTh>평균 손익</MudTh>
+                <MudTh>최대 수익</MudTh>
+                <MudTh>최대 손실</MudTh>
+                <MudTh>손익비</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><b>@context.Name</b></MudTd>
+                <MudTd>@context.TradeCount</MudTd>
+                <MudTd>@context.WinRatePct.ToString("F1")%</MudTd>
+                <MudTd>
+                    <MudText Color="@(context.TotalPnl >= 0 ? Color.Success : Color.Error)">
+                        $@context.TotalPnl.ToString("N2")
+                    </MudText>
+                </MudTd>
+                <MudTd>
+                    <MudText Color="@(context.AvgPnl >= 0 ? Color.Success : Color.Error)">
+                        $@context.AvgPnl.ToString("N2")
+                    </MudText>
+                </MudTd>
+                <MudTd><MudText Color="Color.Success">$@context.MaxWin.ToString("N2")</MudText></MudTd>
+                <MudTd><MudText Color="Color.Error">$@context.MaxLoss.ToString("N2")</MudText></MudTd>
+                <MudTd>
+                    <MudText Color="@(context.ProfitFactor >= 1 ? Color.Success : Color.Error)">
+                        @context.ProfitFactor.ToString("F2")
+                    </MudText>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    @* Win/Loss distribution *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h6" Class="mb-2">월별 손익</MudText>
+            <MudCard Class="pa-3">
+                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_monthlyOpts" Height="250">
+                    <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
+                        Items="_monthlyPnl"
+                        SeriesType="ApexCharts.SeriesType.Bar"
+                        XValue="@(e => e.Date.ToString("yyyy-MM"))"
+                        YAggregate="@(e => e.Sum(x => x.Value))"
+                        Name="월별 손익 ($)" />
+                </ApexCharts.ApexChart>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h6" Class="mb-2">종목별 손익 (상위 10)</MudText>
+            <MudCard Class="pa-3">
+                <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_symbolOpts" Height="250">
+                    <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
+                        Items="_topSymbols"
+                        SeriesType="ApexCharts.SeriesType.Bar"
+                        XValue="@(s => s.Name)"
+                        YAggregate="@(s => s.First().TotalPnl)"
+                        Name="손익 ($)" />
+                </ApexCharts.ApexChart>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _showHelp;
+    private List<TradeRecord> _trades = new();
+    private List<EquityDataPoint> _equityCurve = new();
+    private List<EquityDataPoint> _drawdownCurve = new();
+    private List<EquityDataPoint> _monthlyPnl = new();
+    private List<PatternPerfItem> _patternPerf = new();
+    private List<PatternPerfItem> _topSymbols = new();
+    private DateTime? _from = DateTime.Today.AddYears(-1);
+    private DateTime? _to = DateTime.Today;
+    private bool _loading;
+    private decimal _totalPnl, _avgPnl, _winRate, _maxDrawdown, _profitFactor;
+
+    // Chart options
+    private static readonly ApexCharts.ApexChartOptions<EquityDataPoint> _equityOpts = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        Stroke = new ApexCharts.Stroke { Curve = ApexCharts.Curve.Smooth, Width = 2 },
+        Fill = new ApexCharts.Fill { Type = new List<ApexCharts.FillType> { ApexCharts.FillType.Gradient }, Opacity = new List<double> { 0.3 } },
+        Yaxis = [new ApexCharts.YAxis { Labels = new ApexCharts.YAxisLabels { Formatter = @"function(v) { return '$' + v.toFixed(0) }" } }]
+    };
+
+    private static readonly ApexCharts.ApexChartOptions<EquityDataPoint> _drawdownOpts = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        Stroke = new ApexCharts.Stroke { Curve = ApexCharts.Curve.Stepline, Width = 2 },
+        Colors = new List<string> { "#C62828" },
+        Fill = new ApexCharts.Fill { Type = new List<ApexCharts.FillType> { ApexCharts.FillType.Gradient }, Opacity = new List<double> { 0.3 } },
+        Yaxis = [new ApexCharts.YAxis { Labels = new ApexCharts.YAxisLabels { Formatter = @"function(v) { return v.toFixed(1) + '%' }" } }]
+    };
+
+    private static readonly ApexCharts.ApexChartOptions<PatternPerfItem> _barOpts = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        PlotOptions = new ApexCharts.PlotOptions { Bar = new ApexCharts.PlotOptionsBar { Horizontal = false } }
+    };
+
+    private static readonly ApexCharts.ApexChartOptions<PatternPerfItem> _winRateOpts = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        PlotOptions = new ApexCharts.PlotOptions { Bar = new ApexCharts.PlotOptionsBar { Horizontal = false } },
+        Yaxis = [new ApexCharts.YAxis { Max = 100, Labels = new ApexCharts.YAxisLabels { Formatter = @"function(v) { return v.toFixed(0) + '%' }" } }]
+    };
+
+    private static readonly ApexCharts.ApexChartOptions<EquityDataPoint> _monthlyOpts = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        PlotOptions = new ApexCharts.PlotOptions { Bar = new ApexCharts.PlotOptionsBar { Horizontal = false } }
+    };
+
+    private static readonly ApexCharts.ApexChartOptions<PatternPerfItem> _symbolOpts = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        PlotOptions = new ApexCharts.PlotOptions { Bar = new ApexCharts.PlotOptionsBar { Horizontal = true } }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _trades = await TradeRepo.GetTradesAsync(from: _from, to: _to);
+            if (_trades.Count == 0) return;
+
+            _trades = _trades.OrderBy(t => t.ExitTime).ToList();
+            ComputeMetrics();
+            ComputeEquityCurve();
+            ComputePatternPerformance();
+            ComputeMonthlyPnl();
+            ComputeTopSymbols();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ComputeMetrics()
+    {
+        _totalPnl = _trades.Sum(t => t.PnL);
+        _avgPnl = _trades.Average(t => t.PnL);
+        _winRate = (decimal)_trades.Count(t => t.IsWin) / _trades.Count;
+
+        var totalWins = _trades.Where(t => t.IsWin).Sum(t => t.PnL);
+        var totalLosses = Math.Abs(_trades.Where(t => !t.IsWin).Sum(t => t.PnL));
+        _profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
+    }
+
+    private void ComputeEquityCurve()
+    {
+        _equityCurve = new();
+        _drawdownCurve = new();
+
+        var cumPnl = 0m;
+        var peak = 0m;
+        _maxDrawdown = 0;
+
+        foreach (var trade in _trades)
+        {
+            cumPnl += trade.PnL;
+            if (cumPnl > peak) peak = cumPnl;
+            var dd = peak > 0 ? (peak - cumPnl) / peak * 100 : 0;
+            if (dd / 100 > _maxDrawdown) _maxDrawdown = dd / 100;
+
+            _equityCurve.Add(new EquityDataPoint(trade.ExitTime, cumPnl));
+            _drawdownCurve.Add(new EquityDataPoint(trade.ExitTime, -dd));
+        }
+    }
+
+    private void ComputePatternPerformance()
+    {
+        _patternPerf = _trades
+            .GroupBy(t => t.PatternType)
+            .Select(g =>
+            {
+                var all = g.ToList();
+                var wins = all.Where(t => t.IsWin).ToList();
+                var losses = all.Where(t => !t.IsWin).ToList();
+                var totalWin = wins.Sum(t => t.PnL);
+                var totalLoss = Math.Abs(losses.Sum(t => t.PnL));
+                return new PatternPerfItem
+                {
+                    Name = g.Key.ToString(),
+                    TradeCount = all.Count,
+                    WinRatePct = all.Count > 0 ? (decimal)wins.Count / all.Count * 100 : 0,
+                    TotalPnl = all.Sum(t => t.PnL),
+                    AvgPnl = all.Average(t => t.PnL),
+                    MaxWin = all.Max(t => t.PnL),
+                    MaxLoss = all.Min(t => t.PnL),
+                    ProfitFactor = totalLoss > 0 ? totalWin / totalLoss : totalWin > 0 ? 999 : 0
+                };
+            })
+            .OrderByDescending(p => p.TotalPnl)
+            .ToList();
+    }
+
+    private void ComputeMonthlyPnl()
+    {
+        _monthlyPnl = _trades
+            .GroupBy(t => new DateTime(t.ExitTime.Year, t.ExitTime.Month, 1))
+            .OrderBy(g => g.Key)
+            .Select(g => new EquityDataPoint(g.Key, g.Sum(t => t.PnL)))
+            .ToList();
+    }
+
+    private void ComputeTopSymbols()
+    {
+        _topSymbols = _trades
+            .GroupBy(t => t.Symbol)
+            .Select(g => new PatternPerfItem
+            {
+                Name = g.Key,
+                TradeCount = g.Count(),
+                TotalPnl = g.Sum(t => t.PnL),
+                AvgPnl = g.Average(t => t.PnL),
+                WinRatePct = g.Count() > 0 ? (decimal)g.Count(t => t.IsWin) / g.Count() * 100 : 0,
+                MaxWin = g.Max(t => t.PnL),
+                MaxLoss = g.Min(t => t.PnL),
+                ProfitFactor = 0
+            })
+            .OrderByDescending(s => Math.Abs(s.TotalPnl))
+            .Take(10)
+            .ToList();
+    }
+
+    public record EquityDataPoint(DateTime Date, decimal Value);
+
+    public class PatternPerfItem
+    {
+        public string Name { get; set; } = "";
+        public int TradeCount { get; set; }
+        public decimal WinRatePct { get; set; }
+        public decimal TotalPnl { get; set; }
+        public decimal AvgPnl { get; set; }
+        public decimal MaxWin { get; set; }
+        public decimal MaxLoss { get; set; }
+        public decimal ProfitFactor { get; set; }
+    }
+}

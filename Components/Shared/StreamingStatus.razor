@@ -1,0 +1,35 @@
+@using StockTrader.Services.Notification
+@inject INotificationService NotificationService
+@implements IDisposable
+
+<MudTooltip Text="@_tooltip">
+    <MudIcon Icon="@Icons.Material.Filled.Wifi"
+             Color="@(_isActive ? Color.Success : Color.Error)"
+             Size="Size.Small"
+             Class="ml-2" />
+</MudTooltip>
+
+@code {
+    private bool _isActive;
+    private string _tooltip = "스트리밍: 비활성";
+
+    protected override void OnInitialized()
+    {
+        NotificationService.OnStreamingStatusChanged += OnStatusChanged;
+    }
+
+    private async void OnStatusChanged(bool isActive)
+    {
+        await InvokeAsync(() =>
+        {
+            _isActive = isActive;
+            _tooltip = isActive ? "스트리밍: 실시간 연결" : "스트리밍: 비활성 (폴링 모드)";
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        NotificationService.OnStreamingStatusChanged -= OnStatusChanged;
+    }
+}

@@ -1,0 +1,38 @@
+@using StockTrader.Models
+
+<MudCard>
+    <MudCardContent>
+        <MudTooltip Text="오늘 하루 손익. 계좌의 -3% 도달 시 거래 자동 중단, 다음 거래일 재개">
+            <MudText Typo="Typo.subtitle2" Style="cursor:help">일일 손익 ⓘ</MudText>
+        </MudTooltip>
+        <MudProgressLinear Color="@BarColor"
+                           Value="@BarWidth"
+                           Size="Size.Large"
+                           Rounded="true"
+                           Class="my-2" />
+        <MudStack Row="true" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.caption" Color="Color.Error">한도: -3.00%</MudText>
+            <MudText Typo="Typo.caption"
+                     Color="@(State.DailyPnL >= 0 ? Color.Success : Color.Error)">
+                $@State.DailyPnL.ToString("N2")
+            </MudText>
+        </MudStack>
+        @if (State.IsTradingHalted)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">
+                <strong>거래 중단</strong>
+            </MudAlert>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public RiskState State { get; set; } = new();
+
+    private Color BarColor => State.DailyPnLPercent >= 0
+        ? Color.Success
+        : State.IsTradingHalted ? Color.Error : Color.Warning;
+
+    private double BarWidth => Math.Min(100, Math.Max(5,
+        Math.Abs((double)State.DailyPnLPercent) / 0.03 * 100));
+}

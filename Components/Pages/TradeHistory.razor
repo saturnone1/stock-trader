@@ -1,0 +1,153 @@
+@page "/history"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Data.Repositories
+@inject ITradeRepository TradeRepo
+
+<PageTitle>거래 내역 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">거래 내역</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">완료된 모든 거래 기록을 확인할 수 있습니다. 패턴별, 기간별로 필터링하여 성과를 분석하세요.</MudText>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">거래 내역 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">완료된 모든 거래의 상세 기록입니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>청산 사유</strong>: 목표 도달(수익 실현), 손절(손실 제한), 기타(수동 등)
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>손익률</strong>: (청산가 - 진입가) / 진입가 × 100
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>빨간 행</strong>: 손실이 발생한 거래
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+<MudGrid Class="mb-3">
+    <MudItem xs="12" md="3">
+        <MudSelect T="string" @bind-Value="_filterPattern" Label="패턴" Variant="Variant.Outlined" Dense="true">
+            <MudSelectItem T="string" Value="@("")">전체</MudSelectItem>
+            @foreach (var pattern in Enum.GetValues<PatternType>())
+            {
+                <MudSelectItem T="string" Value="@(((int)pattern).ToString())">@pattern</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="12" md="3">
+        <MudDatePicker @bind-Date="_fromDate" Label="시작일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+    </MudItem>
+    <MudItem xs="12" md="3">
+        <MudDatePicker @bind-Date="_toDate" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+    </MudItem>
+    <MudItem xs="12" md="3" Class="d-flex align-end">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadTradesAsync" FullWidth="true">
+            필터 적용
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@if (_trades.Count > 0)
+{
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 손익</MudText>
+                    <MudText Typo="Typo.h6" Color="@(_trades.Sum(t => t.PnL) >= 0 ? Color.Success : Color.Error)">
+                        $@_trades.Sum(t => t.PnL).ToString("N2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">승률</MudText>
+                    <MudText Typo="Typo.h6">@(((decimal)_trades.Count(t => t.IsWin) / _trades.Count).ToString("P1"))</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 거래수</MudText>
+                    <MudText Typo="Typo.h6">@_trades.Count</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">최고 수익</MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Success">$@_trades.Max(t => t.PnL).ToString("N2")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="@_trades" Dense="true" Hover="true" Striped="true"
+              RowStyleFunc="@((TradeRecord t, int _) => !t.IsWin ? "background: rgba(198,40,40,0.15);" : "")">
+        <HeaderContent>
+            <MudTh>종목</MudTh>
+            <MudTh>패턴</MudTh>
+            <MudTh>진입가</MudTh>
+            <MudTh>청산가</MudTh>
+            <MudTh>수량</MudTh>
+            <MudTh>손익</MudTh>
+            <MudTh>손익률</MudTh>
+            <MudTh>청산 사유</MudTh>
+            <MudTh>날짜</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><b>@context.Symbol</b></MudTd>
+            <MudTd>@context.PatternType</MudTd>
+            <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+            <MudTd>$@context.ExitPrice.ToString("F2")</MudTd>
+            <MudTd>@context.Quantity</MudTd>
+            <MudTd>
+                <MudText Color="@(context.IsWin ? Color.Success : Color.Error)">
+                    $@context.PnL.ToString("N2")
+                </MudText>
+            </MudTd>
+            <MudTd>
+                <MudText Color="@(context.IsWin ? Color.Success : Color.Error)">
+                    @context.PnLPercent.ToString("P2")
+                </MudText>
+            </MudTd>
+            <MudTd>@context.ExitReason</MudTd>
+            <MudTd>@context.EntryTime.ToString("MM/dd")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+else
+{
+    <MudAlert Severity="Severity.Info">아직 기록된 거래가 없습니다</MudAlert>
+}
+
+@code {
+    private bool _showHelp;
+    private List<TradeRecord> _trades = new();
+    private string _filterPattern = "";
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTradesAsync();
+    }
+
+    private async Task LoadTradesAsync()
+    {
+        PatternType? pattern = string.IsNullOrEmpty(_filterPattern)
+            ? null : (PatternType)int.Parse(_filterPattern);
+        _trades = await TradeRepo.GetTradesAsync(pattern, _fromDate, _toDate);
+    }
+}

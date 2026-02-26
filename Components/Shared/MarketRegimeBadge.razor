@@ -1,0 +1,21 @@
+@using StockTrader.Models
+
+<MudTooltip Text="SPY(S&P 500) 기준 시장 상태. 200일 이동평균 위=상승(초록), 아래=하락(빨강)">
+<MudChip T="string"
+         Color="@(Regime?.SpyAbove200Ma == true ? Color.Success : Color.Error)"
+         Variant="Variant.Filled"
+         Size="Size.Medium">
+    @if (Regime != null)
+    {
+        @($"SPY {Regime.RegimeLabel} ({Regime.SpyPrice:F2})")
+    }
+    else
+    {
+        @("SPY 로딩 중...")
+    }
+</MudChip>
+</MudTooltip>
+
+@code {
+    [Parameter] public MarketRegime? Regime { get; set; }
+}

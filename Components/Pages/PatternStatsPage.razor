@@ -1,0 +1,171 @@
+@page "/patterns"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Services.Statistics
+@inject IStatisticsService StatsService
+
+<PageTitle>패턴 통계 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">패턴 통계</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary">기대값 = 승률 x 평균수익 - (1 - 승률) x 평균손실</MudText>
+<MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">각 패턴의 과거 성과를 기반으로 한 통계 지표입니다. 기대값이 양수인 패턴이 장기적으로 수익을 낼 가능성이 높습니다.</MudText>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">패턴 통계 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">각 매매 패턴의 과거 실적을 수치로 비교합니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>기대값</strong>: 거래 1회당 기대 수익률. 양수여야 수익 가능
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>손익비</strong>: 총 수익 / 총 손실. 1.5 이상이면 양호
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>표본 수</strong>: 거래 횟수. 20개 이상이어야 통계적으로 유의미
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>최대 낙폭</strong>: 해당 패턴으로 겪을 수 있는 최대 손실
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>스타일</strong>: 스캘핑(수시간) / 단타(1~3일) / 스윙(3~10일) / 포지션(5~15일)
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+@if (_stats.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        아직 통계 데이터가 없습니다. 백테스트를 실행하거나 거래 데이터가 쌓일 때까지 기다려 주세요.
+    </MudAlert>
+}
+else
+{
+    <PatternStatsTable Stats="@_stats" />
+
+    <MudText Typo="Typo.h6" Class="mt-4 mb-2">요약</MudText>
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">양의 기대값</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Success">@_stats.Count(s => s.Expectancy > 0)</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">/ @_stats.Count 패턴</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            @{
+                var best = _stats.OrderByDescending(s => s.Expectancy).First();
+                var bestMeta = PatternMetadataMap.Get(best.PatternType);
+            }
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">최고 패턴</MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Success" Class="mt-1">@bestMeta.KoreanName</MudText>
+                    <MudStack Row="true" Justify="Justify.Center" Spacing="1" Class="mt-1">
+                        <MudChip T="string"
+                                 Color="@PatternMetadataMap.GetMudColor(best.PatternType)"
+                                 Size="Size.Small"
+                                 Variant="Variant.Filled">
+                            @bestMeta.StyleLabel
+                        </MudChip>
+                        <MudChip T="string"
+                                 Color="Color.Default"
+                                 Size="Size.Small"
+                                 Variant="Variant.Outlined">
+                            @bestMeta.HoldingPeriod
+                        </MudChip>
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Color="Color.Success" Class="mt-1">
+                        기대값 @best.Expectancy.ToString("P2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">총 표본 수</MudText>
+                    <MudText Typo="Typo.h4">@_stats.Sum(s => s.SampleSize)</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">누적 거래 기록</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* 스타일별 분류 섹션 *@
+    <MudText Typo="Typo.h6" Class="mt-4 mb-2">스타일별 현황</MudText>
+    <MudGrid>
+        @foreach (var group in _styleGroups)
+        {
+            <MudItem xs="6" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center pa-3">
+                        <MudChip T="string"
+                                 Color="@group.MudColor"
+                                 Size="Size.Small"
+                                 Variant="Variant.Filled"
+                                 Class="mb-1">
+                            @group.StyleLabel
+                        </MudChip>
+                        <MudText Typo="Typo.h5">@group.Count</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">패턴</MudText>
+                        @if (group.AvgExpectancy.HasValue)
+                        {
+                            <MudText Typo="Typo.caption"
+                                     Color="@(group.AvgExpectancy.Value >= 0 ? Color.Success : Color.Error)">
+                                평균 기대값 @group.AvgExpectancy.Value.ToString("P2")
+                            </MudText>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private bool _showHelp;
+    private List<PatternStats> _stats = new();
+
+    private record StyleGroup(
+        string StyleLabel,
+        MudBlazor.Color MudColor,
+        int Count,
+        decimal? AvgExpectancy
+    );
+
+    private List<StyleGroup> _styleGroups = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stats = await StatsService.GetAllStatsAsync();
+        BuildStyleGroups();
+    }
+
+    private void BuildStyleGroups()
+    {
+        _styleGroups = _stats
+            .GroupBy(s => PatternMetadataMap.Get(s.PatternType).Style)
+            .Select(g =>
+            {
+                var first = g.First();
+                var meta = PatternMetadataMap.Get(first.PatternType);
+                var avgExp = g.Any() ? (decimal?)g.Average(s => s.Expectancy) : null;
+                return new StyleGroup(
+                    meta.StyleLabel,
+                    PatternMetadataMap.GetMudColor(g.Key),
+                    g.Count(),
+                    avgExp
+                );
+            })
+            .OrderBy(g => g.StyleLabel)
+            .ToList();
+    }
+}

@@ -1,0 +1,628 @@
+@page "/recommendations"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Models.Enums
+@using StockTrader.Data.Repositories
+@using StockTrader.Services.Analysis
+@using StockTrader.Services.DataFeed
+@inject IStockAnalysisService AnalysisService
+@inject IDataFeedServiceFactory DataFeedFactory
+@inject ISettingsRepository SettingsRepo
+@implements IDisposable
+
+<PageTitle>종목 추천 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">종목 추천</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+    </MudStack>
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+        @if (_isLoading)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                분석 중... (@_completedCount / @_totalCount)
+            </MudText>
+        }
+        <MudSelect T="string" Value="_selectedSymbol" Label="종목" Variant="Variant.Outlined"
+                   Margin="Margin.Dense" Style="min-width: 150px;" ValueChanged="OnSymbolChanged">
+            @foreach (var symbol in _symbols)
+            {
+                <MudSelectItem T="string" Value="@symbol">@symbol</MudSelectItem>
+            }
+        </MudSelect>
+    </MudStack>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    패턴 감지 + 기술지표 + 백테스트 데이터를 결합한 AI 종합 분석입니다. 30초마다 자동 갱신됩니다.
+</MudText>
+
+@* 로딩 중 전체 프로그레스바 *@
+@if (_isLoading && _totalCount > 0)
+{
+    <MudProgressLinear Value="@(_completedCount * 100 / _totalCount)"
+                       Color="Color.Primary" Striped="true" Rounded="true"
+                       Class="mb-3" />
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_errorMessage</MudAlert>
+}
+
+@if (_selectedAnalysis != null)
+{
+    <!-- 캔들스틱 차트 -->
+    <MudCard Class="mb-4">
+        <MudCardContent>
+            <MudText Typo="Typo.h6" Class="mb-2">@_selectedSymbol 일봉 차트</MudText>
+            @if (_isChartLoading)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="400px" />
+            }
+            else if (_candles.Count > 0)
+            {
+                <ApexCharts.ApexChart TItem="CandleData"
+                           Title=""
+                           Height="400"
+                           Options="_chartOptions">
+                    <ApexCharts.ApexCandleSeries TItem="CandleData"
+                                      Items="_candles"
+                                      Name="@_selectedSymbol"
+                                      XValue="@(c => c.X)"
+                                      Open="@(c => c.Open)"
+                                      High="@(c => c.High)"
+                                      Low="@(c => c.Low)"
+                                      Close="@(c => c.Close)" />
+                </ApexCharts.ApexChart>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Warning">차트 데이터를 불러올 수 없습니다.</MudAlert>
+            }
+        </MudCardContent>
+    </MudCard>
+
+    <!-- 핵심 수치 카드 5개 -->
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" md="2">
+            <MudCard Style="@($"border-left: 4px solid {GetProbabilityColor(_selectedAnalysis.UpsideProbability)};")">
+                <MudCardContent Class="text-center pa-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">상승 확률</MudText>
+                    <MudText Typo="Typo.h4" Style="@($"color: {GetProbabilityColor(_selectedAnalysis.UpsideProbability)};")">
+                        @_selectedAnalysis.UpsideProbability.ToString("F1")%
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center pa-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">예상 수익률</MudText>
+                    <MudText Typo="Typo.h4" Color="@(_selectedAnalysis.ExpectedReturnPercent >= 0 ? Color.Success : Color.Error)">
+                        @(_selectedAnalysis.ExpectedReturnPercent >= 0 ? "+" : "")@_selectedAnalysis.ExpectedReturnPercent.ToString("F2")%
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center pa-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">예상 기간</MudText>
+                    <MudText Typo="Typo.h4">@(_selectedAnalysis.ExpectedHoldingDays)일</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center pa-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">손실 위험</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Error">
+                        @_selectedAnalysis.DownsideRiskPercent.ToString("F1")%
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center pa-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">신뢰도</MudText>
+                    <MudText Typo="Typo.h4" Color="@GetConfidenceColor(_selectedAnalysis.ConfidenceScore)">
+                        @_selectedAnalysis.ConfidenceScore.ToString("F0")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard Style="@($"border: 2px solid {GetGradeColor(_selectedAnalysis.Grade)};")">
+                <MudCardContent Class="text-center pa-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">추천 등급</MudText>
+                    <MudText Typo="Typo.h5" Style="@($"color: {GetGradeColor(_selectedAnalysis.Grade)};")">
+                        @GetGradeLabel(_selectedAnalysis.Grade)
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <!-- 추천 손절/목표 + 활성 패턴 -->
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" md="6">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack Row="true" Justify="Justify.SpaceAround">
+                        <MudStack AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">현재가</MudText>
+                            <MudText Typo="Typo.h6">$@_selectedAnalysis.CurrentPrice.ToString("F2")</MudText>
+                        </MudStack>
+                        <MudStack AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.caption" Color="Color.Error">추천 손절선</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Error">$@_selectedAnalysis.RecommendedStopLoss.ToString("F2")</MudText>
+                        </MudStack>
+                        <MudStack AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.caption" Color="Color.Success">추천 목표가</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Success">$@_selectedAnalysis.RecommendedTarget.ToString("F2")</MudText>
+                        </MudStack>
+                        <MudStack AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">ATR</MudText>
+                            <MudText Typo="Typo.h6">$@_selectedAnalysis.ATR.ToString("F2")</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">활성 패턴</MudText>
+                    @if (_selectedAnalysis.ActivePatterns.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">감지된 패턴 없음</MudText>
+                    }
+                    else
+                    {
+                        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+                            @foreach (var pattern in _selectedAnalysis.ActivePatterns)
+                            {
+                                var meta = PatternMetadataMap.Get(pattern.PatternType);
+                                <MudTooltip Text="@($"{meta.Description} | 보유기간: {meta.HoldingPeriod}")"
+                                            Placement="Placement.Bottom" Arrow="true">
+                                    <MudChip T="string"
+                                             Color="@PatternMetadataMap.GetMudColor(pattern.PatternType)"
+                                             Variant="Variant.Filled"
+                                             Size="Size.Small">
+                                        @meta.KoreanName
+                                        <span style="opacity: 0.8; margin-left: 4px;">
+                                            승률 @((pattern.HistoricalWinRate * 100).ToString("F0"))%
+                                        </span>
+                                    </MudChip>
+                                </MudTooltip>
+                            }
+                        </MudStack>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <!-- 기술지표 상세 -->
+    <MudCard Class="mb-4">
+        <MudCardContent>
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                기술지표 상세 (강세 @_selectedAnalysis.Indicators.BullishIndicatorCount / @_selectedAnalysis.Indicators.TotalIndicatorCount)
+            </MudText>
+            <MudGrid>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">RSI (14)</MudText>
+                    <MudText Typo="Typo.body1"
+                             Color="@(_selectedAnalysis.Indicators.RSI < 30 ? Color.Success : _selectedAnalysis.Indicators.RSI > 70 ? Color.Error : Color.Default)">
+                        @_selectedAnalysis.Indicators.RSI.ToString("F1")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">MACD</MudText>
+                    <MudText Typo="Typo.body1"
+                             Color="@(_selectedAnalysis.Indicators.MACD > _selectedAnalysis.Indicators.MACDSignal ? Color.Success : Color.Error)">
+                        @(_selectedAnalysis.Indicators.MACD > _selectedAnalysis.Indicators.MACDSignal ? "강세" : "약세")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">SMA 200</MudText>
+                    <MudText Typo="Typo.body1"
+                             Color="@(_selectedAnalysis.CurrentPrice > _selectedAnalysis.Indicators.SMA200 ? Color.Success : Color.Error)">
+                        @(_selectedAnalysis.CurrentPrice > _selectedAnalysis.Indicators.SMA200 ? "위" : "아래")
+                        ($@_selectedAnalysis.Indicators.SMA200.ToString("F2"))
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">볼린저</MudText>
+                    <MudText Typo="Typo.body1">
+                        @GetBollingerPosition(_selectedAnalysis)
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">VWAP</MudText>
+                    <MudText Typo="Typo.body1"
+                             Color="@(_selectedAnalysis.CurrentPrice > _selectedAnalysis.Indicators.VWAP ? Color.Success : Color.Error)">
+                        @(_selectedAnalysis.CurrentPrice > _selectedAnalysis.Indicators.VWAP ? "위" : "아래")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">SMA 20/50</MudText>
+                    <MudText Typo="Typo.body1"
+                             Color="@(_selectedAnalysis.Indicators.SMA20 > _selectedAnalysis.Indicators.SMA50 ? Color.Success : Color.Error)">
+                        @(_selectedAnalysis.Indicators.SMA20 > _selectedAnalysis.Indicators.SMA50 ? "골든크로스" : "데드크로스")
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+}
+
+<!-- 전체 관심종목 추천 카드 그리드 -->
+<MudText Typo="Typo.h6" Class="mb-2">전체 관심종목 분석</MudText>
+@if (_allAnalyses.Count == 0 && !_isLoading)
+{
+    <MudAlert Severity="Severity.Info">분석 데이터가 없습니다. 잠시 후 자동으로 분석이 시작됩니다.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @* 이미 완료된 종목 카드 *@
+        @foreach (var analysis in _allAnalyses)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Class="cursor-pointer" Style="@($"border-top: 3px solid {GetGradeColor(analysis.Grade)}; {(_selectedSymbol == analysis.Symbol ? "outline: 2px solid #1565C0;" : "")}")"
+                         @onclick="() => SelectSymbol(analysis.Symbol)">
+                    <MudCardContent Class="pa-3">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.h6"><b>@analysis.Symbol</b></MudText>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Style="@($"background-color: {GetGradeColor(analysis.Grade)}; color: white;")">
+                                @GetGradeLabel(analysis.Grade)
+                            </MudChip>
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">$@analysis.CurrentPrice.ToString("F2")</MudText>
+                        <MudDivider Class="my-2" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudStack>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">상승 확률</MudText>
+                                <MudText Typo="Typo.body1" Style="@($"color: {GetProbabilityColor(analysis.UpsideProbability)};")">
+                                    @analysis.UpsideProbability.ToString("F1")%
+                                </MudText>
+                            </MudStack>
+                            <MudStack>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">예상 수익</MudText>
+                                <MudText Typo="Typo.body1" Color="@(analysis.ExpectedReturnPercent >= 0 ? Color.Success : Color.Error)">
+                                    @(analysis.ExpectedReturnPercent >= 0 ? "+" : "")@analysis.ExpectedReturnPercent.ToString("F1")%
+                                </MudText>
+                            </MudStack>
+                            <MudStack>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">신뢰도</MudText>
+                                <MudText Typo="Typo.body1">@analysis.ConfidenceScore.ToString("F0")</MudText>
+                            </MudStack>
+                        </MudStack>
+                        @if (analysis.ActivePatterns.Count > 0)
+                        {
+                            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mt-2">
+                                @foreach (var p in analysis.ActivePatterns.Take(3))
+                                {
+                                    <MudTooltip Text="@($"{PatternMetadataMap.GetStyleLabel(p.PatternType)} | {PatternMetadataMap.Get(p.PatternType).HoldingPeriod}")"
+                                                Placement="Placement.Bottom" Arrow="true">
+                                        <MudChip T="string"
+                                                 Size="Size.Small"
+                                                 Variant="Variant.Outlined"
+                                                 Color="@PatternMetadataMap.GetMudColor(p.PatternType)">
+                                            @PatternMetadataMap.GetKoreanName(p.PatternType)
+                                        </MudChip>
+                                    </MudTooltip>
+                                }
+                                @if (analysis.ActivePatterns.Count > 3)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                             Style="line-height: 24px;">
+                                        +@(analysis.ActivePatterns.Count - 3)
+                                    </MudText>
+                                }
+                            </MudStack>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+
+        @* 아직 분석 중인 종목 스켈레톤 *@
+        @for (var i = 0; i < _pendingCount; i++)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent Class="pa-3">
+                        <MudSkeleton Width="60%" Height="28px" Class="mb-2" />
+                        <MudSkeleton Width="40%" Height="20px" Class="mb-2" />
+                        <MudDivider Class="my-2" />
+                        <MudSkeleton Width="100%" Height="20px" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">종목 추천 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">관심 종목의 기술적 분석 리포트를 자동으로 생성합니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>추천 등급</strong>: 강력 매수 ~ 강력 매도 (기술적 지표 종합)
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>신뢰도</strong>: 분석의 확실성 (0~100). 활성 패턴이 많을수록 높음
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>진입가/손절/목표가</strong>: 권장 매매 가격대
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>기술적 지표</strong>: RSI, MACD, SMA, 볼린저 밴드 등의 현재 상태
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+@code {
+    private bool _showHelp;
+    private List<string> _symbols = new();
+    private string _selectedSymbol = "";
+    private StockAnalysis? _selectedAnalysis;
+    private List<StockAnalysis> _allAnalyses = new();
+    private List<CandleData> _candles = new();
+    private bool _isLoading;
+    private bool _isChartLoading;
+    private string? _errorMessage;
+    private Timer? _refreshTimer;
+    private CancellationTokenSource _cts = new();
+
+    // 점진적 렌더링용 카운터
+    private int _totalCount;
+    private int _completedCount;
+    private int _pendingCount => Math.Max(0, _totalCount - _completedCount);
+
+    private ApexCharts.ApexChartOptions<CandleData> _chartOptions = new()
+    {
+        Chart = new ApexCharts.Chart
+        {
+            Background = "transparent",
+            ForeColor = "#999"
+        },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        Xaxis = new ApexCharts.XAxis { Type = ApexCharts.XAxisType.Datetime },
+        Yaxis = new List<ApexCharts.YAxis>
+        {
+            new ApexCharts.YAxis
+            {
+                Labels = new ApexCharts.YAxisLabels
+                {
+                    Formatter = "function(val) { return '$' + val.toFixed(2); }"
+                },
+                Tooltip = new ApexCharts.YAxisTooltip { Enabled = true }
+            }
+        },
+        PlotOptions = new ApexCharts.PlotOptions
+        {
+            Candlestick = new ApexCharts.PlotOptionsCandlestick
+            {
+                Colors = new ApexCharts.PlotOptionsCandlestickColors
+                {
+                    Upward = "#2E7D32",
+                    Downward = "#C62828"
+                }
+            }
+        },
+        Grid = new ApexCharts.Grid
+        {
+            BorderColor = "#333",
+            StrokeDashArray = 3
+        }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await SettingsRepo.GetAsync();
+        _symbols = settings.WatchlistSymbols;
+
+        if (_symbols.Count > 0)
+        {
+            _selectedSymbol = _symbols[0];
+            await LoadAllAnalysesAsync();
+        }
+
+        // 30초마다 자동 갱신
+        _refreshTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadAllAnalysesAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>
+    /// 점진적 렌더링: 종목 하나가 완료될 때마다 UI를 갱신합니다.
+    /// 차트 로드는 첫 종목 분석과 병렬로 진행됩니다.
+    /// </summary>
+    private async Task LoadAllAnalysesAsync()
+    {
+        // 이전 요청 취소 후 새 토큰 발급
+        await _cts.CancelAsync();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        _isLoading      = true;
+        _errorMessage   = null;
+        _completedCount = 0;
+        _totalCount     = _symbols.Count;
+        _allAnalyses    = new List<StockAnalysis>();
+        StateHasChanged();
+
+        try
+        {
+            // 분석과 차트 데이터를 병렬로 시작
+            // - 차트는 첫 번째 선택 종목을 즉시 로드 (사용자가 가장 먼저 보는 것)
+            // - 분석은 점진적으로 완료되는 대로 카드 표시
+            var chartTask    = LoadChartDataAsync(_selectedSymbol, ct);
+            var analysisTask = AnalysisService.AnalyzeWatchlistProgressiveAsync(
+                async item =>
+                {
+                    await InvokeAsync(() =>
+                    {
+                        // 완료된 종목을 즉시 정렬 삽입 (상승 확률 내림차순)
+                        var insertIdx = _allAnalyses.FindIndex(a => a.UpsideProbability < item.UpsideProbability);
+                        if (insertIdx < 0)
+                            _allAnalyses.Add(item);
+                        else
+                            _allAnalyses.Insert(insertIdx, item);
+
+                        _completedCount++;
+
+                        // 선택 종목이 완료되면 즉시 상세 패널 갱신
+                        if (item.Symbol == _selectedSymbol)
+                            _selectedAnalysis = item;
+
+                        StateHasChanged();
+                        return Task.CompletedTask;
+                    });
+                },
+                ct);
+
+            await Task.WhenAll(chartTask, analysisTask);
+
+            // 분석이 모두 끝난 후 selectedAnalysis가 아직 없으면 첫 번째로 설정
+            if (_selectedAnalysis == null && _allAnalyses.Count > 0)
+            {
+                _selectedAnalysis = _allAnalyses[0];
+                _selectedSymbol   = _selectedAnalysis.Symbol;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 정상적인 취소 (새 갱신 사이클로 교체됨)
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"분석 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadChartDataAsync(string symbol, CancellationToken ct = default)
+    {
+        _isChartLoading = true;
+        _candles        = new List<CandleData>();
+        StateHasChanged();
+
+        try
+        {
+            var dataFeed = await DataFeedFactory.GetServiceAsync(ct);
+            var bars = await dataFeed.GetHistoricalBarsAsync(
+                symbol, TimeFrame.Daily,
+                DateTime.UtcNow.AddMonths(-6), DateTime.UtcNow, ct);
+
+            _candles = bars.Select(b => new CandleData
+            {
+                X      = b.Timestamp,
+                Open   = b.Open,
+                High   = b.High,
+                Low    = b.Low,
+                Close  = b.Close,
+                Volume = b.Volume
+            }).ToList();
+        }
+        catch (OperationCanceledException) { }
+        catch
+        {
+            _candles = new List<CandleData>();
+        }
+        finally
+        {
+            _isChartLoading = false;
+        }
+    }
+
+    private async Task OnSymbolChanged(string symbol)
+    {
+        _selectedSymbol   = symbol;
+        _selectedAnalysis = _allAnalyses.FirstOrDefault(a => a.Symbol == symbol);
+        await LoadChartDataAsync(symbol, _cts.Token);
+        StateHasChanged();
+    }
+
+    private void SelectSymbol(string symbol)
+    {
+        _ = OnSymbolChanged(symbol);
+    }
+
+    // 헬퍼 메서드들
+    private static string GetGradeLabel(RecommendationGrade grade) => grade switch
+    {
+        RecommendationGrade.StrongBuy  => "강력 매수",
+        RecommendationGrade.Buy        => "매수",
+        RecommendationGrade.Neutral    => "중립",
+        RecommendationGrade.Sell       => "매도",
+        RecommendationGrade.StrongSell => "강력 매도",
+        _                              => "중립"
+    };
+
+    private static string GetGradeColor(RecommendationGrade grade) => grade switch
+    {
+        RecommendationGrade.StrongBuy  => "#2E7D32",
+        RecommendationGrade.Buy        => "#66BB6A",
+        RecommendationGrade.Neutral    => "#F57F17",
+        RecommendationGrade.Sell       => "#EF5350",
+        RecommendationGrade.StrongSell => "#C62828",
+        _                              => "#F57F17"
+    };
+
+    private static string GetProbabilityColor(decimal probability)
+    {
+        if (probability >= 65) return "#2E7D32";
+        if (probability >= 55) return "#66BB6A";
+        if (probability >= 45) return "#F57F17";
+        if (probability >= 35) return "#EF5350";
+        return "#C62828";
+    }
+
+    private static Color GetConfidenceColor(decimal confidence)
+    {
+        if (confidence >= 70) return Color.Success;
+        if (confidence >= 45) return Color.Warning;
+        return Color.Error;
+    }
+
+    private string GetBollingerPosition(StockAnalysis analysis)
+    {
+        var ind = analysis.Indicators;
+        if (ind.BollingerUpper == 0) return "N/A";
+        var range = ind.BollingerUpper - ind.BollingerLower;
+        if (range == 0) return "N/A";
+        var pos = (analysis.CurrentPrice - ind.BollingerLower) / range;
+        if (pos > 0.8m) return "상단";
+        if (pos > 0.6m) return "상단근접";
+        if (pos > 0.4m) return "중간대";
+        if (pos > 0.2m) return "하단근접";
+        return "하단";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

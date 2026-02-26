@@ -1,0 +1,132 @@
+@page "/risk"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Data.Repositories
+@using StockTrader.Services.Risk
+@inject IRiskManagementService RiskService
+@inject ITradeRepository TradeRepo
+
+<PageTitle>리스크 모니터 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">리스크 모니터</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">포트폴리오의 리스크 상태를 실시간으로 모니터링합니다. 일일 손실 한도(-3%)를 초과하면 자동으로 거래가 중단됩니다.</MudText>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">리스크 모니터 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">과도한 손실을 방지하기 위한 실시간 안전장치입니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>일일 손실 한도 -3%</strong>: 하루 손실이 계좌의 3%에 도달하면 자동으로 신규 거래 중단
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>섹터 집중 한도 2개</strong>: 같은 섹터에 최대 2개 포지션까지만 허용
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>손절 거리</strong>: 현재가와 손절가의 거리(%). 가까울수록 위험
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>거래 중단 후</strong>: 다음 거래일에 자동 재개됩니다
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" md="6">
+        <RiskGauge State="@_riskState" />
+    </MudItem>
+    <MudItem xs="12" md="3">
+        <MudCard>
+            <MudCardContent Class="text-center">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">보유 포지션</MudText>
+                <MudText Typo="Typo.h4">@_riskState.OpenPositionCount</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" md="3">
+        <MudCard>
+            <MudCardContent Class="text-center">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">상태</MudText>
+                @if (_riskState.IsTradingHalted)
+                {
+                    <MudText Typo="Typo.h5" Color="Color.Error">중단됨</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.h5" Color="Color.Success">활성</MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudText Typo="Typo.h6" Class="mb-2">섹터별 포지션</MudText>
+        @if (_riskState.PositionsPerSector.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">보유 포지션이 없습니다</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="@_riskState.PositionsPerSector" Dense="true" Hover="true"
+                      RowStyleFunc="@((KeyValuePair<string, int> kv, int _) => kv.Value >= 2 ? "background: rgba(245,127,23,0.15);" : "")">
+                <HeaderContent>
+                    <MudTh>섹터</MudTh>
+                    <MudTh>포지션</MudTh>
+                    <MudTh>한도</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Key</MudTd>
+                    <MudTd>@context.Value</MudTd>
+                    <MudTd>2</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudItem>
+    <MudItem xs="12" md="6">
+        <MudText Typo="Typo.h6" Class="mb-2">보유 포지션</MudText>
+        @if (_openPositions.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">보유 포지션이 없습니다</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>종목</MudTh>
+                    <MudTh>섹터</MudTh>
+                    <MudTh>손익</MudTh>
+                    <MudTh>손절 거리</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><b>@context.Symbol</b></MudTd>
+                    <MudTd>@context.Sector</MudTd>
+                    <MudTd>
+                        <MudText Color="@(context.UnrealizedPnL >= 0 ? Color.Success : Color.Error)">
+                            $@context.UnrealizedPnL.ToString("N2")
+                        </MudText>
+                    </MudTd>
+                    <MudTd>@(context.EntryPrice != 0 ? ((context.CurrentPrice - context.StopLossPrice) / context.EntryPrice).ToString("P1") : "N/A")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool _showHelp;
+    private RiskState _riskState = new();
+    private List<StockTrader.Models.Position> _openPositions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _riskState = await RiskService.GetCurrentRiskStateAsync();
+        _openPositions = await TradeRepo.GetOpenPositionsAsync();
+    }
+}
