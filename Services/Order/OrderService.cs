@@ -1,60 +1,71 @@
-using Alpaca.Markets;
-using Microsoft.Extensions.Options;
-using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Services.Account;
+using StockTrader.Services.Broker;
 using StockTrader.Services.Notification;
 
 namespace StockTrader.Services.Order;
 
+/// <summary>
+/// 주문 오케스트레이션 서비스.
+///
+/// 책임:
+/// - 주문 모드(AlertOnly vs AutoOrder) 판단
+/// - 추천 내역 DB 저장 및 알림 발송
+/// - IAccountManager를 통해 계좌별 IBrokerService를 선택하여 주문 위임
+/// - accountId가 null이면 활성 계좌를 사용 (기존 단일 계좌 동작 유지)
+///
+/// Alpaca SDK는 이 클래스에 존재하지 않는다 — IBrokerService 추상화 뒤로 완전히 숨겨짐.
+/// </summary>
 public class OrderService : IOrderService
 {
-    private readonly IAlpacaTradingClient _tradingClient;
+    private readonly IAccountManager _accountManager;
     private readonly ITradeRepository _tradeRepo;
     private readonly ISettingsRepository _settingsRepo;
     private readonly INotificationService _notificationService;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
-        IOptions<AlpacaSettings> settings,
+        IAccountManager accountManager,
         ITradeRepository tradeRepo,
         ISettingsRepository settingsRepo,
         INotificationService notificationService,
         ILogger<OrderService> logger)
     {
+        _accountManager = accountManager;
         _tradeRepo = tradeRepo;
         _settingsRepo = settingsRepo;
         _notificationService = notificationService;
         _logger = logger;
-
-        var config = settings.Value;
-        var secretKey = new SecretKey(config.ApiKey, config.ApiSecret);
-        _tradingClient = config.IsPaper
-            ? Alpaca.Markets.Environments.Paper.GetAlpacaTradingClient(secretKey)
-            : Alpaca.Markets.Environments.Live.GetAlpacaTradingClient(secretKey);
     }
 
-    public async Task<bool> PlaceOrderAsync(TradeRecommendation recommendation,
+    /// <inheritdoc />
+    public Task<bool> PlaceOrderAsync(TradeRecommendation recommendation, CancellationToken ct = default)
+        => PlaceOrderAsync(recommendation, accountId: null, ct);
+
+    /// <inheritdoc />
+    public async Task<bool> PlaceOrderAsync(TradeRecommendation recommendation, int? accountId,
         CancellationToken ct = default)
     {
         var userSettings = await _settingsRepo.GetAsync(ct);
 
-        // Always save recommendation and notify
+        // 1. 항상 추천 내역 저장 및 알림 발송 (모드에 무관)
         await _tradeRepo.AddRecommendationAsync(recommendation, ct);
         _notificationService.Notify(recommendation);
 
+        // 2. AlertOnly 모드: 실제 주문 없이 로그만 기록
         if (userSettings.OrderMode == OrderMode.AlertOnly)
         {
-            _logger.LogInformation("[ALERT ONLY] {Pattern} {Symbol}: " +
-                "Entry=${Entry:F2}, SL=${SL:F2}, Target=${Target:F2}, Qty={Qty}",
+            _logger.LogInformation(
+                "[ALERT ONLY] {Pattern} {Symbol}: Entry=${Entry:F2}, SL=${SL:F2}, Target=${Target:F2}, Qty={Qty}",
                 recommendation.PatternType, recommendation.Symbol,
                 recommendation.EntryPrice, recommendation.StopLossPrice,
                 recommendation.TargetPrice, recommendation.ShareQuantity);
             return true;
         }
 
-        // AutoOrder mode
+        // 3. AutoOrder 모드: 계좌별 브로커를 통한 실제 주문 실행
         if (recommendation.ShareQuantity <= 0)
         {
             _logger.LogWarning("Cannot place order for {Symbol}: quantity is {Qty}",
@@ -62,20 +73,23 @@ public class OrderService : IOrderService
             return false;
         }
 
-        try
+        // 계좌별 브로커 선택 (null이면 활성 계좌)
+        var brokerService = accountId.HasValue
+            ? _accountManager.GetBrokerServiceForAccount(accountId.Value)
+            : _accountManager.GetActiveBrokerService();
+
+        if (brokerService == null)
         {
-            var order = await _tradingClient.PostOrderAsync(
-                MarketOrder.Buy(recommendation.Symbol, recommendation.ShareQuantity)
-                    .WithDuration(TimeInForce.Day)
-                    .Bracket(
-                        takeProfitLimitPrice: recommendation.TargetPrice,
-                        stopLossStopPrice: recommendation.StopLossPrice), ct);
+            _logger.LogWarning(
+                "Cannot place order for {Symbol}: no broker service available (account={AccountId})",
+                recommendation.Symbol, accountId?.ToString() ?? "active");
+            return false;
+        }
 
-            _logger.LogInformation("[ORDER PLACED] {Side} {Symbol}: " +
-                "Qty={Qty}, OrderId={OrderId}, Status={Status}",
-                order.OrderSide, order.Symbol, order.Quantity,
-                order.OrderId, order.OrderStatus);
+        var success = await brokerService.PlaceOrderAsync(recommendation, ct);
 
+        if (success)
+        {
             recommendation.WasExecuted = true;
 
             var position = new Position
@@ -91,51 +105,49 @@ public class OrderService : IOrderService
             };
             await _tradeRepo.SavePositionAsync(position, ct);
 
-            return true;
+            _logger.LogInformation(
+                "[ORDER PLACED] {Symbol}: Qty={Qty}, Entry=${Entry:F2}, Account={AccountId}",
+                recommendation.Symbol, recommendation.ShareQuantity, recommendation.EntryPrice,
+                accountId?.ToString() ?? "active");
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error placing order for {Symbol}", recommendation.Symbol);
-            return false;
-        }
+
+        return success;
     }
 
+    /// <inheritdoc />
     public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
     {
-        try
+        var brokerService = _accountManager.GetActiveBrokerService();
+        if (brokerService == null)
         {
-            if (!Guid.TryParse(orderId, out var guid))
-            {
-                _logger.LogWarning("Invalid order ID format: {OrderId}", orderId);
-                return false;
-            }
-            return await _tradingClient.CancelOrderAsync(guid, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error canceling order {OrderId}", orderId);
+            _logger.LogWarning("[ORDER CANCEL] No active broker service to cancel order {OrderId}", orderId);
             return false;
         }
+
+        var success = await brokerService.CancelOrderAsync(orderId, ct);
+
+        if (success)
+            _logger.LogInformation("[ORDER CANCELLED] OrderId={OrderId}", orderId);
+        else
+            _logger.LogWarning("[ORDER CANCEL FAILED] OrderId={OrderId}", orderId);
+
+        return success;
     }
 
+    /// <inheritdoc />
     public async Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default)
     {
-        try
+        var brokerService = _accountManager.GetActiveBrokerService();
+
+        if (brokerService != null)
         {
-            var alpacaPositions = await _tradingClient.ListPositionsAsync(ct);
-            return alpacaPositions.Select(p => new Position
-            {
-                Symbol = p.Symbol,
-                Quantity = (int)p.IntegerQuantity,
-                EntryPrice = p.AverageEntryPrice,
-                CurrentPrice = p.AssetCurrentPrice ?? p.AverageEntryPrice,
-                OpenedAt = DateTime.UtcNow
-            }).ToList();
+            var positions = await brokerService.GetPositionsAsync(ct);
+            if (positions.Count > 0)
+                return positions;
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching positions from Alpaca");
-            return await _tradeRepo.GetOpenPositionsAsync(ct);
-        }
+
+        // 브로커에서 포지션을 가져오지 못한 경우 DB 폴백
+        _logger.LogDebug("Broker returned no positions, falling back to local DB");
+        return await _tradeRepo.GetOpenPositionsAsync(ct);
     }
 }

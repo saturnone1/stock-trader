@@ -3,8 +3,13 @@
 @using StockTrader.Models
 @using StockTrader.Models.Enums
 @using StockTrader.Data.Repositories
+@using StockTrader.Configuration
+@using StockTrader.Services.Notification
+@using Microsoft.Extensions.Options
 @inject ISettingsRepository SettingsRepo
 @inject ISnackbar Snackbar
+@inject INotificationDispatcher NotificationDispatcher
+@inject IOptions<NotificationSettings> NotificationOptions
 
 <PageTitle>설정 - 주식 트레이더</PageTitle>
 
@@ -252,6 +257,7 @@
         </MudCardContent>
     </MudCard>
 
+    @* ── 알림 설정 (인앱) ─────────────────────────────── *@
     <MudCard Class="mb-4">
         <MudCardHeader>
             <CardHeaderContent>
@@ -261,6 +267,157 @@
         <MudCardContent>
             <MudSwitch T="bool" @bind-Value="_settings.SoundAlerts"
                        Label="소리 알림" Color="Color.Primary" />
+        </MudCardContent>
+    </MudCard>
+
+    @* ── 외부 알림 채널 설정 ──────────────────────────── *@
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Notifications" Size="Size.Small" Color="Color.Info" />
+                    <MudText Typo="Typo.h6">외부 알림 채널</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">
+                        appsettings.json 설정 필요
+                    </MudChip>
+                </MudStack>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                외부 알림 채널은 <code>appsettings.json</code>의 <code>Notification</code> 섹션에서 설정합니다.
+                아래 버튼으로 연결 상태를 테스트할 수 있습니다.
+            </MudText>
+
+            @* Telegram *@
+            <MudPaper Outlined="true" Class="pa-3 mb-3" Style="@GetChannelBorderStyle(_notificationSettings.EnableTelegram)">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Send" Color="Color.Info" />
+                        <div>
+                            <MudText Typo="Typo.subtitle1" Style="font-weight:600;">텔레그램</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @if (_notificationSettings.EnableTelegram)
+                                {
+                                    <span style="color:var(--mud-palette-success);">활성화됨</span>
+                                    @(" — Bot Token: ")
+                                    <code>@MaskSecret(_notificationSettings.TelegramBotToken)</code>
+                                    @(" | Chat ID: ")
+                                    <code>@_notificationSettings.TelegramChatId</code>
+                                }
+                                else
+                                {
+                                    <span>비활성화 (appsettings.json에서 EnableTelegram: true 설정)</span>
+                                }
+                            </MudText>
+                        </div>
+                    </MudStack>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               Color="@(_notificationSettings.EnableTelegram ? Color.Info : Color.Default)"
+                               StartIcon="@Icons.Material.Filled.Send"
+                               Disabled="@(!_notificationSettings.EnableTelegram || _testingChannel == "Telegram")"
+                               OnClick="@(() => TestChannelAsync("Telegram"))">
+                        @if (_testingChannel == "Telegram")
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                        }
+                        테스트 발송
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+
+            @* Discord *@
+            <MudPaper Outlined="true" Class="pa-3 mb-3" Style="@GetChannelBorderStyle(_notificationSettings.EnableDiscord)">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Forum" Color="Color.Secondary" />
+                        <div>
+                            <MudText Typo="Typo.subtitle1" Style="font-weight:600;">디스코드</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @if (_notificationSettings.EnableDiscord)
+                                {
+                                    <span style="color:var(--mud-palette-success);">활성화됨</span>
+                                    @(" — Webhook: ")
+                                    <code>@MaskSecret(_notificationSettings.DiscordWebhookUrl)</code>
+                                }
+                                else
+                                {
+                                    <span>비활성화 (appsettings.json에서 EnableDiscord: true 설정)</span>
+                                }
+                            </MudText>
+                        </div>
+                    </MudStack>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               Color="@(_notificationSettings.EnableDiscord ? Color.Secondary : Color.Default)"
+                               StartIcon="@Icons.Material.Filled.Send"
+                               Disabled="@(!_notificationSettings.EnableDiscord || _testingChannel == "Discord")"
+                               OnClick="@(() => TestChannelAsync("Discord"))">
+                        @if (_testingChannel == "Discord")
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                        }
+                        테스트 발송
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+
+            @* Email *@
+            <MudPaper Outlined="true" Class="pa-3 mb-3" Style="@GetChannelBorderStyle(_notificationSettings.EnableEmail)">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Email" Color="Color.Warning" />
+                        <div>
+                            <MudText Typo="Typo.subtitle1" Style="font-weight:600;">이메일</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @if (_notificationSettings.EnableEmail)
+                                {
+                                    <span style="color:var(--mud-palette-success);">활성화됨</span>
+                                    @(" — SMTP: ")
+                                    <code>@_notificationSettings.SmtpHost:@_notificationSettings.SmtpPort</code>
+                                    @(" | 수신: ")
+                                    <code>@_notificationSettings.EmailTo</code>
+                                }
+                                else
+                                {
+                                    <span>비활성화 (appsettings.json에서 EnableEmail: true 설정)</span>
+                                }
+                            </MudText>
+                        </div>
+                    </MudStack>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               Color="@(_notificationSettings.EnableEmail ? Color.Warning : Color.Default)"
+                               StartIcon="@Icons.Material.Filled.Send"
+                               Disabled="@(!_notificationSettings.EnableEmail || _testingChannel == "Email")"
+                               OnClick="@(() => TestChannelAsync("Email"))">
+                        @if (_testingChannel == "Email")
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                        }
+                        테스트 발송
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+
+            @* 일일 리포트 시간 *@
+            <MudDivider Class="my-3" />
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Tertiary" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">일일 리포트 발송 시간 (ET)</MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                    @_notificationSettings.DailyReportTime
+                </MudChip>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">appsettings.json의 DailyReportTime 값</MudText>
+            </MudStack>
+
+            <MudPaper Outlined="true" Class="pa-2 mt-3" Style="border-color:rgba(33,150,243,0.3);background:rgba(33,150,243,0.04);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        채널 설정은 <strong>appsettings.json</strong>에서 변경한 후 앱을 재시작해야 적용됩니다.
+                        시그널 발생, 리스크 경고, 일일 리포트가 활성 채널로 자동 발송됩니다.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
         </MudCardContent>
     </MudCard>
 
@@ -280,9 +437,14 @@
     private string _newSymbol = "";
     private bool _saving;
 
+    // 알림 채널 관련 상태
+    private NotificationSettings _notificationSettings = new();
+    private string _testingChannel = "";
+
     protected override async Task OnInitializedAsync()
     {
         _settings = await SettingsRepo.GetAsync();
+        _notificationSettings = NotificationOptions.Value;
     }
 
     private void AddSymbol()
@@ -340,4 +502,40 @@
         _saving = false;
         Snackbar.Add("설정이 저장되었습니다!", Severity.Success);
     }
+
+    private async Task TestChannelAsync(string channelName)
+    {
+        _testingChannel = channelName;
+        StateHasChanged();
+
+        try
+        {
+            var success = await NotificationDispatcher.TestChannelAsync(channelName);
+            if (success)
+                Snackbar.Add($"{channelName} 테스트 메시지 발송 완료!", Severity.Success);
+            else
+                Snackbar.Add($"{channelName} 테스트 발송 실패. 설정을 확인하세요.", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{channelName} 오류: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _testingChannel = "";
+            StateHasChanged();
+        }
+    }
+
+    private static string MaskSecret(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "(미설정)";
+        if (value.Length <= 8) return new string('*', value.Length);
+        return value[..4] + new string('*', value.Length - 8) + value[^4..];
+    }
+
+    private static string GetChannelBorderStyle(bool isEnabled) =>
+        isEnabled
+            ? "border-color: rgba(76,175,80,0.5); background: rgba(76,175,80,0.04);"
+            : "border-color: rgba(128,128,128,0.3);";
 }

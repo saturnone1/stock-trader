@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<TradeRecord> TradeRecords => Set<TradeRecord>();
     public DbSet<Ticker> Tickers => Set<Ticker>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
+    public DbSet<TradingAccount> TradingAccounts => Set<TradingAccount>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -80,6 +81,13 @@ public class AppDbContext : DbContext
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null)!
                 );
+        });
+
+        modelBuilder.Entity<TradingAccount>(entity =>
+        {
+            entity.HasIndex(a => a.BrokerType);
+            entity.HasIndex(a => a.IsActive);
+            // AccountName을 고유하게 강제하지 않음 — 같은 브로커에 여러 계좌 허용
         });
     }
 }

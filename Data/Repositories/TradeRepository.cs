@@ -27,6 +27,14 @@ public class TradeRepository : ITradeRepository
         return await query.OrderByDescending(t => t.EntryTime).ToListAsync(ct);
     }
 
+    public async Task<List<TradeRecord>> GetRecentAsync(int limit = 5000, CancellationToken ct = default)
+    {
+        return await _db.TradeRecords
+            .OrderByDescending(t => t.EntryTime)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
     public async Task AddTradeAsync(TradeRecord trade, CancellationToken ct = default)
     {
         _db.TradeRecords.Add(trade);

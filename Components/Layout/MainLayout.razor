@@ -1,4 +1,10 @@
 @inherits LayoutComponentBase
+@using StockTrader.Models
+@using StockTrader.Models.Enums
+@using StockTrader.Services.Account
+@inject IAccountManager AccountManager
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <MudThemeProvider Theme="_tradingTheme" IsDarkMode="true" />
 <MudPopoverProvider />
@@ -13,6 +19,64 @@
                        OnClick="@ToggleDrawer" />
         <MudText Typo="Typo.h6" Class="ml-3">주식 트레이더</MudText>
         <MudSpacer />
+
+        @* 활성 계좌 드롭다운 *@
+        @if (_accounts.Count > 0)
+        {
+            <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Text" Color="Color.Inherit" Size="Size.Small"
+                               EndIcon="@Icons.Material.Filled.ArrowDropDown"
+                               StartIcon="@Icons.Material.Filled.AccountBalance"
+                               Class="mr-1">
+                        @(_activeAccount?.AccountName ?? "계좌 없음")
+                    </MudButton>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1">계좌 전환</MudText>
+                    <MudDivider />
+                    @foreach (var account in _accounts)
+                    {
+                        <MudMenuItem OnClick="@(() => SwitchAccountAsync(account.Id))">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                @if (account.IsActive)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.RadioButtonChecked"
+                                             Size="Size.Small" Color="Color.Primary" />
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.RadioButtonUnchecked"
+                                             Size="Size.Small" Color="Color.Secondary" />
+                                }
+                                <div>
+                                    <MudText Typo="Typo.body2">@account.AccountName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @account.BrokerType · @account.Environment
+                                    </MudText>
+                                </div>
+                            </MudStack>
+                        </MudMenuItem>
+                    }
+                    <MudDivider />
+                    <MudMenuItem OnClick="@(() => Navigation.NavigateTo("/accounts"))">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" />
+                            <MudText Typo="Typo.body2">계좌 관리</MudText>
+                        </MudStack>
+                    </MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add" Class="mr-2"
+                       OnClick="@(() => Navigation.NavigateTo("/accounts"))">
+                계좌 추가
+            </MudButton>
+        }
+
         <StreamingStatus />
         <MudIconButton Icon="@Icons.Material.Filled.HelpOutline"
                        Color="Color.Inherit"
@@ -42,6 +106,45 @@
 
 @code {
     private bool _drawerOpen = true;
+    private List<TradingAccount> _accounts = new();
+    private TradingAccount? _activeAccount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AccountManager.OnAccountsChanged += OnAccountsChanged;
+        await LoadAccountsAsync();
+    }
+
+    private async Task LoadAccountsAsync()
+    {
+        _accounts = await AccountManager.GetAllAccountsAsync();
+        _activeAccount = _accounts.FirstOrDefault(a => a.IsActive);
+    }
+
+    private async void OnAccountsChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAccountsAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task SwitchAccountAsync(int accountId)
+    {
+        if (_activeAccount?.Id == accountId) return;
+        try
+        {
+            await AccountManager.SetActiveAccountAsync(accountId);
+            await LoadAccountsAsync();
+        }
+        catch { /* 무시 */ }
+    }
+
+    public void Dispose()
+    {
+        AccountManager.OnAccountsChanged -= OnAccountsChanged;
+    }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
