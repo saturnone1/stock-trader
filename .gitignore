@@ -1,0 +1,52 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## User Secrets / Sensitive
+appsettings.*.json
+!appsettings.json
+secrets.json
+
+## SQLite DB
+*.db
+*.db-shm
+*.db-wal
+
+## IDE
+.vs/
+.vscode/
+*.swp
+*~
+
+## OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Build
+publish/
+out/
+
+## NuGet
+*.nupkg
+**/packages/*
+
+## Misc
+*.log
+
+## Temp output files
+build_output.txt
+build_check.txt
+build_fix_output.txt
+install_output.txt
+kill_output.txt
+port_check.txt
+publish_output.txt
+publish_result.txt
+run_output.txt
+test_output.txt
+git_status_out.txt

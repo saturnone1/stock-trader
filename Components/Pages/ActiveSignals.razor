@@ -1,0 +1,165 @@
+@page "/signals"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Models.Enums
+@using StockTrader.Data.Repositories
+@using StockTrader.Services.Notification
+@inject ITradeRepository TradeRepo
+@inject INotificationService NotificationService
+@implements IDisposable
+
+<PageTitle>활성 시그널 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">활성 시그널</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">패턴 감지 시스템이 실시간으로 발견한 매매 시그널 목록입니다. 패턴 유형이나 종목명으로 필터링할 수 있습니다.</MudText>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">활성 시그널 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">패턴 스캐너가 자동 감지한 매매 시그널입니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>시그널 카드 테두리 색</strong>: 초록(신뢰도 70%↑), 노랑(40%↑), 회색(40%↓)
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>진입가</strong>: 권장 매수 가격
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>손절가 (빨강)</strong>: 이 가격 아래로 떨어지면 손실 제한을 위해 자동 매도
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>목표가 (초록)</strong>: 이 가격에 도달하면 수익 실현을 위해 자동 매도
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+<!-- 필터 영역 -->
+<MudGrid Class="mb-2">
+    <MudItem xs="12" md="5">
+        <!-- 패턴 필터: 한국어이름 (스타일) 형태로 표시 -->
+        <MudSelect T="string" @bind-Value="_filterPattern" Label="패턴 필터" Variant="Variant.Outlined" Dense="true">
+            <MudSelectItem T="string" Value="@("")">전체 패턴</MudSelectItem>
+            @foreach (var pattern in Enum.GetValues<PatternType>())
+            {
+                var meta = PatternMetadataMap.Get(pattern);
+                <MudSelectItem T="string" Value="@pattern.ToString()">
+                    @meta.KoreanName (@meta.StyleLabel)
+                </MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudTextField @bind-Value="_filterSymbol" Label="종목 검색" Placeholder="종목 검색..."
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+    </MudItem>
+</MudGrid>
+
+<!-- 트레이딩 스타일 빠른 필터 -->
+<MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-3">
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="line-height: 32px; margin-right: 4px;">스타일:</MudText>
+    <MudChip T="string"
+             Color="@(_filterStyle == null ? Color.Primary : Color.Default)"
+             Variant="@(_filterStyle == null ? Variant.Filled : Variant.Outlined)"
+             Size="Size.Small"
+             OnClick="@(() => _filterStyle = null)">
+        전체
+    </MudChip>
+    <MudChip T="string"
+             Color="@(_filterStyle == TradingStyle.Scalping ? Color.Error : Color.Default)"
+             Variant="@(_filterStyle == TradingStyle.Scalping ? Variant.Filled : Variant.Outlined)"
+             Size="Size.Small"
+             OnClick="@(() => ToggleStyleFilter(TradingStyle.Scalping))">
+        스캘핑
+    </MudChip>
+    <MudChip T="string"
+             Color="@(_filterStyle == TradingStyle.DayTrading ? Color.Warning : Color.Default)"
+             Variant="@(_filterStyle == TradingStyle.DayTrading ? Variant.Filled : Variant.Outlined)"
+             Size="Size.Small"
+             OnClick="@(() => ToggleStyleFilter(TradingStyle.DayTrading))">
+        단타
+    </MudChip>
+    <MudChip T="string"
+             Color="@(_filterStyle == TradingStyle.Swing ? Color.Success : Color.Default)"
+             Variant="@(_filterStyle == TradingStyle.Swing ? Variant.Filled : Variant.Outlined)"
+             Size="Size.Small"
+             OnClick="@(() => ToggleStyleFilter(TradingStyle.Swing))">
+        스윙
+    </MudChip>
+    <MudChip T="string"
+             Color="@(_filterStyle == TradingStyle.Position ? Color.Info : Color.Default)"
+             Variant="@(_filterStyle == TradingStyle.Position ? Variant.Filled : Variant.Outlined)"
+             Size="Size.Small"
+             OnClick="@(() => ToggleStyleFilter(TradingStyle.Position))">
+        포지션
+    </MudChip>
+    <!-- 현재 필터 결과 카운트 표시 -->
+    @{
+        var count = FilteredSignals.Count();
+    }
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="line-height: 32px; margin-left: 8px;">
+        @(count)개 시그널
+    </MudText>
+</MudStack>
+
+@if (_signals.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">현재 활성 시그널이 없습니다</MudAlert>
+}
+else if (!FilteredSignals.Any())
+{
+    <MudAlert Severity="Severity.Info">선택한 조건에 맞는 시그널이 없습니다</MudAlert>
+}
+else
+{
+    @foreach (var signal in FilteredSignals)
+    {
+        <SignalCard Signal="@signal" />
+    }
+}
+
+@code {
+    private bool _showHelp;
+    private List<PatternSignal> _signals = new();
+    private string _filterPattern = "";
+    private string _filterSymbol = "";
+    private TradingStyle? _filterStyle = null;
+
+    private IEnumerable<PatternSignal> FilteredSignals => _signals
+        .Where(s => string.IsNullOrEmpty(_filterPattern)
+            || s.PatternType.ToString() == _filterPattern)
+        .Where(s => string.IsNullOrEmpty(_filterSymbol)
+            || s.Symbol.Contains(_filterSymbol, StringComparison.OrdinalIgnoreCase))
+        .Where(s => _filterStyle == null
+            || PatternMetadataMap.Get(s.PatternType).Style == _filterStyle);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _signals = await TradeRepo.GetActiveSignalsAsync();
+        NotificationService.OnNewRecommendation += OnNewRecommendation;
+    }
+
+    private async void OnNewRecommendation(TradeRecommendation rec)
+    {
+        await InvokeAsync(async () =>
+        {
+            _signals = await TradeRepo.GetActiveSignalsAsync();
+            StateHasChanged();
+        });
+    }
+
+    private void ToggleStyleFilter(TradingStyle style)
+    {
+        _filterStyle = _filterStyle == style ? null : style;
+    }
+
+    public void Dispose()
+    {
+        NotificationService.OnNewRecommendation -= OnNewRecommendation;
+    }
+}

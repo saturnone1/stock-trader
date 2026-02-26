@@ -1,0 +1,343 @@
+@page "/settings"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Models.Enums
+@using StockTrader.Data.Repositories
+@inject ISettingsRepository SettingsRepo
+@inject ISnackbar Snackbar
+
+<PageTitle>설정 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">설정</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">설정 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">앱의 모든 설정을 관리합니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>알림 전용</strong>: 시그널만 알려주고 직접 매매 판단
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>자동 주문</strong>: Alpaca Paper Trading으로 자동 매매 실행
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>계좌 규모</strong>: 포지션 크기(1%)와 일일 한도(-3%) 계산 기준
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>API 키</strong>: appsettings.json에서 설정 (보안상 UI 미노출)
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+@if (_settings != null)
+{
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">거래 모드</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <ModeToggle OnModeChanged="OnModeChanged" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                알림 전용: 시그널 발생 시 알림만 받습니다. 자동 주문: Alpaca API를 통해 자동으로 매매를 실행합니다.
+            </MudText>
+        </MudCardContent>
+    </MudCard>
+
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">API 설정</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="DataSource" @bind-Value="_settings.PreferredDataSource"
+                               Label="데이터 소스" Variant="Variant.Outlined" Dense="true">
+                        @foreach (var source in Enum.GetValues<DataSource>())
+                        {
+                            <MudSelectItem T="DataSource" Value="@source">@source</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                        Alpaca: 실시간 데이터, VWAP 포함 (API 키 필요). Yahoo: 15분 지연 데이터, 무료 (API 키 불필요).
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                보안을 위해 API 키는 appsettings.json에서 설정합니다.
+            </MudText>
+        </MudCardContent>
+    </MudCard>
+
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Shield" Size="Size.Small" Color="Color.Warning" />
+                        <MudText Typo="Typo.h6">리스크 관리</MudText>
+                    </MudStack>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Secondary"
+                               StartIcon="@Icons.Material.Filled.RestartAlt"
+                               OnClick="ResetRiskDefaults">기본값 복원</MudButton>
+                </MudStack>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid Spacing="3">
+
+                @* 계좌 규모 *@
+                <MudItem xs="12" md="6" lg="4">
+                    <MudNumericField @bind-Value="_settings.AccountSize"
+                                     Label="기본 계좌 규모 ($)"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="N0"
+                                     Min="1000m" Max="100000000m"
+                                     HelperText="포지션 크기 및 손실 한도 계산 기준" />
+                </MudItem>
+
+                @* 거래당 리스크 비율 *@
+                <MudItem xs="12" md="6" lg="4">
+                    <MudStack Spacing="0">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">거래당 리스크 비율</MudText>
+                            <MudText Typo="Typo.caption" Style="font-weight:600; color: var(--mud-palette-warning);">
+                                @(_settings.RiskPerTradePercent * 100m).ToString("F1")%
+                            </MudText>
+                        </MudStack>
+                        <MudSlider @bind-Value="_settings.RiskPerTradePercent"
+                                   Min="0.001m" Max="0.05m" Step="0.001m"
+                                   Color="Color.Warning" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">0.1%</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">5%</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                            계좌 $@(_settings.AccountSize.ToString("N0")) 기준 거래당 리스크 $@((_settings.AccountSize * _settings.RiskPerTradePercent).ToString("N0"))
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+
+                @* 일일 손실 한도 *@
+                <MudItem xs="12" md="6" lg="4">
+                    <MudStack Spacing="0">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">일일 손실 한도</MudText>
+                            <MudText Typo="Typo.caption" Style="font-weight:600; color: var(--mud-palette-error);">
+                                @(_settings.DailyLossLimitPercent * 100m).ToString("F1")%
+                            </MudText>
+                        </MudStack>
+                        <MudSlider @bind-Value="_settings.DailyLossLimitPercent"
+                                   Min="0.01m" Max="0.15m" Step="0.005m"
+                                   Color="Color.Error" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">1%</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">15%</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                            하루 최대 손실 $@((_settings.AccountSize * _settings.DailyLossLimitPercent).ToString("N0"))에서 자동 중지
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+
+                @* 최대 동시 포지션 수 *@
+                <MudItem xs="12" md="6" lg="4">
+                    <MudStack Spacing="0">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">최대 동시 포지션 수</MudText>
+                            <MudText Typo="Typo.caption" Style="font-weight:600;">@_settings.MaxTotalPositions 종목</MudText>
+                        </MudStack>
+                        <MudSlider @bind-Value="_settings.MaxTotalPositions"
+                                   Min="1" Max="30" Step="1"
+                                   Color="Color.Info" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">1</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">30</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                            종목당 최대 자본 비중 @((100.0m / _settings.MaxTotalPositions).ToString("F0"))%
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+
+                @* 섹터당 최대 포지션 *@
+                <MudItem xs="12" md="6" lg="4">
+                    <MudStack Spacing="0">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">섹터당 최대 포지션</MudText>
+                            <MudText Typo="Typo.caption" Style="font-weight:600;">@_settings.MaxPositionsPerSector 종목</MudText>
+                        </MudStack>
+                        <MudSlider @bind-Value="_settings.MaxPositionsPerSector"
+                                   Min="1" Max="10" Step="1"
+                                   Color="Color.Success" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">1</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">10</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                            같은 섹터 내 최대 @_settings.MaxPositionsPerSector 종목 동시 보유
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+
+                @* 최소 기대 수익 *@
+                <MudItem xs="12" md="6" lg="4">
+                    <MudNumericField @bind-Value="_settings.MinExpectancy"
+                                     Label="최소 기대 수익"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="F2"
+                                     Step="0.05m" Min="0m" Max="5m"
+                                     HelperText="0 = 제한 없음. 기대값이 이 값 미만인 시그널 무시" />
+                </MudItem>
+            </MudGrid>
+
+            @* 리스크 요약 인포 박스 *@
+            <MudPaper Outlined="true" Class="pa-2 mt-3" Style="border-color: rgba(255,193,7,0.3); background: rgba(255,193,7,0.04);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Warning" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        실제 트레이딩에 적용됩니다. 저장 후 다음 시그널 감지부터 반영됩니다.
+                        포지션 크기 = 계좌규모 × 거래당리스크 ÷ 손절폭.
+                        현재: 거래당 <strong style="color:var(--mud-palette-warning);">@((_settings.RiskPerTradePercent * 100m).ToString("F1"))%</strong>,
+                        일일한도 <strong style="color:var(--mud-palette-error);">@((_settings.DailyLossLimitPercent * 100m).ToString("F1"))%</strong>,
+                        최대 <strong>@_settings.MaxTotalPositions</strong>종목
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        </MudCardContent>
+    </MudCard>
+
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">관심 종목</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-3">
+                @foreach (var symbol in _settings.WatchlistSymbols)
+                {
+                    <MudChip T="string" Color="Color.Primary" Variant="Variant.Filled"
+                             OnClose="@(() => RemoveSymbol(symbol))">@symbol</MudChip>
+                }
+            </MudStack>
+            <MudTextField @bind-Value="_newSymbol" Label="종목 추가" Placeholder="종목 추가..."
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 300px;"
+                          OnKeyDown="OnSymbolKeyDown"
+                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Add"
+                          OnAdornmentClick="AddSymbol" />
+        </MudCardContent>
+    </MudCard>
+
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">활성 패턴</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @foreach (var pattern in Enum.GetValues<PatternType>())
+            {
+                <MudSwitch T="bool" Value="@_settings.EnabledPatterns.Contains(pattern)"
+                           ValueChanged="@(v => TogglePattern(pattern, v))"
+                           Label="@pattern.ToString()" Color="Color.Primary" Class="mb-1" />
+            }
+        </MudCardContent>
+    </MudCard>
+
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">알림</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudSwitch T="bool" @bind-Value="_settings.SoundAlerts"
+                       Label="소리 알림" Color="Color.Primary" />
+        </MudCardContent>
+    </MudCard>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+               OnClick="SaveAsync" Disabled="@_saving">
+        @if (_saving)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+        }
+        설정 저장
+    </MudButton>
+}
+
+@code {
+    private bool _showHelp;
+    private UserSettings? _settings;
+    private string _newSymbol = "";
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await SettingsRepo.GetAsync();
+    }
+
+    private void AddSymbol()
+    {
+        if (!string.IsNullOrWhiteSpace(_newSymbol) && _settings != null)
+        {
+            var symbol = _newSymbol.Trim().ToUpper();
+            if (!_settings.WatchlistSymbols.Contains(symbol))
+                _settings.WatchlistSymbols.Add(symbol);
+            _newSymbol = "";
+        }
+    }
+
+    private void RemoveSymbol(string symbol)
+    {
+        _settings?.WatchlistSymbols.Remove(symbol);
+    }
+
+    private void OnSymbolKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddSymbol();
+    }
+
+    private void TogglePattern(PatternType pattern, bool enabled)
+    {
+        if (_settings == null) return;
+        if (enabled && !_settings.EnabledPatterns.Contains(pattern))
+            _settings.EnabledPatterns.Add(pattern);
+        else if (!enabled)
+            _settings.EnabledPatterns.Remove(pattern);
+    }
+
+    private async Task OnModeChanged(OrderMode mode)
+    {
+        if (_settings != null) _settings.OrderMode = mode;
+    }
+
+    private void ResetRiskDefaults()
+    {
+        if (_settings == null) return;
+        _settings.AccountSize = 100_000m;
+        _settings.RiskPerTradePercent = 0.01m;
+        _settings.DailyLossLimitPercent = 0.03m;
+        _settings.MaxTotalPositions = 10;
+        _settings.MaxPositionsPerSector = 2;
+        _settings.MinExpectancy = 0m;
+        Snackbar.Add("리스크 설정이 기본값으로 복원되었습니다.", Severity.Info);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_settings == null) return;
+        _saving = true;
+        await SettingsRepo.SaveAsync(_settings);
+        _saving = false;
+        Snackbar.Add("설정이 저장되었습니다!", Severity.Success);
+    }
+}

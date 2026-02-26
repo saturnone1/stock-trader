@@ -1,0 +1,59 @@
+@using StockTrader.Models
+
+<MudTable Items="@Stats"
+          Dense="true"
+          Striped="true"
+          Hover="true"
+          RowStyleFunc="@RowStyle">
+    <HeaderContent>
+        <MudTh>패턴</MudTh>
+        <MudTh>스타일</MudTh>
+        <MudTh>보유기간</MudTh>
+        <MudTh>표본 수</MudTh>
+        <MudTh>승률</MudTh>
+        <MudTh>평균 수익</MudTh>
+        <MudTh>평균 손실</MudTh>
+        <MudTh><MudTooltip Text="거래 1회당 기대 수익률. 양수여야 수익 가능">기대값 ⓘ</MudTooltip></MudTh>
+        <MudTh><MudTooltip Text="최고점 대비 최대 하락폭. -20% 이내면 양호">최대 낙폭 ⓘ</MudTooltip></MudTh>
+        <MudTh><MudTooltip Text="총 수익 / 총 손실. 1.5 이상이면 양호">수익 팩터 ⓘ</MudTooltip></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        @{
+            var meta = PatternMetadataMap.Get(context.PatternType);
+        }
+        <MudTd>
+            <MudTooltip Text="@meta.Description">
+                <strong>@meta.KoreanName</strong>
+            </MudTooltip>
+        </MudTd>
+        <MudTd>
+            <MudChip T="string"
+                     Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
+                     Size="Size.Small"
+                     Variant="Variant.Filled">
+                @meta.StyleLabel
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@meta.HoldingPeriod</MudText>
+        </MudTd>
+        <MudTd>@context.SampleSize</MudTd>
+        <MudTd>@context.WinRate.ToString("P1")</MudTd>
+        <MudTd Style="color: var(--mud-palette-success);">@context.AvgWinPercent.ToString("P2")</MudTd>
+        <MudTd Style="color: var(--mud-palette-error);">@context.AvgLossPercent.ToString("P2")</MudTd>
+        <MudTd Style="@(context.Expectancy > 0
+                        ? "color: var(--mud-palette-success); font-weight: bold;"
+                        : "color: var(--mud-palette-error); font-weight: bold;")">
+            @context.Expectancy.ToString("P3")
+        </MudTd>
+        <MudTd>@context.MaxDrawdownPercent.ToString("P2")</MudTd>
+        <MudTd>@context.ProfitFactor.ToString("F2")</MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    [Parameter] public List<PatternStats> Stats { get; set; } = new();
+
+    private string RowStyle(PatternStats stat, int index)
+        => stat.Expectancy <= 0 ? "background-color: rgba(198, 40, 40, 0.15);" : string.Empty;
+}

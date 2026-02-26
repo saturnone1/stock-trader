@@ -1,0 +1,56 @@
+@using StockTrader.Models
+@using StockTrader.Services.Notification
+@inject INotificationService NotificationService
+@implements IDisposable
+
+@if (_prices.Count > 0)
+{
+    <MudStack Row="true" Spacing="1" Class="mt-2 flex-wrap">
+        @foreach (var kv in _prices)
+        {
+            var p = kv.Value;
+            <MudChip T="string"
+                     Color="@(p.ChangePercent >= 0 ? Color.Success : Color.Error)"
+                     Variant="Variant.Outlined"
+                     Size="Size.Small">
+                @p.Symbol $@p.Price.ToString("F2") (@(p.ChangePercent >= 0 ? "+" : "")@p.ChangePercent.ToString("F2")%)
+            </MudChip>
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly Dictionary<string, PriceUpdate> _prices = new(StringComparer.OrdinalIgnoreCase);
+    private DateTime _lastRender = DateTime.MinValue;
+    private Timer? _throttleTimer;
+    private volatile bool _pendingUpdate;
+
+    protected override void OnInitialized()
+    {
+        NotificationService.OnPriceUpdate += OnPriceUpdate;
+        _throttleTimer = new Timer(ThrottleCallback, null, 500, 500);
+    }
+
+    private void OnPriceUpdate(PriceUpdate update)
+    {
+        lock (_prices)
+        {
+            _prices[update.Symbol] = update;
+        }
+        _pendingUpdate = true;
+    }
+
+    private async void ThrottleCallback(object? state)
+    {
+        if (!_pendingUpdate) return;
+        _pendingUpdate = false;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        NotificationService.OnPriceUpdate -= OnPriceUpdate;
+        _throttleTimer?.Dispose();
+    }
+}

@@ -1,0 +1,66 @@
+@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="_tradingTheme" IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       OnClick="@ToggleDrawer" />
+        <MudText Typo="Typo.h6" Class="ml-3">주식 트레이더</MudText>
+        <MudSpacer />
+        <StreamingStatus />
+        <MudIconButton Icon="@Icons.Material.Filled.HelpOutline"
+                       Color="Color.Inherit"
+                       Href="guide"
+                       title="사용 가이드" />
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen"
+               ClipMode="DrawerClipMode.Always"
+               Elevation="2"
+               Variant="@DrawerVariant.Responsive">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    처리되지 않은 오류가 발생했습니다.
+    <a href="." class="reload">새로고침</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private readonly MudTheme _tradingTheme = new()
+    {
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#1565C0",
+            Secondary = "#37474F",
+            Success = "#2E7D32",
+            Error = "#C62828",
+            Warning = "#F57F17",
+            Background = "#121212",
+            BackgroundGray = "#1E1E1E",
+            Surface = "#1E1E1E",
+            AppbarBackground = "#0D0D0D",
+            DrawerBackground = "#161616",
+            TextPrimary = "#EEEEEE",
+            TextSecondary = "#9E9E9E",
+        }
+    };
+}

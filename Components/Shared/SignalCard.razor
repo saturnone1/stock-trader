@@ -1,0 +1,77 @@
+@using StockTrader.Models
+@using StockTrader.Models.Enums
+
+<MudCard Outlined="true"
+         Style="@($"border-color: {BorderColor};")"
+         Class="mb-2">
+    <MudCardContent Class="pa-3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+            <div>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <!-- 패턴 한국어 이름 칩 + 스타일 배지 -->
+                    <MudTooltip Text="@PatternMetadataMap.GetDescription(Signal.PatternType)"
+                                Placement="Placement.Bottom" Arrow="true">
+                        <MudChip T="string"
+                                 Color="@PatternMetadataMap.GetMudColor(Signal.PatternType)"
+                                 Variant="Variant.Filled"
+                                 Size="Size.Small"
+                                 Icon="@Icons.Material.Filled.Info">
+                            @PatternMetadataMap.GetKoreanName(Signal.PatternType)
+                        </MudChip>
+                    </MudTooltip>
+                    <!-- 트레이딩 스타일 배지 -->
+                    <MudChip T="string"
+                             Color="@PatternMetadataMap.GetMudColor(Signal.PatternType)"
+                             Variant="Variant.Outlined"
+                             Size="Size.Small">
+                        @PatternMetadataMap.GetStyleLabel(Signal.PatternType)
+                    </MudChip>
+                    <MudText Typo="Typo.subtitle1"><strong>@Signal.Symbol</strong></MudText>
+                </MudStack>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @Signal.DetectedAt.ToString("MM/dd HH:mm")
+                    </MudText>
+                    <!-- 예상 보유기간 -->
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
+                        <MudIcon Icon="@Icons.Material.Filled.Schedule"
+                                 Size="Size.Small"
+                                 Style="font-size: 12px; color: var(--mud-palette-text-secondary); margin-right: 2px;" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @PatternMetadataMap.Get(Signal.PatternType).HoldingPeriod
+                        </MudText>
+                    </MudStack>
+                </MudStack>
+            </div>
+            <div style="text-align: right; flex-shrink: 0;">
+                <MudText>진입: <strong>$@Signal.EntryPrice.ToString("F2")</strong></MudText>
+                <MudText Color="Color.Error">손절: $@Signal.StopLossPrice.ToString("F2")</MudText>
+                <MudText Color="Color.Success">목표: $@Signal.TargetPrice.ToString("F2")</MudText>
+                <!-- 신뢰도 표시 -->
+                <MudText Typo="Typo.caption" Style="@($"color: {ConfidenceColor};")">
+                    신뢰도 @((Signal.Confidence * 100).ToString("F0"))%
+                </MudText>
+            </div>
+        </MudStack>
+        @if (!string.IsNullOrEmpty(Signal.Details))
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">@Signal.Details</MudText>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired] public PatternSignal Signal { get; set; } = default!;
+
+    private string BorderColor => Signal.Confidence > 0.7m
+        ? "var(--mud-palette-success)"
+        : Signal.Confidence > 0.4m
+        ? "var(--mud-palette-warning)"
+        : "var(--mud-palette-text-disabled)";
+
+    private string ConfidenceColor => Signal.Confidence > 0.7m
+        ? "var(--mud-palette-success)"
+        : Signal.Confidence > 0.4m
+        ? "var(--mud-palette-warning)"
+        : "var(--mud-palette-error)";
+}

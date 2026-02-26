@@ -1,0 +1,1513 @@
+@page "/backtest"
+@rendermode InteractiveServer
+@using StockTrader.Models
+@using StockTrader.Models.Enums
+@using StockTrader.Services.Backtest
+@inject IBacktestService BacktestService
+
+<PageTitle>백테스트 - 주식 트레이더</PageTitle>
+
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">백테스트</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">과거 데이터를 기반으로 패턴 전략의 수익성을 시뮬레이션합니다. 종목, 기간, 자본금을 설정하고 결과를 확인하세요.</MudText>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">백테스트 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">과거 데이터로 전략을 검증하는 시뮬레이션입니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>슬리피지</strong>: 주문가와 체결가의 차이 (기본 0.05%). 실전에선 항상 발생
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>워크포워드</strong>: 학습/검증 구간을 나눠 과적합을 방지. 효율 50% 이상이면 양호
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>몬테카를로</strong>: 거래 순서를 섞어 통계적 유효성 검증. 5% 백분위가 양수면 안정적
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>샤프 비율</strong>: 위험 대비 수익. 1 이상 양호, 2 이상 우수
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+<MudCard Class="mb-4">
+    <MudCardContent>
+        <MudText Typo="Typo.h6" Class="mb-3">설정</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_symbols" Label="종목 (쉼표로 구분)"
+                              Placeholder="AAPL,MSFT,GOOGL" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker @bind-Date="_from" Label="시작일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker @bind-Date="_to" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudNumericField @bind-Value="_capital" Label="초기 자본금"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N0" />
+            </MudItem>
+            <MudItem xs="12" md="2" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           OnClick="RunBacktestAsync" Disabled="@_isRunning">
+                    @if (_isRunning)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    백테스트 실행
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @* Timeframe + Slippage / Commission *@
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" md="3">
+                <MudSelect T="TimeFrame" @bind-Value="_timeFrame" Label="타임프레임"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           HelperText="@GetTimeFrameHelperText()">
+                    <MudSelectItem T="TimeFrame" Value="TimeFrame.OneMinute">1분봉 (스캘핑)</MudSelectItem>
+                    <MudSelectItem T="TimeFrame" Value="TimeFrame.FiveMinute">5분봉 (단타)</MudSelectItem>
+                    <MudSelectItem T="TimeFrame" Value="TimeFrame.FifteenMinute">15분봉 (단타/스윙)</MudSelectItem>
+                    <MudSelectItem T="TimeFrame" Value="TimeFrame.Daily">일봉 (스윙/포지션)</MudSelectItem>
+                    <MudSelectItem T="TimeFrame" Value="TimeFrame.Weekly">주봉 (장기)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField @bind-Value="_slippagePercent" Label="슬리피지 (%)"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="F3"
+                                 Step="0.01m" Min="0m" Max="1m" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField @bind-Value="_commissionPerTrade" Label="수수료 ($/거래)"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="F2"
+                                 Step="0.5m" Min="0m" />
+            </MudItem>
+        </MudGrid>
+
+        @* 분봉 기간 경고 *@
+        @if (_timeFrame != TimeFrame.Daily && _timeFrame != TimeFrame.Weekly)
+        {
+            <MudGrid Class="mt-1">
+                <MudItem xs="12">
+                    @if (IsIntraDayPeriodOverLimit())
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Icon="@Icons.Material.Filled.Warning">
+                            <strong>주의:</strong> @GetTimeFrameLabel(_timeFrame) 백테스트는 데이터 양이 매우 많습니다.
+                            현재 선택 기간 <strong>@GetSelectedDays()일</strong>은 권장 최대 기간 <strong>@GetMaxRecommendedDays(_timeFrame)일</strong>을 초과합니다.
+                            기간을 줄이거나 일봉으로 전환하는 것을 권장합니다.
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true" Icon="@Icons.Material.Filled.AccessTime">
+                            @GetTimeFrameLabel(_timeFrame) 백테스트 선택됨 — 데이터 과부하 방지를 위해 워밍업 기간이 자동으로 단축됩니다.
+                            권장 최대 기간: <strong>@GetMaxRecommendedDays(_timeFrame)일</strong>
+                        </MudAlert>
+                    }
+                </MudItem>
+            </MudGrid>
+        }
+
+        @* Walk-Forward & Monte Carlo toggles *@
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" md="3">
+                <MudTooltip Text="학습/검증 구간을 나눠 과적합을 방지하는 고급 검증">
+                    <MudSwitch @bind-Value="_enableWalkForward" Label="Walk-Forward 분석" Color="Color.Primary" />
+                </MudTooltip>
+            </MudItem>
+            @if (_enableWalkForward)
+            {
+                <MudItem xs="12" md="2">
+                    <MudNumericField @bind-Value="_wfInSampleMonths" Label="IS 기간 (개월)"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Min="3" Max="60" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudNumericField @bind-Value="_wfOutOfSampleMonths" Label="OOS 기간 (개월)"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Min="1" Max="24" />
+                </MudItem>
+            }
+            <MudItem xs="12" md="3">
+                <MudTooltip Text="거래 순서를 무작위로 섞어 전략의 통계적 유효성을 검증">
+                    <MudSwitch @bind-Value="_enableMonteCarlo" Label="Monte Carlo 시뮬레이션" Color="Color.Primary" />
+                </MudTooltip>
+            </MudItem>
+            @if (_enableMonteCarlo)
+            {
+                <MudItem xs="12" md="2">
+                    <MudNumericField @bind-Value="_mcSimulations" Label="시뮬레이션 횟수"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Min="100" Max="10000" Step="100" />
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">패턴 선택</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">
+            <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled" Class="mr-1">스캘핑</MudChip>
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" Class="mr-1">단타</MudChip>
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Class="mr-1">스윙</MudChip>
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled" Class="mr-1">포지션</MudChip>
+            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Class="mr-1">필터</MudChip>
+        </MudText>
+        @* 현재 타임프레임에 적합한 패턴 힌트 *@
+        <MudText Typo="Typo.caption" Color="Color.Tertiary" Class="mb-2">
+            @GetTimeFramePatternHint(_timeFrame)
+        </MudText>
+        <MudGrid Spacing="1">
+            @foreach (var pattern in Enum.GetValues<PatternType>())
+            {
+                var meta = PatternMetadataMap.Get(pattern);
+                var mudColor = PatternMetadataMap.GetMudColor(pattern);
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <MudTooltip Text="@($"{meta.Description} | 보유기간: {meta.HoldingPeriod} | 지표: {meta.Indicators}")"
+                                Placement="Placement.Top" Arrow="true">
+                        <MudPaper Outlined="true" Class="pa-2 d-flex align-center gap-2"
+                                  Style="@(_selectedPatterns.Contains(pattern) ? "border-color: var(--mud-palette-primary); background: rgba(var(--mud-palette-primary-rgb), 0.08);" : "opacity: 0.7;")">
+                            <MudCheckBox T="bool"
+                                         Value="@_selectedPatterns.Contains(pattern)"
+                                         ValueChanged="@(v => TogglePattern(pattern, v))"
+                                         Dense="true"
+                                         Color="Color.Primary"
+                                         Class="mr-0" />
+                            <MudStack Spacing="0" Style="flex: 1; min-width: 0;">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudText Typo="Typo.body2" Style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        @meta.KoreanName
+                                    </MudText>
+                                    <MudChip T="string" Size="Size.Small" Color="@mudColor"
+                                             Variant="Variant.Filled"
+                                             Style="height: 18px; font-size: 10px; padding: 0 6px; min-width: 0;">
+                                        @meta.StyleLabel
+                                    </MudChip>
+                                </MudStack>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                         Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    @meta.EnglishName
+                                </MudText>
+                            </MudStack>
+                        </MudPaper>
+                    </MudTooltip>
+                </MudItem>
+            }
+        </MudGrid>
+
+        @* ── 리스크 관리 섹션 ── *@
+        <MudDivider Class="mt-3 mb-2" />
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.Shield" Size="Size.Small" Color="Color.Warning" />
+                <MudText Typo="Typo.subtitle2">리스크 관리</MudText>
+                <MudTooltip Text="포지션 크기와 손실 한도를 제어합니다. 실제 트레이딩 설정(appsettings.json)은 변경되지 않습니다." Placement="Placement.Right">
+                    <MudIcon Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Secondary" Style="cursor:help;" />
+                </MudTooltip>
+            </MudStack>
+            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.RestartAlt"
+                       OnClick="ResetRiskDefaults">기본값 복원</MudButton>
+        </MudStack>
+
+        <MudGrid Spacing="2">
+            @* 거래당 리스크 비율 *@
+            <MudItem xs="12" md="6" lg="4">
+                <MudStack Spacing="0">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">거래당 리스크 비율</MudText>
+                        <MudText Typo="Typo.caption" Style="font-weight:600; color: var(--mud-palette-warning);">
+                            @(_riskPerTradePercent * 100m).ToString("F1")%
+                        </MudText>
+                    </MudStack>
+                    <MudSlider @bind-Value="_riskPerTradePercent"
+                               Min="0.001m" Max="0.05m" Step="0.001m"
+                               Color="Color.Warning" />
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">0.1%</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">5%</MudText>
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                        계좌 $@(_capital.ToString("N0")) 기준 거래당 리스크 $@((_capital * _riskPerTradePercent).ToString("N0"))
+                    </MudText>
+                </MudStack>
+            </MudItem>
+
+            @* 일일 손실 한도 *@
+            <MudItem xs="12" md="6" lg="4">
+                <MudStack Spacing="0">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">일일 손실 한도</MudText>
+                        <MudText Typo="Typo.caption" Style="font-weight:600; color: var(--mud-palette-error);">
+                            @(_riskDailyLossLimitPercent * 100m).ToString("F1")%
+                        </MudText>
+                    </MudStack>
+                    <MudSlider @bind-Value="_riskDailyLossLimitPercent"
+                               Min="0.01m" Max="0.15m" Step="0.005m"
+                               Color="Color.Error" />
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">1%</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">15%</MudText>
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                        하루 최대 손실 $@((_capital * _riskDailyLossLimitPercent).ToString("N0"))에서 자동 중지
+                    </MudText>
+                </MudStack>
+            </MudItem>
+
+            @* 최대 동시 포지션 수 *@
+            <MudItem xs="12" md="6" lg="4">
+                <MudStack Spacing="1">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">최대 동시 포지션 수</MudText>
+                        <MudText Typo="Typo.caption" Style="font-weight:600;">@_riskMaxTotalPositions 종목</MudText>
+                    </MudStack>
+                    <MudSlider @bind-Value="_riskMaxTotalPositions"
+                               Min="1" Max="30" Step="1"
+                               Color="Color.Info" />
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">1</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">30</MudText>
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                        종목당 최대 자본 비중 @((100.0m / _riskMaxTotalPositions).ToString("F0"))%
+                    </MudText>
+                </MudStack>
+            </MudItem>
+
+            @* 섹터당 최대 포지션 *@
+            <MudItem xs="12" md="6" lg="4">
+                <MudStack Spacing="1">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">섹터당 최대 포지션</MudText>
+                        <MudText Typo="Typo.caption" Style="font-weight:600;">@_riskMaxPositionsPerSector 종목</MudText>
+                    </MudStack>
+                    <MudSlider @bind-Value="_riskMaxPositionsPerSector"
+                               Min="1" Max="10" Step="1"
+                               Color="Color.Success" />
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">1</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">10</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        @* 리스크 요약 인포 박스 *@
+        <MudPaper Outlined="true" Class="pa-2 mt-2" Style="border-color: rgba(255,193,7,0.3); background: rgba(255,193,7,0.04);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Warning" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    포지션 크기 = 자본 × 거래당리스크 ÷ 손절폭.
+                    현재 설정: 거래당 <strong style="color:var(--mud-palette-warning);">@((_riskPerTradePercent * 100m).ToString("F1"))%</strong>,
+                    일일한도 <strong style="color:var(--mud-palette-error);">@((_riskDailyLossLimitPercent * 100m).ToString("F1"))%</strong>,
+                    최대 <strong>@_riskMaxTotalPositions</strong>종목 동시 보유
+                </MudText>
+            </MudStack>
+        </MudPaper>
+
+        @* ── 패턴 상세 파라미터 섹션 ── *@
+        @if (_selectedPatterns.Count > 0)
+        {
+            <MudDivider Class="mt-3 mb-2" />
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" Color="Color.Primary" />
+                    <MudText Typo="Typo.subtitle2">패턴 상세 파라미터</MudText>
+                    <MudTooltip Text="각 패턴의 진입 조건 파라미터를 조정합니다. 백테스트 실행 시에만 적용되며, 실제 라이브 트레이딩 설정은 변경되지 않습니다." Placement="Placement.Right">
+                        <MudIcon Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Secondary" Style="cursor:help;" />
+                    </MudTooltip>
+                </MudStack>
+                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.RestartAlt"
+                           OnClick="ResetPatternDefaults">기본값 복원</MudButton>
+            </MudStack>
+
+            <MudExpansionPanels MultiExpansion="true" Elevation="0" Class="mb-1">
+
+                @* GapUpPullback *@
+                @if (_selectedPatterns.Contains(PatternType.GapUpPullback))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">단타</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">갭업 풀백 (GapUpPullback)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.GapUp_MinGapPercent" Label="최소 갭 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P2" Step="0.005m" Min="0.001m" Max="0.5m"
+                                                     HelperText="전일 종가 대비 갭업 최소 비율 (기본 2%)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.GapUp_MaxPullbackPercent" Label="최대 풀백 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P2" Step="0.05m" Min="0.01m" Max="1.0m"
+                                                     HelperText="고가 대비 현재가 풀백 최소 비율 (기본 50%)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.GapUp_MinVolumeDecimal" Label="최소 거래량 (만주)"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="N0" Step="10m" Min="1m" Max="10000m"
+                                                     HelperText="최소 거래량 (기본 50만주 = 50)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* Breakout *@
+                @if (_selectedPatterns.Contains(PatternType.Breakout))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">스윙</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">브레이크아웃 (Breakout)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Breakout_LookbackDays" Label="룩백 기간 (일)"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="20" Max="504"
+                                                     HelperText="52주 신고가 계산 기간 (기본 252일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Breakout_MinVolumeMultiplier" Label="최소 거래량 배율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.1m" Min="1.0m" Max="10.0m"
+                                                     HelperText="평균 거래량 대비 배율 (기본 1.5배)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Breakout_BreakoutMarginPercent" Label="돌파 마진 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P3" Step="0.0005m" Min="0m" Max="0.05m"
+                                                     HelperText="52주 고가 초과 최소 마진 (기본 0.1%)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* VwapReversion *@
+                @if (_selectedPatterns.Contains(PatternType.VwapReversion))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">단타</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">VWAP 회귀 (VwapReversion)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Vwap_MaxDeviationPercent" Label="최대 이탈 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P2" Step="0.005m" Min="0.005m" Max="0.2m"
+                                                     HelperText="VWAP 대비 현재가 이탈 임계값 (기본 2%)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Vwap_MinBouncePercent" Label="최소 반등 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P3" Step="0.001m" Min="0.001m" Max="0.05m"
+                                                     HelperText="저가 대비 반등 최소 비율 (기본 0.3%)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* RsiMeanReversion *@
+                @if (_selectedPatterns.Contains(PatternType.RsiMeanReversion))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">스윙</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">RSI 평균회귀 (RsiMeanReversion)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Rsi_Period" Label="RSI 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="2" Max="50"
+                                                     HelperText="RSI 계산 기간 (기본 14)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Rsi_OversoldThreshold" Label="과매도 임계값"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="10" Max="50"
+                                                     HelperText="RSI 과매도 기준선 (기본 30)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* TrendPullback *@
+                @if (_selectedPatterns.Contains(PatternType.TrendPullback))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">스윙</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">추세 풀백 (TrendPullback)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Trend_MaPeriod" Label="이동평균 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="5" Max="200"
+                                                     HelperText="추세 판단 이동평균 기간 (기본 20일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Trend_MaxPullbackFromMa" Label="MA 대비 최대 풀백"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P2" Step="0.005m" Min="0.005m" Max="0.2m"
+                                                     HelperText="이동평균 대비 현재가 풀백 최대 허용 (기본 2%)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Trend_TrendConfirmationDays" Label="추세 확인 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="3" Max="30"
+                                                     HelperText="상승추세 확인에 필요한 연속 일수 (기본 10일)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* OpeningRangeBreakout *@
+                @if (_selectedPatterns.Contains(PatternType.OpeningRangeBreakout))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">스캘핑</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">시초가 범위 돌파 (ORB)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Orb_RangeMinutes" Label="범위 측정 기간 (분)"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="5" Max="60"
+                                                     HelperText="장 시작 후 범위 측정 기간 (기본 15분)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Orb_MinRangePercent" Label="최소 범위 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P3" Step="0.001m" Min="0.001m" Max="0.05m"
+                                                     HelperText="최소 ORB 범위 폭 (기본 0.5%)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* VolumeSpikeContinuation *@
+                @if (_selectedPatterns.Contains(PatternType.VolumeSpikeContinuation))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">단타</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">거래량 스파이크 지속 (VolumeSpike)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.VolSpike_VolumeMultiplier" Label="거래량 배율 임계값"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="20.0m"
+                                                     HelperText="평균 거래량 대비 스파이크 임계 배율 (기본 2.0배)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.VolSpike_ContinuationBars" Label="지속 봉 수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="1" Max="20"
+                                                     HelperText="스파이크 후 지속 확인 봉 수 (기본 3봉)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* EarningsDrift *@
+                @if (_selectedPatterns.Contains(PatternType.EarningsDrift))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">포지션</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">실적 드리프트 (EarningsDrift)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Earnings_DriftDays" Label="드리프트 기간 (일)"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="1" Max="30"
+                                                     HelperText="실적 발표 후 드리프트 지속 기간 (기본 5일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Earnings_MinSurprisePercent" Label="최소 서프라이즈 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P2" Step="0.01m" Min="0.01m" Max="0.5m"
+                                                     HelperText="최소 실적 서프라이즈 크기 (기본 5%)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* IndexRegimeFilter *@
+                @if (_selectedPatterns.Contains(PatternType.IndexRegimeFilter))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">필터</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">시장 레짐 필터 (IndexRegimeFilter)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Regime_MaPeriod" Label="이동평균 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="10" Min="50" Max="500"
+                                                     HelperText="지수 추세 판단 이동평균 기간 (기본 200일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_p.Regime_IndexSymbol" Label="지수 심볼"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  HelperText="추세 판단 지수 심볼 (기본 SPY)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* VolatilityExpansion *@
+                @if (_selectedPatterns.Contains(PatternType.VolatilityExpansion))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">스윙</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">변동성 확대 (VolatilityExpansion)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Vola_BollingerPeriod" Label="볼린저 밴드 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="5" Max="100"
+                                                     HelperText="볼린저 밴드 계산 기간 (기본 20일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Vola_StdDevMultiplier" Label="표준편차 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="5.0m"
+                                                     HelperText="볼린저 밴드 폭 배수 (기본 2.0)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* MomentumReversal *@
+                @if (_selectedPatterns.Contains(PatternType.MomentumReversal))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">스윙</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">모멘텀 반전 (MomentumReversal)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_FastEmaPeriod" Label="빠른 EMA 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="3" Max="50"
+                                                     HelperText="MACD 빠른 EMA 기간 (기본 12)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_SlowEmaPeriod" Label="느린 EMA 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="5" Max="100"
+                                                     HelperText="MACD 느린 EMA 기간 (기본 26)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_MacdSignalPeriod" Label="MACD 시그널 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="2" Max="30"
+                                                     HelperText="MACD 시그널선 EMA 기간 (기본 9)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_RsiPeriod" Label="RSI 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="2" Max="50"
+                                                     HelperText="RSI 계산 기간 (기본 14)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_RsiOversold" Label="RSI 과매도"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="10" Max="50"
+                                                     HelperText="리버설 진입 RSI 과매도 기준 (기본 30)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_RsiOverbought" Label="RSI 과매수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="50" Max="90"
+                                                     HelperText="모멘텀 진입 RSI 과매수 상한 (기본 70)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* MultiTimeframeTrend *@
+                @if (_selectedPatterns.Contains(PatternType.MultiTimeframeTrend))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">포지션</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">다중시간 추세 (MultiTimeframeTrend)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Mtf_LongTrendMaPeriod" Label="장기 추세 MA 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="20" Max="200"
+                                                     HelperText="장기 추세 판단 이동평균 (기본 50일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Mtf_ShortEntryMaPeriod" Label="단기 진입 MA 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="5" Max="100"
+                                                     HelperText="단기 진입 타이밍 이동평균 (기본 20일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Mtf_MaxPullbackPercent" Label="최대 풀백 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P2" Step="0.005m" Min="0.005m" Max="0.2m"
+                                                     HelperText="단기 MA 대비 최대 풀백 허용 (기본 3%)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Mtf_TrendConfirmationBars" Label="추세 확인 봉 수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="2" Max="20"
+                                                     HelperText="추세 확인에 필요한 연속 봉 수 (기본 5봉)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+                @* MeanReversionChannel *@
+                @if (_selectedPatterns.Contains(PatternType.MeanReversionChannel))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">스윙</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">채널 평균회귀 (MeanReversionChannel)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid Spacing="2" Class="pa-2">
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Chan_EmaPeriod" Label="EMA 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="5" Max="100"
+                                                     HelperText="채널 중심선 EMA 기간 (기본 20일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Chan_AtrPeriod" Label="ATR 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="5" Max="50"
+                                                     HelperText="채널 폭 ATR 계산 기간 (기본 10일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Chan_AtrMultiplier" Label="ATR 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="채널 폭 ATR 배수 (기본 1.5)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Chan_RsiPeriod" Label="RSI 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="2" Max="50"
+                                                     HelperText="RSI 계산 기간 (기본 14)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Chan_RsiOversold" Label="RSI 과매도 임계값"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="10" Max="50"
+                                                     HelperText="채널 하단 진입 RSI 조건 (기본 35)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
+            </MudExpansionPanels>
+        }
+
+    </MudCardContent>
+</MudCard>
+
+@if (_result != null)
+{
+    @* 치명적 에러 표시 *@
+    @if (_result.ErrorMessage != null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">
+            <strong>백테스트 실패:</strong> @_result.ErrorMessage
+        </MudAlert>
+    }
+
+    @* 경고 목록 표시 *@
+    @if (_result.Warnings.Count > 0)
+    {
+        <MudCard Class="mb-3">
+            <MudCardContent Class="pa-3">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle2" Color="Color.Warning">데이터 경고 (@(_result.Warnings.Count)건)</MudText>
+                </MudStack>
+                @foreach (var warning in _result.Warnings)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-1">@warning</MudAlert>
+                }
+                @if (_result.UsedTimeFrame is TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                        분봉 백테스트 시 Yahoo Finance API 제한으로 인해 최근 데이터만 사용 가능합니다.
+                        Alpaca 데이터 소스를 사용하면 더 긴 기간의 분봉 데이터를 받을 수 있습니다.
+                        (설정 → 데이터 소스 변경)
+                    </MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    }
+
+    @* 타임프레임 표시 배너 *@
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+        <MudChip T="string" Size="Size.Medium" Color="Color.Primary" Variant="Variant.Filled"
+                 Icon="@Icons.Material.Filled.AccessTime">
+            @GetTimeFrameLabel(_result.UsedTimeFrame) 백테스트
+        </MudChip>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            선택 패턴: @string.Join(", ", _selectedPatterns.Select(p => PatternMetadataMap.GetKoreanName(p)))
+        </MudText>
+        @if (_result.ActualDataFrom.HasValue && _result.ActualDataFrom.Value > (_from ?? DateTime.MinValue).AddDays(1))
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                     Icon="@Icons.Material.Filled.AccessTime">
+                실제 데이터: @_result.ActualDataFrom.Value.ToString("yyyy-MM-dd") 부터
+            </MudChip>
+        }
+    </MudStack>
+
+    @* Summary cards *@
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">총 수익</MudText>
+                    <MudText Typo="Typo.h5" Color="@(_result.TotalReturn >= 0 ? Color.Success : Color.Error)">
+                        $@_result.TotalReturn.ToString("N2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">수익률</MudText>
+                    <MudText Typo="Typo.h5" Color="@(_result.TotalReturnPercent >= 0 ? Color.Success : Color.Error)">
+                        @_result.TotalReturnPercent.ToString("P2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudTooltip Text="최고점 대비 최대 하락폭. -20% 이내면 양호" Placement="Placement.Top">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Style="cursor:help">최대 낙폭 ⓘ</MudText>
+                    </MudTooltip>
+                    <MudText Typo="Typo.h5" Color="Color.Error">@_result.MaxDrawdown.ToString("P2")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">승률</MudText>
+                    <MudText Typo="Typo.h5">@_result.OverallWinRate.ToString("P1")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudTooltip Text="위험 대비 수익률. 1 이상 양호, 2 이상 우수" Placement="Placement.Top">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Style="cursor:help">샤프 비율 ⓘ</MudText>
+                    </MudTooltip>
+                    <MudText Typo="Typo.h5"
+                             Color="@(_result.SharpeRatio >= 1 ? Color.Success : _result.SharpeRatio >= 0 ? Color.Warning : Color.Error)">
+                        @_result.SharpeRatio.ToString("F2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudCard>
+                <MudCardContent Class="text-center">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">총 거래</MudText>
+                    <MudText Typo="Typo.h5">@_result.TotalTrades</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* Cost breakdown *@
+    @if (_result.TotalSlippageCost > 0 || _result.TotalCommissionCost > 0)
+    {
+        <MudGrid Class="mb-3">
+            <MudItem xs="12" md="4">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">슬리피지 비용</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">$@_result.TotalSlippageCost.ToString("N2")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">수수료 비용</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">$@_result.TotalCommissionCost.ToString("N2")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">총 비용</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">$@((_result.TotalSlippageCost + _result.TotalCommissionCost).ToString("N2"))</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+
+    @* Equity Curve Chart *@
+    @if (_result.EquityCurve.Count > 1)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">자산 곡선</MudText>
+        <MudCard Class="mb-3 pa-3">
+            <ApexCharts.ApexChart TItem="EquityPoint" Options="_equityChartOptions" Height="300">
+                <ApexCharts.ApexPointSeries TItem="EquityPoint"
+                                 Items="_result.EquityCurve"
+                                 SeriesType="ApexCharts.SeriesType.Area"
+                                 XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
+                                 YAggregate="@(e => e.Last().Equity)"
+                                 Name="자산" />
+            </ApexCharts.ApexChart>
+        </MudCard>
+    }
+
+    @* Walk-Forward Results *@
+    @if (_result.WalkForward != null && _result.WalkForward.Windows.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">Walk-Forward 분석</MudText>
+        <MudGrid Class="mb-3">
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 평균 수익률</MudText>
+                        <MudText Typo="Typo.h6" Color="@(_result.WalkForward.AggregateOosReturnPercent >= 0 ? Color.Success : Color.Error)">
+                            @_result.WalkForward.AggregateOosReturnPercent.ToString("P2")
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 최대 낙폭</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">
+                            @_result.WalkForward.AggregateOosMaxDrawdown.ToString("P2")
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 승률</MudText>
+                        <MudText Typo="Typo.h6">
+                            @_result.WalkForward.AggregateOosWinRate.ToString("P1")
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">WF 효율</MudText>
+                        <MudText Typo="Typo.h6"
+                                 Color="@(_result.WalkForward.WalkForwardEfficiency >= 0.5m ? Color.Success : Color.Warning)">
+                            @_result.WalkForward.WalkForwardEfficiency.ToString("P1")
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_result.WalkForward.Windows" Dense="true" Hover="true" Striped="true" Class="mb-4">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>IS 기간</MudTh>
+                <MudTh>IS 거래수</MudTh>
+                <MudTh>IS 수익률</MudTh>
+                <MudTh>OOS 기간</MudTh>
+                <MudTh>OOS 거래수</MudTh>
+                <MudTh>OOS 수익률</MudTh>
+                <MudTh>OOS 낙폭</MudTh>
+                <MudTh>효율</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@(Array.IndexOf(_result.WalkForward.Windows.ToArray(), context) + 1)</MudTd>
+                <MudTd>@context.InSampleFrom.ToString("yy/MM") ~ @context.InSampleTo.ToString("yy/MM")</MudTd>
+                <MudTd>@context.InSampleTrades</MudTd>
+                <MudTd>
+                    <MudText Color="@(context.InSampleReturnPercent >= 0 ? Color.Success : Color.Error)">
+                        @context.InSampleReturnPercent.ToString("P2")
+                    </MudText>
+                </MudTd>
+                <MudTd>@context.OutOfSampleFrom.ToString("yy/MM") ~ @context.OutOfSampleTo.ToString("yy/MM")</MudTd>
+                <MudTd>@context.OutOfSampleTrades</MudTd>
+                <MudTd>
+                    <MudText Color="@(context.OutOfSampleReturnPercent >= 0 ? Color.Success : Color.Error)">
+                        @context.OutOfSampleReturnPercent.ToString("P2")
+                    </MudText>
+                </MudTd>
+                <MudTd>
+                    <MudText Color="Color.Error">@context.OutOfSampleMaxDrawdown.ToString("P2")</MudText>
+                </MudTd>
+                <MudTd>
+                    <MudText Color="@(context.Efficiency >= 0.5m ? Color.Success : Color.Warning)">
+                        @context.Efficiency.ToString("P1")
+                    </MudText>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    @* Monte Carlo Results *@
+    @if (_result.MonteCarlo != null)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">Monte Carlo 시뮬레이션 (@(_result.MonteCarlo.Simulations)회)</MudText>
+        <MudGrid Class="mb-3">
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">중앙값 최종 자산</MudText>
+                        <MudText Typo="Typo.h6">$@_result.MonteCarlo.MedianFinalEquity.ToString("N0")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">손실 확률</MudText>
+                        <MudText Typo="Typo.h6" Color="@(_result.MonteCarlo.ProbabilityOfLoss > 0.3m ? Color.Error : Color.Success)">
+                            @_result.MonteCarlo.ProbabilityOfLoss.ToString("P1")
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">중앙값 최대 낙폭</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">@_result.MonteCarlo.MedianMaxDrawdown.ToString("P2")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCard>
+                    <MudCardContent Class="text-center">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">최악 낙폭 (95%)</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">@_result.MonteCarlo.WorstCaseMaxDrawdown.ToString("P2")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <MudCard Class="mb-3">
+            <MudCardContent>
+                <MudText Typo="Typo.subtitle1" Class="mb-2">최종 자산 분포</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>백분위</th>
+                            <th>최종 자산</th>
+                            <th>수익률</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>5% (최악)</td>
+                            <td>$@_result.MonteCarlo.Percentile5Equity.ToString("N0")</td>
+                            <td class="@(_result.MonteCarlo.Percentile5Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                @((_result.MonteCarlo.Percentile5Equity / _capital - 1).ToString("P2"))
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>25%</td>
+                            <td>$@_result.MonteCarlo.Percentile25Equity.ToString("N0")</td>
+                            <td class="@(_result.MonteCarlo.Percentile25Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                @((_result.MonteCarlo.Percentile25Equity / _capital - 1).ToString("P2"))
+                            </td>
+                        </tr>
+                        <tr style="font-weight: bold;">
+                            <td>50% (중앙값)</td>
+                            <td>$@_result.MonteCarlo.MedianFinalEquity.ToString("N0")</td>
+                            <td class="@(_result.MonteCarlo.MedianFinalEquity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                @((_result.MonteCarlo.MedianFinalEquity / _capital - 1).ToString("P2"))
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>75%</td>
+                            <td>$@_result.MonteCarlo.Percentile75Equity.ToString("N0")</td>
+                            <td class="@(_result.MonteCarlo.Percentile75Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                @((_result.MonteCarlo.Percentile75Equity / _capital - 1).ToString("P2"))
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>95% (최선)</td>
+                            <td>$@_result.MonteCarlo.Percentile95Equity.ToString("N0")</td>
+                            <td class="@(_result.MonteCarlo.Percentile95Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                @((_result.MonteCarlo.Percentile95Equity / _capital - 1).ToString("P2"))
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    @* 거래 0건 안내 *@
+    @if (_result.TotalTrades == 0 && _result.ErrorMessage == null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3">
+            <strong>거래 신호 없음:</strong> 선택한 기간/종목/패턴 조합에서 진입 신호가 생성되지 않았습니다.
+            @if (_result.UsedTimeFrame is TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute)
+            {
+                <span>분봉 백테스트는 데이터 기간이 짧으므로, 시작일을 오늘 기준 @GetMaxRecommendedDays(_result.UsedTimeFrame)일 이내로 설정하고 재시도하세요.</span>
+            }
+            else
+            {
+                <span>다른 패턴을 선택하거나 기간을 늘려보세요.</span>
+            }
+        </MudAlert>
+    }
+
+    @* Pattern stats *@
+    @if (_result.PerPatternStats.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">패턴별 상세 분석</MudText>
+        <PatternStatsTable Stats="@_result.PerPatternStats.Values.ToList()" />
+    }
+
+    @* Trade history *@
+    @if (_result.Trades.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">거래 내역 (@(_result.Trades.Count)건)</MudText>
+        <MudTable Items="@_result.Trades" Dense="true" Hover="true" Striped="true"
+                  FixedHeader="true" Height="500px">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>종목</MudTh>
+                <MudTh>패턴</MudTh>
+                <MudTh>진입가</MudTh>
+                <MudTh>청산가</MudTh>
+                <MudTh>수량</MudTh>
+                <MudTh>진입일</MudTh>
+                <MudTh>청산일</MudTh>
+                <MudTh>손익 ($)</MudTh>
+                <MudTh>손익 (%)</MudTh>
+                <MudTh>청산 사유</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@(Array.IndexOf(_result.Trades.ToArray(), context) + 1)</MudTd>
+                <MudTd><b>@context.Symbol</b></MudTd>
+                <MudTd>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudText Typo="Typo.body2" Style="white-space: nowrap;">
+                            @PatternMetadataMap.GetKoreanName(context.PatternType)
+                        </MudText>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                 Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
+                                 Style="height: 18px; font-size: 10px; padding: 0 6px; min-width: 0;">
+                            @PatternMetadataMap.GetStyleLabel(context.PatternType)
+                        </MudChip>
+                    </MudStack>
+                </MudTd>
+                <MudTd>$@context.EntryPrice.ToString("N2")</MudTd>
+                <MudTd>$@context.ExitPrice.ToString("N2")</MudTd>
+                <MudTd>@context.Quantity</MudTd>
+                <MudTd>@context.EntryTime.ToString("yyyy-MM-dd")</MudTd>
+                <MudTd>@context.ExitTime.ToString("yyyy-MM-dd")</MudTd>
+                <MudTd>
+                    <MudText Color="@(context.PnL >= 0 ? Color.Success : Color.Error)">
+                        @(context.PnL >= 0 ? "+" : "")$@context.PnL.ToString("N2")
+                    </MudText>
+                </MudTd>
+                <MudTd>
+                    <MudText Color="@(context.PnLPercent >= 0 ? Color.Success : Color.Error)">
+                        @(context.PnLPercent >= 0 ? "+" : "")@context.PnLPercent.ToString("P2")
+                    </MudText>
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                             Color="@(context.ExitReason == "목표 도달" ? Color.Success : context.ExitReason == "손절" ? Color.Error : Color.Warning)">
+                        @context.ExitReason
+                    </MudChip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+else if (!_isRunning)
+{
+    <MudAlert Severity="Severity.Info">매개변수를 설정하고 "백테스트 실행" 버튼을 클릭하여 시작하세요.</MudAlert>
+}
+
+@code {
+    private bool _showHelp;
+    private string _symbols = "AAPL,MSFT,GOOGL,AMZN,TSLA";
+    private DateTime? _from = DateTime.Today.AddYears(-5);
+    private DateTime? _to = DateTime.Today;
+    private decimal _capital = 100_000m;
+    private TimeFrame _timeFrame = TimeFrame.Daily;
+    private decimal _slippagePercent = 0.05m;
+    private decimal _commissionPerTrade = 1.00m;
+    private bool _enableWalkForward;
+    private int _wfInSampleMonths = 12;
+    private int _wfOutOfSampleMonths = 3;
+    private bool _enableMonteCarlo;
+    private int _mcSimulations = 1000;
+    private HashSet<PatternType> _selectedPatterns = new()
+    {
+        PatternType.GapUpPullback, PatternType.Breakout, PatternType.VwapReversion
+    };
+    private BacktestResult? _result;
+    private bool _isRunning;
+
+    // ── 리스크 관리 파라미터 (백테스트 전용, appsettings.json 기본값과 일치) ──
+    private decimal _riskPerTradePercent = 0.01m;         // 거래당 리스크 1%
+    private decimal _riskDailyLossLimitPercent = 0.03m;   // 일일 손실 한도 3%
+    private int _riskMaxTotalPositions = 10;              // 최대 동시 포지션 10
+    private int _riskMaxPositionsPerSector = 2;           // 섹터당 최대 포지션 2
+
+    // 리스크 기본값 (복원용)
+    private const decimal DefaultRiskPerTrade = 0.01m;
+    private const decimal DefaultDailyLossLimit = 0.03m;
+    private const int DefaultMaxTotalPositions = 10;
+    private const int DefaultMaxPositionsPerSector = 2;
+
+    private void ResetRiskDefaults()
+    {
+        _riskPerTradePercent = DefaultRiskPerTrade;
+        _riskDailyLossLimitPercent = DefaultDailyLossLimit;
+        _riskMaxTotalPositions = DefaultMaxTotalPositions;
+        _riskMaxPositionsPerSector = DefaultMaxPositionsPerSector;
+    }
+
+    // ── 패턴 상세 파라미터 뷰모델 (백테스트 전용) ──
+    // appsettings.json 기본값으로 초기화됩니다.
+    private PatternParamViewModel _p = new();
+
+    /// <summary>
+    /// UI에서 편집 가능한 패턴 파라미터 뷰모델.
+    /// 모든 필드는 appsettings.json 기본값으로 초기화됩니다.
+    /// long 타입(MinVolume)은 decimal로 감싸 MudNumericField와 호환합니다.
+    /// </summary>
+    private sealed class PatternParamViewModel
+    {
+        // GapUpPullback
+        public decimal GapUp_MinGapPercent { get; set; } = 0.02m;
+        public decimal GapUp_MaxPullbackPercent { get; set; } = 0.5m;
+        /// <summary>MinVolume을 만주 단위로 표현 (50만 = 50). UI 바인딩용.</summary>
+        public decimal GapUp_MinVolumeDecimal { get; set; } = 50m; // 500_000 / 10_000
+        public long GapUp_MinVolume => (long)(GapUp_MinVolumeDecimal * 10_000);
+
+        // Breakout
+        public int Breakout_LookbackDays { get; set; } = 252;
+        public decimal Breakout_MinVolumeMultiplier { get; set; } = 1.5m;
+        public decimal Breakout_BreakoutMarginPercent { get; set; } = 0.001m;
+
+        // VwapReversion
+        public decimal Vwap_MaxDeviationPercent { get; set; } = 0.02m;
+        public decimal Vwap_MinBouncePercent { get; set; } = 0.003m;
+
+        // RsiMeanReversion
+        public int Rsi_OversoldThreshold { get; set; } = 30;
+        public int Rsi_Period { get; set; } = 14;
+
+        // TrendPullback
+        public int Trend_MaPeriod { get; set; } = 20;
+        public decimal Trend_MaxPullbackFromMa { get; set; } = 0.02m;
+        public int Trend_TrendConfirmationDays { get; set; } = 10;
+
+        // OpeningRangeBreakout
+        public int Orb_RangeMinutes { get; set; } = 15;
+        public decimal Orb_MinRangePercent { get; set; } = 0.005m;
+
+        // VolumeSpikeContinuation
+        public decimal VolSpike_VolumeMultiplier { get; set; } = 2.0m;
+        public int VolSpike_ContinuationBars { get; set; } = 3;
+
+        // EarningsDrift
+        public int Earnings_DriftDays { get; set; } = 5;
+        public decimal Earnings_MinSurprisePercent { get; set; } = 0.05m;
+
+        // IndexRegimeFilter
+        public int Regime_MaPeriod { get; set; } = 200;
+        public string Regime_IndexSymbol { get; set; } = "SPY";
+
+        // VolatilityExpansion
+        public int Vola_BollingerPeriod { get; set; } = 20;
+        public decimal Vola_StdDevMultiplier { get; set; } = 2.0m;
+
+        // MomentumReversal
+        public int Mom_FastEmaPeriod { get; set; } = 12;
+        public int Mom_SlowEmaPeriod { get; set; } = 26;
+        public int Mom_MacdSignalPeriod { get; set; } = 9;
+        public int Mom_RsiPeriod { get; set; } = 14;
+        public int Mom_RsiOversold { get; set; } = 30;
+        public int Mom_RsiOverbought { get; set; } = 70;
+
+        // MultiTimeframeTrend
+        public int Mtf_LongTrendMaPeriod { get; set; } = 50;
+        public int Mtf_ShortEntryMaPeriod { get; set; } = 20;
+        public decimal Mtf_MaxPullbackPercent { get; set; } = 0.03m;
+        public int Mtf_TrendConfirmationBars { get; set; } = 5;
+
+        // MeanReversionChannel
+        public int Chan_EmaPeriod { get; set; } = 20;
+        public int Chan_AtrPeriod { get; set; } = 10;
+        public decimal Chan_AtrMultiplier { get; set; } = 1.5m;
+        public int Chan_RsiPeriod { get; set; } = 14;
+        public int Chan_RsiOversold { get; set; } = 35;
+
+        /// <summary>PatternParameterOverrides 모델로 변환합니다.</summary>
+        public PatternParameterOverrides ToOverrides() => new PatternParameterOverrides
+        {
+            GapUp_MinGapPercent      = GapUp_MinGapPercent,
+            GapUp_MaxPullbackPercent = GapUp_MaxPullbackPercent,
+            GapUp_MinVolume          = GapUp_MinVolume,
+
+            Breakout_LookbackDays          = Breakout_LookbackDays,
+            Breakout_MinVolumeMultiplier   = Breakout_MinVolumeMultiplier,
+            Breakout_BreakoutMarginPercent = Breakout_BreakoutMarginPercent,
+
+            Vwap_MaxDeviationPercent = Vwap_MaxDeviationPercent,
+            Vwap_MinBouncePercent    = Vwap_MinBouncePercent,
+
+            Rsi_OversoldThreshold = Rsi_OversoldThreshold,
+            Rsi_Period            = Rsi_Period,
+
+            Trend_MaPeriod              = Trend_MaPeriod,
+            Trend_MaxPullbackFromMa     = Trend_MaxPullbackFromMa,
+            Trend_TrendConfirmationDays = Trend_TrendConfirmationDays,
+
+            Orb_RangeMinutes    = Orb_RangeMinutes,
+            Orb_MinRangePercent = Orb_MinRangePercent,
+
+            VolSpike_VolumeMultiplier = VolSpike_VolumeMultiplier,
+            VolSpike_ContinuationBars = VolSpike_ContinuationBars,
+
+            Earnings_DriftDays          = Earnings_DriftDays,
+            Earnings_MinSurprisePercent = Earnings_MinSurprisePercent,
+
+            Regime_MaPeriod    = Regime_MaPeriod,
+            Regime_IndexSymbol = Regime_IndexSymbol,
+
+            Vola_BollingerPeriod  = Vola_BollingerPeriod,
+            Vola_StdDevMultiplier = Vola_StdDevMultiplier,
+
+            Mom_FastEmaPeriod    = Mom_FastEmaPeriod,
+            Mom_SlowEmaPeriod    = Mom_SlowEmaPeriod,
+            Mom_MacdSignalPeriod = Mom_MacdSignalPeriod,
+            Mom_RsiPeriod        = Mom_RsiPeriod,
+            Mom_RsiOversold      = Mom_RsiOversold,
+            Mom_RsiOverbought    = Mom_RsiOverbought,
+
+            Mtf_LongTrendMaPeriod     = Mtf_LongTrendMaPeriod,
+            Mtf_ShortEntryMaPeriod    = Mtf_ShortEntryMaPeriod,
+            Mtf_MaxPullbackPercent    = Mtf_MaxPullbackPercent,
+            Mtf_TrendConfirmationBars = Mtf_TrendConfirmationBars,
+
+            Chan_EmaPeriod    = Chan_EmaPeriod,
+            Chan_AtrPeriod    = Chan_AtrPeriod,
+            Chan_AtrMultiplier= Chan_AtrMultiplier,
+            Chan_RsiPeriod    = Chan_RsiPeriod,
+            Chan_RsiOversold  = Chan_RsiOversold
+        };
+    }
+
+    private void ResetPatternDefaults()
+    {
+        _p = new PatternParamViewModel();
+    }
+
+    private ApexCharts.ApexChartOptions<EquityPoint> _equityChartOptions = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        Stroke = new ApexCharts.Stroke { Curve = ApexCharts.Curve.Smooth, Width = 2 },
+        Fill = new ApexCharts.Fill { Type = new List<ApexCharts.FillType> { ApexCharts.FillType.Gradient }, Opacity = new List<double> { 0.3 } },
+        Yaxis = [new ApexCharts.YAxis { Labels = new ApexCharts.YAxisLabels { Formatter = @"function(v) { return '$' + v.toFixed(0) }" } }],
+        Tooltip = new ApexCharts.Tooltip { Y = new ApexCharts.TooltipY { Formatter = @"function(v) { return '$' + v.toFixed(2) }" } }
+    };
+
+    private void TogglePattern(PatternType pattern, bool selected)
+    {
+        if (selected) _selectedPatterns.Add(pattern);
+        else _selectedPatterns.Remove(pattern);
+    }
+
+    private static string GetTimeFrameLabel(TimeFrame tf) => tf switch
+    {
+        TimeFrame.OneMinute     => "1분봉",
+        TimeFrame.FiveMinute    => "5분봉",
+        TimeFrame.FifteenMinute => "15분봉",
+        TimeFrame.Daily         => "일봉",
+        TimeFrame.Weekly        => "주봉",
+        _                       => tf.ToString()
+    };
+
+    private static int GetMaxRecommendedDays(TimeFrame tf) => tf switch
+    {
+        TimeFrame.OneMinute     => 5,
+        TimeFrame.FiveMinute    => 30,
+        TimeFrame.FifteenMinute => 60,
+        _                       => 90
+    };
+
+    private int GetSelectedDays()
+        => (int)((_to ?? DateTime.Today) - (_from ?? DateTime.Today.AddYears(-1))).TotalDays;
+
+    private bool IsIntraDayPeriodOverLimit()
+        => GetSelectedDays() > GetMaxRecommendedDays(_timeFrame);
+
+    private string GetTimeFrameHelperText() => _timeFrame switch
+    {
+        TimeFrame.OneMinute     => "스캘핑 전략 (ORB) 에 최적",
+        TimeFrame.FiveMinute    => "단타 전략 (GapUp, VWAP, VolSpike) 에 최적",
+        TimeFrame.FifteenMinute => "단타/스윙 혼합 전략에 적합",
+        TimeFrame.Daily         => "스윙/포지션 전략 (Breakout, RSI, Trend 등) 에 최적",
+        TimeFrame.Weekly        => "장기 포지션 전략에 적합",
+        _                       => ""
+    };
+
+    private static string GetTimeFramePatternHint(TimeFrame tf) => tf switch
+    {
+        TimeFrame.OneMinute =>
+            "1분봉 권장 패턴: ORB (시초가 돌파). 스윙/포지션 패턴은 분봉에서 신호가 부정확할 수 있습니다.",
+        TimeFrame.FiveMinute =>
+            "5분봉 권장 패턴: 갭업 풀백, VWAP 회귀, 거래량 스파이크. ORB 도 활용 가능합니다.",
+        TimeFrame.FifteenMinute =>
+            "15분봉 권장 패턴: 갭업 풀백, VWAP 회귀, 거래량 스파이크, 브레이크아웃.",
+        TimeFrame.Daily =>
+            "일봉 권장 패턴: 브레이크아웃, RSI 평균회귀, 추세 풀백, 변동성 확대, 모멘텀 반전, 다중시간 추세.",
+        TimeFrame.Weekly =>
+            "주봉 권장 패턴: 브레이크아웃, 추세 풀백, 다중시간 추세.",
+        _ => ""
+    };
+
+    private async Task RunBacktestAsync()
+    {
+        _isRunning = true;
+        _result = null;
+        StateHasChanged();
+
+        try
+        {
+            var request = new BacktestRequest
+            {
+                Symbols = _symbols.Split(',').Select(s => s.Trim()).ToList(),
+                Patterns = _selectedPatterns.ToList(),
+                From = _from ?? DateTime.Today.AddYears(-5),
+                To = _to ?? DateTime.Today,
+                InitialCapital = _capital,
+                TimeFrame = _timeFrame,
+                SlippagePercent = _slippagePercent,
+                CommissionPerTrade = _commissionPerTrade,
+                EnableWalkForward = _enableWalkForward,
+                WalkForwardInSampleMonths = _wfInSampleMonths,
+                WalkForwardOutOfSampleMonths = _wfOutOfSampleMonths,
+                EnableMonteCarlo = _enableMonteCarlo,
+                MonteCarloSimulations = _mcSimulations,
+                // 리스크 관리 파라미터 (UI에서 설정한 값 전달)
+                RiskPerTradePercent = _riskPerTradePercent,
+                DailyLossLimitPercent = _riskDailyLossLimitPercent,
+                MaxTotalPositions = _riskMaxTotalPositions,
+                MaxPositionsPerSector = _riskMaxPositionsPerSector,
+                // 패턴 파라미터 오버라이드 (백테스트 전용, 라이브 설정 불변)
+                ParameterOverrides = _p.ToOverrides()
+            };
+            _result = await BacktestService.RunAsync(request);
+        }
+        finally
+        {
+            _isRunning = false;
+        }
+    }
+}
