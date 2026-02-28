@@ -10,6 +10,7 @@ using StockTrader.Services.Notification;
 using StockTrader.Services.Order;
 using StockTrader.Services.Patterns;
 using StockTrader.Services.Signal;
+using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.BackgroundServices;
 
@@ -137,7 +138,7 @@ public class PatternScannerService : BackgroundService
 
         if (spyBars.Count >= 200)
         {
-            var closes = spyBars.Select(b => b.Close).ToArray();
+            var closes = ExtractCloses(spyBars.ToArray());
             var sma200 = _indicatorService.SMA(closes, 200);
             regime.SpyPrice = closes[^1];
             regime.Spy200Ma = sma200[^1];

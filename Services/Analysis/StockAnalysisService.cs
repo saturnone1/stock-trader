@@ -8,6 +8,7 @@ using StockTrader.Services.DataFeed;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
 using StockTrader.Services.Statistics;
+using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.Services.Analysis;
 
@@ -215,7 +216,7 @@ public class StockAnalysisService : IStockAnalysisService
         }
 
         var barsArray    = bars.ToArray();
-        var closes       = bars.Select(b => b.Close).ToArray();
+        var closes       = ExtractCloses(barsArray);
         var currentPrice = closes[^1];
         var currentBar   = barsArray[^1];
 
@@ -613,7 +614,7 @@ public class StockAnalysisService : IStockAnalysisService
 
             if (spyBars.Count >= 200)
             {
-                var spyCloses    = spyBars.Select(b => b.Close).ToArray();
+                var spyCloses    = ExtractCloses(spyBars.ToArray());
                 var sma200       = _indicators.SMA(spyCloses, 200);
                 regime.SpyPrice  = spyCloses[^1];
                 regime.Spy200Ma  = sma200[^1];

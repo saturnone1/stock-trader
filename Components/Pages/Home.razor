@@ -59,82 +59,118 @@
 <PriceTicker />
 
 <MudGrid Class="mb-4">
-    <MudItem xs="12" md="3">
-        <MudCard>
-            <MudCardContent Class="text-center">
-                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">보유 포지션</MudText>
-                <MudText Typo="Typo.h4" Class="mt-2">@_openPositions.Count</MudText>
+    <MudItem xs="6" sm="3">
+        <MudCard Style="min-height: 96px;">
+            <MudCardContent Class="text-center pa-3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">보유 포지션</MudText>
+                <MudText Typo="Typo.h4" Class="mt-1">@_openPositions.Count</MudText>
             </MudCardContent>
         </MudCard>
     </MudItem>
-    <MudItem xs="12" md="3">
-        <MudCard>
-            <MudCardContent Class="text-center">
-                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">활성 시그널</MudText>
-                <MudText Typo="Typo.h4" Class="mt-2">@_activeSignals.Count</MudText>
+    <MudItem xs="6" sm="3">
+        <MudCard Style="min-height: 96px;">
+            <MudCardContent Class="text-center pa-3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">활성 시그널</MudText>
+                <MudText Typo="Typo.h4" Class="mt-1">@_activeSignals.Count</MudText>
             </MudCardContent>
         </MudCard>
     </MudItem>
-    <MudItem xs="12" md="3">
-        <MudCard>
-            <MudCardContent Class="text-center">
-                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">일일 손익</MudText>
-                <MudText Typo="Typo.h4" Class="mt-2"
+    <MudItem xs="6" sm="3">
+        <MudCard Style="min-height: 96px;">
+            <MudCardContent Class="text-center pa-3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">일일 손익</MudText>
+                <MudText Typo="Typo.h4" Class="mt-1"
                          Color="@(_riskState.DailyPnL >= 0 ? Color.Success : Color.Error)">
                     $@_riskState.DailyPnL.ToString("N2")
                 </MudText>
             </MudCardContent>
         </MudCard>
     </MudItem>
-    <MudItem xs="12" md="3">
+    <MudItem xs="6" sm="3">
         <RiskGauge State="@_riskState" />
     </MudItem>
 </MudGrid>
 
 <MudGrid>
     <MudItem xs="12" md="6">
-        <MudText Typo="Typo.h6" Class="mb-2">최근 시그널</MudText>
-        @if (_activeSignals.Count == 0)
-        {
-            <MudAlert Severity="Severity.Info">활성 시그널이 없습니다</MudAlert>
-        }
-        else
-        {
-            @foreach (var signal in _activeSignals.Take(10))
-            {
-                <SignalCard Signal="@signal" />
-            }
-        }
+        <MudCard>
+            <MudCardHeader Class="pb-0">
+                <CardHeaderContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Notifications" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.h6">최근 시그널</MudText>
+                        @if (_activeSignals.Count > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                     Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                                @_activeSignals.Count
+                            </MudChip>
+                        }
+                    </MudStack>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent Class="pt-2">
+                @if (_activeSignals.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">활성 시그널이 없습니다</MudAlert>
+                }
+                else
+                {
+                    @foreach (var signal in _activeSignals.Take(10))
+                    {
+                        <SignalCard Signal="@signal" />
+                    }
+                }
+            </MudCardContent>
+        </MudCard>
     </MudItem>
     <MudItem xs="12" md="6">
-        <MudText Typo="Typo.h6" Class="mb-2">보유 포지션</MudText>
-        @if (_openPositions.Count == 0)
-        {
-            <MudAlert Severity="Severity.Info">보유 포지션이 없습니다</MudAlert>
-        }
-        else
-        {
-            <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true">
-                <HeaderContent>
-                    <MudTh>종목</MudTh>
-                    <MudTh>수량</MudTh>
-                    <MudTh>진입가</MudTh>
-                    <MudTh>현재가</MudTh>
-                    <MudTh>손익</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd><MudText Typo="Typo.body2"><b>@context.Symbol</b></MudText></MudTd>
-                    <MudTd>@context.Quantity</MudTd>
-                    <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
-                    <MudTd>$@context.CurrentPrice.ToString("F2")</MudTd>
-                    <MudTd>
-                        <MudText Color="@(context.UnrealizedPnL >= 0 ? Color.Success : Color.Error)">
-                            $@context.UnrealizedPnL.ToString("N2")
-                        </MudText>
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
-        }
+        <MudCard>
+            <MudCardHeader Class="pb-0">
+                <CardHeaderContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Small" Color="Color.Success" />
+                        <MudText Typo="Typo.h6">보유 포지션</MudText>
+                        @if (_openPositions.Count > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                     Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                                @_openPositions.Count
+            </MudChip>
+                        }
+                    </MudStack>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent Class="pt-2">
+                @if (_openPositions.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">보유 포지션이 없습니다</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>종목</MudTh>
+                            <MudTh>수량</MudTh>
+                            <MudTh>진입가</MudTh>
+                            <MudTh>현재가</MudTh>
+                            <MudTh>손익</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd><MudText Typo="Typo.body2"><b>@context.Symbol</b></MudText></MudTd>
+                            <MudTd>@context.Quantity</MudTd>
+                            <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+                            <MudTd>$@context.CurrentPrice.ToString("F2")</MudTd>
+                            <MudTd>
+                                <MudText Color="@(context.UnrealizedPnL >= 0 ? Color.Success : Color.Error)">
+                                    @(context.UnrealizedPnL >= 0 ? "+" : "")$@context.UnrealizedPnL.ToString("N2")
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudCardContent>
+        </MudCard>
     </MudItem>
 </MudGrid>
 

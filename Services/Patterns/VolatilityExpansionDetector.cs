@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
+using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.Services.Patterns;
 
@@ -26,7 +27,7 @@ public class VolatilityExpansionDetector : IPatternDetector
             return Task.FromResult<PatternSignal?>(null);
         if (!regime.SpyAbove200Ma) return Task.FromResult<PatternSignal?>(null);
 
-        var closes = bars.Select(b => b.Close).ToArray();
+        var closes = ExtractCloses(bars);
         var (upper, middle, lower) = _indicators.BollingerBands(
             closes, _config.BollingerPeriod, _config.StdDevMultiplier);
 
@@ -38,10 +39,14 @@ public class VolatilityExpansionDetector : IPatternDetector
         // Guard against zero ATR (can occur with flat/illiquid bars) to prevent division by zero
         if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
 
-        // ATR 기반 스톱이 BB middle보다 넓으면 ATR 사용 (변동성 보호)
+        // 스탑 로직: ATR 스탑과 구조적 스탑(BB Middle) 중 낮은 쪽(넓은 스탑) 사용.
+        // BB Upper 돌파는 변동성 확대 신호이므로 조기 손절 방지를 위해 넓은 스탑 적용.
         var atrStop = curr.Close - currentAtr * _config.AtrStopMultiplier;
         var structureStop = middle[^1];
         var stopLoss = Math.Min(atrStop, structureStop);
+        // 저가주 보호: 스탑이 0 이하면 ATR 스탑만 사용
+        if (stopLoss <= 0) stopLoss = atrStop;
+        if (stopLoss <= 0) return Task.FromResult<PatternSignal?>(null);
 
         var atrTarget = curr.Close + currentAtr * _config.AtrTargetMultiplier;
         var structureTarget = curr.Close + (curr.Close - middle[^1]);

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
+using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.Services.Patterns;
 
@@ -29,7 +30,7 @@ public class MeanReversionChannelDetector : IPatternDetector
         if (bars.Length < _config.EmaPeriod + 10)
             return Task.FromResult<PatternSignal?>(null);
 
-        var closes = bars.Select(b => b.Close).ToArray();
+        var closes = ExtractCloses(bars);
         var (upper, middle, lower) = _indicators.KeltnerChannel(
             bars, _config.EmaPeriod, _config.AtrPeriod, _config.AtrMultiplier);
         var rsi = _indicators.RSI(closes, _config.RsiPeriod);
