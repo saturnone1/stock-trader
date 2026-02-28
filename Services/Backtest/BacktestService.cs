@@ -819,16 +819,27 @@ public class BacktestService : IBacktestService
                     var stopDistance = Math.Abs(signal.EntryPrice - signal.StopLossPrice);
                     if (stopDistance <= 0) continue;
 
-                    var riskAmount = capital * riskPerTrade;
-                    var quantity = (int)(riskAmount / stopDistance);
-                    if (quantity <= 0) quantity = 1;
+                    int quantity;
 
-                    // MaxTotalPositions 기반 단일 포지션 최대 자본 비율 (1/N)
-                    var maxPositionCapitalRatio = maxTotalPositions > 0
-                        ? 1.0m / maxTotalPositions
-                        : 0.10m;
-                    var maxQty = (int)(capital * maxPositionCapitalRatio / signal.EntryPrice);
-                    if (maxQty > 0) quantity = Math.Min(quantity, maxQty);
+                    if (detector.PatternType == PatternType.Tqqq200Sma)
+                    {
+                        // 레짐 전략: 자본 전체 투입 (원본 전략의 "풀매수" 구현)
+                        quantity = (int)(capital * 0.95m / signal.EntryPrice);
+                        if (quantity <= 0) quantity = 1;
+                    }
+                    else
+                    {
+                        var riskAmount = capital * riskPerTrade;
+                        quantity = (int)(riskAmount / stopDistance);
+                        if (quantity <= 0) quantity = 1;
+
+                        // MaxTotalPositions 기반 단일 포지션 최대 자본 비율 (1/N)
+                        var maxPositionCapitalRatio = maxTotalPositions > 0
+                            ? 1.0m / maxTotalPositions
+                            : 0.10m;
+                        var maxQty = (int)(capital * maxPositionCapitalRatio / signal.EntryPrice);
+                        if (maxQty > 0) quantity = Math.Min(quantity, maxQty);
+                    }
 
                     // Snapshot ATR at entry (fallback to stop distance if ATR not yet ready)
                     var entryAtr = atrArray[i] > 0 ? atrArray[i] : stopDistance;
