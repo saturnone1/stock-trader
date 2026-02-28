@@ -707,10 +707,11 @@ public class BacktestService : IBacktestService
                 if (currentBar.High > openPosition.HighestHighSinceEntry)
                     openPosition.HighestHighSinceEntry = currentBar.High;
 
-                // 2. Breakeven stop: once price moves 1.5 ATR above entry, stop → entry
-                if (!openPosition.BreakevenApplied && openPosition.EntryAtr > 0)
+                // 2. Breakeven stop: once price moves N ATR above entry, stop → entry (0 = disabled)
+                if (!openPosition.BreakevenApplied && openPosition.EntryAtr > 0
+                    && pep.BreakevenAtrMultiplier > 0)
                 {
-                    var breakevenThreshold = openPosition.EntryPrice + openPosition.EntryAtr * 1.5m;
+                    var breakevenThreshold = openPosition.EntryPrice + openPosition.EntryAtr * pep.BreakevenAtrMultiplier;
                     if (currentBar.Close >= breakevenThreshold)
                     {
                         openPosition.StopLoss = Math.Max(openPosition.StopLoss, openPosition.EntryPrice);
@@ -929,7 +930,8 @@ public class BacktestService : IBacktestService
         bool EnablePartialProfit,
         decimal PartialProfitRMultiple,
         bool EnableTargetExit,
-        bool EnableTimeExit)
+        bool EnableTimeExit,
+        decimal BreakevenAtrMultiplier = 1.5m)
     {
         /// <summary>
         /// Returns the exit profile for a pattern, with optional overrides from backtest UI.
@@ -977,25 +979,25 @@ public class BacktestService : IBacktestService
 
         private static PatternExitProfile GetBaseline(PatternType pt) => pt switch
         {
-            // ── Day Trading (1~5봉): 빠른 청산, 트레일링 불필요 ──
+            // ── Day Trading (짧은 보유) ──
             PatternType.GapUpPullback          => new( 3, false, 0m,   0m,   true,  2.0m, true,  true),
             PatternType.VwapReversion          => new( 3, false, 0m,   0m,   true,  1.5m, true,  true),
             PatternType.OpeningRangeBreakout   => new( 3, false, 0m,   0m,   true,  2.0m, true,  true),
             PatternType.VolumeSpikeContinuation=> new( 5, true,  1.5m, 1.0m, false, 0m,   true,  true),
             PatternType.VolatilityBreakout     => new( 5, true,  2.0m, 1.0m, false, 0m,   true,  true),
 
-            // ── Mean Reversion (5~7봉): 평균 회귀, 트레일링 최소화 ──
+            // ── Mean Reversion ──
             PatternType.RsiMeanReversion       => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
             PatternType.VolatilityExpansion    => new( 7, true,  2.0m, 1.5m, true,  2.0m, true,  true),
             PatternType.MeanReversionChannel   => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
             PatternType.Rsi2Bollinger          => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
 
-            // ── Swing Trading (10~15봉): 중기 보유, 트레일링 적극 활용 ──
+            // ── Swing Trading ──
             PatternType.Breakout               => new(15, true,  2.5m, 1.5m, true,  2.5m, true,  true),
             PatternType.MomentumReversal       => new(10, true,  2.5m, 1.5m, true,  2.0m, true,  true),
             PatternType.IndexRegimeFilter      => new(15, true,  2.5m, 1.5m, true,  2.0m, true,  true),
 
-            // ── Position/Trend (20~30봉): 장기 보유, 넓은 트레일링 ──
+            // ── Position/Trend ──
             PatternType.TrendPullback          => new(20, true,  3.0m, 2.0m, true,  3.0m, true,  true),
             PatternType.EarningsDrift          => new(20, true,  2.5m, 1.5m, true,  2.0m, true,  true),
             PatternType.MultiTimeframeTrend    => new(30, true,  3.0m, 2.0m, true,  3.0m, true,  true),

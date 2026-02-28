@@ -1946,11 +1946,11 @@ else if (!_isRunning)
         public long GapUp_MinVolume => (long)(GapUp_MinVolumeDecimal * 10_000);
 
         // Breakout
-        public int Breakout_LookbackDays { get; set; } = 15;
+        public int Breakout_LookbackDays { get; set; } = 10;
         public decimal Breakout_MinVolumeMultiplier { get; set; } = 1.0m;
         public decimal Breakout_BreakoutMarginPercent { get; set; } = 0.001m;
-        public decimal Breakout_AtrStopMultiplier { get; set; } = 2.0m;
-        public decimal Breakout_AtrTargetMultiplier { get; set; } = 3.0m;
+        public decimal Breakout_AtrStopMultiplier { get; set; } = 1.5m;
+        public decimal Breakout_AtrTargetMultiplier { get; set; } = 4.0m;
 
         // VwapReversion
         public decimal Vwap_MaxDeviationPercent { get; set; } = 0.01m;
@@ -1969,7 +1969,7 @@ else if (!_isRunning)
         public decimal Trend_MaxPullbackFromMa { get; set; } = 0.025m;
         public int Trend_TrendConfirmationDays { get; set; } = 7;
         public decimal Trend_AtrStopMultiplier { get; set; } = 1.5m;
-        public decimal Trend_AtrTargetMultiplier { get; set; } = 4.0m;
+        public decimal Trend_AtrTargetMultiplier { get; set; } = 5.0m;
 
         // OpeningRangeBreakout
         public int Orb_RangeMinutes { get; set; } = 15;
