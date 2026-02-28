@@ -25,7 +25,7 @@ public class VolatilityExpansionDetector : IPatternDetector
         // TODO: Phase 2 implementation
         if (bars.Length < _config.BollingerPeriod + 1)
             return Task.FromResult<PatternSignal?>(null);
-        if (!regime.SpyAbove200Ma) return Task.FromResult<PatternSignal?>(null);
+        // Regime filter removed: volatility expansion can occur in any market regime
 
         var closes = ExtractCloses(bars);
         var (upper, middle, lower) = _indicators.BollingerBands(

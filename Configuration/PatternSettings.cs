@@ -31,32 +31,32 @@ public class PatternSettings
 
 public class GapUpPullbackConfig
 {
-    public decimal MinGapPercent { get; set; } = 0.02m;
-    public decimal MaxPullbackPercent { get; set; } = 0.5m;
-    public long MinVolume { get; set; } = 500_000;
+    public decimal MinGapPercent { get; set; } = 0.01m;
+    public decimal MaxPullbackPercent { get; set; } = 0.7m;
+    public long MinVolume { get; set; } = 200_000;
 }
 
 public class BreakoutConfig
 {
     public int LookbackDays { get; set; } = 252;
-    public decimal MinVolumeMultiplier { get; set; } = 1.5m;
-    public decimal BreakoutMarginPercent { get; set; } = 0.005m;
+    public decimal MinVolumeMultiplier { get; set; } = 1.2m;
+    public decimal BreakoutMarginPercent { get; set; } = 0.002m;
     public decimal AtrStopMultiplier { get; set; } = 2.0m;
     public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
 
 public class VwapReversionConfig
 {
-    public decimal MaxDeviationPercent { get; set; } = 0.02m;
+    public decimal MaxDeviationPercent { get; set; } = 0.01m;
     public decimal MinBouncePercent { get; set; } = 0.003m;
-    public decimal MinBounceFromLowPercent { get; set; } = 0.3m;
+    public decimal MinBounceFromLowPercent { get; set; } = 0.2m;
 }
 
 public class RsiMeanReversionConfig
 {
     public int OversoldThreshold { get; set; } = 30;
     public int Period { get; set; } = 14;
-    public decimal MinVolumeIncreaseMultiplier { get; set; } = 1.2m;
+    public decimal MinVolumeIncreaseMultiplier { get; set; } = 1.0m;
     public decimal AtrStopMultiplier { get; set; } = 1.5m;
     public decimal AtrTargetMultiplier { get; set; } = 2.0m;
 }
@@ -64,8 +64,8 @@ public class RsiMeanReversionConfig
 public class TrendPullbackConfig
 {
     public int MaPeriod { get; set; } = 20;
-    public decimal MaxPullbackFromMa { get; set; } = 0.02m;
-    public int TrendConfirmationDays { get; set; } = 10;
+    public decimal MaxPullbackFromMa { get; set; } = 0.05m;
+    public int TrendConfirmationDays { get; set; } = 5;
     public decimal AtrStopMultiplier { get; set; } = 2.0m;
     public decimal AtrTargetMultiplier { get; set; } = 2.0m;
 }
@@ -78,8 +78,8 @@ public class OrbConfig
 
 public class VolumeSpikeConfig
 {
-    public decimal VolumeMultiplier { get; set; } = 2.0m;
-    public int ContinuationBars { get; set; } = 3;
+    public decimal VolumeMultiplier { get; set; } = 1.5m;
+    public int ContinuationBars { get; set; } = 2;
     public int VolumeAvgPeriod { get; set; } = 20;
     public decimal AtrStopMultiplier { get; set; } = 2.0m;
     public decimal AtrTargetMultiplier { get; set; } = 3.0m;
@@ -113,7 +113,7 @@ public class MomentumReversalConfig
     public int RsiPeriod { get; set; } = 14;
     public int RsiOversold { get; set; } = 30;
     public int RsiOverbought { get; set; } = 70;
-    public int RsiMomentumMin { get; set; } = 50;
+    public int RsiMomentumMin { get; set; } = 40;
     public decimal AtrStopMultiplier { get; set; } = 2.0m;
     public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
@@ -122,9 +122,9 @@ public class MultiTimeframeTrendConfig
 {
     public int LongTrendMaPeriod { get; set; } = 50;
     public int ShortEntryMaPeriod { get; set; } = 20;
-    public decimal MaxPullbackPercent { get; set; } = 0.03m;
-    public int TrendConfirmationBars { get; set; } = 5;
-    public decimal MaxDistanceAboveShortMa { get; set; } = 0.005m;
+    public decimal MaxPullbackPercent { get; set; } = 0.05m;
+    public int TrendConfirmationBars { get; set; } = 3;
+    public decimal MaxDistanceAboveShortMa { get; set; } = 0.02m;
     public decimal AtrStopMultiplier { get; set; } = 1.5m;
     public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
@@ -135,7 +135,7 @@ public class MeanReversionChannelConfig
     public int AtrPeriod { get; set; } = 10;
     public decimal AtrMultiplier { get; set; } = 1.5m;
     public int RsiPeriod { get; set; } = 14;
-    public int RsiOversold { get; set; } = 35;
+    public int RsiOversold { get; set; } = 40;
     public int RecentLowLookbackBars { get; set; } = 5;
 }
 
@@ -149,7 +149,7 @@ public class Rsi2BollingerConfig
     public int RsiPeriod { get; set; } = 2;
 
     /// <summary>RSI threshold below which the stock is considered extremely oversold.</summary>
-    public decimal RsiThreshold { get; set; } = 10m;
+    public decimal RsiThreshold { get; set; } = 20m;
 
     /// <summary>Bollinger Band SMA period.</summary>
     public int BollingerPeriod { get; set; } = 20;
@@ -174,10 +174,10 @@ public class VolatilityBreakoutConfig
     /// Breakout factor K: entry = Open + (PrevRange * K).
     /// Williams' original value is 0.6.
     /// </summary>
-    public decimal BreakoutFactor { get; set; } = 0.6m;
+    public decimal BreakoutFactor { get; set; } = 0.5m;
 
     /// <summary>Minimum volume ratio vs 20-bar average to confirm breakout.</summary>
-    public decimal MinVolumeMultiplier { get; set; } = 1.2m;
+    public decimal MinVolumeMultiplier { get; set; } = 1.0m;
 
     /// <summary>Volume average lookback period.</summary>
     public int VolumeAvgPeriod { get; set; } = 20;

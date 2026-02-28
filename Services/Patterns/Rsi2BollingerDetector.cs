@@ -43,9 +43,8 @@ public class Rsi2BollingerDetector : IPatternDetector
         if (bars.Length < minBars)
             return Task.FromResult<PatternSignal?>(null);
 
-        // Bull market filter: SPY must be above its 200-SMA
-        if (!regime.SpyAbove200Ma)
-            return Task.FromResult<PatternSignal?>(null);
+        // Regime filter removed: RSI(2)+Bollinger mean reversion is a pure oversold bounce strategy
+        // that works in all market conditions (Connors Research backtests include both bull and bear)
 
         var closes = ExtractCloses(bars);
         var i = bars.Length - 1;
