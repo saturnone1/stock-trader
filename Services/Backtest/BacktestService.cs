@@ -180,12 +180,19 @@ public class BacktestService : IBacktestService
             MaxPositionsPerSector: request.MaxPositionsPerSector ?? _tradingSettings.MaxPositionsPerSector
         );
 
+        var exitParams = new ExitParams(
+            EnableTrailingStop:        request.EnableTrailingStop,
+            TrailingStopAtrMultiplier: request.TrailingStopAtrMultiplier,
+            MaxHoldingBars:            request.MaxHoldingBars,
+            EnablePartialProfit:       request.EnablePartialProfit,
+            PartialProfitRMultiple:    request.PartialProfitRMultiple);
+
         // Run core backtest
         var result = await RunCoreAsync(
             request.Symbols, dataFeed, activeDetectors, regimeByDate,
             request.From, request.To, request.InitialCapital,
             request.SlippagePercent, request.CommissionPerTrade,
-            request.TimeFrame, riskParams, ct);
+            request.TimeFrame, riskParams, exitParams, ct);
 
         result.UsedTimeFrame = request.TimeFrame;
 
@@ -224,6 +231,7 @@ public class BacktestService : IBacktestService
         decimal slippagePercent, decimal commissionPerTrade,
         TimeFrame timeFrame = TimeFrame.Daily,
         RiskParams? riskParams = null,
+        ExitParams? exitParams = null,
         CancellationToken ct = default)
     {
         // riskParams가 없으면 appsettings.json 기본값으로 구성
@@ -246,7 +254,7 @@ public class BacktestService : IBacktestService
                 var (trades, symWarning, symDataFrom) = await BacktestSymbolAsync(
                     symbol, dataFeed, detectors, regimeByDate,
                     from, to, initialCapital, slippagePercent, commissionPerTrade,
-                    timeFrame, riskParams, ct);
+                    timeFrame, riskParams, exitParams, ct);
                 allTrades.AddRange(trades);
 
                 if (symWarning != null)
@@ -337,6 +345,14 @@ public class BacktestService : IBacktestService
         _logger.LogInformation("Walk-Forward 분석 시작 (IS:{IS}개월, OOS:{OOS}개월)",
             request.WalkForwardInSampleMonths, request.WalkForwardOutOfSampleMonths);
 
+        // Walk-forward reuses the same exit params as the parent request
+        var wfExitParams = new ExitParams(
+            EnableTrailingStop:        request.EnableTrailingStop,
+            TrailingStopAtrMultiplier: request.TrailingStopAtrMultiplier,
+            MaxHoldingBars:            request.MaxHoldingBars,
+            EnablePartialProfit:       request.EnablePartialProfit,
+            PartialProfitRMultiple:    request.PartialProfitRMultiple);
+
         var windows = new List<WalkForwardWindow>();
         var windowStart = request.From;
         var totalMonths = request.WalkForwardInSampleMonths + request.WalkForwardOutOfSampleMonths;
@@ -358,14 +374,14 @@ public class BacktestService : IBacktestService
                 request.Symbols, dataFeed, detectors, regimeByDate,
                 isFrom, isTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
-                request.TimeFrame, riskParams, ct);
+                request.TimeFrame, riskParams, wfExitParams, ct);
 
             // Run OOS backtest (동일한 리스크 파라미터 전달)
             var oosResult = await RunCoreAsync(
                 request.Symbols, dataFeed, detectors, regimeByDate,
                 oosFrom, oosTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
-                request.TimeFrame, riskParams, ct);
+                request.TimeFrame, riskParams, wfExitParams, ct);
 
             var efficiency = isResult.TotalReturnPercent != 0
                 ? oosResult.TotalReturnPercent / isResult.TotalReturnPercent
@@ -557,6 +573,7 @@ public class BacktestService : IBacktestService
         decimal slippagePercent, decimal commissionPerTrade,
         TimeFrame timeFrame,
         RiskParams riskParams,
+        ExitParams? exitParams,
         CancellationToken ct)
     {
         // 타임프레임별 워밍업 lookback: 일봉은 400일, 분봉은 API 기간 제한 내에서 조정
@@ -594,6 +611,12 @@ public class BacktestService : IBacktestService
         // 실제 첫 번째 바의 날짜를 기록 (요청 날짜와 다를 수 있음)
         var actualDataFrom = bars.Count > 0 ? (DateTime?)bars[0].Timestamp : null;
 
+        // Pre-compute full ATR array for the symbol (period=14)
+        // Used at entry to snapshot ATR and for trailing stop calculations
+        var atrArray = _indicators.ATR(bars.ToArray(), 14);
+
+        var ep = exitParams ?? ExitParams.Default;
+
         var trades = new List<TradeRecord>();
         OpenPosition? openPosition = null;
         // request에서 전달된 리스크 파라미터 사용 (UI에서 설정한 값 우선)
@@ -611,27 +634,106 @@ public class BacktestService : IBacktestService
             var currentDate = DateOnly.FromDateTime(currentBar.Timestamp);
             var regime = GetRegimeForDate(currentDate, regimeByDate);
 
-            // Check open position for exit
+            // ── Exit logic for open position ──────────────────────────────
             if (openPosition != null)
             {
+                var currentAtr = atrArray[i] > 0 ? atrArray[i] : openPosition.EntryAtr;
+                var barsSinceEntry = i - openPosition.EntryBarIndex;
+
+                // 1. Update highest high since entry (for Chandelier trailing stop)
+                if (currentBar.High > openPosition.HighestHighSinceEntry)
+                    openPosition.HighestHighSinceEntry = currentBar.High;
+
+                // 2. Breakeven stop: once price moves 1.5 ATR above entry, stop → entry
+                if (!openPosition.BreakevenApplied && openPosition.EntryAtr > 0)
+                {
+                    var breakevenThreshold = openPosition.EntryPrice + openPosition.EntryAtr * 1.5m;
+                    if (currentBar.Close >= breakevenThreshold)
+                    {
+                        openPosition.StopLoss = Math.Max(openPosition.StopLoss, openPosition.EntryPrice);
+                        openPosition.BreakevenApplied = true;
+                    }
+                }
+
+                // 3. Trailing stop (Chandelier): activate once price moves 1R in favor
+                if (ep.EnableTrailingStop)
+                {
+                    var oneRTarget = openPosition.EntryPrice + openPosition.RiskDistance;
+                    if (!openPosition.TrailingStopActivated && currentBar.Close >= oneRTarget)
+                        openPosition.TrailingStopActivated = true;
+
+                    if (openPosition.TrailingStopActivated && currentAtr > 0)
+                    {
+                        var chandelier = openPosition.HighestHighSinceEntry - currentAtr * ep.TrailingStopAtrMultiplier;
+                        if (chandelier > openPosition.StopLoss)
+                            openPosition.StopLoss = chandelier;
+                    }
+                }
+
+                // 4. Partial profit at 2R: close 50%, keep rest trailing
+                if (ep.EnablePartialProfit && !openPosition.PartialProfitTaken)
+                {
+                    var partialProfitTarget = openPosition.EntryPrice
+                        + openPosition.RiskDistance * ep.PartialProfitRMultiple;
+                    if (currentBar.High >= partialProfitTarget && openPosition.Quantity >= 2)
+                    {
+                        var halfQty = openPosition.Quantity / 2;
+                        var remainQty = openPosition.Quantity - halfQty;
+
+                        // Record partial exit trade
+                        trades.Add(CreateTradeRecordWithQty(
+                            symbol, openPosition, partialProfitTarget,
+                            currentBar.Timestamp, $"부분 익절({ep.PartialProfitRMultiple}R)", halfQty));
+
+                        // Update position: remaining quantity, stop → entry (lock in profit)
+                        openPosition.PartialProfitTaken = true;
+                        openPosition = new OpenPosition
+                        {
+                            PatternType              = openPosition.PatternType,
+                            EntryPrice               = openPosition.EntryPrice,
+                            OriginalStop             = openPosition.OriginalStop,
+                            StopLoss                 = Math.Max(openPosition.StopLoss, openPosition.EntryPrice),
+                            Target                   = openPosition.Target,
+                            Quantity                 = remainQty,
+                            EntryTime                = openPosition.EntryTime,
+                            EntryBarIndex            = openPosition.EntryBarIndex,
+                            EntryAtr                 = openPosition.EntryAtr,
+                            HighestHighSinceEntry    = openPosition.HighestHighSinceEntry,
+                            TrailingStopActivated    = openPosition.TrailingStopActivated,
+                            BreakevenApplied         = true,   // definitely breakeven now
+                            PartialProfitTaken       = true,
+                            RiskDistance             = openPosition.RiskDistance
+                        };
+                    }
+                }
+
+                // 5. Check exits (stop, target, time-based) — evaluated after updates
                 decimal exitPrice = 0;
                 string exitReason = "";
 
                 if (currentBar.Low <= openPosition.StopLoss)
                 {
+                    // Gap-through protection: exit at stop, not lower
                     exitPrice = openPosition.StopLoss;
-                    exitReason = "손절";
+                    exitReason = openPosition.BreakevenApplied || openPosition.TrailingStopActivated
+                        ? "트레일링 손절"
+                        : "손절";
                 }
                 else if (currentBar.High >= openPosition.Target)
                 {
                     exitPrice = openPosition.Target;
                     exitReason = "목표 도달";
                 }
+                else if (barsSinceEntry >= ep.MaxHoldingBars)
+                {
+                    exitPrice = currentBar.Close;
+                    exitReason = $"시간 청산({ep.MaxHoldingBars}봉)";
+                }
 
                 if (exitPrice > 0)
                 {
-                    trades.Add(CreateTradeRecord(symbol, openPosition, exitPrice,
-                        currentBar.Timestamp, exitReason));
+                    trades.Add(CreateTradeRecordWithQty(symbol, openPosition, exitPrice,
+                        currentBar.Timestamp, exitReason, openPosition.Quantity));
                     openPosition = null;
                 }
             }
@@ -663,14 +765,22 @@ public class BacktestService : IBacktestService
                     var maxQty = (int)(capital * maxPositionCapitalRatio / signal.EntryPrice);
                     if (maxQty > 0) quantity = Math.Min(quantity, maxQty);
 
+                    // Snapshot ATR at entry (fallback to stop distance if ATR not yet ready)
+                    var entryAtr = atrArray[i] > 0 ? atrArray[i] : stopDistance;
+
                     openPosition = new OpenPosition
                     {
-                        PatternType = detector.PatternType,
-                        EntryPrice = signal.EntryPrice,
-                        StopLoss = signal.StopLossPrice,
-                        Target = signal.TargetPrice,
-                        Quantity = quantity,
-                        EntryTime = currentBar.Timestamp
+                        PatternType           = detector.PatternType,
+                        EntryPrice            = signal.EntryPrice,
+                        OriginalStop          = signal.StopLossPrice,
+                        StopLoss              = signal.StopLossPrice,
+                        Target                = signal.TargetPrice,
+                        Quantity              = quantity,
+                        EntryTime             = currentBar.Timestamp,
+                        EntryBarIndex         = i,
+                        EntryAtr              = entryAtr,
+                        HighestHighSinceEntry = currentBar.High,
+                        RiskDistance          = stopDistance
                     };
 
                     break;
@@ -687,8 +797,8 @@ public class BacktestService : IBacktestService
         if (openPosition != null && bars.Count > 0)
         {
             var lastBar = bars[^1];
-            trades.Add(CreateTradeRecord(symbol, openPosition, lastBar.Close,
-                lastBar.Timestamp, "기간 종료"));
+            trades.Add(CreateTradeRecordWithQty(symbol, openPosition, lastBar.Close,
+                lastBar.Timestamp, "기간 종료", openPosition.Quantity));
         }
 
         _logger.LogInformation("{Symbol}: {Count}건 거래 완료", symbol, trades.Count);
@@ -706,6 +816,29 @@ public class BacktestService : IBacktestService
         int MaxTotalPositions,
         int MaxPositionsPerSector
     );
+
+    /// <summary>
+    /// Advanced exit strategy parameters passed through the backtest call chain.
+    /// All fields mirror the corresponding BacktestRequest properties.
+    /// </summary>
+    internal sealed record ExitParams(
+        bool EnableTrailingStop,
+        decimal TrailingStopAtrMultiplier,
+        int MaxHoldingBars,
+        bool EnablePartialProfit,
+        decimal PartialProfitRMultiple)
+    {
+        /// <summary>
+        /// Conservative defaults used when no BacktestRequest is available
+        /// (e.g. walk-forward sub-runs that don't carry exit params).
+        /// </summary>
+        public static readonly ExitParams Default = new(
+            EnableTrailingStop:        true,
+            TrailingStopAtrMultiplier: 2.5m,
+            MaxHoldingBars:            20,
+            EnablePartialProfit:       true,
+            PartialProfitRMultiple:    2.0m);
+    };
 
     private static string GetTimeFrameLabel(TimeFrame tf) => tf switch
     {
@@ -736,11 +869,15 @@ public class BacktestService : IBacktestService
         };
     }
 
-    private static TradeRecord CreateTradeRecord(
+    /// <summary>
+    /// Creates a TradeRecord for a given exit. The quantity parameter allows partial-profit
+    /// trades to record only the closed portion rather than the full position size.
+    /// </summary>
+    private static TradeRecord CreateTradeRecordWithQty(
         string symbol, OpenPosition pos, decimal exitPrice,
-        DateTime exitTime, string exitReason)
+        DateTime exitTime, string exitReason, int qty)
     {
-        var pnl = (exitPrice - pos.EntryPrice) * pos.Quantity;
+        var pnl = (exitPrice - pos.EntryPrice) * qty;
         var pnlPct = pos.EntryPrice > 0
             ? (exitPrice - pos.EntryPrice) / pos.EntryPrice
             : 0;
@@ -751,7 +888,7 @@ public class BacktestService : IBacktestService
             PatternType = pos.PatternType,
             EntryPrice = pos.EntryPrice,
             ExitPrice = exitPrice,
-            Quantity = pos.Quantity,
+            Quantity = qty,
             EntryTime = pos.EntryTime,
             ExitTime = exitTime,
             PnL = pnl,
@@ -833,12 +970,35 @@ public class BacktestService : IBacktestService
 
     private sealed class OpenPosition
     {
+        // ── Immutable entry data ──────────────────────────────────────
         public PatternType PatternType { get; init; }
         public decimal EntryPrice { get; init; }
-        public decimal StopLoss { get; init; }
+        public decimal OriginalStop { get; init; }   // original stop — never moves down
         public decimal Target { get; init; }
         public int Quantity { get; init; }
         public DateTime EntryTime { get; init; }
+        public int EntryBarIndex { get; init; }      // bars[] index at entry, for time-based exit
+        public decimal EntryAtr { get; init; }       // ATR value at entry bar, for breakeven calculation
+
+        // ── Mutable tracking state ────────────────────────────────────
+
+        /// <summary>Effective stop (max of original, breakeven, trailing). Updated each bar.</summary>
+        public decimal StopLoss { get; set; }
+
+        /// <summary>Highest high since entry (used by Chandelier trailing stop).</summary>
+        public decimal HighestHighSinceEntry { get; set; }
+
+        /// <summary>Whether the trailing stop has been activated (requires 1R profit first).</summary>
+        public bool TrailingStopActivated { get; set; }
+
+        /// <summary>Whether the breakeven stop has been applied.</summary>
+        public bool BreakevenApplied { get; set; }
+
+        /// <summary>Whether the 50% partial profit has already been taken.</summary>
+        public bool PartialProfitTaken { get; set; }
+
+        /// <summary>Risk distance (|entry - originalStop|). Pre-computed for R-multiple checks.</summary>
+        public decimal RiskDistance { get; init; }
     }
 
     #endregion

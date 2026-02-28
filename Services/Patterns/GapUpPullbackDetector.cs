@@ -32,10 +32,16 @@ public class GapUpPullbackDetector : IPatternDetector
 
         if (curr.Volume < _config.MinVolume) return Task.FromResult<PatternSignal?>(null);
 
+        // pullbackFromHigh measures how much price has retraced from the intraday high
+        // relative to the gap range (High - Open). A value of 0 = no pullback, 1 = full retracement.
+        // We want SOME pullback (price has dipped from the high) but NOT too deep.
+        // If pullbackFromHigh > MaxPullbackPercent (50%), the gap has almost fully filled — skip.
+        // If pullbackFromHigh == 0 (no pullback at all), there is no entry opportunity yet — skip.
         var pullbackFromHigh = curr.High > curr.Open
             ? (curr.High - curr.Close) / (curr.High - curr.Open)
             : 0;
-        if (pullbackFromHigh < _config.MaxPullbackPercent) return Task.FromResult<PatternSignal?>(null);
+        if (pullbackFromHigh == 0 || pullbackFromHigh > _config.MaxPullbackPercent)
+            return Task.FromResult<PatternSignal?>(null);
 
         var signal = new PatternSignal
         {

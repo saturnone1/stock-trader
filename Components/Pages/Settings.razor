@@ -776,6 +776,23 @@
             ["RSI 기간"] = _patternSettings.MeanReversionChannel.RsiPeriod.ToString(),
             ["RSI 과매도"] = _patternSettings.MeanReversionChannel.RsiOversold.ToString()
         },
+        PatternType.Rsi2Bollinger => new()
+        {
+            ["RSI 기간"] = _patternSettings.Rsi2Bollinger.RsiPeriod.ToString(),
+            ["RSI 임계값"] = _patternSettings.Rsi2Bollinger.RsiThreshold.ToString("F0"),
+            ["BB 기간"] = _patternSettings.Rsi2Bollinger.BollingerPeriod.ToString(),
+            ["BB 표준편차"] = _patternSettings.Rsi2Bollinger.BollingerStdDev.ToString("F1"),
+            ["장기 MA"] = _patternSettings.Rsi2Bollinger.LongTrendMaPeriod.ToString(),
+            ["ATR 손절배수"] = _patternSettings.Rsi2Bollinger.AtrStopMultiplier.ToString("F1")
+        },
+        PatternType.VolatilityBreakout => new()
+        {
+            ["돌파계수 K"] = _patternSettings.VolatilityBreakout.BreakoutFactor.ToString("F2"),
+            ["최소거래량배수"] = _patternSettings.VolatilityBreakout.MinVolumeMultiplier.ToString("F1"),
+            ["거래량평균기간"] = _patternSettings.VolatilityBreakout.VolumeAvgPeriod.ToString(),
+            ["ATR 손절배수"] = _patternSettings.VolatilityBreakout.AtrStopMultiplier.ToString("F1"),
+            ["ATR 목표배수"] = _patternSettings.VolatilityBreakout.AtrTargetMultiplier.ToString("F1")
+        },
         _ => new()
     };
 }

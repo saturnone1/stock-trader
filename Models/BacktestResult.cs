@@ -118,6 +118,31 @@ public class BacktestRequest
     /// 백테스트 전용 패턴 파라미터 오버라이드. null이면 appsettings.json 기본값을 사용합니다.
     /// </summary>
     public PatternParameterOverrides? ParameterOverrides { get; set; }
+
+    // ── 청산 전략 파라미터 ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Chandelier Exit(Trailing Stop) 활성화 여부.
+    /// 1R 이익 달성 후 "최고가 - ATR * TrailingStopAtrMultiplier" 로 스톱을 올립니다.
+    /// </summary>
+    public bool EnableTrailingStop { get; set; } = true;
+
+    /// <summary>Trailing stop 계산에 사용할 ATR 배수. 기본값 2.5.</summary>
+    public decimal TrailingStopAtrMultiplier { get; set; } = 2.5m;
+
+    /// <summary>
+    /// 최대 보유 바 수. 이 바 수를 초과하면 현재 종가에 강제 청산합니다. 기본값 20.
+    /// </summary>
+    public int MaxHoldingBars { get; set; } = 20;
+
+    /// <summary>
+    /// 부분 익절 활성화 여부.
+    /// PartialProfitRMultiple 배 이익 달성 시 포지션의 50%를 청산합니다.
+    /// </summary>
+    public bool EnablePartialProfit { get; set; } = true;
+
+    /// <summary>부분 익절이 발동되는 R-배수. 기본값 2.0 (2R).</summary>
+    public decimal PartialProfitRMultiple { get; set; } = 2.0m;
 }
 
 public class BacktestResult

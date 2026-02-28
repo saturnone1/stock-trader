@@ -90,6 +90,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPatternDetector, MomentumReversalDetector>();
         services.AddScoped<IPatternDetector, MultiTimeframeTrendDetector>();
         services.AddScoped<IPatternDetector, MeanReversionChannelDetector>();
+        services.AddScoped<IPatternDetector, Rsi2BollingerDetector>();
+        services.AddScoped<IPatternDetector, VolatilityBreakoutDetector>();
         services.AddScoped<PatternDetectionService>();
 
         // Broker Services - Keyed DI (DataFeedServiceFactory 패턴과 동일)

@@ -34,6 +34,10 @@ public class VolatilityExpansionDetector : IPatternDetector
         if (curr.Close <= upper[^1]) return Task.FromResult<PatternSignal?>(null);
 
         var atr = _indicators.ATR(bars);
+        var currentAtr = atr[^1];
+        // Guard against zero ATR (can occur with flat/illiquid bars) to prevent division by zero
+        if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
+
         var signal = new PatternSignal
         {
             Symbol = symbol,
@@ -42,7 +46,7 @@ public class VolatilityExpansionDetector : IPatternDetector
             EntryPrice = curr.Close,
             StopLossPrice = middle[^1],
             TargetPrice = curr.Close + (curr.Close - middle[^1]),
-            Confidence = Math.Min(1.0m, (curr.Close - upper[^1]) / atr[^1]),
+            Confidence = Math.Min(1.0m, (curr.Close - upper[^1]) / currentAtr),
             Details = $"BB Upper Break, Close: {curr.Close:F2}, Upper: {upper[^1]:F2}",
             IsActive = true
         };
