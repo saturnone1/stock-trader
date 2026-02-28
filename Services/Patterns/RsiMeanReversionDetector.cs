@@ -24,7 +24,7 @@ public class RsiMeanReversionDetector : IPatternDetector
     {
         // TODO: Phase 2 implementation
         if (bars.Length < _config.Period + 1) return Task.FromResult<PatternSignal?>(null);
-        if (!regime.SpyAbove200Ma) return Task.FromResult<PatternSignal?>(null);
+        // Regime filter removed: mean reversion works in all market regimes (bear markets too)
 
         var closes = ExtractCloses(bars);
         var rsi = _indicators.RSI(closes, _config.Period);
@@ -34,6 +34,8 @@ public class RsiMeanReversionDetector : IPatternDetector
         if (currentRsi >= _config.OversoldThreshold || currentRsi == 0)
             return Task.FromResult<PatternSignal?>(null);
 
+        // Volume filter: MinVolumeIncreaseMultiplier=1.0 effectively disables this check
+        // (oversold bounces often occur on declining volume)
         var prevBar = bars[^2];
         var volumeIncrease = curr.Volume > prevBar.Volume * _config.MinVolumeIncreaseMultiplier;
         if (!volumeIncrease) return Task.FromResult<PatternSignal?>(null);

@@ -46,9 +46,8 @@ public class MeanReversionChannelDetector : IPatternDetector
         if (rsi[i] <= 0 || rsi[i] > _config.RsiOversold)
             return Task.FromResult<PatternSignal?>(null);
 
-        // Only trade in bull regime (mean reversion works better in uptrends)
-        if (!regime.SpyAbove200Ma)
-            return Task.FromResult<PatternSignal?>(null);
+        // Regime filter removed: mean reversion works in bear markets too
+        // (Keltner channel + RSI oversold is sufficient confirmation)
 
         var atr = _indicators.ATR(bars);
         var currentAtr = atr[i];

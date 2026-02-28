@@ -46,8 +46,13 @@ public class TrendPullbackDetector : IPatternDetector
         }
         if (!trendUp) return Task.FromResult<PatternSignal?>(null);
 
+        // pullback > 0: price is below SMA (positive pullback)
+        // pullback < 0: price is above SMA (negative = price above MA)
+        // Allow entry when price is within MaxPullbackFromMa below the MA (pullback in [0, max])
+        // OR when price is slightly above the MA (within MaxPullbackFromMa range above it)
+        // This means: abs(pullback) <= MaxPullbackFromMa — entry allowed whether above or below MA
         var pullback = (currentSma - curr.Close) / currentSma;
-        if (pullback < 0 || pullback > _config.MaxPullbackFromMa)
+        if (Math.Abs(pullback) > _config.MaxPullbackFromMa)
             return Task.FromResult<PatternSignal?>(null);
 
         var atr = _indicators.ATR(bars);
