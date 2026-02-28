@@ -72,6 +72,21 @@ public class PatternParameterOverrides
     public decimal? Chan_AtrMultiplier { get; set; }
     public int? Chan_RsiPeriod { get; set; }
     public int? Chan_RsiOversold { get; set; }
+
+    // Rsi2Bollinger
+    public int? Rsi2Bb_RsiPeriod { get; set; }
+    public decimal? Rsi2Bb_RsiThreshold { get; set; }
+    public int? Rsi2Bb_BollingerPeriod { get; set; }
+    public decimal? Rsi2Bb_BollingerStdDev { get; set; }
+    public int? Rsi2Bb_LongTrendMaPeriod { get; set; }
+    public decimal? Rsi2Bb_AtrStopMultiplier { get; set; }
+
+    // VolatilityBreakout
+    public decimal? VolBrk_BreakoutFactor { get; set; }
+    public decimal? VolBrk_MinVolumeMultiplier { get; set; }
+    public int? VolBrk_VolumeAvgPeriod { get; set; }
+    public decimal? VolBrk_AtrStopMultiplier { get; set; }
+    public decimal? VolBrk_AtrTargetMultiplier { get; set; }
 }
 
 public class BacktestRequest
