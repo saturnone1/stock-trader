@@ -15,6 +15,13 @@ try
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 로컬 전용 앱이므로 Production에서도 User Secrets를 읽는다.
+// (클라우드 배포 시에는 환경 변수나 Vault로 대체)
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets<Program>(optional: true);
+}
+
 // Serilog: replace default logging with structured logging from appsettings
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
