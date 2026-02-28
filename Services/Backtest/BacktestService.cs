@@ -139,6 +139,17 @@ public class BacktestService : IBacktestService
                 VolumeAvgPeriod     = overrides.VolBrk_VolumeAvgPeriod     ?? _basePatternSettings.VolatilityBreakout.VolumeAvgPeriod,
                 AtrStopMultiplier   = overrides.VolBrk_AtrStopMultiplier   ?? _basePatternSettings.VolatilityBreakout.AtrStopMultiplier,
                 AtrTargetMultiplier = overrides.VolBrk_AtrTargetMultiplier ?? _basePatternSettings.VolatilityBreakout.AtrTargetMultiplier
+            },
+            Tqqq200Sma = new Tqqq200SmaConfig
+            {
+                SmaPeriod            = overrides.Tqqq_SmaPeriod            ?? _basePatternSettings.Tqqq200Sma.SmaPeriod,
+                OverheatPercent      = overrides.Tqqq_OverheatPercent      ?? _basePatternSettings.Tqqq200Sma.OverheatPercent,
+                ConfirmationDays     = overrides.Tqqq_ConfirmationDays     ?? _basePatternSettings.Tqqq200Sma.ConfirmationDays,
+                ShortTrendEmaPeriod  = overrides.Tqqq_ShortTrendEmaPeriod  ?? _basePatternSettings.Tqqq200Sma.ShortTrendEmaPeriod,
+                VolumeAvgPeriod      = overrides.Tqqq_VolumeAvgPeriod      ?? _basePatternSettings.Tqqq200Sma.VolumeAvgPeriod,
+                MinVolumeRatio       = overrides.Tqqq_MinVolumeRatio       ?? _basePatternSettings.Tqqq200Sma.MinVolumeRatio,
+                AtrStopMultiplier    = overrides.Tqqq_AtrStopMultiplier    ?? _basePatternSettings.Tqqq200Sma.AtrStopMultiplier,
+                AtrTargetMultiplier  = overrides.Tqqq_AtrTargetMultiplier  ?? _basePatternSettings.Tqqq200Sma.AtrTargetMultiplier
             }
         };
     }
@@ -169,7 +180,8 @@ public class BacktestService : IBacktestService
             new MultiTimeframeTrendDetector(_indicators, opts),
             new MeanReversionChannelDetector(_indicators, opts),
             new Rsi2BollingerDetector(_indicators, opts),
-            new VolatilityBreakoutDetector(_indicators, opts)
+            new VolatilityBreakoutDetector(_indicators, opts),
+            new Tqqq200SmaDetector(_indicators, opts)
         };
         return allDetectors.Where(d => patterns.Contains(d.PatternType)).ToList();
     }

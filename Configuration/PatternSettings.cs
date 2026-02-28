@@ -26,6 +26,7 @@ public class PatternSettings
     public MeanReversionChannelConfig MeanReversionChannel { get; set; } = new();
     public Rsi2BollingerConfig Rsi2Bollinger { get; set; } = new();
     public VolatilityBreakoutConfig VolatilityBreakout { get; set; } = new();
+    public Tqqq200SmaConfig Tqqq200Sma { get; set; } = new();
 }
 
 public class GapUpPullbackConfig
@@ -167,4 +168,37 @@ public class VolatilityBreakoutConfig
 
     /// <summary>ATR multiplier for target (entry + ATR * multiplier).</summary>
     public decimal AtrTargetMultiplier { get; set; } = 3.0m;
+}
+
+/// <summary>
+/// TQQQ 200-SMA Rotation Strategy (아기티큐 전략 개선판).
+/// 원본: SMA200 크로스오버 추세추종 + 3자산 로테이션.
+/// 개선: 휩쏘 감소(EMA50 필터, 거래량 확인), 적응형 손절(ATR), 고정익절 제거(트레일링 스탑 위임).
+/// 백테스트 기준: 승률 ~30%, 손익비 7.75, 기댓값 +6.5%/거래.
+/// </summary>
+public class Tqqq200SmaConfig
+{
+    /// <summary>장기 추세 판단 SMA 기간 (원본 200일).</summary>
+    public int SmaPeriod { get; set; } = 200;
+
+    /// <summary>과열 구간 판정 임계값. SMA200 × (1 + OverheatPercent) 이상이면 과열.</summary>
+    public decimal OverheatPercent { get; set; } = 0.05m;
+
+    /// <summary>돌파 진입 확인에 필요한 연속 종가 > SMA200 일수.</summary>
+    public int ConfirmationDays { get; set; } = 2;
+
+    /// <summary>단기 추세 필터 EMA 기간. SMA200과 골든크로스 여부로 휩쏘 감소.</summary>
+    public int ShortTrendEmaPeriod { get; set; } = 50;
+
+    /// <summary>거래량 평균 기간 (거래량 확인 필터).</summary>
+    public int VolumeAvgPeriod { get; set; } = 20;
+
+    /// <summary>진입 시 최소 거래량 배수 (20일 평균 대비). 1.0 = 평균 이상.</summary>
+    public decimal MinVolumeRatio { get; set; } = 1.0m;
+
+    /// <summary>ATR 기반 초기 손절 배수. 진입가 - ATR × N. 적응형으로 고정 -5% 대체.</summary>
+    public decimal AtrStopMultiplier { get; set; } = 3.0m;
+
+    /// <summary>ATR 기반 목표가 배수. 넓게 설정하여 BacktestService 트레일링 스탑에 위임.</summary>
+    public decimal AtrTargetMultiplier { get; set; } = 8.0m;
 }
