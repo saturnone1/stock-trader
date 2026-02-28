@@ -4,6 +4,9 @@ using Serilog;
 using StockTrader.Components;
 using StockTrader.Data;
 using StockTrader.Extensions;
+using StockTrader.Models;
+using StockTrader.Models.Enums;
+using StockTrader.Services.Backtest;
 
 // Serilog bootstrap logger — captures startup errors before host is built
 Log.Logger = new LoggerConfiguration()
@@ -259,6 +262,23 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAntiforgery();
+
+// ── Backtest API (CLI에서 수익률 비교용) ──
+app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService svc, CancellationToken ct) =>
+{
+    var result = await svc.RunAsync(request, ct);
+    return Results.Ok(new
+    {
+        result.TotalTrades,
+        TotalReturn = result.TotalReturnPercent.ToString("P2"),
+        result.MaxDrawdown,
+        result.SharpeRatio,
+        result.OverallWinRate,
+        PerPattern = result.PerPatternStats.ToDictionary(
+            kv => kv.Key.ToString(),
+            kv => new { kv.Value.SampleSize, WinRate = kv.Value.WinRate.ToString("P1"), kv.Value.AvgWinPercent, kv.Value.AvgLossPercent })
+    });
+});
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

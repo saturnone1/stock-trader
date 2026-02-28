@@ -1939,35 +1939,35 @@ else if (!_isRunning)
     private sealed class PatternParamViewModel
     {
         // GapUpPullback
-        public decimal GapUp_MinGapPercent { get; set; } = 0.02m;
-        public decimal GapUp_MaxPullbackPercent { get; set; } = 0.5m;
-        /// <summary>MinVolume을 만주 단위로 표현 (50만 = 50). UI 바인딩용.</summary>
-        public decimal GapUp_MinVolumeDecimal { get; set; } = 50m; // 500_000 / 10_000
+        public decimal GapUp_MinGapPercent { get; set; } = 0.005m;
+        public decimal GapUp_MaxPullbackPercent { get; set; } = 0.8m;
+        /// <summary>MinVolume을 만주 단위로 표현 (10만 = 10). UI 바인딩용.</summary>
+        public decimal GapUp_MinVolumeDecimal { get; set; } = 10m; // 100_000 / 10_000
         public long GapUp_MinVolume => (long)(GapUp_MinVolumeDecimal * 10_000);
 
         // Breakout
-        public int Breakout_LookbackDays { get; set; } = 252;
-        public decimal Breakout_MinVolumeMultiplier { get; set; } = 1.5m;
-        public decimal Breakout_BreakoutMarginPercent { get; set; } = 0.005m;
+        public int Breakout_LookbackDays { get; set; } = 15;
+        public decimal Breakout_MinVolumeMultiplier { get; set; } = 1.0m;
+        public decimal Breakout_BreakoutMarginPercent { get; set; } = 0.001m;
         public decimal Breakout_AtrStopMultiplier { get; set; } = 2.0m;
         public decimal Breakout_AtrTargetMultiplier { get; set; } = 3.0m;
 
         // VwapReversion
-        public decimal Vwap_MaxDeviationPercent { get; set; } = 0.02m;
+        public decimal Vwap_MaxDeviationPercent { get; set; } = 0.01m;
         public decimal Vwap_MinBouncePercent { get; set; } = 0.003m;
-        public decimal Vwap_MinBounceFromLowPercent { get; set; } = 0.3m;
+        public decimal Vwap_MinBounceFromLowPercent { get; set; } = 0.2m;
 
         // RsiMeanReversion
         public int Rsi_OversoldThreshold { get; set; } = 30;
         public int Rsi_Period { get; set; } = 14;
-        public decimal Rsi_MinVolumeIncreaseMultiplier { get; set; } = 1.2m;
+        public decimal Rsi_MinVolumeIncreaseMultiplier { get; set; } = 1.0m;
         public decimal Rsi_AtrStopMultiplier { get; set; } = 1.5m;
         public decimal Rsi_AtrTargetMultiplier { get; set; } = 2.0m;
 
         // TrendPullback
         public int Trend_MaPeriod { get; set; } = 20;
         public decimal Trend_MaxPullbackFromMa { get; set; } = 0.02m;
-        public int Trend_TrendConfirmationDays { get; set; } = 10;
+        public int Trend_TrendConfirmationDays { get; set; } = 7;
         public decimal Trend_AtrStopMultiplier { get; set; } = 2.0m;
         public decimal Trend_AtrTargetMultiplier { get; set; } = 2.0m;
 
@@ -1976,8 +1976,8 @@ else if (!_isRunning)
         public decimal Orb_MinRangePercent { get; set; } = 0.005m;
 
         // VolumeSpikeContinuation
-        public decimal VolSpike_VolumeMultiplier { get; set; } = 2.0m;
-        public int VolSpike_ContinuationBars { get; set; } = 3;
+        public decimal VolSpike_VolumeMultiplier { get; set; } = 1.5m;
+        public int VolSpike_ContinuationBars { get; set; } = 2;
         public int VolSpike_VolumeAvgPeriod { get; set; } = 20;
         public decimal VolSpike_AtrStopMultiplier { get; set; } = 2.0m;
         public decimal VolSpike_AtrTargetMultiplier { get; set; } = 3.0m;
@@ -2003,16 +2003,16 @@ else if (!_isRunning)
         public int Mom_RsiPeriod { get; set; } = 14;
         public int Mom_RsiOversold { get; set; } = 30;
         public int Mom_RsiOverbought { get; set; } = 70;
-        public int Mom_RsiMomentumMin { get; set; } = 50;
+        public int Mom_RsiMomentumMin { get; set; } = 40;
         public decimal Mom_AtrStopMultiplier { get; set; } = 2.0m;
         public decimal Mom_AtrTargetMultiplier { get; set; } = 3.0m;
 
         // MultiTimeframeTrend
         public int Mtf_LongTrendMaPeriod { get; set; } = 50;
         public int Mtf_ShortEntryMaPeriod { get; set; } = 20;
-        public decimal Mtf_MaxPullbackPercent { get; set; } = 0.03m;
-        public int Mtf_TrendConfirmationBars { get; set; } = 5;
-        public decimal Mtf_MaxDistanceAboveShortMa { get; set; } = 0.005m;
+        public decimal Mtf_MaxPullbackPercent { get; set; } = 0.05m;
+        public int Mtf_TrendConfirmationBars { get; set; } = 3;
+        public decimal Mtf_MaxDistanceAboveShortMa { get; set; } = 0.02m;
         public decimal Mtf_AtrStopMultiplier { get; set; } = 1.5m;
         public decimal Mtf_AtrTargetMultiplier { get; set; } = 3.0m;
 
@@ -2021,20 +2021,20 @@ else if (!_isRunning)
         public int Chan_AtrPeriod { get; set; } = 10;
         public decimal Chan_AtrMultiplier { get; set; } = 1.5m;
         public int Chan_RsiPeriod { get; set; } = 14;
-        public int Chan_RsiOversold { get; set; } = 35;
+        public int Chan_RsiOversold { get; set; } = 40;
         public int Chan_RecentLowLookbackBars { get; set; } = 5;
 
         // Rsi2Bollinger
         public int Rsi2Bb_RsiPeriod { get; set; } = 2;
-        public decimal Rsi2Bb_RsiThreshold { get; set; } = 10m;
+        public decimal Rsi2Bb_RsiThreshold { get; set; } = 20m;
         public int Rsi2Bb_BollingerPeriod { get; set; } = 20;
         public decimal Rsi2Bb_BollingerStdDev { get; set; } = 2.0m;
         public int Rsi2Bb_LongTrendMaPeriod { get; set; } = 200;
         public decimal Rsi2Bb_AtrStopMultiplier { get; set; } = 1.5m;
 
         // VolatilityBreakout
-        public decimal VolBrk_BreakoutFactor { get; set; } = 0.6m;
-        public decimal VolBrk_MinVolumeMultiplier { get; set; } = 1.2m;
+        public decimal VolBrk_BreakoutFactor { get; set; } = 0.5m;
+        public decimal VolBrk_MinVolumeMultiplier { get; set; } = 1.0m;
         public int VolBrk_VolumeAvgPeriod { get; set; } = 20;
         public decimal VolBrk_AtrStopMultiplier { get; set; } = 2.0m;
         public decimal VolBrk_AtrTargetMultiplier { get; set; } = 3.0m;

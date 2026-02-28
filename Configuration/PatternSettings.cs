@@ -31,16 +31,16 @@ public class PatternSettings
 
 public class GapUpPullbackConfig
 {
-    public decimal MinGapPercent { get; set; } = 0.01m;
-    public decimal MaxPullbackPercent { get; set; } = 0.7m;
-    public long MinVolume { get; set; } = 200_000;
+    public decimal MinGapPercent { get; set; } = 0.005m;
+    public decimal MaxPullbackPercent { get; set; } = 0.8m;
+    public long MinVolume { get; set; } = 100_000;
 }
 
 public class BreakoutConfig
 {
-    public int LookbackDays { get; set; } = 252;
-    public decimal MinVolumeMultiplier { get; set; } = 1.2m;
-    public decimal BreakoutMarginPercent { get; set; } = 0.002m;
+    public int LookbackDays { get; set; } = 15;
+    public decimal MinVolumeMultiplier { get; set; } = 1.0m;
+    public decimal BreakoutMarginPercent { get; set; } = 0.001m;
     public decimal AtrStopMultiplier { get; set; } = 2.0m;
     public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
@@ -64,8 +64,8 @@ public class RsiMeanReversionConfig
 public class TrendPullbackConfig
 {
     public int MaPeriod { get; set; } = 20;
-    public decimal MaxPullbackFromMa { get; set; } = 0.05m;
-    public int TrendConfirmationDays { get; set; } = 5;
+    public decimal MaxPullbackFromMa { get; set; } = 0.02m;
+    public int TrendConfirmationDays { get; set; } = 7;
     public decimal AtrStopMultiplier { get; set; } = 2.0m;
     public decimal AtrTargetMultiplier { get; set; } = 2.0m;
 }
