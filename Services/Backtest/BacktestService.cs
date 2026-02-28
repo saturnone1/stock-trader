@@ -122,6 +122,23 @@ public class BacktestService : IBacktestService
                 AtrMultiplier = overrides.Chan_AtrMultiplier ?? _basePatternSettings.MeanReversionChannel.AtrMultiplier,
                 RsiPeriod     = overrides.Chan_RsiPeriod     ?? _basePatternSettings.MeanReversionChannel.RsiPeriod,
                 RsiOversold   = overrides.Chan_RsiOversold   ?? _basePatternSettings.MeanReversionChannel.RsiOversold
+            },
+            Rsi2Bollinger = new Rsi2BollingerConfig
+            {
+                RsiPeriod        = overrides.Rsi2Bb_RsiPeriod        ?? _basePatternSettings.Rsi2Bollinger.RsiPeriod,
+                RsiThreshold     = overrides.Rsi2Bb_RsiThreshold     ?? _basePatternSettings.Rsi2Bollinger.RsiThreshold,
+                BollingerPeriod  = overrides.Rsi2Bb_BollingerPeriod  ?? _basePatternSettings.Rsi2Bollinger.BollingerPeriod,
+                BollingerStdDev  = overrides.Rsi2Bb_BollingerStdDev  ?? _basePatternSettings.Rsi2Bollinger.BollingerStdDev,
+                LongTrendMaPeriod = overrides.Rsi2Bb_LongTrendMaPeriod ?? _basePatternSettings.Rsi2Bollinger.LongTrendMaPeriod,
+                AtrStopMultiplier = overrides.Rsi2Bb_AtrStopMultiplier ?? _basePatternSettings.Rsi2Bollinger.AtrStopMultiplier
+            },
+            VolatilityBreakout = new VolatilityBreakoutConfig
+            {
+                BreakoutFactor      = overrides.VolBrk_BreakoutFactor      ?? _basePatternSettings.VolatilityBreakout.BreakoutFactor,
+                MinVolumeMultiplier = overrides.VolBrk_MinVolumeMultiplier ?? _basePatternSettings.VolatilityBreakout.MinVolumeMultiplier,
+                VolumeAvgPeriod     = overrides.VolBrk_VolumeAvgPeriod     ?? _basePatternSettings.VolatilityBreakout.VolumeAvgPeriod,
+                AtrStopMultiplier   = overrides.VolBrk_AtrStopMultiplier   ?? _basePatternSettings.VolatilityBreakout.AtrStopMultiplier,
+                AtrTargetMultiplier = overrides.VolBrk_AtrTargetMultiplier ?? _basePatternSettings.VolatilityBreakout.AtrTargetMultiplier
             }
         };
     }
@@ -150,7 +167,9 @@ public class BacktestService : IBacktestService
             new VolatilityExpansionDetector(_indicators, opts),
             new MomentumReversalDetector(_indicators, opts),
             new MultiTimeframeTrendDetector(_indicators, opts),
-            new MeanReversionChannelDetector(_indicators, opts)
+            new MeanReversionChannelDetector(_indicators, opts),
+            new Rsi2BollingerDetector(_indicators, opts),
+            new VolatilityBreakoutDetector(_indicators, opts)
         };
         return allDetectors.Where(d => patterns.Contains(d.PatternType)).ToList();
     }
