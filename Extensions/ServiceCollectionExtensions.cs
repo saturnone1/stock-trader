@@ -38,10 +38,9 @@ public static class ServiceCollectionExtensions
         services.Configure<NotificationSettings>(configuration.GetSection("Notification"));
         services.Configure<MLSettings>(configuration.GetSection("ML"));
 
-        // Database (AddDbContextFactory also registers AppDbContext as scoped)
+        // Database (Factory=Singleton for use in singleton services; AppDbContext itself is still scoped)
         services.AddDbContextFactory<AppDbContext>(options =>
-            options.UseSqlite(configuration.GetConnectionString("DefaultConnection")),
-            ServiceLifetime.Scoped);
+            options.UseSqlite(configuration.GetConnectionString("DefaultConnection")));
 
         // Repositories
         services.AddScoped<IOhlcvRepository, OhlcvRepository>();

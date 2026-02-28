@@ -581,13 +581,22 @@
     private string _testingChannel = "";
     private HashSet<PatternType> _expandedPatterns = new();
 
+    private string? _error;
+
     protected override async Task OnInitializedAsync()
     {
-        _settings = await SettingsRepo.GetAsync();
-        _notificationSettings = NotificationOptions.Value;
-        _tradingSettings = TradingOptions.Value;
-        _alpacaSettings = AlpacaOptions.Value;
-        _patternSettings = PatternOptions.Value;
+        try
+        {
+            _settings = await SettingsRepo.GetAsync();
+            _notificationSettings = NotificationOptions.Value;
+            _tradingSettings = TradingOptions.Value;
+            _alpacaSettings = AlpacaOptions.Value;
+            _patternSettings = PatternOptions.Value;
+        }
+        catch (Exception ex)
+        {
+            _error = $"설정 로드 실패: {ex.Message}";
+        }
     }
 
     private void AddSymbol()

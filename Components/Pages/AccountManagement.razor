@@ -366,39 +366,54 @@
         await LoadAccountsAsync();
     }
 
+    private string? _error;
+
     private async Task LoadAccountsAsync()
     {
         _loading = true;
-        StateHasChanged();
+        _error = null;
 
-        _accounts = await AccountManager.GetAllAccountsAsync();
-
-        // 연결 상태 병렬 조회 (백그라운드, 타임아웃 5초)
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
-            _connectionStatuses = await AccountManager.GetAllConnectionStatusAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // 타임아웃: 빈 상태로 유지
-            _connectionStatuses = _accounts.Select(a => new AccountConnectionStatus
-            {
-                AccountId = a.Id,
-                StatusMessage = "응답 시간 초과"
-            }).ToList();
-        }
+            _accounts = await AccountManager.GetAllAccountsAsync();
 
-        _loading = false;
+            // 연결 상태 병렬 조회 (백그라운드, 타임아웃 5초)
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                _connectionStatuses = await AccountManager.GetAllConnectionStatusAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _connectionStatuses = _accounts.Select(a => new AccountConnectionStatus
+                {
+                    AccountId = a.Id,
+                    StatusMessage = "응답 시간 초과"
+                }).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"계좌 로드 실패: {ex.Message}";
+            _accounts = new();
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private async void OnAccountsChanged()
     {
-        await InvokeAsync(async () =>
+        try
         {
-            await LoadAccountsAsync();
-            StateHasChanged();
-        });
+            await InvokeAsync(async () =>
+            {
+                await LoadAccountsAsync();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
     }
 
     private void OpenAddDialogAsync()

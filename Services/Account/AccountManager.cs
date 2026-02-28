@@ -189,8 +189,8 @@ public class AccountManager : IAccountManager
         if (_activeAccountId.HasValue && _brokerCache.TryGetValue(_activeAccountId.Value, out var cached))
             return cached;
 
-        // 캐시 미스: DB에서 활성 계좌 동기 조회 (싱글톤 컨텍스트 내 동기 허용)
-        var account = GetActiveAccountAsync().GetAwaiter().GetResult();
+        // 캐시 미스: DB에서 활성 계좌 조회 (SynchronizationContext 데드락 방지)
+        var account = Task.Run(() => GetActiveAccountAsync()).GetAwaiter().GetResult();
         if (account == null) return null;
 
         return GetOrCreateBrokerService(account);
@@ -201,7 +201,7 @@ public class AccountManager : IAccountManager
         if (_brokerCache.TryGetValue(accountId, out var cached))
             return cached;
 
-        var account = GetAccountByIdAsync(accountId).GetAwaiter().GetResult();
+        var account = Task.Run(() => GetAccountByIdAsync(accountId)).GetAwaiter().GetResult();
         if (account == null) return null;
 
         return GetOrCreateBrokerService(account);

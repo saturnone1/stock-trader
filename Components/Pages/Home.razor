@@ -178,11 +178,15 @@
 
     private async void OnNewRecommendation(TradeRecommendation rec)
     {
-        await InvokeAsync(async () =>
+        try
         {
-            await LoadDataAsync();
-            StateHasChanged();
-        });
+            await InvokeAsync(async () =>
+            {
+                await LoadDataAsync();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
     }
 
     private async void OnPriceUpdate(PriceUpdate update)
@@ -191,11 +195,15 @@
         if (now - _lastPositionRefresh < PositionRefreshThrottle) return;
         _lastPositionRefresh = now;
 
-        await InvokeAsync(async () =>
+        try
         {
-            await LoadDataAsync();
-            StateHasChanged();
-        });
+            await InvokeAsync(async () =>
+            {
+                await LoadDataAsync();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
     }
 
     private async Task OnModeChanged(OrderMode mode)
