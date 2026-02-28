@@ -167,6 +167,7 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<DailyDataSyncService>();
         services.AddHostedService<RiskMonitorService>();
         services.AddHostedService<DailyReportService>();
+        services.AddHostedService<MLRetrainingService>();
 
         return services;
     }

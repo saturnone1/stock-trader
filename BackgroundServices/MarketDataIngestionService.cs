@@ -6,6 +6,7 @@ using StockTrader.Data.Repositories;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
 using StockTrader.Services.Streaming;
+using TimeZoneConverter;
 
 namespace StockTrader.BackgroundServices;
 
@@ -125,7 +126,7 @@ public class MarketDataIngestionService : BackgroundService
     private bool IsMarketHours()
     {
         var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
-            TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time"));
+            TZConvert.GetTimeZoneInfo("America/New_York"));
 
         if (now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday)
             return false;

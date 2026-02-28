@@ -11,6 +11,11 @@ appsettings.*.json
 !appsettings.json
 secrets.json
 
+## Docker environment secrets
+.env
+.env.*
+!.env.example
+
 ## SQLite DB
 *.db
 *.db-shm
@@ -35,7 +40,8 @@ out/
 *.nupkg
 **/packages/*
 
-## Misc
+## Logs (Serilog structured log files)
+Logs/
 *.log
 
 ## Temp output files

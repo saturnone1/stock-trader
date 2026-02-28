@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Notification;
+using TimeZoneConverter;
 
 namespace StockTrader.BackgroundServices;
 
@@ -12,7 +13,7 @@ namespace StockTrader.BackgroundServices;
 public sealed class DailyReportService : BackgroundService
 {
     private static readonly TimeZoneInfo EasternTime =
-        TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+        TZConvert.GetTimeZoneInfo("America/New_York");
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly INotificationDispatcher _dispatcher;

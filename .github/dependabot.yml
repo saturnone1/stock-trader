@@ -1,0 +1,101 @@
+version: 2
+
+updates:
+  # ── NuGet (.NET) packages ─────────────────────────────────────────────
+  - package-ecosystem: nuget
+    directory: "/"            # root: StockTrader.csproj
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    reviewers:
+      - ${{ github.repository_owner }}
+    labels:
+      - dependencies
+      - nuget
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      # Group all EF Core updates into a single PR
+      entity-framework:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+        update-types:
+          - minor
+          - patch
+      # Group all ML.NET updates into a single PR
+      mlnet:
+        patterns:
+          - "Microsoft.ML*"
+        update-types:
+          - minor
+          - patch
+      # Group all test-related packages
+      test-packages:
+        patterns:
+          - "xunit*"
+          - "Moq*"
+          - "FluentAssertions*"
+          - "coverlet*"
+          - "Microsoft.NET.Test.Sdk*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Ignore major version bumps for Alpaca SDK (breaking API changes possible)
+      - dependency-name: "Alpaca.Markets"
+        update-types: ["version-update:semver-major"]
+      # MudBlazor major versions require UI migration work
+      - dependency-name: "MudBlazor"
+        update-types: ["version-update:semver-major"]
+
+  # ── NuGet (test project) ──────────────────────────────────────────────
+  - package-ecosystem: nuget
+    directory: "/tests/StockTrader.Tests"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - nuget
+      - tests
+    commit-message:
+      prefix: "chore(test-deps)"
+      include: scope
+    groups:
+      test-packages:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # ── GitHub Actions ────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(ci)"
+      include: scope
+    groups:
+      # Group all action updates into one PR
+      github-actions-all:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
