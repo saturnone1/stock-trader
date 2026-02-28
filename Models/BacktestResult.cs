@@ -117,6 +117,89 @@ public class PatternParameterOverrides
     public decimal? Tqqq_MinVolumeRatio { get; set; }
     public decimal? Tqqq_AtrStopMultiplier { get; set; }
     public decimal? Tqqq_AtrTargetMultiplier { get; set; }
+
+    // ── 패턴별 청산 전략 오버라이드 ─────────────────────────────────────
+    // MaxHoldingBars: 최대 보유 봉 수
+    // TrailingAtr: 트레일링 스톱 ATR 배수 (0 = 비활성)
+    // PartialR: 부분 익절 R배수 (0 = 비활성)
+
+    // GapUpPullback Exit
+    public int? GapUp_ExitMaxHoldingBars { get; set; }
+    public decimal? GapUp_ExitTrailingAtr { get; set; }
+    public decimal? GapUp_ExitPartialR { get; set; }
+
+    // Breakout Exit
+    public int? Breakout_ExitMaxHoldingBars { get; set; }
+    public decimal? Breakout_ExitTrailingAtr { get; set; }
+    public decimal? Breakout_ExitPartialR { get; set; }
+
+    // VwapReversion Exit
+    public int? Vwap_ExitMaxHoldingBars { get; set; }
+    public decimal? Vwap_ExitTrailingAtr { get; set; }
+    public decimal? Vwap_ExitPartialR { get; set; }
+
+    // RsiMeanReversion Exit
+    public int? Rsi_ExitMaxHoldingBars { get; set; }
+    public decimal? Rsi_ExitTrailingAtr { get; set; }
+    public decimal? Rsi_ExitPartialR { get; set; }
+
+    // TrendPullback Exit
+    public int? Trend_ExitMaxHoldingBars { get; set; }
+    public decimal? Trend_ExitTrailingAtr { get; set; }
+    public decimal? Trend_ExitPartialR { get; set; }
+
+    // OpeningRangeBreakout Exit
+    public int? Orb_ExitMaxHoldingBars { get; set; }
+    public decimal? Orb_ExitTrailingAtr { get; set; }
+    public decimal? Orb_ExitPartialR { get; set; }
+
+    // VolumeSpikeContinuation Exit
+    public int? VolSpike_ExitMaxHoldingBars { get; set; }
+    public decimal? VolSpike_ExitTrailingAtr { get; set; }
+    public decimal? VolSpike_ExitPartialR { get; set; }
+
+    // EarningsDrift Exit
+    public int? Earnings_ExitMaxHoldingBars { get; set; }
+    public decimal? Earnings_ExitTrailingAtr { get; set; }
+    public decimal? Earnings_ExitPartialR { get; set; }
+
+    // IndexRegimeFilter Exit
+    public int? Regime_ExitMaxHoldingBars { get; set; }
+    public decimal? Regime_ExitTrailingAtr { get; set; }
+    public decimal? Regime_ExitPartialR { get; set; }
+
+    // VolatilityExpansion Exit
+    public int? Vola_ExitMaxHoldingBars { get; set; }
+    public decimal? Vola_ExitTrailingAtr { get; set; }
+    public decimal? Vola_ExitPartialR { get; set; }
+
+    // MomentumReversal Exit
+    public int? Mom_ExitMaxHoldingBars { get; set; }
+    public decimal? Mom_ExitTrailingAtr { get; set; }
+    public decimal? Mom_ExitPartialR { get; set; }
+
+    // MultiTimeframeTrend Exit
+    public int? Mtf_ExitMaxHoldingBars { get; set; }
+    public decimal? Mtf_ExitTrailingAtr { get; set; }
+    public decimal? Mtf_ExitPartialR { get; set; }
+
+    // MeanReversionChannel Exit
+    public int? Chan_ExitMaxHoldingBars { get; set; }
+    public decimal? Chan_ExitTrailingAtr { get; set; }
+    public decimal? Chan_ExitPartialR { get; set; }
+
+    // Rsi2Bollinger Exit
+    public int? Rsi2Bb_ExitMaxHoldingBars { get; set; }
+    public decimal? Rsi2Bb_ExitTrailingAtr { get; set; }
+    public decimal? Rsi2Bb_ExitPartialR { get; set; }
+
+    // VolatilityBreakout Exit
+    public int? VolBrk_ExitMaxHoldingBars { get; set; }
+    public decimal? VolBrk_ExitTrailingAtr { get; set; }
+    public decimal? VolBrk_ExitPartialR { get; set; }
+
+    // Tqqq200Sma Exit
+    public int? Tqqq_ExitMaxHoldingBars { get; set; }
 }
 
 public class BacktestRequest
@@ -164,30 +247,6 @@ public class BacktestRequest
     /// </summary>
     public PatternParameterOverrides? ParameterOverrides { get; set; }
 
-    // ── 청산 전략 파라미터 ─────────────────────────────────────────────
-
-    /// <summary>
-    /// Chandelier Exit(Trailing Stop) 활성화 여부.
-    /// 1R 이익 달성 후 "최고가 - ATR * TrailingStopAtrMultiplier" 로 스톱을 올립니다.
-    /// </summary>
-    public bool EnableTrailingStop { get; set; } = true;
-
-    /// <summary>Trailing stop 계산에 사용할 ATR 배수. 기본값 2.5.</summary>
-    public decimal TrailingStopAtrMultiplier { get; set; } = 2.5m;
-
-    /// <summary>
-    /// 최대 보유 바 수. 이 바 수를 초과하면 현재 종가에 강제 청산합니다. 기본값 20.
-    /// </summary>
-    public int MaxHoldingBars { get; set; } = 20;
-
-    /// <summary>
-    /// 부분 익절 활성화 여부.
-    /// PartialProfitRMultiple 배 이익 달성 시 포지션의 50%를 청산합니다.
-    /// </summary>
-    public bool EnablePartialProfit { get; set; } = true;
-
-    /// <summary>부분 익절이 발동되는 R-배수. 기본값 2.0 (2R).</summary>
-    public decimal PartialProfitRMultiple { get; set; } = 2.0m;
 }
 
 public class BacktestResult
