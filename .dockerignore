@@ -1,0 +1,67 @@
+# =============================================================================
+# .dockerignore — files excluded from the Docker build context
+#
+# Keeping the build context small speeds up image builds and prevents
+# sensitive files (API keys, local DB) from leaking into the image layer.
+# =============================================================================
+
+# ── Build artifacts ───────────────────────────────────────────────────────────
+**/bin/
+**/obj/
+publish/
+
+# ── IDE / editor metadata ─────────────────────────────────────────────────────
+.vs/
+.vscode/
+*.user
+*.suo
+.idea/
+
+# ── Claude Code agent files ───────────────────────────────────────────────────
+.claude/
+
+# ── Test project ─────────────────────────────────────────────────────────────
+tests/
+test_output.txt
+
+# ── Local SQLite database files ───────────────────────────────────────────────
+# These are runtime data files, NOT shipped in the image.
+# The container reads/writes to the /data volume instead.
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# ── ML model files ────────────────────────────────────────────────────────────
+# Trained model zips live on the host volume, not in the image.
+ml_models/
+
+# ── Secrets / local config overrides ─────────────────────────────────────────
+appsettings.*.json
+!appsettings.json
+secrets.json
+.env
+.env.*
+*.pfx
+*.pem
+*.key
+
+# ── Git metadata ──────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── Docker files themselves (no need to copy into image) ─────────────────────
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ── Log / temp files ─────────────────────────────────────────────────────────
+*.log
+*_output.txt
+*.tmp
+*.bak
+
+# ── Windows-specific ─────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini

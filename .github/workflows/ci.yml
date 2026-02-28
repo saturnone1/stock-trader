@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Job 1: Build & Test
+  # ──────────────────────────────────────────────
+  build-and-test:
+    name: Build and Test (.NET ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-quality: 'preview'   # .NET 10 is currently in preview
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+            ${{ runner.temp }}/nuget
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      # ── Restore ──────────────────────────────
+      - name: Restore dependencies (solution)
+        run: dotnet restore trader.sln
+
+      # ── Build ────────────────────────────────
+      - name: Build (Release)
+        run: >
+          dotnet build StockTrader.csproj
+          --configuration Release
+          --no-restore
+          -warnaserror
+          /p:TreatWarningsAsErrors=false
+
+      - name: Build test project (Release)
+        run: >
+          dotnet build tests/StockTrader.Tests/StockTrader.Tests.csproj
+          --configuration Release
+          --no-restore
+
+      # ── Test ─────────────────────────────────
+      - name: Run tests with coverage
+        run: >
+          dotnet test tests/StockTrader.Tests/StockTrader.Tests.csproj
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --logger "console;verbosity=normal"
+          --results-directory TestResults
+          --collect:"XPlat Code Coverage"
+          --settings tests/coverlet.runsettings
+        continue-on-error: false
+
+      # ── Test Report ───────────────────────────
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: xUnit Tests (${{ matrix.os }})
+          path: TestResults/*.trx
+          reporter: dotnet-trx
+          fail-on-error: false   # don't re-fail if tests already failed above
+
+      # ── Coverage Report ───────────────────────
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          files: TestResults/**/coverage.cobertura.xml
+          flags: unittests
+          name: stocktrader-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # ── Upload Test Artifacts ─────────────────
+      - name: Upload test results artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: |
+            TestResults/
+          retention-days: 7
+
+  # ──────────────────────────────────────────────
+  # Job 2: Build Artifact (ubuntu only, Release)
+  # ──────────────────────────────────────────────
+  build-artifact:
+    name: Build Publish Artifact
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-quality: 'preview'
+
+      - name: Restore dependencies
+        run: dotnet restore StockTrader.csproj
+
+      - name: Publish (framework-dependent, linux-x64)
+        run: >
+          dotnet publish StockTrader.csproj
+          --configuration Release
+          --runtime linux-x64
+          --no-self-contained
+          --output ./publish/linux-x64
+          /p:PublishSingleFile=false
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stocktrader-linux-x64-${{ github.sha }}
+          path: publish/linux-x64/
+          retention-days: 14

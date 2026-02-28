@@ -1,0 +1,96 @@
+﻿info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 肄붾뱶 ?쒕챸??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 ??꾩뒪?ы봽??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : 'StockTrader.csproj' ?꾨줈?앺듃??'Serilog.AspNetCore' ?⑦궎吏?????PackageReference瑜?異붽??섎뒗 以묒엯?덈떎.
+info : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj???⑦궎吏瑜?蹂듭썝?섎뒗 以?..
+info :   CACHE https://api.nuget.org/v3-flatcontainer/alpaca.markets/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.design/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.sqlite/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.aspnetcore/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.environment/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.thread/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.console/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.file/index.json
+info :   CACHE https://api.nuget.org/v3/vulnerabilities/index.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/vulnerability.base.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/2026.02.26.17.37.22/vulnerability.update.json
+info : 'Serilog.AspNetCore' ?⑦궎吏??'StockTrader.csproj' ?꾨줈?앺듃??吏?뺣맂 紐⑤뱺 ?꾨젅?꾩썙?ъ? ?명솚?⑸땲??
+info : 'Serilog.AspNetCore' ?⑦궎吏 '8.*' 踰꾩쟾?????PackageReference媛 'C:\Users\satur\Desktop\stock\trader\StockTrader.csproj' ?뚯씪?먯꽌 ?낅뜲?댄듃?섏뿀?듬땲??
+info : ?먯궛 ?뚯씪??蹂寃쎈릺吏 ?딆븯?듬땲?? ?먯궛 ?뚯씪 ?곌린瑜?嫄대꼫?곷땲?? 寃쎈줈: C:\Users\satur\Desktop\stock\trader\obj\project.assets.json
+log  : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj??瑜? 627諛由ъ큹 ?숈븞 蹂듭썝?덉뒿?덈떎.
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 肄붾뱶 ?쒕챸??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 ??꾩뒪?ы봽??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : 'StockTrader.csproj' ?꾨줈?앺듃??'Serilog.Sinks.Console' ?⑦궎吏?????PackageReference瑜?異붽??섎뒗 以묒엯?덈떎.
+info : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj???⑦궎吏瑜?蹂듭썝?섎뒗 以?..
+info :   CACHE https://api.nuget.org/v3-flatcontainer/alpaca.markets/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.design/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.sqlite/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.aspnetcore/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.environment/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.thread/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.console/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.file/index.json
+info :   CACHE https://api.nuget.org/v3/vulnerabilities/index.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/vulnerability.base.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/2026.02.26.17.37.22/vulnerability.update.json
+info : 'Serilog.Sinks.Console' ?⑦궎吏??'StockTrader.csproj' ?꾨줈?앺듃??吏?뺣맂 紐⑤뱺 ?꾨젅?꾩썙?ъ? ?명솚?⑸땲??
+info : 'Serilog.Sinks.Console' ?⑦궎吏 '6.*' 踰꾩쟾?????PackageReference媛 'C:\Users\satur\Desktop\stock\trader\StockTrader.csproj' ?뚯씪?먯꽌 ?낅뜲?댄듃?섏뿀?듬땲??
+info : ?먯궛 ?뚯씪??蹂寃쎈릺吏 ?딆븯?듬땲?? ?먯궛 ?뚯씪 ?곌린瑜?嫄대꼫?곷땲?? 寃쎈줈: C:\Users\satur\Desktop\stock\trader\obj\project.assets.json
+log  : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj??瑜? 576諛由ъ큹 ?숈븞 蹂듭썝?덉뒿?덈떎.
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 肄붾뱶 ?쒕챸??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 ??꾩뒪?ы봽??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : 'StockTrader.csproj' ?꾨줈?앺듃??'Serilog.Sinks.File' ?⑦궎吏?????PackageReference瑜?異붽??섎뒗 以묒엯?덈떎.
+info : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj???⑦궎吏瑜?蹂듭썝?섎뒗 以?..
+info :   CACHE https://api.nuget.org/v3-flatcontainer/alpaca.markets/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.design/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.sqlite/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.aspnetcore/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.environment/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.thread/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.console/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.file/index.json
+info :   CACHE https://api.nuget.org/v3/vulnerabilities/index.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/vulnerability.base.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/2026.02.26.17.37.22/vulnerability.update.json
+info : 'Serilog.Sinks.File' ?⑦궎吏??'StockTrader.csproj' ?꾨줈?앺듃??吏?뺣맂 紐⑤뱺 ?꾨젅?꾩썙?ъ? ?명솚?⑸땲??
+info : 'Serilog.Sinks.File' ?⑦궎吏 '6.*' 踰꾩쟾?????PackageReference媛 'C:\Users\satur\Desktop\stock\trader\StockTrader.csproj' ?뚯씪?먯꽌 ?낅뜲?댄듃?섏뿀?듬땲??
+info : ?먯궛 ?뚯씪??蹂寃쎈릺吏 ?딆븯?듬땲?? ?먯궛 ?뚯씪 ?곌린瑜?嫄대꼫?곷땲?? 寃쎈줈: C:\Users\satur\Desktop\stock\trader\obj\project.assets.json
+log  : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj??瑜? 489諛由ъ큹 ?숈븞 蹂듭썝?덉뒿?덈떎.
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 肄붾뱶 ?쒕챸??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 ??꾩뒪?ы봽??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : 'StockTrader.csproj' ?꾨줈?앺듃??'Serilog.Enrichers.Environment' ?⑦궎吏?????PackageReference瑜?異붽??섎뒗 以묒엯?덈떎.
+info : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj???⑦궎吏瑜?蹂듭썝?섎뒗 以?..
+info :   CACHE https://api.nuget.org/v3-flatcontainer/alpaca.markets/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.design/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.sqlite/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.aspnetcore/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.environment/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.thread/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.console/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.file/index.json
+info :   CACHE https://api.nuget.org/v3/vulnerabilities/index.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/vulnerability.base.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/2026.02.26.17.37.22/vulnerability.update.json
+info : 'Serilog.Enrichers.Environment' ?⑦궎吏??'StockTrader.csproj' ?꾨줈?앺듃??吏?뺣맂 紐⑤뱺 ?꾨젅?꾩썙?ъ? ?명솚?⑸땲??
+info : 'Serilog.Enrichers.Environment' ?⑦궎吏 '3.*' 踰꾩쟾?????PackageReference媛 'C:\Users\satur\Desktop\stock\trader\StockTrader.csproj' ?뚯씪?먯꽌 ?낅뜲?댄듃?섏뿀?듬땲??
+info : ?먯궛 ?뚯씪??蹂寃쎈릺吏 ?딆븯?듬땲?? ?먯궛 ?뚯씪 ?곌린瑜?嫄대꼫?곷땲?? 寃쎈줈: C:\Users\satur\Desktop\stock\trader\obj\project.assets.json
+log  : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj??瑜? 627諛由ъ큹 ?숈븞 蹂듭썝?덉뒿?덈떎.
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 肄붾뱶 ?쒕챸??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : X.509 ?몄쬆??泥댁씤 ?좏슚??寃?щ뒗 ??꾩뒪?ы봽??.NET?먯꽌 ?좏깮??湲곕낯 ?좊ː ??μ냼瑜??ъ슜?⑸땲??
+info : 'StockTrader.csproj' ?꾨줈?앺듃??'Serilog.Enrichers.Thread' ?⑦궎吏?????PackageReference瑜?異붽??섎뒗 以묒엯?덈떎.
+info : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj???⑦궎吏瑜?蹂듭썝?섎뒗 以?..
+info :   CACHE https://api.nuget.org/v3-flatcontainer/alpaca.markets/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.design/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/microsoft.entityframeworkcore.sqlite/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.aspnetcore/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.environment/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.enrichers.thread/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.console/index.json
+info :   CACHE https://api.nuget.org/v3-flatcontainer/serilog.sinks.file/index.json
+info :   CACHE https://api.nuget.org/v3/vulnerabilities/index.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/vulnerability.base.json
+info :   CACHE https://api.nuget.org/v3-vulnerabilities/2026.02.25.23.37.20/2026.02.26.17.37.22/vulnerability.update.json
+info : 'Serilog.Enrichers.Thread' ?⑦궎吏??'StockTrader.csproj' ?꾨줈?앺듃??吏?뺣맂 紐⑤뱺 ?꾨젅?꾩썙?ъ? ?명솚?⑸땲??
+info : 'Serilog.Enrichers.Thread' ?⑦궎吏 '4.*' 踰꾩쟾?????PackageReference媛 'C:\Users\satur\Desktop\stock\trader\StockTrader.csproj' ?뚯씪?먯꽌 ?낅뜲?댄듃?섏뿀?듬땲??
+info : ?먯궛 ?뚯씪??蹂寃쎈릺吏 ?딆븯?듬땲?? ?먯궛 ?뚯씪 ?곌린瑜?嫄대꼫?곷땲?? 寃쎈줈: C:\Users\satur\Desktop\stock\trader\obj\project.assets.json
+log  : C:\Users\satur\Desktop\stock\trader\StockTrader.csproj??瑜? 605諛由ъ큹 ?숈븞 蹂듭썝?덉뒿?덈떎.
+DONE

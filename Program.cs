@@ -1,10 +1,24 @@
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
+using Serilog;
 using StockTrader.Components;
 using StockTrader.Data;
 using StockTrader.Extensions;
 
+// Serilog bootstrap logger — captures startup errors before host is built
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
+
+try
+{
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Serilog: replace default logging with structured logging from appsettings
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services));
 
 // Add Blazor services
 builder.Services.AddRazorComponents()
@@ -197,6 +211,11 @@ else
     // and would cause browser issues if the user ever switches to HTTP.
 }
 
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
+});
+
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
 // Only redirect to HTTPS in development where the dev certificate is available.
@@ -214,3 +233,13 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
