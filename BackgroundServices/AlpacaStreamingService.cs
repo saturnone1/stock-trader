@@ -155,7 +155,7 @@ public class AlpacaStreamingService : BackgroundService
         foreach (var symbol in symbols)
         {
             var subscription = client.GetMinuteBarSubscription(symbol);
-            subscription.Received += bar => OnBarReceived(symbol, bar);
+            subscription.Received += bar => _ = ProcessBarAsync(symbol, bar);
             await client.SubscribeAsync(subscription, ct);
             _subscribedSymbols.Add(symbol);
         }
@@ -178,7 +178,7 @@ public class AlpacaStreamingService : BackgroundService
             symbols.Count, string.Join(", ", symbols));
     }
 
-    private async void OnBarReceived(string symbol, IBar bar)
+    private async Task ProcessBarAsync(string symbol, IBar bar)
     {
         try
         {

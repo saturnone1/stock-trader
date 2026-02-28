@@ -89,6 +89,10 @@ public class RiskMonitorService : BackgroundService
         await riskService.UpdateDailyPnLAsync(ct);
         var state = await riskService.GetCurrentRiskStateAsync(ct);
 
+        _logger.LogDebug(
+            "Risk check: PnL={PnL:C2} ({PnLPct:P2}), Positions={Positions}, Halted={Halted}",
+            state.DailyPnL, state.DailyPnLPercent, state.OpenPositionCount, state.IsTradingHalted);
+
         if (state.IsTradingHalted)
         {
             _notificationService.Alert(

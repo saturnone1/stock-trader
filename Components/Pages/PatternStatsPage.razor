@@ -38,13 +38,22 @@
     <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
 </MudDialog>
 
-@if (_stats.Count == 0)
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+}
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+@if (!_loading && _stats.Count == 0)
 {
     <MudAlert Severity="Severity.Info">
         아직 통계 데이터가 없습니다. 백테스트를 실행하거나 거래 데이터가 쌓일 때까지 기다려 주세요.
     </MudAlert>
 }
-else
+else if (_stats.Count > 0)
 {
     <PatternStatsTable Stats="@_stats" />
 
@@ -132,6 +141,8 @@ else
 
 @code {
     private bool _showHelp;
+    private bool _loading;
+    private string? _error;
     private List<PatternStats> _stats = new();
 
     private record StyleGroup(
@@ -145,8 +156,20 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _stats = await StatsService.GetAllStatsAsync();
-        BuildStyleGroups();
+        _loading = true;
+        try
+        {
+            _stats = await StatsService.GetAllStatsAsync();
+            BuildStyleGroups();
+        }
+        catch (Exception ex)
+        {
+            _error = $"통계 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private void BuildStyleGroups()

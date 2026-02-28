@@ -47,6 +47,15 @@
     <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
 </MudDialog>
 
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+}
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
 <PriceTicker />
 
 <MudGrid Class="mb-4">
@@ -131,6 +140,8 @@
 
 @code {
     private bool _showHelp;
+    private bool _loading;
+    private string? _error;
     private List<PatternSignal> _activeSignals = new();
     private List<StockTrader.Models.Position> _openPositions = new();
     private RiskState _riskState = new();
@@ -147,9 +158,22 @@
 
     private async Task LoadDataAsync()
     {
-        _activeSignals = await TradeRepo.GetActiveSignalsAsync();
-        _openPositions = await TradeRepo.GetOpenPositionsAsync();
-        _riskState = await RiskService.GetCurrentRiskStateAsync();
+        _loading = true;
+        _error = null;
+        try
+        {
+            _activeSignals = await TradeRepo.GetActiveSignalsAsync();
+            _openPositions = await TradeRepo.GetOpenPositionsAsync();
+            _riskState = await RiskService.GetCurrentRiskStateAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"데이터 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private async void OnNewRecommendation(TradeRecommendation rec)

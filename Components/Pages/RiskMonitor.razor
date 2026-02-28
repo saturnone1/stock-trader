@@ -36,6 +36,15 @@
     <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
 </MudDialog>
 
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+}
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
 <MudGrid Class="mb-4">
     <MudItem xs="12" md="6">
         <RiskGauge State="@_riskState" />
@@ -121,12 +130,26 @@
 
 @code {
     private bool _showHelp;
+    private bool _loading;
+    private string? _error;
     private RiskState _riskState = new();
     private List<StockTrader.Models.Position> _openPositions = new();
 
     protected override async Task OnInitializedAsync()
     {
-        _riskState = await RiskService.GetCurrentRiskStateAsync();
-        _openPositions = await TradeRepo.GetOpenPositionsAsync();
+        _loading = true;
+        try
+        {
+            _riskState = await RiskService.GetCurrentRiskStateAsync();
+            _openPositions = await TradeRepo.GetOpenPositionsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"리스크 데이터 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 }
