@@ -156,6 +156,16 @@ public static class PatternMetadataMap
             "PrevRange, K=0.6, Volume, ATR",
             "#FF5722" // Deep Orange
         ),
+        [PatternType.Tqqq200Sma] = new(
+            PatternType.Tqqq200Sma,
+            "TQQQ 200일선", "TQQQ 200-SMA Rotation",
+            TradingStyle.Position, "포지션",
+            "수주~수개월",
+            "TQQQ SMA(200) 크로스오버 추세추종. 돌파 진입(이틀 확인) + 밴드 눌림목 매수. " +
+            "EMA(50) 골든크로스 필터로 휩쏘 감소. ATR 적응형 손절 + 트레일링 스탑.",
+            "SMA(200), EMA(50), ATR, Volume",
+            "#00BCD4" // Cyan
+        ),
     };
 
     public static PatternMetadata Get(PatternType type)

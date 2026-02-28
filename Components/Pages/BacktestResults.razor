@@ -898,6 +898,69 @@
                     </MudExpansionPanel>
                 }
 
+                @* Tqqq200Sma *@
+                @if (_selectedPatterns.Contains(PatternType.Tqqq200Sma))
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
+                                         Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">포지션</MudChip>
+                                <MudText Typo="Typo.body2" Style="font-weight:500;">TQQQ 200일선 (Tqqq200Sma)</MudText>
+                            </MudStack>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                                SMA(200) 크로스오버 추세추종. 돌파 진입(이틀 확인) + 밴드 눌림목 매수. EMA 골든크로스 필터 + ATR 적응형 손절.
+                            </MudText>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Tqqq_SmaPeriod" Label="SMA 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="10" Min="50" Max="300"
+                                                     HelperText="장기 추세 SMA (기본 200)" />
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Tqqq_OverheatPercent" Label="과열 임계값"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="F2"
+                                                     Step="0.01m" Min="0.01m" Max="0.15m"
+                                                     HelperText="SMA × (1+N) 과열선 (기본 0.05=5%)" />
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Tqqq_ConfirmationDays" Label="확인 일수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="1" Max="5"
+                                                     HelperText="돌파 후 연속 확인 (기본 2)" />
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Tqqq_ShortTrendEmaPeriod" Label="단기 EMA"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="10" Max="100"
+                                                     HelperText="골든크로스 필터 (기본 50)" />
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Tqqq_MinVolumeRatio" Label="최소 거래량 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="F1"
+                                                     Step="0.1m" Min="0.5m" Max="3.0m"
+                                                     HelperText="20일 평균 대비 (기본 1.0)" />
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Tqqq_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="F1"
+                                                     Step="0.5m" Min="1.0m" Max="5.0m"
+                                                     HelperText="진입가 - ATR × N (기본 3.0)" />
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudNumericField @bind-Value="_p.Tqqq_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="F1"
+                                                     Step="0.5m" Min="2.0m" Max="12.0m"
+                                                     HelperText="넓게 → 트레일링스탑 위임 (기본 8.0)" />
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+
             </MudExpansionPanels>
         }
 
@@ -1474,6 +1537,16 @@ else if (!_isRunning)
         public decimal VolBrk_AtrStopMultiplier { get; set; } = 2.0m;
         public decimal VolBrk_AtrTargetMultiplier { get; set; } = 3.0m;
 
+        // Tqqq200Sma
+        public int Tqqq_SmaPeriod { get; set; } = 200;
+        public decimal Tqqq_OverheatPercent { get; set; } = 0.05m;
+        public int Tqqq_ConfirmationDays { get; set; } = 2;
+        public int Tqqq_ShortTrendEmaPeriod { get; set; } = 50;
+        public int Tqqq_VolumeAvgPeriod { get; set; } = 20;
+        public decimal Tqqq_MinVolumeRatio { get; set; } = 1.0m;
+        public decimal Tqqq_AtrStopMultiplier { get; set; } = 3.0m;
+        public decimal Tqqq_AtrTargetMultiplier { get; set; } = 8.0m;
+
         /// <summary>PatternParameterOverrides 모델로 변환합니다.</summary>
         public PatternParameterOverrides ToOverrides() => new PatternParameterOverrides
         {
@@ -1539,7 +1612,16 @@ else if (!_isRunning)
             VolBrk_MinVolumeMultiplier = VolBrk_MinVolumeMultiplier,
             VolBrk_VolumeAvgPeriod     = VolBrk_VolumeAvgPeriod,
             VolBrk_AtrStopMultiplier   = VolBrk_AtrStopMultiplier,
-            VolBrk_AtrTargetMultiplier = VolBrk_AtrTargetMultiplier
+            VolBrk_AtrTargetMultiplier = VolBrk_AtrTargetMultiplier,
+
+            Tqqq_SmaPeriod           = Tqqq_SmaPeriod,
+            Tqqq_OverheatPercent     = Tqqq_OverheatPercent,
+            Tqqq_ConfirmationDays    = Tqqq_ConfirmationDays,
+            Tqqq_ShortTrendEmaPeriod = Tqqq_ShortTrendEmaPeriod,
+            Tqqq_VolumeAvgPeriod     = Tqqq_VolumeAvgPeriod,
+            Tqqq_MinVolumeRatio      = Tqqq_MinVolumeRatio,
+            Tqqq_AtrStopMultiplier   = Tqqq_AtrStopMultiplier,
+            Tqqq_AtrTargetMultiplier = Tqqq_AtrTargetMultiplier
         };
     }
 

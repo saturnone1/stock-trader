@@ -16,5 +16,6 @@ public enum PatternType
     MultiTimeframeTrend = 12,
     MeanReversionChannel = 13,
     Rsi2Bollinger = 14,
-    VolatilityBreakout = 15
+    VolatilityBreakout = 15,
+    Tqqq200Sma = 16
 }

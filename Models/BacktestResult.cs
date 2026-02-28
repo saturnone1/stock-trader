@@ -87,6 +87,16 @@ public class PatternParameterOverrides
     public int? VolBrk_VolumeAvgPeriod { get; set; }
     public decimal? VolBrk_AtrStopMultiplier { get; set; }
     public decimal? VolBrk_AtrTargetMultiplier { get; set; }
+
+    // Tqqq200Sma
+    public int? Tqqq_SmaPeriod { get; set; }
+    public decimal? Tqqq_OverheatPercent { get; set; }
+    public int? Tqqq_ConfirmationDays { get; set; }
+    public int? Tqqq_ShortTrendEmaPeriod { get; set; }
+    public int? Tqqq_VolumeAvgPeriod { get; set; }
+    public decimal? Tqqq_MinVolumeRatio { get; set; }
+    public decimal? Tqqq_AtrStopMultiplier { get; set; }
+    public decimal? Tqqq_AtrTargetMultiplier { get; set; }
 }
 
 public class BacktestRequest
