@@ -48,6 +48,15 @@
     </MudButton>
 </MudStack>
 
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+}
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
 @if (_trades.Count == 0 && !_loading)
 {
     <MudAlert Severity="Severity.Info">거래 기록이 없습니다. 거래가 실행된 후 포트폴리오 분석을 사용할 수 있습니다.</MudAlert>
@@ -255,6 +264,7 @@
     private DateTime? _from = DateTime.Today.AddYears(-1);
     private DateTime? _to = DateTime.Today;
     private bool _loading;
+    private string? _error;
     private decimal _totalPnl, _avgPnl, _winRate, _maxDrawdown, _profitFactor;
 
     // Chart options
@@ -314,6 +324,7 @@
     private async Task LoadAsync()
     {
         _loading = true;
+        _error = null;
         StateHasChanged();
 
         try
@@ -327,6 +338,10 @@
             ComputePatternPerformance();
             ComputeMonthlyPnl();
             ComputeTopSymbols();
+        }
+        catch (Exception ex)
+        {
+            _error = $"포트폴리오 데이터 로드 실패: {ex.Message}";
         }
         finally
         {

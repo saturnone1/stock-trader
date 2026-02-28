@@ -41,8 +41,10 @@ public class SignalService : ISignalService
 
             if (stats == null || stats.Expectancy <= _tradingSettings.MinExpectancy)
             {
-                _logger.LogDebug("Signal {Pattern} for {Symbol} filtered: insufficient expectancy",
-                    signal.PatternType, signal.Symbol);
+                _logger.LogDebug(
+                    "Signal {Pattern} for {Symbol} filtered: expectancy {Actual:F4} <= min {Min:F4}",
+                    signal.PatternType, signal.Symbol,
+                    stats?.Expectancy ?? 0m, _tradingSettings.MinExpectancy);
                 continue;
             }
 
@@ -91,6 +93,10 @@ public class SignalService : ISignalService
                 signal.PatternType, signal.Symbol, signal.EntryPrice,
                 signal.StopLossPrice, signal.TargetPrice, shareQty);
         }
+
+        _logger.LogInformation(
+            "Signal evaluation complete: {Input} signals → {Output} recommendations (filtered: {Filtered})",
+            signals.Count, recommendations.Count, signals.Count - recommendations.Count);
 
         return recommendations;
     }

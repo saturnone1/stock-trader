@@ -103,6 +103,8 @@ public class MarketDataIngestionService : BackgroundService
         var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
 
         var settings = await settingsRepo.GetAsync(ct);
+        var ingested = 0;
+        var errors = 0;
 
         foreach (var symbol in settings.WatchlistSymbols)
         {
@@ -113,14 +115,19 @@ public class MarketDataIngestionService : BackgroundService
                 {
                     await ohlcvRepo.AddBarsAsync(new[] { bar }, ct);
                     await _symbolChannel.Writer.WriteAsync(symbol, ct);
+                    ingested++;
                 }
             }
             catch (Exception ex)
             {
-                // Per-symbol errors are logged but do not abort the whole ingestion cycle.
+                errors++;
                 _logger.LogError(ex, "Error ingesting data for {Symbol}", symbol);
             }
         }
+
+        _logger.LogInformation(
+            "Ingestion cycle complete: {Ingested}/{Total} symbols ingested, {Errors} errors",
+            ingested, settings.WatchlistSymbols.Count, errors);
     }
 
     private bool IsMarketHours()

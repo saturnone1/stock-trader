@@ -48,11 +48,24 @@
         <MudDatePicker @bind-Date="_toDate" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
     </MudItem>
     <MudItem xs="12" md="3" Class="d-flex align-end">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadTradesAsync" FullWidth="true">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadTradesAsync" FullWidth="true" Disabled="_loading">
+            @if (_loading)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
             필터 적용
         </MudButton>
     </MudItem>
 </MudGrid>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+}
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
 
 @if (_trades.Count > 0)
 {
@@ -134,6 +147,8 @@ else
 
 @code {
     private bool _showHelp;
+    private bool _loading;
+    private string? _error;
     private List<TradeRecord> _trades = new();
     private string _filterPattern = "";
     private DateTime? _fromDate;
@@ -146,8 +161,21 @@ else
 
     private async Task LoadTradesAsync()
     {
-        PatternType? pattern = string.IsNullOrEmpty(_filterPattern)
-            ? null : (PatternType)int.Parse(_filterPattern);
-        _trades = await TradeRepo.GetTradesAsync(pattern, _fromDate, _toDate);
+        _loading = true;
+        _error = null;
+        try
+        {
+            PatternType? pattern = string.IsNullOrEmpty(_filterPattern)
+                ? null : (PatternType)int.Parse(_filterPattern);
+            _trades = await TradeRepo.GetTradesAsync(pattern, _fromDate, _toDate);
+        }
+        catch (Exception ex)
+        {
+            _error = $"거래 내역 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 }

@@ -200,19 +200,193 @@
     <MudItem xs="12" md="6" lg="4">
         <MudCard Elevation="1" Class="mud-height-full">
             <MudCardHeader>
+                <CardHeaderAvatar><MudIcon Icon="@Icons.Material.Filled.Psychology" Color="Color.Primary" /></CardHeaderAvatar>
+                <CardHeaderContent><MudText Typo="Typo.subtitle1">ML 대시보드</MudText></CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2">
+                    머신러닝 모델 학습 및 상태를 관리합니다. K-Means 시장 레짐 분류기와
+                    FastTree 시그널 스코어러를 학습하여 패턴 감지 신뢰도를 향상시킵니다.
+                    피처 중요도 차트로 어떤 요소가 예측에 중요한지 확인합니다.
+                </MudText>
+            </MudCardContent>
+            <MudCardActions><MudButton Href="ml" Color="Color.Primary" Variant="Variant.Text">바로가기</MudButton></MudCardActions>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" md="6" lg="4">
+        <MudCard Elevation="1" Class="mud-height-full">
+            <MudCardHeader>
+                <CardHeaderAvatar><MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Primary" /></CardHeaderAvatar>
+                <CardHeaderContent><MudText Typo="Typo.subtitle1">계좌 관리</MudText></CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2">
+                    멀티 브로커/계좌 관리 페이지입니다. Alpaca, 한국투자증권, 키움증권 등
+                    여러 증권사 계좌를 등록하고 관리합니다. 계좌별 독립적인 리스크 관리를 제공합니다.
+                </MudText>
+            </MudCardContent>
+            <MudCardActions><MudButton Href="accounts" Color="Color.Primary" Variant="Variant.Text">바로가기</MudButton></MudCardActions>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" md="6" lg="4">
+        <MudCard Elevation="1" Class="mud-height-full">
+            <MudCardHeader>
                 <CardHeaderAvatar><MudIcon Icon="@Icons.Material.Filled.Settings" Color="Color.Primary" /></CardHeaderAvatar>
                 <CardHeaderContent><MudText Typo="Typo.subtitle1">설정</MudText></CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
                 <MudText Typo="Typo.body2">
-                    거래 모드, 데이터 소스, 계좌 규모, 관심 종목, 활성 패턴, 알림 등
-                    앱의 모든 설정을 관리합니다.
+                    거래 모드, 데이터 소스, 리스크 파라미터, 관심 종목, 활성 패턴(파라미터 포함),
+                    스트리밍, 시장 시간, 알림 채널 등 앱의 모든 설정을 관리합니다.
                 </MudText>
             </MudCardContent>
             <MudCardActions><MudButton Href="settings" Color="Color.Primary" Variant="Variant.Text">바로가기</MudButton></MudCardActions>
         </MudCard>
     </MudItem>
 </MudGrid>
+
+@* ──────── API 키 설정 가이드 ──────── *@
+<MudText Typo="Typo.h5" Class="mb-4">API 키 설정</MudText>
+<MudPaper Class="pa-4 mb-6" Elevation="1">
+    <MudTimeline TimelinePosition="TimelinePosition.Start">
+        <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+            <ItemContent>
+                <MudText Typo="Typo.subtitle2">1. Alpaca 계정 생성</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    <MudLink Href="https://alpaca.markets" Target="_blank">alpaca.markets</MudLink> 에서 무료 계정을 만듭니다.
+                    Paper Trading (모의투자) 계정이 자동으로 생성됩니다.
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+        <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+            <ItemContent>
+                <MudText Typo="Typo.subtitle2">2. API 키 발급</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    Alpaca 대시보드 → Paper Trading → API Keys에서 새 키를 생성합니다.
+                    <code>API Key ID</code>와 <code>Secret Key</code>를 복사합니다.
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+        <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+            <ItemContent>
+                <MudText Typo="Typo.subtitle2">3. appsettings.json 설정</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    프로젝트 루트의 <code>appsettings.json</code>에서 다음 항목을 수정합니다:
+                </MudText>
+                <MudPaper Class="pa-2 mt-1" Style="background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85em;">
+                    "Alpaca": {<br/>
+                    &nbsp;&nbsp;"ApiKey": "YOUR_API_KEY_HERE",<br/>
+                    &nbsp;&nbsp;"ApiSecret": "YOUR_SECRET_KEY_HERE",<br/>
+                    &nbsp;&nbsp;"IsPaper": true<br/>
+                    }
+                </MudPaper>
+            </ItemContent>
+        </MudTimelineItem>
+        <MudTimelineItem Color="Color.Success" Size="Size.Small">
+            <ItemContent>
+                <MudText Typo="Typo.subtitle2">4. 앱 재시작</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    앱을 재시작하면 Alpaca 데이터 소스가 활성화됩니다.
+                    설정 페이지에서 데이터 소스를 Alpaca로 변경하세요.
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+    </MudTimeline>
+</MudPaper>
+
+@* ──────── 알림 채널 설정 가이드 ──────── *@
+<MudText Typo="Typo.h5" Class="mb-4">알림 채널 설정</MudText>
+<MudPaper Class="pa-4 mb-6" Elevation="1">
+    <MudExpansionPanels MultiExpansion="true">
+        <MudExpansionPanel Text="텔레그램 알림 설정" MaxHeight="500">
+            <MudText Typo="Typo.body2">
+                1. 텔레그램에서 <code>@@BotFather</code>를 검색하여 <code>/newbot</code> 명령으로 봇을 생성합니다.<br/>
+                2. 발급받은 <strong>Bot Token</strong>을 복사합니다.<br/>
+                3. 생성된 봇에게 메시지를 보낸 후, <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code>에서 Chat ID를 확인합니다.<br/>
+                4. <code>appsettings.json</code>에 설정합니다:
+            </MudText>
+            <MudPaper Class="pa-2 mt-1" Style="background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85em;">
+                "EnableTelegram": true,<br/>
+                "TelegramBotToken": "YOUR_BOT_TOKEN",<br/>
+                "TelegramChatId": "YOUR_CHAT_ID"
+            </MudPaper>
+        </MudExpansionPanel>
+        <MudExpansionPanel Text="디스코드 알림 설정" MaxHeight="500">
+            <MudText Typo="Typo.body2">
+                1. 디스코드 서버에서 채널 설정 → 연동 → 웹훅을 클릭합니다.<br/>
+                2. "새 웹훅"을 만들고 <strong>Webhook URL</strong>을 복사합니다.<br/>
+                3. <code>appsettings.json</code>에 설정합니다:
+            </MudText>
+            <MudPaper Class="pa-2 mt-1" Style="background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85em;">
+                "EnableDiscord": true,<br/>
+                "DiscordWebhookUrl": "YOUR_WEBHOOK_URL"
+            </MudPaper>
+        </MudExpansionPanel>
+        <MudExpansionPanel Text="이메일 알림 설정" MaxHeight="500">
+            <MudText Typo="Typo.body2">
+                Gmail SMTP를 사용하는 경우:<br/>
+                1. Google 계정 → 보안 → 앱 비밀번호에서 비밀번호를 생성합니다.<br/>
+                2. <code>appsettings.json</code>에 설정합니다:
+            </MudText>
+            <MudPaper Class="pa-2 mt-1" Style="background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85em;">
+                "EnableEmail": true,<br/>
+                "SmtpHost": "smtp.gmail.com",<br/>
+                "SmtpPort": 587,<br/>
+                "SmtpUseSsl": true,<br/>
+                "SmtpUsername": "your@@gmail.com",<br/>
+                "SmtpPassword": "YOUR_APP_PASSWORD",<br/>
+                "EmailFrom": "your@@gmail.com",<br/>
+                "EmailTo": "recipient@@email.com"
+            </MudPaper>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+        설정 후 앱을 재시작하고, 설정 페이지에서 "테스트 발송" 버튼으로 연결을 확인하세요.
+    </MudText>
+</MudPaper>
+
+@* ──────── 스트리밍 & Docker ──────── *@
+<MudText Typo="Typo.h5" Class="mb-4">실시간 스트리밍 활성화</MudText>
+<MudPaper Class="pa-4 mb-6" Elevation="1">
+    <MudText Typo="Typo.body2" Class="mb-2">
+        Alpaca WebSocket 스트리밍을 활성화하면 1분 봉 데이터를 실시간으로 수신합니다.
+        REST 폴링(기본값)보다 빠르게 패턴을 감지할 수 있습니다.
+    </MudText>
+    <MudPaper Class="pa-2 mb-2" Style="background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85em;">
+        "Alpaca": {<br/>
+        &nbsp;&nbsp;"EnableStreaming": true,<br/>
+        &nbsp;&nbsp;"StreamTypes": [ "minuteBars" ],<br/>
+        &nbsp;&nbsp;"MaxReconnectAttempts": 10<br/>
+        }
+    </MudPaper>
+    <MudAlert Severity="Severity.Info" Dense="true">
+        스트리밍에는 유효한 Alpaca API 키가 필요합니다. 연결이 끊기면 자동으로 REST 폴링으로 전환됩니다.
+    </MudAlert>
+</MudPaper>
+
+<MudText Typo="Typo.h5" Class="mb-4">Docker 배포</MudText>
+<MudPaper Class="pa-4 mb-6" Elevation="1">
+    <MudText Typo="Typo.body2" Class="mb-2">
+        Docker를 사용하여 앱을 컨테이너로 배포할 수 있습니다.
+    </MudText>
+    <MudPaper Class="pa-2 mb-2" Style="background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85em;">
+        # 프로덕션 실행<br/>
+        docker compose up -d<br/><br/>
+        # 개발 모드 (로그 상세)<br/>
+        docker compose -f docker-compose.yml -f docker-compose.override.yml up
+    </MudPaper>
+    <MudText Typo="Typo.body2" Class="mb-2">
+        데이터는 Docker 볼륨으로 영구 보존됩니다:
+    </MudText>
+    <MudSimpleTable Dense="true">
+        <thead><tr><th>볼륨</th><th>경로</th><th>용도</th></tr></thead>
+        <tbody>
+            <tr><td>db</td><td>/app/Data</td><td>SQLite 데이터베이스</td></tr>
+            <tr><td>ml_models</td><td>/app/ml_models</td><td>ML 모델 파일</td></tr>
+            <tr><td>logs</td><td>/app/Logs</td><td>Serilog JSON 로그 (31일 보관)</td></tr>
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
 
 @* ──────── 용어 사전 ──────── *@
 <MudText Typo="Typo.h5" Class="mb-4">용어 사전</MudText>

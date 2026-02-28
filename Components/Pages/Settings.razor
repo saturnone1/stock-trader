@@ -10,6 +10,9 @@
 @inject ISnackbar Snackbar
 @inject INotificationDispatcher NotificationDispatcher
 @inject IOptions<NotificationSettings> NotificationOptions
+@inject IOptions<TradingSettings> TradingOptions
+@inject IOptions<AlpacaSettings> AlpacaOptions
+@inject IOptions<PatternSettings> PatternOptions
 
 <PageTitle>설정 - 주식 트레이더</PageTitle>
 
@@ -241,18 +244,151 @@
         </MudCardContent>
     </MudCard>
 
+    @* ── 스트리밍 설정 ──────────────────────────── *@
     <MudCard Class="mb-4">
         <MudCardHeader>
             <CardHeaderContent>
-                <MudText Typo="Typo.h6">활성 패턴</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Stream" Size="Size.Small" Color="Color.Info" />
+                    <MudText Typo="Typo.h6">실시간 스트리밍</MudText>
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@(_alpacaSettings.EnableStreaming ? Color.Success : Color.Default)"
+                             Variant="Variant.Filled">
+                        @(_alpacaSettings.EnableStreaming ? "활성" : "비활성")
+                    </MudChip>
+                </MudStack>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">스트리밍</MudText>
+                    <MudText Typo="Typo.body1" Color="@(_alpacaSettings.EnableStreaming ? Color.Success : Color.Default)">
+                        @(_alpacaSettings.EnableStreaming ? "WebSocket 활성" : "REST 폴링")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">재연결 최대</MudText>
+                    <MudText Typo="Typo.body1">@(_alpacaSettings.MaxReconnectAttempts)회</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Paper 모드</MudText>
+                    <MudText Typo="Typo.body1">@(_alpacaSettings.IsPaper ? "예" : "아니오")</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">스트림 타입</MudText>
+                    <MudText Typo="Typo.body1">@string.Join(", ", _alpacaSettings.StreamTypes)</MudText>
+                </MudItem>
+            </MudGrid>
+            <MudPaper Outlined="true" Class="pa-2 mt-3" Style="border-color:rgba(33,150,243,0.3);background:rgba(33,150,243,0.04);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        스트리밍 설정은 <code>appsettings.json</code>의 <code>Alpaca.EnableStreaming</code>에서 변경합니다.
+                        활성화하면 WebSocket으로 실시간 바 데이터를 수신하고, 비활성 시 REST 폴링으로 대체됩니다.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        </MudCardContent>
+    </MudCard>
+
+    @* ── 시장 시간 & 데이터 간격 ──────────────────────────── *@
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" Color="Color.Tertiary" />
+                    <MudText Typo="Typo.h6">시장 시간 & 데이터 간격</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">
+                        appsettings.json 설정
+                    </MudChip>
+                </MudStack>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">시장 개장 (ET)</MudText>
+                    <MudText Typo="Typo.h6">@_tradingSettings.MarketOpenET</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">시장 마감 (ET)</MudText>
+                    <MudText Typo="Typo.h6">@_tradingSettings.MarketCloseET</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">데이터 수집 간격</MudText>
+                    <MudText Typo="Typo.h6">@(_tradingSettings.DataFetchIntervalSeconds)초</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">패턴 스캔 간격</MudText>
+                    <MudText Typo="Typo.h6">@(_tradingSettings.PatternScanIntervalSeconds)초</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">리스크 체크 간격</MudText>
+                    <MudText Typo="Typo.h6">@(_tradingSettings.RiskCheckIntervalSeconds)초</MudText>
+                </MudItem>
+            </MudGrid>
+            <MudPaper Outlined="true" Class="pa-2 mt-3" Style="border-color:rgba(255,193,7,0.3);background:rgba(255,193,7,0.04);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Warning" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        시장 시간 및 간격 설정은 <code>appsettings.json</code>의 <code>Trading</code> 섹션에서 변경합니다.
+                        변경 후 앱을 재시작해야 적용됩니다.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        </MudCardContent>
+    </MudCard>
+
+    @* ── 활성 패턴 + 파라미터 ──────────────────────────── *@
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudText Typo="Typo.h6">활성 패턴</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                        @(_settings.EnabledPatterns.Count) / @(Enum.GetValues<PatternType>().Length)
+                    </MudChip>
+                </MudStack>
             </CardHeaderContent>
         </MudCardHeader>
         <MudCardContent>
             @foreach (var pattern in Enum.GetValues<PatternType>())
             {
-                <MudSwitch T="bool" Value="@_settings.EnabledPatterns.Contains(pattern)"
-                           ValueChanged="@(v => TogglePattern(pattern, v))"
-                           Label="@pattern.ToString()" Color="Color.Primary" Class="mb-1" />
+                var isEnabled = _settings.EnabledPatterns.Contains(pattern);
+                var meta = PatternMetadataMap.Get(pattern);
+                <MudPaper Outlined="true" Class="pa-2 mb-2"
+                          Style="@(isEnabled ? "border-color: rgba(33,150,243,0.4);" : "border-color: rgba(128,128,128,0.2); opacity: 0.7;")">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSwitch T="bool" Value="@isEnabled"
+                                       ValueChanged="@(v => TogglePattern(pattern, v))"
+                                       Color="Color.Primary" />
+                            <div>
+                                <MudText Typo="Typo.subtitle2">@meta.KoreanName</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@pattern — @meta.StyleLabel · @meta.HoldingPeriod</MudText>
+                            </div>
+                        </MudStack>
+                        <MudIconButton Icon="@(_expandedPatterns.Contains(pattern) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                       Size="Size.Small" OnClick="@(() => TogglePatternExpand(pattern))" />
+                    </MudStack>
+                    @if (_expandedPatterns.Contains(pattern))
+                    {
+                        <MudDivider Class="my-2" />
+                        <MudGrid Spacing="2">
+                            @foreach (var param in GetPatternParams(pattern))
+                            {
+                                <MudItem xs="6" md="3">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@param.Key</MudText>
+                                    <MudText Typo="Typo.body2">@param.Value</MudText>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                        <MudText Typo="Typo.caption" Color="Color.Tertiary" Class="mt-1">
+                            파라미터 변경: appsettings.json → Patterns.@pattern
+                        </MudText>
+                    }
+                </MudPaper>
             }
         </MudCardContent>
     </MudCard>
@@ -439,12 +575,19 @@
 
     // 알림 채널 관련 상태
     private NotificationSettings _notificationSettings = new();
+    private TradingSettings _tradingSettings = new();
+    private AlpacaSettings _alpacaSettings = new();
+    private PatternSettings _patternSettings = new();
     private string _testingChannel = "";
+    private HashSet<PatternType> _expandedPatterns = new();
 
     protected override async Task OnInitializedAsync()
     {
         _settings = await SettingsRepo.GetAsync();
         _notificationSettings = NotificationOptions.Value;
+        _tradingSettings = TradingOptions.Value;
+        _alpacaSettings = AlpacaOptions.Value;
+        _patternSettings = PatternOptions.Value;
     }
 
     private void AddSymbol()
@@ -538,4 +681,92 @@
         isEnabled
             ? "border-color: rgba(76,175,80,0.5); background: rgba(76,175,80,0.04);"
             : "border-color: rgba(128,128,128,0.3);";
+
+    private void TogglePatternExpand(PatternType pattern)
+    {
+        if (!_expandedPatterns.Remove(pattern))
+            _expandedPatterns.Add(pattern);
+    }
+
+    private Dictionary<string, string> GetPatternParams(PatternType pattern) => pattern switch
+    {
+        PatternType.GapUpPullback => new()
+        {
+            ["최소 갭 %"] = _patternSettings.GapUpPullback.MinGapPercent.ToString("P1"),
+            ["최대 풀백 %"] = _patternSettings.GapUpPullback.MaxPullbackPercent.ToString("P0"),
+            ["최소 거래량"] = _patternSettings.GapUpPullback.MinVolume.ToString("N0")
+        },
+        PatternType.Breakout => new()
+        {
+            ["조회 기간 (일)"] = _patternSettings.Breakout.LookbackDays.ToString(),
+            ["최소 거래량 배수"] = _patternSettings.Breakout.MinVolumeMultiplier.ToString("F1") + "x",
+            ["돌파 마진 %"] = _patternSettings.Breakout.BreakoutMarginPercent.ToString("P2")
+        },
+        PatternType.VwapReversion => new()
+        {
+            ["최대 이탈 %"] = _patternSettings.VwapReversion.MaxDeviationPercent.ToString("P1"),
+            ["최소 반등 %"] = _patternSettings.VwapReversion.MinBouncePercent.ToString("P2")
+        },
+        PatternType.RsiMeanReversion => new()
+        {
+            ["과매도 임계값"] = _patternSettings.RsiMeanReversion.OversoldThreshold.ToString(),
+            ["RSI 기간"] = _patternSettings.RsiMeanReversion.Period.ToString()
+        },
+        PatternType.TrendPullback => new()
+        {
+            ["이평 기간"] = _patternSettings.TrendPullback.MaPeriod.ToString(),
+            ["최대 풀백 %"] = _patternSettings.TrendPullback.MaxPullbackFromMa.ToString("P1"),
+            ["추세 확인 일수"] = _patternSettings.TrendPullback.TrendConfirmationDays.ToString()
+        },
+        PatternType.OpeningRangeBreakout => new()
+        {
+            ["범위 기간 (분)"] = _patternSettings.OpeningRangeBreakout.RangeMinutes.ToString(),
+            ["최소 범위 %"] = _patternSettings.OpeningRangeBreakout.MinRangePercent.ToString("P2")
+        },
+        PatternType.VolumeSpikeContinuation => new()
+        {
+            ["거래량 배수"] = _patternSettings.VolumeSpikeContinuation.VolumeMultiplier.ToString("F1") + "x",
+            ["연속 봉 수"] = _patternSettings.VolumeSpikeContinuation.ContinuationBars.ToString()
+        },
+        PatternType.EarningsDrift => new()
+        {
+            ["드리프트 기간 (일)"] = _patternSettings.EarningsDrift.DriftDays.ToString(),
+            ["최소 서프라이즈 %"] = _patternSettings.EarningsDrift.MinSurprisePercent.ToString("P1")
+        },
+        PatternType.IndexRegimeFilter => new()
+        {
+            ["이평 기간"] = _patternSettings.IndexRegimeFilter.MaPeriod.ToString(),
+            ["기준 지수"] = _patternSettings.IndexRegimeFilter.IndexSymbol
+        },
+        PatternType.VolatilityExpansion => new()
+        {
+            ["볼린저 기간"] = _patternSettings.VolatilityExpansion.BollingerPeriod.ToString(),
+            ["표준편차 배수"] = _patternSettings.VolatilityExpansion.StdDevMultiplier.ToString("F1")
+        },
+        PatternType.MomentumReversal => new()
+        {
+            ["빠른 EMA"] = _patternSettings.MomentumReversal.FastEmaPeriod.ToString(),
+            ["느린 EMA"] = _patternSettings.MomentumReversal.SlowEmaPeriod.ToString(),
+            ["MACD 시그널"] = _patternSettings.MomentumReversal.MacdSignalPeriod.ToString(),
+            ["RSI 기간"] = _patternSettings.MomentumReversal.RsiPeriod.ToString(),
+            ["RSI 과매도"] = _patternSettings.MomentumReversal.RsiOversold.ToString(),
+            ["RSI 과매수"] = _patternSettings.MomentumReversal.RsiOverbought.ToString()
+        },
+        PatternType.MultiTimeframeTrend => new()
+        {
+            ["장기 추세 MA"] = _patternSettings.MultiTimeframeTrend.LongTrendMaPeriod.ToString(),
+            ["단기 진입 MA"] = _patternSettings.MultiTimeframeTrend.ShortEntryMaPeriod.ToString(),
+            ["최대 풀백 %"] = _patternSettings.MultiTimeframeTrend.MaxPullbackPercent.ToString("P1"),
+            ["추세 확인 봉"] = _patternSettings.MultiTimeframeTrend.TrendConfirmationBars.ToString()
+        },
+        PatternType.MeanReversionChannel => new()
+        {
+            ["EMA 기간"] = _patternSettings.MeanReversionChannel.EmaPeriod.ToString(),
+            ["ATR 기간"] = _patternSettings.MeanReversionChannel.AtrPeriod.ToString(),
+            ["ATR 배수"] = _patternSettings.MeanReversionChannel.AtrMultiplier.ToString("F1"),
+            ["RSI 기간"] = _patternSettings.MeanReversionChannel.RsiPeriod.ToString(),
+            ["RSI 과매도"] = _patternSettings.MeanReversionChannel.RsiOversold.ToString()
+        },
+        _ => new()
+    };
 }

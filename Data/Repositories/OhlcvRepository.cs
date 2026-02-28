@@ -34,14 +34,28 @@ public class OhlcvRepository : IOhlcvRepository
 
     public async Task AddBarsAsync(IEnumerable<OhlcvBar> bars, CancellationToken ct = default)
     {
-        foreach (var bar in bars)
-        {
-            var exists = await _db.OhlcvBars.AnyAsync(b =>
-                b.Symbol == bar.Symbol
-                && b.TimeFrame == bar.TimeFrame
-                && b.Timestamp == bar.Timestamp, ct);
+        var barList = bars.ToList();
+        if (barList.Count == 0) return;
 
-            if (!exists)
+        // Bulk check: load all existing keys in one query instead of N+1
+        var symbols = barList.Select(b => b.Symbol).Distinct().ToList();
+        var timeFrames = barList.Select(b => b.TimeFrame).Distinct().ToList();
+        var minTs = barList.Min(b => b.Timestamp);
+        var maxTs = barList.Max(b => b.Timestamp);
+
+        var existingKeys = await _db.OhlcvBars
+            .Where(b => symbols.Contains(b.Symbol)
+                && timeFrames.Contains(b.TimeFrame)
+                && b.Timestamp >= minTs && b.Timestamp <= maxTs)
+            .Select(b => new { b.Symbol, b.TimeFrame, b.Timestamp })
+            .ToListAsync(ct);
+
+        var existingSet = new HashSet<(string, TimeFrame, DateTime)>(
+            existingKeys.Select(k => (k.Symbol, k.TimeFrame, k.Timestamp)));
+
+        foreach (var bar in barList)
+        {
+            if (!existingSet.Contains((bar.Symbol, bar.TimeFrame, bar.Timestamp)))
                 _db.OhlcvBars.Add(bar);
         }
         await _db.SaveChangesAsync(ct);

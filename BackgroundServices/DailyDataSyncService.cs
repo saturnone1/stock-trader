@@ -94,6 +94,9 @@ public class DailyDataSyncService : BackgroundService
         var statsService = scope.ServiceProvider.GetRequiredService<IStatisticsService>();
 
         var settings = await settingsRepo.GetAsync(ct);
+        var synced = 0;
+        var totalBars = 0;
+        var errors = 0;
 
         foreach (var symbol in settings.WatchlistSymbols)
         {
@@ -108,17 +111,22 @@ public class DailyDataSyncService : BackgroundService
                 if (bars.Count > 0)
                 {
                     await ohlcvRepo.AddBarsAsync(bars, ct);
-                    _logger.LogInformation("Synced {Count} daily bars for {Symbol}",
-                        bars.Count, symbol);
+                    synced++;
+                    totalBars += bars.Count;
+                    _logger.LogDebug("Synced {Count} daily bars for {Symbol}", bars.Count, symbol);
                 }
             }
             catch (Exception ex)
             {
-                // Per-symbol errors are logged but do not abort the whole sync cycle.
+                errors++;
                 _logger.LogError(ex, "Error syncing daily data for {Symbol}", symbol);
             }
         }
 
         await statsService.RefreshAllStatsAsync(ct);
+
+        _logger.LogInformation(
+            "Daily sync complete: {Synced}/{Total} symbols, {Bars} bars synced, {Errors} errors",
+            synced, settings.WatchlistSymbols.Count, totalBars, errors);
     }
 }

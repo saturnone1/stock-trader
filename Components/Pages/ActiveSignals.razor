@@ -107,7 +107,16 @@
     </MudText>
 </MudStack>
 
-@if (_signals.Count == 0)
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+}
+@if (_error != null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+@if (!_loading && _signals.Count == 0)
 {
     <MudAlert Severity="Severity.Info">현재 활성 시그널이 없습니다</MudAlert>
 }
@@ -125,6 +134,8 @@ else
 
 @code {
     private bool _showHelp;
+    private bool _loading;
+    private string? _error;
     private List<PatternSignal> _signals = new();
     private string _filterPattern = "";
     private string _filterSymbol = "";
@@ -140,7 +151,19 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _signals = await TradeRepo.GetActiveSignalsAsync();
+        _loading = true;
+        try
+        {
+            _signals = await TradeRepo.GetActiveSignalsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"시그널 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
         NotificationService.OnNewRecommendation += OnNewRecommendation;
     }
 

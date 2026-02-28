@@ -13,6 +13,18 @@ public class TradeRepository : ITradeRepository
     }
 
     public async Task<List<TradeRecord>> GetTradesAsync(PatternType? patternType = null,
+        DateTime? from = null, DateTime? to = null,
+        int skip = 0, int take = 0, CancellationToken ct = default)
+    {
+        var query = BuildTradeQuery(patternType, from, to);
+
+        if (skip > 0) query = query.Skip(skip);
+        if (take > 0) query = query.Take(take);
+
+        return await query.ToListAsync(ct);
+    }
+
+    public async Task<int> GetTradeCountAsync(PatternType? patternType = null,
         DateTime? from = null, DateTime? to = null, CancellationToken ct = default)
     {
         var query = _db.TradeRecords.AsQueryable();
@@ -24,7 +36,21 @@ public class TradeRepository : ITradeRepository
         if (to.HasValue)
             query = query.Where(t => t.ExitTime <= to.Value);
 
-        return await query.OrderByDescending(t => t.EntryTime).ToListAsync(ct);
+        return await query.CountAsync(ct);
+    }
+
+    private IQueryable<TradeRecord> BuildTradeQuery(PatternType? patternType, DateTime? from, DateTime? to)
+    {
+        var query = _db.TradeRecords.AsQueryable();
+
+        if (patternType.HasValue)
+            query = query.Where(t => t.PatternType == patternType.Value);
+        if (from.HasValue)
+            query = query.Where(t => t.EntryTime >= from.Value);
+        if (to.HasValue)
+            query = query.Where(t => t.ExitTime <= to.Value);
+
+        return query.OrderByDescending(t => t.EntryTime);
     }
 
     public async Task<List<TradeRecord>> GetRecentAsync(int limit = 5000, CancellationToken ct = default)
