@@ -497,7 +497,10 @@ public class BacktestService : IBacktestService
     internal static MonteCarloResult RunMonteCarlo(
         List<TradeRecord> trades, decimal initialCapital, int simulations)
     {
-        var tradePnls = trades.Select(t => t.PnL).ToArray();
+        // Extract PnL values without LINQ overhead.
+        var tradePnls = new decimal[trades.Count];
+        for (int k = 0; k < trades.Count; k++) tradePnls[k] = trades[k].PnL;
+
         var finalEquities = new decimal[simulations];
         var maxDrawdowns = new decimal[simulations];
 
@@ -523,7 +526,14 @@ public class BacktestService : IBacktestService
         Array.Sort(finalEquities);
         Array.Sort(maxDrawdowns);
 
-        var lossCount = finalEquities.Count(e => e < initialCapital);
+        // Binary search on the sorted array: O(log n) instead of LINQ Count O(n).
+        // Array.BinarySearch returns the index of initialCapital if found, or the
+        // bitwise complement of the insertion point. All elements before that index
+        // are strictly less than initialCapital.
+        int bsResult = Array.BinarySearch(finalEquities, initialCapital);
+        int firstNotLess = bsResult >= 0 ? bsResult : ~bsResult;
+        // Scan backward to include duplicates equal to initialCapital as "not a loss".
+        var lossCount = firstNotLess;
 
         return new MonteCarloResult
         {
@@ -585,20 +595,22 @@ public class BacktestService : IBacktestService
             return null;
         }
 
-        var spyCloses = spyBars.Select(b => b.Close).ToArray();
+        var spyBarsArray = spyBars.ToArray();
+        var spyCloses = IndicatorService.ExtractCloses(spyBarsArray);
         var spy200Sma = _indicators.SMA(spyCloses, 200);
         var regimeByDate = new Dictionary<DateOnly, MarketRegime>();
 
-        for (int i = 0; i < spyBars.Count; i++)
+        for (int i = 0; i < spyBarsArray.Length; i++)
         {
-            var date = DateOnly.FromDateTime(spyBars[i].Timestamp);
+            var date = DateOnly.FromDateTime(spyBarsArray[i].Timestamp);
+            var aboveMa = spy200Sma[i] > 0 && spyBarsArray[i].Close > spy200Sma[i];
             regimeByDate[date] = new MarketRegime
             {
-                SpyAbove200Ma = spy200Sma[i] > 0 && spyBars[i].Close > spy200Sma[i],
-                SpyPrice = spyBars[i].Close,
+                SpyAbove200Ma = aboveMa,
+                SpyPrice = spyBarsArray[i].Close,
                 Spy200Ma = spy200Sma[i],
-                RegimeLabel = spy200Sma[i] > 0 && spyBars[i].Close > spy200Sma[i] ? "강세" : "약세",
-                AsOf = spyBars[i].Timestamp
+                RegimeLabel = aboveMa ? "강세" : "약세",
+                AsOf = spyBarsArray[i].Timestamp
             };
         }
 
@@ -667,9 +679,16 @@ public class BacktestService : IBacktestService
         var barsArray = bars.ToArray();
         var atrArray = _indicators.ATR(barsArray, 14);
 
+        // Pre-compute closes array once to avoid repeated per-detector allocations.
+        // Detectors that need closes can slice into this array via barsArray[start..end].
+        var closesArray = IndicatorService.ExtractCloses(barsArray);
+
         // Pre-compute SMA200 for regime-based strategies (Tqqq200Sma dynamic exit)
-        var closesArray = barsArray.Select(b => b.Close).ToArray();
         var sma200Array = _indicators.SMA(closesArray, 200);
+
+        // Pre-compute PatternExitProfile per PatternType to avoid switch expression overhead
+        // per bar. PatternExitProfile.For is a pure function — safe to cache at symbol scope.
+        var pepCache = new Dictionary<PatternType, PatternExitProfile>();
 
         var ep = exitParams ?? ExitParams.Default;
 
@@ -695,7 +714,11 @@ public class BacktestService : IBacktestService
             {
                 var currentAtr = atrArray[i] > 0 ? atrArray[i] : openPosition.EntryAtr;
                 var barsSinceEntry = i - openPosition.EntryBarIndex;
-                var pep = PatternExitProfile.For(openPosition.PatternType);
+                if (!pepCache.TryGetValue(openPosition.PatternType, out var pep))
+                {
+                    pep = PatternExitProfile.For(openPosition.PatternType);
+                    pepCache[openPosition.PatternType] = pep;
+                }
 
                 // 1. Update highest high since entry (for Chandelier trailing stop)
                 if (currentBar.High > openPosition.HighestHighSinceEntry)
@@ -819,7 +842,11 @@ public class BacktestService : IBacktestService
                 _                       => 260
             };
             var windowSize = Math.Min(i + 1, maxWindow);
-            var windowBars = bars.Skip(i + 1 - windowSize).Take(windowSize).ToArray();
+            // Use array slicing instead of Skip().Take().ToArray() to avoid LINQ iterator
+            // overhead. C# array slice creates a copy, but avoids the enumerator allocation
+            // and is significantly faster in the hot loop.
+            var windowStart = i + 1 - windowSize;
+            var windowBars = barsArray[windowStart..(i + 1)];
 
             foreach (var detector in detectors)
             {
@@ -1039,19 +1066,35 @@ public class BacktestService : IBacktestService
 
         foreach (var group in trades.GroupBy(t => t.PatternType))
         {
+            // Single pass: accumulate wins and losses simultaneously instead of
+            // calling Where(IsWin) twice on the materialized list.
             var all = group.ToList();
-            var wins = all.Where(t => t.IsWin).ToList();
-            var losses = all.Where(t => !t.IsWin).ToList();
+            int winCount = 0, lossCount = 0;
+            decimal winPnlSum = 0, lossPnlSum = 0;
+
+            foreach (var t in all)
+            {
+                if (t.IsWin)
+                {
+                    winCount++;
+                    winPnlSum += t.PnLPercent;
+                }
+                else
+                {
+                    lossCount++;
+                    lossPnlSum += t.PnLPercent; // PnLPercent is negative for losses
+                }
+            }
 
             stats[group.Key] = new PatternStats
             {
-                PatternType = group.Key,
-                SampleSize = all.Count,
-                WinRate = all.Count > 0 ? (decimal)wins.Count / all.Count : 0,
-                AvgWinPercent = wins.Count > 0 ? wins.Average(t => t.PnLPercent) : 0,
-                AvgLossPercent = losses.Count > 0 ? Math.Abs(losses.Average(t => t.PnLPercent)) : 0,
+                PatternType    = group.Key,
+                SampleSize     = all.Count,
+                WinRate        = all.Count > 0 ? (decimal)winCount / all.Count : 0,
+                AvgWinPercent  = winCount  > 0 ? winPnlSum  / winCount  : 0,
+                AvgLossPercent = lossCount > 0 ? Math.Abs(lossPnlSum / lossCount) : 0,
                 MaxDrawdownPercent = ComputeGroupDrawdown(all),
-                LastUpdated = DateTime.UtcNow
+                LastUpdated    = DateTime.UtcNow
             };
         }
 
@@ -1081,9 +1124,20 @@ public class BacktestService : IBacktestService
     {
         if (trades.Count < 2) return 0;
 
-        var returns = trades.Select(t => t.PnLPercent).ToList();
-        var avgReturn = returns.Average();
-        var variance = returns.Average(r => (r - avgReturn) * (r - avgReturn));
+        // Single-pass mean + variance computation (Welford's online algorithm variant).
+        // Avoids creating a separate returns list and two LINQ passes.
+        int n = trades.Count;
+        decimal sum = 0;
+        for (int i = 0; i < n; i++) sum += trades[i].PnLPercent;
+        var avgReturn = sum / n;
+
+        decimal sumSqDiff = 0;
+        for (int i = 0; i < n; i++)
+        {
+            var d = trades[i].PnLPercent - avgReturn;
+            sumSqDiff += d * d;
+        }
+        var variance = sumSqDiff / n;
         var stdDev = (decimal)Math.Sqrt((double)variance);
 
         if (stdDev <= 0) return 0;

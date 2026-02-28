@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
+using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.Services.Patterns;
 
@@ -29,7 +30,7 @@ public class MomentumReversalDetector : IPatternDetector
         if (bars.Length < _config.SlowEmaPeriod + 10)
             return Task.FromResult<PatternSignal?>(null);
 
-        var closes = bars.Select(b => b.Close).ToArray();
+        var closes = ExtractCloses(bars);
         var rsi = _indicators.RSI(closes, _config.RsiPeriod);
         var (macdLine, signalLine, histogram) = _indicators.MACD(
             closes, _config.FastEmaPeriod, _config.SlowEmaPeriod, _config.MacdSignalPeriod);

@@ -7,17 +7,20 @@ public class IndicatorService : IIndicatorService
     public decimal[] SMA(decimal[] closes, int period)
     {
         var result = new decimal[closes.Length];
-        for (int i = 0; i < closes.Length; i++)
+        if (closes.Length == 0 || period <= 0) return result;
+
+        // Sliding window: O(n) instead of O(n*period).
+        // Seed the initial window sum for index [period-1].
+        decimal windowSum = 0;
+        for (int i = 0; i < period - 1 && i < closes.Length; i++)
+            windowSum += closes[i];
+
+        for (int i = period - 1; i < closes.Length; i++)
         {
-            if (i < period - 1)
-            {
-                result[i] = 0;
-                continue;
-            }
-            decimal sum = 0;
-            for (int j = i - period + 1; j <= i; j++)
-                sum += closes[j];
-            result[i] = sum / period;
+            windowSum += closes[i];
+            result[i] = windowSum / period;
+            // Slide: subtract the element falling out of the window on the next step.
+            windowSum -= closes[i - period + 1];
         }
         return result;
     }
@@ -74,15 +77,35 @@ public class IndicatorService : IIndicatorService
         var upper = new decimal[closes.Length];
         var lower = new decimal[closes.Length];
 
+        // Compute std-dev using the computational formula:
+        //   variance = (sum_of_squares / n) - mean^2
+        // This allows a sliding window update in O(1) per element — O(n) total.
+        // SumSq and SumX slide together with the window.
+        if (closes.Length < period) return (upper, middle, lower);
+
+        decimal sumX = 0, sumSq = 0;
+        for (int i = 0; i < period; i++)
+        {
+            sumX  += closes[i];
+            sumSq += closes[i] * closes[i];
+        }
+
         for (int i = period - 1; i < closes.Length; i++)
         {
-            decimal sumSqDiff = 0;
-            for (int j = i - period + 1; j <= i; j++)
+            // On the first iteration (i == period-1) the window is already seeded.
+            // On subsequent iterations slide the window forward by one element.
+            if (i > period - 1)
             {
-                var diff = closes[j] - middle[i];
-                sumSqDiff += diff * diff;
+                decimal outVal = closes[i - period];
+                decimal inVal  = closes[i];
+                sumX  += inVal  - outVal;
+                sumSq += inVal  * inVal - outVal * outVal;
             }
-            var stdDev = (decimal)Math.Sqrt((double)(sumSqDiff / period));
+
+            var mean = sumX / period;
+            // Variance = E[X^2] - (E[X])^2; clamp to 0 to avoid negative from floating-point error.
+            var variance = Math.Max(0m, sumSq / period - mean * mean);
+            var stdDev   = (decimal)Math.Sqrt((double)variance);
             upper[i] = middle[i] + stdDevMultiplier * stdDev;
             lower[i] = middle[i] - stdDevMultiplier * stdDev;
         }
@@ -158,7 +181,8 @@ public class IndicatorService : IIndicatorService
     public (decimal[] Upper, decimal[] Middle, decimal[] Lower) KeltnerChannel(
         OhlcvBar[] bars, int emaPeriod = 20, int atrPeriod = 10, decimal atrMultiplier = 1.5m)
     {
-        var closes = bars.Select(b => b.Close).ToArray();
+        // Extract closes inline to avoid a separate LINQ allocation.
+        var closes = ExtractCloses(bars);
         var middle = EMA(closes, emaPeriod);
         var atr = ATR(bars, atrPeriod);
         var upper = new decimal[bars.Length];
@@ -171,5 +195,17 @@ public class IndicatorService : IIndicatorService
         }
 
         return (upper, middle, lower);
+    }
+
+    /// <summary>
+    /// Extracts the Close prices from an OhlcvBar array into a decimal array.
+    /// Avoids repeated LINQ .Select(b => b.Close).ToArray() allocations across callers.
+    /// </summary>
+    public static decimal[] ExtractCloses(OhlcvBar[] bars)
+    {
+        var closes = new decimal[bars.Length];
+        for (int i = 0; i < bars.Length; i++)
+            closes[i] = bars[i].Close;
+        return closes;
     }
 }

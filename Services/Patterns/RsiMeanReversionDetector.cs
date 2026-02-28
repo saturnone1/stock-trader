@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
+using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.Services.Patterns;
 
@@ -25,7 +26,7 @@ public class RsiMeanReversionDetector : IPatternDetector
         if (bars.Length < _config.Period + 1) return Task.FromResult<PatternSignal?>(null);
         if (!regime.SpyAbove200Ma) return Task.FromResult<PatternSignal?>(null);
 
-        var closes = bars.Select(b => b.Close).ToArray();
+        var closes = ExtractCloses(bars);
         var rsi = _indicators.RSI(closes, _config.Period);
         var curr = bars[^1];
         var currentRsi = rsi[^1];

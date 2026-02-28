@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
+using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.Services.Patterns;
 
@@ -46,7 +47,7 @@ public class Rsi2BollingerDetector : IPatternDetector
         if (!regime.SpyAbove200Ma)
             return Task.FromResult<PatternSignal?>(null);
 
-        var closes = bars.Select(b => b.Close).ToArray();
+        var closes = ExtractCloses(bars);
         var i = bars.Length - 1;
         var curr = bars[i];
 
