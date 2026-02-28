@@ -60,7 +60,7 @@ public class MultiTimeframeTrendDetector : IPatternDetector
         // Allow a tiny tolerance of 0.1% above to catch exact touches on the MA,
         // but reject anything clearly above (that is trend-following, not pullback).
         // Lower bound: reject if price has fallen more than MaxPullbackPercent below MA.
-        if (distanceFromShortMa > 0.001m || distanceFromShortMa < -_config.MaxPullbackPercent)
+        if (distanceFromShortMa > _config.MaxDistanceAboveShortMa || distanceFromShortMa < -_config.MaxPullbackPercent)
             return Task.FromResult<PatternSignal?>(null);
 
         // Bounce confirmation: current bar is bullish
@@ -71,8 +71,8 @@ public class MultiTimeframeTrendDetector : IPatternDetector
         var currentAtr = atr[i];
         if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
 
-        var stopLoss = Math.Min(shortMa[i], curr.Close - currentAtr * 1.5m);
-        var target = curr.Close + currentAtr * 3;
+        var stopLoss = Math.Min(shortMa[i], curr.Close - currentAtr * _config.AtrStopMultiplier);
+        var target = curr.Close + currentAtr * _config.AtrTargetMultiplier;
 
         var signal = new PatternSignal
         {

@@ -54,7 +54,7 @@ public class MeanReversionChannelDetector : IPatternDetector
         if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
 
         // Find recent low for stop placement
-        var lookback = Math.Min(5, bars.Length);
+        var lookback = Math.Min(_config.RecentLowLookbackBars, bars.Length);
         var recentLow = bars[^lookback..].Min(b => b.Low);
 
         var stopLoss = recentLow - currentAtr;

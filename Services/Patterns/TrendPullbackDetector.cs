@@ -56,8 +56,8 @@ public class TrendPullbackDetector : IPatternDetector
             PatternType = PatternType.TrendPullback,
             DetectedAt = DateTime.UtcNow,
             EntryPrice = curr.Close,
-            StopLossPrice = curr.Close - atr[^1] * 2m,
-            TargetPrice = currentSma + atr[^1] * 2m,
+            StopLossPrice = curr.Close - atr[^1] * _config.AtrStopMultiplier,
+            TargetPrice = currentSma + atr[^1] * _config.AtrTargetMultiplier,
             Confidence = Math.Min(1.0m, pullback / _config.MaxPullbackFromMa),
             Details = $"20MA Pullback: {pullback:P1}, SMA: {currentSma:F2}",
             IsActive = true

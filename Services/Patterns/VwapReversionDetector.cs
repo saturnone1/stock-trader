@@ -35,7 +35,7 @@ public class VwapReversionDetector : IPatternDetector
         if (deviation >= -_config.MaxDeviationPercent)
             return Task.FromResult<PatternSignal?>(null);
 
-        var bouncing = curr.Close > curr.Low + (curr.High - curr.Low) * 0.3m;
+        var bouncing = curr.Close > curr.Low + (curr.High - curr.Low) * _config.MinBounceFromLowPercent;
         if (!bouncing) return Task.FromResult<PatternSignal?>(null);
 
         var signal = new PatternSignal

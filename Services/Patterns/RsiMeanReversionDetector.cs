@@ -34,7 +34,7 @@ public class RsiMeanReversionDetector : IPatternDetector
             return Task.FromResult<PatternSignal?>(null);
 
         var prevBar = bars[^2];
-        var volumeIncrease = curr.Volume > prevBar.Volume * 1.2m;
+        var volumeIncrease = curr.Volume > prevBar.Volume * _config.MinVolumeIncreaseMultiplier;
         if (!volumeIncrease) return Task.FromResult<PatternSignal?>(null);
 
         var atr = _indicators.ATR(bars);
@@ -44,8 +44,8 @@ public class RsiMeanReversionDetector : IPatternDetector
             PatternType = PatternType.RsiMeanReversion,
             DetectedAt = DateTime.UtcNow,
             EntryPrice = curr.Close,
-            StopLossPrice = curr.Close - atr[^1] * 1.5m,
-            TargetPrice = curr.Close + atr[^1] * 2m,
+            StopLossPrice = curr.Close - atr[^1] * _config.AtrStopMultiplier,
+            TargetPrice = curr.Close + atr[^1] * _config.AtrTargetMultiplier,
             Confidence = Math.Min(1.0m, (_config.OversoldThreshold - currentRsi) / 30m),
             Details = $"RSI: {currentRsi:F1}, Volume increase: {(decimal)curr.Volume / prevBar.Volume:F1}x",
             IsActive = true

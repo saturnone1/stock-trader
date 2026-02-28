@@ -40,20 +40,25 @@ public class BreakoutConfig
 {
     public int LookbackDays { get; set; } = 252;
     public decimal MinVolumeMultiplier { get; set; } = 1.5m;
-    // 0.5% margin: current close must exceed 52W high by at least 0.5% to confirm breakout
     public decimal BreakoutMarginPercent { get; set; } = 0.005m;
+    public decimal AtrStopMultiplier { get; set; } = 2.0m;
+    public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
 
 public class VwapReversionConfig
 {
     public decimal MaxDeviationPercent { get; set; } = 0.02m;
     public decimal MinBouncePercent { get; set; } = 0.003m;
+    public decimal MinBounceFromLowPercent { get; set; } = 0.3m;
 }
 
 public class RsiMeanReversionConfig
 {
     public int OversoldThreshold { get; set; } = 30;
     public int Period { get; set; } = 14;
+    public decimal MinVolumeIncreaseMultiplier { get; set; } = 1.2m;
+    public decimal AtrStopMultiplier { get; set; } = 1.5m;
+    public decimal AtrTargetMultiplier { get; set; } = 2.0m;
 }
 
 public class TrendPullbackConfig
@@ -61,6 +66,8 @@ public class TrendPullbackConfig
     public int MaPeriod { get; set; } = 20;
     public decimal MaxPullbackFromMa { get; set; } = 0.02m;
     public int TrendConfirmationDays { get; set; } = 10;
+    public decimal AtrStopMultiplier { get; set; } = 2.0m;
+    public decimal AtrTargetMultiplier { get; set; } = 2.0m;
 }
 
 public class OrbConfig
@@ -73,6 +80,9 @@ public class VolumeSpikeConfig
 {
     public decimal VolumeMultiplier { get; set; } = 2.0m;
     public int ContinuationBars { get; set; } = 3;
+    public int VolumeAvgPeriod { get; set; } = 20;
+    public decimal AtrStopMultiplier { get; set; } = 2.0m;
+    public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
 
 public class EarningsDriftConfig
@@ -91,6 +101,8 @@ public class VolatilityExpansionConfig
 {
     public int BollingerPeriod { get; set; } = 20;
     public decimal StdDevMultiplier { get; set; } = 2.0m;
+    public decimal AtrStopMultiplier { get; set; } = 2.0m;
+    public decimal AtrTargetMultiplier { get; set; } = 2.0m;
 }
 
 public class MomentumReversalConfig
@@ -101,6 +113,9 @@ public class MomentumReversalConfig
     public int RsiPeriod { get; set; } = 14;
     public int RsiOversold { get; set; } = 30;
     public int RsiOverbought { get; set; } = 70;
+    public int RsiMomentumMin { get; set; } = 50;
+    public decimal AtrStopMultiplier { get; set; } = 2.0m;
+    public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
 
 public class MultiTimeframeTrendConfig
@@ -109,6 +124,9 @@ public class MultiTimeframeTrendConfig
     public int ShortEntryMaPeriod { get; set; } = 20;
     public decimal MaxPullbackPercent { get; set; } = 0.03m;
     public int TrendConfirmationBars { get; set; } = 5;
+    public decimal MaxDistanceAboveShortMa { get; set; } = 0.005m;
+    public decimal AtrStopMultiplier { get; set; } = 1.5m;
+    public decimal AtrTargetMultiplier { get; set; } = 3.0m;
 }
 
 public class MeanReversionChannelConfig
@@ -118,6 +136,7 @@ public class MeanReversionChannelConfig
     public decimal AtrMultiplier { get; set; } = 1.5m;
     public int RsiPeriod { get; set; } = 14;
     public int RsiOversold { get; set; } = 35;
+    public int RecentLowLookbackBars { get; set; } = 5;
 }
 
 /// <summary>

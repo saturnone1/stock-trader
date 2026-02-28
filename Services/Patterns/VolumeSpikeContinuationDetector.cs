@@ -22,10 +22,10 @@ public class VolumeSpikeContinuationDetector : IPatternDetector
         MarketRegime regime, CancellationToken ct = default)
     {
         // TODO: Phase 2 implementation
-        if (bars.Length < 20) return Task.FromResult<PatternSignal?>(null);
+        if (bars.Length < _config.VolumeAvgPeriod + 1) return Task.FromResult<PatternSignal?>(null);
         if (!regime.SpyAbove200Ma) return Task.FromResult<PatternSignal?>(null);
 
-        var avgVolume = bars[^20..^1].Average(b => (decimal)b.Volume);
+        var avgVolume = bars[^(_config.VolumeAvgPeriod + 1)..^1].Average(b => (decimal)b.Volume);
         var curr = bars[^1];
         var volumeRatio = curr.Volume / avgVolume;
 
@@ -47,8 +47,8 @@ public class VolumeSpikeContinuationDetector : IPatternDetector
             PatternType = PatternType.VolumeSpikeContinuation,
             DetectedAt = DateTime.UtcNow,
             EntryPrice = curr.Close,
-            StopLossPrice = curr.Close - atr[^1] * 2m,
-            TargetPrice = curr.Close + atr[^1] * 3m,
+            StopLossPrice = curr.Close - atr[^1] * _config.AtrStopMultiplier,
+            TargetPrice = curr.Close + atr[^1] * _config.AtrTargetMultiplier,
             Confidence = Math.Min(1.0m, volumeRatio / 5m),
             Details = $"Volume: {volumeRatio:F1}x avg, {continuationCount} bullish bars",
             IsActive = true
