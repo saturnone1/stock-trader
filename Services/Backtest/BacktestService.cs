@@ -644,7 +644,12 @@ public class BacktestService : IBacktestService
 
         // Pre-compute full ATR array for the symbol (period=14)
         // Used at entry to snapshot ATR and for trailing stop calculations
-        var atrArray = _indicators.ATR(bars.ToArray(), 14);
+        var barsArray = bars.ToArray();
+        var atrArray = _indicators.ATR(barsArray, 14);
+
+        // Pre-compute SMA200 for regime-based strategies (Tqqq200Sma dynamic exit)
+        var closesArray = barsArray.Select(b => b.Close).ToArray();
+        var sma200Array = _indicators.SMA(closesArray, 200);
 
         var ep = exitParams ?? ExitParams.Default;
 
@@ -702,7 +707,9 @@ public class BacktestService : IBacktestService
                 }
 
                 // 4. Partial profit at 2R: close 50%, keep rest trailing
-                if (ep.EnablePartialProfit && !openPosition.PartialProfitTaken)
+                //    Tqqq200Sma는 부분 익절 비활성 (SMA200 이탈까지 전량 보유하는 레짐 전략)
+                if (ep.EnablePartialProfit && !openPosition.PartialProfitTaken
+                    && openPosition.PatternType != PatternType.Tqqq200Sma)
                 {
                     var partialProfitTarget = openPosition.EntryPrice
                         + openPosition.RiskDistance * ep.PartialProfitRMultiple;
@@ -738,7 +745,17 @@ public class BacktestService : IBacktestService
                     }
                 }
 
-                // 5. Check exits (stop, target, time-based) — evaluated after updates
+                // 5. Regime-based dynamic exit (Tqqq200Sma: SMA200 trailing stop)
+                //    SMA200이 상승하면 손절도 따라 올라감 → 원본 전략의 "SMA200 이탈 시 전량 매도" 구현
+                if (openPosition.PatternType == PatternType.Tqqq200Sma
+                    && sma200Array[i] > 0)
+                {
+                    var dynamicSmaStop = sma200Array[i] * 0.99m; // SMA200 -1%
+                    if (dynamicSmaStop > openPosition.StopLoss)
+                        openPosition.StopLoss = dynamicSmaStop;
+                }
+
+                // 6. Check exits (stop, target, time-based) — evaluated after updates
                 decimal exitPrice = 0;
                 string exitReason = "";
 
@@ -746,17 +763,23 @@ public class BacktestService : IBacktestService
                 {
                     // Gap-through protection: exit at stop, not lower
                     exitPrice = openPosition.StopLoss;
-                    exitReason = openPosition.BreakevenApplied || openPosition.TrailingStopActivated
-                        ? "트레일링 손절"
-                        : "손절";
+                    exitReason = openPosition.PatternType == PatternType.Tqqq200Sma
+                        ? "SMA200 이탈"
+                        : openPosition.BreakevenApplied || openPosition.TrailingStopActivated
+                            ? "트레일링 손절"
+                            : "손절";
                 }
-                else if (currentBar.High >= openPosition.Target)
+                else if (openPosition.PatternType != PatternType.Tqqq200Sma
+                         && currentBar.High >= openPosition.Target)
                 {
+                    // Tqqq200Sma는 목표가 청산 안 함 (트레일링 스탑에 위임)
                     exitPrice = openPosition.Target;
                     exitReason = "목표 도달";
                 }
-                else if (barsSinceEntry >= ep.MaxHoldingBars)
+                else if (openPosition.PatternType != PatternType.Tqqq200Sma
+                         && barsSinceEntry >= ep.MaxHoldingBars)
                 {
+                    // Tqqq200Sma는 시간 청산 안 함 (수개월 보유 전략)
                     exitPrice = currentBar.Close;
                     exitReason = $"시간 청산({ep.MaxHoldingBars}봉)";
                 }
