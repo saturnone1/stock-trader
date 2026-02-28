@@ -46,8 +46,8 @@ public class BreakoutDetector : IPatternDetector
 
         var atr = _indicators.ATR(bars);
         var currentAtr = atr[^1];
-        var stopLoss = curr.Close - currentAtr * 2;
-        var target = curr.Close + currentAtr * 3;
+        var stopLoss = curr.Close - currentAtr * _config.AtrStopMultiplier;
+        var target = curr.Close + currentAtr * _config.AtrTargetMultiplier;
 
         var signal = new PatternSignal
         {

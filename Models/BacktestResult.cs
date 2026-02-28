@@ -18,19 +18,27 @@ public class PatternParameterOverrides
     public int? Breakout_LookbackDays { get; set; }
     public decimal? Breakout_MinVolumeMultiplier { get; set; }
     public decimal? Breakout_BreakoutMarginPercent { get; set; }
+    public decimal? Breakout_AtrStopMultiplier { get; set; }
+    public decimal? Breakout_AtrTargetMultiplier { get; set; }
 
     // VwapReversion
     public decimal? Vwap_MaxDeviationPercent { get; set; }
     public decimal? Vwap_MinBouncePercent { get; set; }
+    public decimal? Vwap_MinBounceFromLowPercent { get; set; }
 
     // RsiMeanReversion
     public int? Rsi_OversoldThreshold { get; set; }
     public int? Rsi_Period { get; set; }
+    public decimal? Rsi_MinVolumeIncreaseMultiplier { get; set; }
+    public decimal? Rsi_AtrStopMultiplier { get; set; }
+    public decimal? Rsi_AtrTargetMultiplier { get; set; }
 
     // TrendPullback
     public int? Trend_MaPeriod { get; set; }
     public decimal? Trend_MaxPullbackFromMa { get; set; }
     public int? Trend_TrendConfirmationDays { get; set; }
+    public decimal? Trend_AtrStopMultiplier { get; set; }
+    public decimal? Trend_AtrTargetMultiplier { get; set; }
 
     // OpeningRangeBreakout
     public int? Orb_RangeMinutes { get; set; }
@@ -39,6 +47,9 @@ public class PatternParameterOverrides
     // VolumeSpikeContinuation
     public decimal? VolSpike_VolumeMultiplier { get; set; }
     public int? VolSpike_ContinuationBars { get; set; }
+    public int? VolSpike_VolumeAvgPeriod { get; set; }
+    public decimal? VolSpike_AtrStopMultiplier { get; set; }
+    public decimal? VolSpike_AtrTargetMultiplier { get; set; }
 
     // EarningsDrift
     public int? Earnings_DriftDays { get; set; }
@@ -51,6 +62,8 @@ public class PatternParameterOverrides
     // VolatilityExpansion
     public int? Vola_BollingerPeriod { get; set; }
     public decimal? Vola_StdDevMultiplier { get; set; }
+    public decimal? Vola_AtrStopMultiplier { get; set; }
+    public decimal? Vola_AtrTargetMultiplier { get; set; }
 
     // MomentumReversal
     public int? Mom_FastEmaPeriod { get; set; }
@@ -59,12 +72,18 @@ public class PatternParameterOverrides
     public int? Mom_RsiPeriod { get; set; }
     public int? Mom_RsiOversold { get; set; }
     public int? Mom_RsiOverbought { get; set; }
+    public int? Mom_RsiMomentumMin { get; set; }
+    public decimal? Mom_AtrStopMultiplier { get; set; }
+    public decimal? Mom_AtrTargetMultiplier { get; set; }
 
     // MultiTimeframeTrend
     public int? Mtf_LongTrendMaPeriod { get; set; }
     public int? Mtf_ShortEntryMaPeriod { get; set; }
     public decimal? Mtf_MaxPullbackPercent { get; set; }
     public int? Mtf_TrendConfirmationBars { get; set; }
+    public decimal? Mtf_MaxDistanceAboveShortMa { get; set; }
+    public decimal? Mtf_AtrStopMultiplier { get; set; }
+    public decimal? Mtf_AtrTargetMultiplier { get; set; }
 
     // MeanReversionChannel
     public int? Chan_EmaPeriod { get; set; }
@@ -72,6 +91,7 @@ public class PatternParameterOverrides
     public decimal? Chan_AtrMultiplier { get; set; }
     public int? Chan_RsiPeriod { get; set; }
     public int? Chan_RsiOversold { get; set; }
+    public int? Chan_RecentLowLookbackBars { get; set; }
 
     // Rsi2Bollinger
     public int? Rsi2Bb_RsiPeriod { get; set; }

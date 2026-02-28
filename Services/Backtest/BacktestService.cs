@@ -56,23 +56,31 @@ public class BacktestService : IBacktestService
             {
                 LookbackDays          = overrides.Breakout_LookbackDays          ?? _basePatternSettings.Breakout.LookbackDays,
                 MinVolumeMultiplier   = overrides.Breakout_MinVolumeMultiplier   ?? _basePatternSettings.Breakout.MinVolumeMultiplier,
-                BreakoutMarginPercent = overrides.Breakout_BreakoutMarginPercent ?? _basePatternSettings.Breakout.BreakoutMarginPercent
+                BreakoutMarginPercent = overrides.Breakout_BreakoutMarginPercent ?? _basePatternSettings.Breakout.BreakoutMarginPercent,
+                AtrStopMultiplier     = overrides.Breakout_AtrStopMultiplier     ?? _basePatternSettings.Breakout.AtrStopMultiplier,
+                AtrTargetMultiplier   = overrides.Breakout_AtrTargetMultiplier   ?? _basePatternSettings.Breakout.AtrTargetMultiplier
             },
             VwapReversion = new VwapReversionConfig
             {
-                MaxDeviationPercent = overrides.Vwap_MaxDeviationPercent ?? _basePatternSettings.VwapReversion.MaxDeviationPercent,
-                MinBouncePercent    = overrides.Vwap_MinBouncePercent    ?? _basePatternSettings.VwapReversion.MinBouncePercent
+                MaxDeviationPercent    = overrides.Vwap_MaxDeviationPercent    ?? _basePatternSettings.VwapReversion.MaxDeviationPercent,
+                MinBouncePercent       = overrides.Vwap_MinBouncePercent       ?? _basePatternSettings.VwapReversion.MinBouncePercent,
+                MinBounceFromLowPercent = overrides.Vwap_MinBounceFromLowPercent ?? _basePatternSettings.VwapReversion.MinBounceFromLowPercent
             },
             RsiMeanReversion = new RsiMeanReversionConfig
             {
-                OversoldThreshold = overrides.Rsi_OversoldThreshold ?? _basePatternSettings.RsiMeanReversion.OversoldThreshold,
-                Period            = overrides.Rsi_Period             ?? _basePatternSettings.RsiMeanReversion.Period
+                OversoldThreshold           = overrides.Rsi_OversoldThreshold           ?? _basePatternSettings.RsiMeanReversion.OversoldThreshold,
+                Period                      = overrides.Rsi_Period                       ?? _basePatternSettings.RsiMeanReversion.Period,
+                MinVolumeIncreaseMultiplier = overrides.Rsi_MinVolumeIncreaseMultiplier ?? _basePatternSettings.RsiMeanReversion.MinVolumeIncreaseMultiplier,
+                AtrStopMultiplier           = overrides.Rsi_AtrStopMultiplier           ?? _basePatternSettings.RsiMeanReversion.AtrStopMultiplier,
+                AtrTargetMultiplier         = overrides.Rsi_AtrTargetMultiplier         ?? _basePatternSettings.RsiMeanReversion.AtrTargetMultiplier
             },
             TrendPullback = new TrendPullbackConfig
             {
                 MaPeriod              = overrides.Trend_MaPeriod              ?? _basePatternSettings.TrendPullback.MaPeriod,
                 MaxPullbackFromMa     = overrides.Trend_MaxPullbackFromMa     ?? _basePatternSettings.TrendPullback.MaxPullbackFromMa,
-                TrendConfirmationDays = overrides.Trend_TrendConfirmationDays ?? _basePatternSettings.TrendPullback.TrendConfirmationDays
+                TrendConfirmationDays = overrides.Trend_TrendConfirmationDays ?? _basePatternSettings.TrendPullback.TrendConfirmationDays,
+                AtrStopMultiplier     = overrides.Trend_AtrStopMultiplier     ?? _basePatternSettings.TrendPullback.AtrStopMultiplier,
+                AtrTargetMultiplier   = overrides.Trend_AtrTargetMultiplier   ?? _basePatternSettings.TrendPullback.AtrTargetMultiplier
             },
             OpeningRangeBreakout = new OrbConfig
             {
@@ -81,8 +89,11 @@ public class BacktestService : IBacktestService
             },
             VolumeSpikeContinuation = new VolumeSpikeConfig
             {
-                VolumeMultiplier = overrides.VolSpike_VolumeMultiplier ?? _basePatternSettings.VolumeSpikeContinuation.VolumeMultiplier,
-                ContinuationBars = overrides.VolSpike_ContinuationBars ?? _basePatternSettings.VolumeSpikeContinuation.ContinuationBars
+                VolumeMultiplier  = overrides.VolSpike_VolumeMultiplier  ?? _basePatternSettings.VolumeSpikeContinuation.VolumeMultiplier,
+                ContinuationBars  = overrides.VolSpike_ContinuationBars  ?? _basePatternSettings.VolumeSpikeContinuation.ContinuationBars,
+                VolumeAvgPeriod   = overrides.VolSpike_VolumeAvgPeriod   ?? _basePatternSettings.VolumeSpikeContinuation.VolumeAvgPeriod,
+                AtrStopMultiplier = overrides.VolSpike_AtrStopMultiplier ?? _basePatternSettings.VolumeSpikeContinuation.AtrStopMultiplier,
+                AtrTargetMultiplier = overrides.VolSpike_AtrTargetMultiplier ?? _basePatternSettings.VolumeSpikeContinuation.AtrTargetMultiplier
             },
             EarningsDrift = new EarningsDriftConfig
             {
@@ -96,32 +107,41 @@ public class BacktestService : IBacktestService
             },
             VolatilityExpansion = new VolatilityExpansionConfig
             {
-                BollingerPeriod  = overrides.Vola_BollingerPeriod  ?? _basePatternSettings.VolatilityExpansion.BollingerPeriod,
-                StdDevMultiplier = overrides.Vola_StdDevMultiplier ?? _basePatternSettings.VolatilityExpansion.StdDevMultiplier
+                BollingerPeriod    = overrides.Vola_BollingerPeriod    ?? _basePatternSettings.VolatilityExpansion.BollingerPeriod,
+                StdDevMultiplier   = overrides.Vola_StdDevMultiplier   ?? _basePatternSettings.VolatilityExpansion.StdDevMultiplier,
+                AtrStopMultiplier  = overrides.Vola_AtrStopMultiplier  ?? _basePatternSettings.VolatilityExpansion.AtrStopMultiplier,
+                AtrTargetMultiplier = overrides.Vola_AtrTargetMultiplier ?? _basePatternSettings.VolatilityExpansion.AtrTargetMultiplier
             },
             MomentumReversal = new MomentumReversalConfig
             {
-                FastEmaPeriod    = overrides.Mom_FastEmaPeriod    ?? _basePatternSettings.MomentumReversal.FastEmaPeriod,
-                SlowEmaPeriod    = overrides.Mom_SlowEmaPeriod    ?? _basePatternSettings.MomentumReversal.SlowEmaPeriod,
-                MacdSignalPeriod = overrides.Mom_MacdSignalPeriod ?? _basePatternSettings.MomentumReversal.MacdSignalPeriod,
-                RsiPeriod        = overrides.Mom_RsiPeriod        ?? _basePatternSettings.MomentumReversal.RsiPeriod,
-                RsiOversold      = overrides.Mom_RsiOversold      ?? _basePatternSettings.MomentumReversal.RsiOversold,
-                RsiOverbought    = overrides.Mom_RsiOverbought    ?? _basePatternSettings.MomentumReversal.RsiOverbought
+                FastEmaPeriod      = overrides.Mom_FastEmaPeriod      ?? _basePatternSettings.MomentumReversal.FastEmaPeriod,
+                SlowEmaPeriod      = overrides.Mom_SlowEmaPeriod      ?? _basePatternSettings.MomentumReversal.SlowEmaPeriod,
+                MacdSignalPeriod   = overrides.Mom_MacdSignalPeriod   ?? _basePatternSettings.MomentumReversal.MacdSignalPeriod,
+                RsiPeriod          = overrides.Mom_RsiPeriod          ?? _basePatternSettings.MomentumReversal.RsiPeriod,
+                RsiOversold        = overrides.Mom_RsiOversold        ?? _basePatternSettings.MomentumReversal.RsiOversold,
+                RsiOverbought      = overrides.Mom_RsiOverbought      ?? _basePatternSettings.MomentumReversal.RsiOverbought,
+                RsiMomentumMin     = overrides.Mom_RsiMomentumMin     ?? _basePatternSettings.MomentumReversal.RsiMomentumMin,
+                AtrStopMultiplier  = overrides.Mom_AtrStopMultiplier  ?? _basePatternSettings.MomentumReversal.AtrStopMultiplier,
+                AtrTargetMultiplier = overrides.Mom_AtrTargetMultiplier ?? _basePatternSettings.MomentumReversal.AtrTargetMultiplier
             },
             MultiTimeframeTrend = new MultiTimeframeTrendConfig
             {
-                LongTrendMaPeriod     = overrides.Mtf_LongTrendMaPeriod     ?? _basePatternSettings.MultiTimeframeTrend.LongTrendMaPeriod,
-                ShortEntryMaPeriod    = overrides.Mtf_ShortEntryMaPeriod    ?? _basePatternSettings.MultiTimeframeTrend.ShortEntryMaPeriod,
-                MaxPullbackPercent    = overrides.Mtf_MaxPullbackPercent    ?? _basePatternSettings.MultiTimeframeTrend.MaxPullbackPercent,
-                TrendConfirmationBars = overrides.Mtf_TrendConfirmationBars ?? _basePatternSettings.MultiTimeframeTrend.TrendConfirmationBars
+                LongTrendMaPeriod       = overrides.Mtf_LongTrendMaPeriod       ?? _basePatternSettings.MultiTimeframeTrend.LongTrendMaPeriod,
+                ShortEntryMaPeriod      = overrides.Mtf_ShortEntryMaPeriod      ?? _basePatternSettings.MultiTimeframeTrend.ShortEntryMaPeriod,
+                MaxPullbackPercent      = overrides.Mtf_MaxPullbackPercent      ?? _basePatternSettings.MultiTimeframeTrend.MaxPullbackPercent,
+                TrendConfirmationBars   = overrides.Mtf_TrendConfirmationBars   ?? _basePatternSettings.MultiTimeframeTrend.TrendConfirmationBars,
+                MaxDistanceAboveShortMa = overrides.Mtf_MaxDistanceAboveShortMa ?? _basePatternSettings.MultiTimeframeTrend.MaxDistanceAboveShortMa,
+                AtrStopMultiplier       = overrides.Mtf_AtrStopMultiplier       ?? _basePatternSettings.MultiTimeframeTrend.AtrStopMultiplier,
+                AtrTargetMultiplier     = overrides.Mtf_AtrTargetMultiplier     ?? _basePatternSettings.MultiTimeframeTrend.AtrTargetMultiplier
             },
             MeanReversionChannel = new MeanReversionChannelConfig
             {
-                EmaPeriod     = overrides.Chan_EmaPeriod     ?? _basePatternSettings.MeanReversionChannel.EmaPeriod,
-                AtrPeriod     = overrides.Chan_AtrPeriod     ?? _basePatternSettings.MeanReversionChannel.AtrPeriod,
-                AtrMultiplier = overrides.Chan_AtrMultiplier ?? _basePatternSettings.MeanReversionChannel.AtrMultiplier,
-                RsiPeriod     = overrides.Chan_RsiPeriod     ?? _basePatternSettings.MeanReversionChannel.RsiPeriod,
-                RsiOversold   = overrides.Chan_RsiOversold   ?? _basePatternSettings.MeanReversionChannel.RsiOversold
+                EmaPeriod              = overrides.Chan_EmaPeriod              ?? _basePatternSettings.MeanReversionChannel.EmaPeriod,
+                AtrPeriod              = overrides.Chan_AtrPeriod              ?? _basePatternSettings.MeanReversionChannel.AtrPeriod,
+                AtrMultiplier          = overrides.Chan_AtrMultiplier          ?? _basePatternSettings.MeanReversionChannel.AtrMultiplier,
+                RsiPeriod              = overrides.Chan_RsiPeriod              ?? _basePatternSettings.MeanReversionChannel.RsiPeriod,
+                RsiOversold            = overrides.Chan_RsiOversold            ?? _basePatternSettings.MeanReversionChannel.RsiOversold,
+                RecentLowLookbackBars  = overrides.Chan_RecentLowLookbackBars ?? _basePatternSettings.MeanReversionChannel.RecentLowLookbackBars
             },
             Rsi2Bollinger = new Rsi2BollingerConfig
             {

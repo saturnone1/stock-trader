@@ -394,7 +394,19 @@
                                     <MudNumericField @bind-Value="_p.Breakout_BreakoutMarginPercent" Label="돌파 마진 비율"
                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
                                                      Format="P3" Step="0.0005m" Min="0m" Max="0.05m"
-                                                     HelperText="52주 고가 초과 최소 마진 (기본 0.1%)" />
+                                                     HelperText="52주 고가 초과 최소 마진 (기본 0.5%)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Breakout_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="진입가 - ATR × N (기본 2.0)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Breakout_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="10.0m"
+                                                     HelperText="진입가 + ATR × N (기본 3.0)" />
                                 </MudItem>
                             </MudGrid>
                         </ChildContent>
@@ -426,6 +438,12 @@
                                                      Format="P3" Step="0.001m" Min="0.001m" Max="0.05m"
                                                      HelperText="저가 대비 반등 최소 비율 (기본 0.3%)" />
                                 </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Vwap_MinBounceFromLowPercent" Label="저가 대비 반등 비율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F2" Step="0.05m" Min="0.1m" Max="0.9m"
+                                                     HelperText="(고가-저가) 대비 반등 최소 비율 (기본 0.3)" />
+                                </MudItem>
                             </MudGrid>
                         </ChildContent>
                     </MudExpansionPanel>
@@ -455,6 +473,24 @@
                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
                                                      Step="1" Min="10" Max="50"
                                                      HelperText="RSI 과매도 기준선 (기본 30)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Rsi_MinVolumeIncreaseMultiplier" Label="최소 거래량 증가 배율"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.1m" Min="0.5m" Max="5.0m"
+                                                     HelperText="전일 대비 거래량 증가 최소 배율 (기본 1.2)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Rsi_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="진입가 - ATR × N (기본 1.5)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Rsi_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="10.0m"
+                                                     HelperText="진입가 + ATR × N (기본 2.0)" />
                                 </MudItem>
                             </MudGrid>
                         </ChildContent>
@@ -491,6 +527,18 @@
                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
                                                      Step="1" Min="3" Max="30"
                                                      HelperText="상승추세 확인에 필요한 연속 일수 (기본 10일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Trend_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="진입가 - ATR × N (기본 2.0)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Trend_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="10.0m"
+                                                     HelperText="진입가 + ATR × N (기본 2.0)" />
                                 </MudItem>
                             </MudGrid>
                         </ChildContent>
@@ -551,6 +599,24 @@
                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
                                                      Step="1" Min="1" Max="20"
                                                      HelperText="스파이크 후 지속 확인 봉 수 (기본 3봉)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.VolSpike_VolumeAvgPeriod" Label="거래량 평균 기간"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="5" Max="100"
+                                                     HelperText="거래량 평균 계산 기간 (기본 20일)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.VolSpike_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="진입가 - ATR × N (기본 2.0)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.VolSpike_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="10.0m"
+                                                     HelperText="진입가 + ATR × N (기본 3.0)" />
                                 </MudItem>
                             </MudGrid>
                         </ChildContent>
@@ -641,6 +707,18 @@
                                                      Format="F1" Step="0.5m" Min="1.0m" Max="5.0m"
                                                      HelperText="볼린저 밴드 폭 배수 (기본 2.0)" />
                                 </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Vola_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="BB Middle과 ATR 손절 중 넓은 쪽 사용 (기본 2.0)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="_p.Vola_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="10.0m"
+                                                     HelperText="구조적 목표가와 ATR 목표 중 높은 쪽 사용 (기본 2.0)" />
+                                </MudItem>
                             </MudGrid>
                         </ChildContent>
                     </MudExpansionPanel>
@@ -695,6 +773,24 @@
                                                      Step="1" Min="50" Max="90"
                                                      HelperText="모멘텀 진입 RSI 과매수 상한 (기본 70)" />
                                 </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_RsiMomentumMin" Label="RSI 모멘텀 하한"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="5" Min="30" Max="60"
+                                                     HelperText="모멘텀 진입 RSI 최소값 (기본 50)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="진입가 - ATR × N (기본 2.0)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mom_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="10.0m"
+                                                     HelperText="진입가 + ATR × N (기본 3.0)" />
+                                </MudItem>
                             </MudGrid>
                         </ChildContent>
                     </MudExpansionPanel>
@@ -736,6 +832,24 @@
                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
                                                      Step="1" Min="2" Max="20"
                                                      HelperText="추세 확인에 필요한 연속 봉 수 (기본 5봉)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mtf_MaxDistanceAboveShortMa" Label="단기MA 위 최대거리"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="P2" Step="0.001m" Min="0.001m" Max="0.05m"
+                                                     HelperText="풀백 진입 시 단기MA 위 최대 허용 거리 (기본 0.5%)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mtf_AtrStopMultiplier" Label="ATR 손절 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="0.5m" Max="5.0m"
+                                                     HelperText="단기MA와 ATR 손절 중 넓은 쪽 사용 (기본 1.5)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Mtf_AtrTargetMultiplier" Label="ATR 목표 배수"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Format="F1" Step="0.5m" Min="1.0m" Max="10.0m"
+                                                     HelperText="진입가 + ATR × N (기본 3.0)" />
                                 </MudItem>
                             </MudGrid>
                         </ChildContent>
@@ -784,6 +898,12 @@
                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
                                                      Step="1" Min="10" Max="50"
                                                      HelperText="채널 하단 진입 RSI 조건 (기본 35)" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudNumericField @bind-Value="_p.Chan_RecentLowLookbackBars" Label="최근 저가 룩백"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Step="1" Min="3" Max="20"
+                                                     HelperText="손절 배치용 최근 저가 계산 기간 (기본 5봉)" />
                                 </MudItem>
                             </MudGrid>
                         </ChildContent>
@@ -1466,20 +1586,28 @@ else if (!_isRunning)
         // Breakout
         public int Breakout_LookbackDays { get; set; } = 252;
         public decimal Breakout_MinVolumeMultiplier { get; set; } = 1.5m;
-        public decimal Breakout_BreakoutMarginPercent { get; set; } = 0.001m;
+        public decimal Breakout_BreakoutMarginPercent { get; set; } = 0.005m;
+        public decimal Breakout_AtrStopMultiplier { get; set; } = 2.0m;
+        public decimal Breakout_AtrTargetMultiplier { get; set; } = 3.0m;
 
         // VwapReversion
         public decimal Vwap_MaxDeviationPercent { get; set; } = 0.02m;
         public decimal Vwap_MinBouncePercent { get; set; } = 0.003m;
+        public decimal Vwap_MinBounceFromLowPercent { get; set; } = 0.3m;
 
         // RsiMeanReversion
         public int Rsi_OversoldThreshold { get; set; } = 30;
         public int Rsi_Period { get; set; } = 14;
+        public decimal Rsi_MinVolumeIncreaseMultiplier { get; set; } = 1.2m;
+        public decimal Rsi_AtrStopMultiplier { get; set; } = 1.5m;
+        public decimal Rsi_AtrTargetMultiplier { get; set; } = 2.0m;
 
         // TrendPullback
         public int Trend_MaPeriod { get; set; } = 20;
         public decimal Trend_MaxPullbackFromMa { get; set; } = 0.02m;
         public int Trend_TrendConfirmationDays { get; set; } = 10;
+        public decimal Trend_AtrStopMultiplier { get; set; } = 2.0m;
+        public decimal Trend_AtrTargetMultiplier { get; set; } = 2.0m;
 
         // OpeningRangeBreakout
         public int Orb_RangeMinutes { get; set; } = 15;
@@ -1488,6 +1616,9 @@ else if (!_isRunning)
         // VolumeSpikeContinuation
         public decimal VolSpike_VolumeMultiplier { get; set; } = 2.0m;
         public int VolSpike_ContinuationBars { get; set; } = 3;
+        public int VolSpike_VolumeAvgPeriod { get; set; } = 20;
+        public decimal VolSpike_AtrStopMultiplier { get; set; } = 2.0m;
+        public decimal VolSpike_AtrTargetMultiplier { get; set; } = 3.0m;
 
         // EarningsDrift
         public int Earnings_DriftDays { get; set; } = 5;
@@ -1500,6 +1631,8 @@ else if (!_isRunning)
         // VolatilityExpansion
         public int Vola_BollingerPeriod { get; set; } = 20;
         public decimal Vola_StdDevMultiplier { get; set; } = 2.0m;
+        public decimal Vola_AtrStopMultiplier { get; set; } = 2.0m;
+        public decimal Vola_AtrTargetMultiplier { get; set; } = 2.0m;
 
         // MomentumReversal
         public int Mom_FastEmaPeriod { get; set; } = 12;
@@ -1508,12 +1641,18 @@ else if (!_isRunning)
         public int Mom_RsiPeriod { get; set; } = 14;
         public int Mom_RsiOversold { get; set; } = 30;
         public int Mom_RsiOverbought { get; set; } = 70;
+        public int Mom_RsiMomentumMin { get; set; } = 50;
+        public decimal Mom_AtrStopMultiplier { get; set; } = 2.0m;
+        public decimal Mom_AtrTargetMultiplier { get; set; } = 3.0m;
 
         // MultiTimeframeTrend
         public int Mtf_LongTrendMaPeriod { get; set; } = 50;
         public int Mtf_ShortEntryMaPeriod { get; set; } = 20;
         public decimal Mtf_MaxPullbackPercent { get; set; } = 0.03m;
         public int Mtf_TrendConfirmationBars { get; set; } = 5;
+        public decimal Mtf_MaxDistanceAboveShortMa { get; set; } = 0.005m;
+        public decimal Mtf_AtrStopMultiplier { get; set; } = 1.5m;
+        public decimal Mtf_AtrTargetMultiplier { get; set; } = 3.0m;
 
         // MeanReversionChannel
         public int Chan_EmaPeriod { get; set; } = 20;
@@ -1521,6 +1660,7 @@ else if (!_isRunning)
         public decimal Chan_AtrMultiplier { get; set; } = 1.5m;
         public int Chan_RsiPeriod { get; set; } = 14;
         public int Chan_RsiOversold { get; set; } = 35;
+        public int Chan_RecentLowLookbackBars { get; set; } = 5;
 
         // Rsi2Bollinger
         public int Rsi2Bb_RsiPeriod { get; set; } = 2;
@@ -1557,22 +1697,33 @@ else if (!_isRunning)
             Breakout_LookbackDays          = Breakout_LookbackDays,
             Breakout_MinVolumeMultiplier   = Breakout_MinVolumeMultiplier,
             Breakout_BreakoutMarginPercent = Breakout_BreakoutMarginPercent,
+            Breakout_AtrStopMultiplier     = Breakout_AtrStopMultiplier,
+            Breakout_AtrTargetMultiplier   = Breakout_AtrTargetMultiplier,
 
-            Vwap_MaxDeviationPercent = Vwap_MaxDeviationPercent,
-            Vwap_MinBouncePercent    = Vwap_MinBouncePercent,
+            Vwap_MaxDeviationPercent    = Vwap_MaxDeviationPercent,
+            Vwap_MinBouncePercent       = Vwap_MinBouncePercent,
+            Vwap_MinBounceFromLowPercent = Vwap_MinBounceFromLowPercent,
 
-            Rsi_OversoldThreshold = Rsi_OversoldThreshold,
-            Rsi_Period            = Rsi_Period,
+            Rsi_OversoldThreshold          = Rsi_OversoldThreshold,
+            Rsi_Period                     = Rsi_Period,
+            Rsi_MinVolumeIncreaseMultiplier = Rsi_MinVolumeIncreaseMultiplier,
+            Rsi_AtrStopMultiplier          = Rsi_AtrStopMultiplier,
+            Rsi_AtrTargetMultiplier        = Rsi_AtrTargetMultiplier,
 
             Trend_MaPeriod              = Trend_MaPeriod,
             Trend_MaxPullbackFromMa     = Trend_MaxPullbackFromMa,
             Trend_TrendConfirmationDays = Trend_TrendConfirmationDays,
+            Trend_AtrStopMultiplier     = Trend_AtrStopMultiplier,
+            Trend_AtrTargetMultiplier   = Trend_AtrTargetMultiplier,
 
             Orb_RangeMinutes    = Orb_RangeMinutes,
             Orb_MinRangePercent = Orb_MinRangePercent,
 
-            VolSpike_VolumeMultiplier = VolSpike_VolumeMultiplier,
+            VolSpike_VolumeMultiplier  = VolSpike_VolumeMultiplier,
             VolSpike_ContinuationBars = VolSpike_ContinuationBars,
+            VolSpike_VolumeAvgPeriod  = VolSpike_VolumeAvgPeriod,
+            VolSpike_AtrStopMultiplier = VolSpike_AtrStopMultiplier,
+            VolSpike_AtrTargetMultiplier = VolSpike_AtrTargetMultiplier,
 
             Earnings_DriftDays          = Earnings_DriftDays,
             Earnings_MinSurprisePercent = Earnings_MinSurprisePercent,
@@ -1580,26 +1731,35 @@ else if (!_isRunning)
             Regime_MaPeriod    = Regime_MaPeriod,
             Regime_IndexSymbol = Regime_IndexSymbol,
 
-            Vola_BollingerPeriod  = Vola_BollingerPeriod,
-            Vola_StdDevMultiplier = Vola_StdDevMultiplier,
+            Vola_BollingerPeriod    = Vola_BollingerPeriod,
+            Vola_StdDevMultiplier   = Vola_StdDevMultiplier,
+            Vola_AtrStopMultiplier  = Vola_AtrStopMultiplier,
+            Vola_AtrTargetMultiplier = Vola_AtrTargetMultiplier,
 
-            Mom_FastEmaPeriod    = Mom_FastEmaPeriod,
-            Mom_SlowEmaPeriod    = Mom_SlowEmaPeriod,
-            Mom_MacdSignalPeriod = Mom_MacdSignalPeriod,
-            Mom_RsiPeriod        = Mom_RsiPeriod,
-            Mom_RsiOversold      = Mom_RsiOversold,
-            Mom_RsiOverbought    = Mom_RsiOverbought,
+            Mom_FastEmaPeriod      = Mom_FastEmaPeriod,
+            Mom_SlowEmaPeriod      = Mom_SlowEmaPeriod,
+            Mom_MacdSignalPeriod   = Mom_MacdSignalPeriod,
+            Mom_RsiPeriod          = Mom_RsiPeriod,
+            Mom_RsiOversold        = Mom_RsiOversold,
+            Mom_RsiOverbought      = Mom_RsiOverbought,
+            Mom_RsiMomentumMin     = Mom_RsiMomentumMin,
+            Mom_AtrStopMultiplier  = Mom_AtrStopMultiplier,
+            Mom_AtrTargetMultiplier = Mom_AtrTargetMultiplier,
 
-            Mtf_LongTrendMaPeriod     = Mtf_LongTrendMaPeriod,
-            Mtf_ShortEntryMaPeriod    = Mtf_ShortEntryMaPeriod,
-            Mtf_MaxPullbackPercent    = Mtf_MaxPullbackPercent,
-            Mtf_TrendConfirmationBars = Mtf_TrendConfirmationBars,
+            Mtf_LongTrendMaPeriod       = Mtf_LongTrendMaPeriod,
+            Mtf_ShortEntryMaPeriod      = Mtf_ShortEntryMaPeriod,
+            Mtf_MaxPullbackPercent      = Mtf_MaxPullbackPercent,
+            Mtf_TrendConfirmationBars   = Mtf_TrendConfirmationBars,
+            Mtf_MaxDistanceAboveShortMa = Mtf_MaxDistanceAboveShortMa,
+            Mtf_AtrStopMultiplier       = Mtf_AtrStopMultiplier,
+            Mtf_AtrTargetMultiplier     = Mtf_AtrTargetMultiplier,
 
-            Chan_EmaPeriod    = Chan_EmaPeriod,
-            Chan_AtrPeriod    = Chan_AtrPeriod,
-            Chan_AtrMultiplier= Chan_AtrMultiplier,
-            Chan_RsiPeriod    = Chan_RsiPeriod,
-            Chan_RsiOversold  = Chan_RsiOversold,
+            Chan_EmaPeriod             = Chan_EmaPeriod,
+            Chan_AtrPeriod             = Chan_AtrPeriod,
+            Chan_AtrMultiplier         = Chan_AtrMultiplier,
+            Chan_RsiPeriod             = Chan_RsiPeriod,
+            Chan_RsiOversold           = Chan_RsiOversold,
+            Chan_RecentLowLookbackBars = Chan_RecentLowLookbackBars,
 
             Rsi2Bb_RsiPeriod        = Rsi2Bb_RsiPeriod,
             Rsi2Bb_RsiThreshold     = Rsi2Bb_RsiThreshold,

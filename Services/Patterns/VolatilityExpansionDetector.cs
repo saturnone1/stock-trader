@@ -38,14 +38,23 @@ public class VolatilityExpansionDetector : IPatternDetector
         // Guard against zero ATR (can occur with flat/illiquid bars) to prevent division by zero
         if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
 
+        // ATR 기반 스톱이 BB middle보다 넓으면 ATR 사용 (변동성 보호)
+        var atrStop = curr.Close - currentAtr * _config.AtrStopMultiplier;
+        var structureStop = middle[^1];
+        var stopLoss = Math.Min(atrStop, structureStop);
+
+        var atrTarget = curr.Close + currentAtr * _config.AtrTargetMultiplier;
+        var structureTarget = curr.Close + (curr.Close - middle[^1]);
+        var targetPrice = Math.Max(atrTarget, structureTarget);
+
         var signal = new PatternSignal
         {
             Symbol = symbol,
             PatternType = PatternType.VolatilityExpansion,
             DetectedAt = DateTime.UtcNow,
             EntryPrice = curr.Close,
-            StopLossPrice = middle[^1],
-            TargetPrice = curr.Close + (curr.Close - middle[^1]),
+            StopLossPrice = stopLoss,
+            TargetPrice = targetPrice,
             Confidence = Math.Min(1.0m, (curr.Close - upper[^1]) / currentAtr),
             Details = $"BB Upper Break, Close: {curr.Close:F2}, Upper: {upper[^1]:F2}",
             IsActive = true

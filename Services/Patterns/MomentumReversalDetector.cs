@@ -48,7 +48,7 @@ public class MomentumReversalDetector : IPatternDetector
         // Momentum mode: EMA crossover just happened + MACD positive + RSI in momentum zone
         var emaCrossUp = fastEma[prevI] <= slowEma[prevI] && fastEma[i] > slowEma[i];
         var macdPositive = histogram[i] > 0;
-        var rsiMomentum = rsi[i] > 50 && rsi[i] < _config.RsiOverbought;
+        var rsiMomentum = rsi[i] > _config.RsiMomentumMin && rsi[i] < _config.RsiOverbought;
 
         // Reversal mode: RSI oversold + MACD histogram turning positive
         var rsiOversold = rsi[i] < _config.RsiOversold;
@@ -73,8 +73,8 @@ public class MomentumReversalDetector : IPatternDetector
         var currentAtr = atr[i];
         if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
 
-        var stopLoss = curr.Close - currentAtr * 2;
-        var target = curr.Close + currentAtr * 3;
+        var stopLoss = curr.Close - currentAtr * _config.AtrStopMultiplier;
+        var target = curr.Close + currentAtr * _config.AtrTargetMultiplier;
 
         var signal = new PatternSignal
         {
