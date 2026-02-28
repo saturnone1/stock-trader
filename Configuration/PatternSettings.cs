@@ -64,10 +64,10 @@ public class RsiMeanReversionConfig
 public class TrendPullbackConfig
 {
     public int MaPeriod { get; set; } = 20;
-    public decimal MaxPullbackFromMa { get; set; } = 0.02m;
+    public decimal MaxPullbackFromMa { get; set; } = 0.025m;
     public int TrendConfirmationDays { get; set; } = 7;
-    public decimal AtrStopMultiplier { get; set; } = 2.0m;
-    public decimal AtrTargetMultiplier { get; set; } = 2.0m;
+    public decimal AtrStopMultiplier { get; set; } = 1.5m;
+    public decimal AtrTargetMultiplier { get; set; } = 4.0m;
 }
 
 public class OrbConfig
@@ -131,7 +131,7 @@ public class MultiTimeframeTrendConfig
 
 public class MeanReversionChannelConfig
 {
-    public int EmaPeriod { get; set; } = 20;
+    public int EmaPeriod { get; set; } = 25;
     public int AtrPeriod { get; set; } = 10;
     public decimal AtrMultiplier { get; set; } = 1.5m;
     public int RsiPeriod { get; set; } = 14;

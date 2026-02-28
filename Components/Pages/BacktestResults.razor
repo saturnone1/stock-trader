@@ -1966,10 +1966,10 @@ else if (!_isRunning)
 
         // TrendPullback
         public int Trend_MaPeriod { get; set; } = 20;
-        public decimal Trend_MaxPullbackFromMa { get; set; } = 0.02m;
+        public decimal Trend_MaxPullbackFromMa { get; set; } = 0.025m;
         public int Trend_TrendConfirmationDays { get; set; } = 7;
-        public decimal Trend_AtrStopMultiplier { get; set; } = 2.0m;
-        public decimal Trend_AtrTargetMultiplier { get; set; } = 2.0m;
+        public decimal Trend_AtrStopMultiplier { get; set; } = 1.5m;
+        public decimal Trend_AtrTargetMultiplier { get; set; } = 4.0m;
 
         // OpeningRangeBreakout
         public int Orb_RangeMinutes { get; set; } = 15;
@@ -2017,7 +2017,7 @@ else if (!_isRunning)
         public decimal Mtf_AtrTargetMultiplier { get; set; } = 3.0m;
 
         // MeanReversionChannel
-        public int Chan_EmaPeriod { get; set; } = 20;
+        public int Chan_EmaPeriod { get; set; } = 25;
         public int Chan_AtrPeriod { get; set; } = 10;
         public decimal Chan_AtrMultiplier { get; set; } = 1.5m;
         public int Chan_RsiPeriod { get; set; } = 14;
