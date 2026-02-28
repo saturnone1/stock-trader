@@ -56,10 +56,11 @@ public class MultiTimeframeTrendDetector : IPatternDetector
 
         var distanceFromShortMa = (curr.Close - shortMa[i]) / shortMa[i];
 
-        // Price should be near or touching short MA (within pullback threshold)
-        // Negative distance = price below short MA (deeper pullback)
-        // We want price to be between short MA and slightly below
-        if (distanceFromShortMa > 0.005m || distanceFromShortMa < -_config.MaxPullbackPercent)
+        // Pullback entry: price must be at or below short MA (not above it).
+        // Allow a tiny tolerance of 0.1% above to catch exact touches on the MA,
+        // but reject anything clearly above (that is trend-following, not pullback).
+        // Lower bound: reject if price has fallen more than MaxPullbackPercent below MA.
+        if (distanceFromShortMa > 0.001m || distanceFromShortMa < -_config.MaxPullbackPercent)
             return Task.FromResult<PatternSignal?>(null);
 
         // Bounce confirmation: current bar is bullish

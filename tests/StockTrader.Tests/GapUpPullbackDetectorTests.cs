@@ -48,15 +48,15 @@ public class GapUpPullbackDetectorTests
 
     /// <summary>
     /// 유효한 GapUp+Pullback 패턴을 만드는 헬퍼.
-    /// prev.Close=100, curr.Open=103 (3% gap), curr.High=106, curr.Close=103.5 (pullback from high)
-    /// pullbackFromHigh = (106 - 103.5) / (106 - 103) = 2.5/3 ≈ 0.833 > 0.5 → valid
+    /// prev.Close=100, curr.Open=103 (3% gap), curr.High=106, curr.Close=105 (moderate pullback)
+    /// pullbackFromHigh = (106 - 105) / (106 - 103) = 1/3 ≈ 0.333 → valid (0 &lt; 0.333 ≤ 0.5)
     /// </summary>
     private static OhlcvBar[] CreateValidBars(long volume = 600_000)
     {
         return new OhlcvBar[]
         {
             new() { Symbol = "AAPL", Open = 99m,  High = 101m, Low = 98m,  Close = 100m, Volume = 300_000 },
-            new() { Symbol = "AAPL", Open = 103m, High = 106m, Low = 102m, Close = 103.5m, Volume = volume }
+            new() { Symbol = "AAPL", Open = 103m, High = 106m, Low = 102m, Close = 105m, Volume = volume }
         };
     }
 
@@ -178,8 +178,8 @@ public class GapUpPullbackDetectorTests
     }
 
     // ────────────────────────────────────────────────────────────
-    // 풀백이 충분하지 않을 때 → null
-    // (curr.Close ≈ curr.High → 거의 pullback 없음)
+    // 풀백이 없을 때 (Close == High) → null
+    // pullbackFromHigh = 0 → 진입 기회 없음
     // ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -187,11 +187,11 @@ public class GapUpPullbackDetectorTests
     {
         var sut = CreateSut();
         // prev.Close=100, curr.Open=103 (3% gap)
-        // curr.High=106, curr.Close=105.9 → pullback from high ≈ 0.1/3 ≈ 0.033 < 0.5
+        // curr.High=106, curr.Close=106 → pullbackFromHigh = 0/3 = 0 → no pullback → null
         var bars = new OhlcvBar[]
         {
             new() { Close = 100m },
-            new() { Open = 103m, High = 106m, Low = 102m, Close = 105.9m, Volume = 600_000 }
+            new() { Open = 103m, High = 106m, Low = 102m, Close = 106m, Volume = 600_000 }
         };
 
         var result = await sut.DetectAsync("AAPL", bars, BullRegime());

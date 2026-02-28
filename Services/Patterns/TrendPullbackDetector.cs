@@ -36,7 +36,12 @@ public class TrendPullbackDetector : IPatternDetector
         var trendUp = true;
         for (int i = bars.Length - _config.TrendConfirmationDays; i < bars.Length - 1; i++)
         {
-            if (sma[i] == 0 || sma[i] <= sma[i - 1]) { trendUp = false; break; }
+            // Guard i-1 >= 0 and both SMA values must be valid (non-zero)
+            if (i - 1 < 0 || sma[i] == 0 || sma[i - 1] == 0 || sma[i] <= sma[i - 1])
+            {
+                trendUp = false;
+                break;
+            }
         }
         if (!trendUp) return Task.FromResult<PatternSignal?>(null);
 

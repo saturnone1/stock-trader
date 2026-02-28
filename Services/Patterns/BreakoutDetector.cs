@@ -24,9 +24,16 @@ public class BreakoutDetector : IPatternDetector
         if (bars.Length < _config.LookbackDays) return Task.FromResult<PatternSignal?>(null);
         if (!regime.SpyAbove200Ma) return Task.FromResult<PatternSignal?>(null);
 
-        var lookbackBars = bars[^_config.LookbackDays..];
-        var high52w = lookbackBars.Max(b => b.High);
         var curr = bars[^1];
+
+        // Exclude current bar from lookback so high52w reflects historical resistance level,
+        // not the current bar's own high (which would make the breakout condition nearly impossible).
+        var lookbackEnd = bars.Length - 1;
+        var lookbackStart = Math.Max(0, lookbackEnd - _config.LookbackDays);
+        var lookbackBars = bars[lookbackStart..lookbackEnd];
+        if (lookbackBars.Length == 0) return Task.FromResult<PatternSignal?>(null);
+
+        var high52w = lookbackBars.Max(b => b.High);
 
         var avgVolume = lookbackBars.Average(b => (decimal)b.Volume);
         var volumeRatio = curr.Volume / avgVolume;
