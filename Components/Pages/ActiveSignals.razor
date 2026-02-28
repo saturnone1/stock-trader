@@ -169,11 +169,23 @@ else
 
     private async void OnNewRecommendation(TradeRecommendation rec)
     {
-        await InvokeAsync(async () =>
+        try
         {
-            _signals = await TradeRepo.GetActiveSignalsAsync();
-            StateHasChanged();
-        });
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    _signals = await TradeRepo.GetActiveSignalsAsync();
+                    StateHasChanged();
+                }
+                catch (Exception ex)
+                {
+                    _error = $"시그널 갱신 실패: {ex.Message}";
+                    StateHasChanged();
+                }
+            });
+        }
+        catch (ObjectDisposedException) { }
     }
 
     private void ToggleStyleFilter(TradingStyle style)

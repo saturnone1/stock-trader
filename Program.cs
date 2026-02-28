@@ -80,7 +80,32 @@ using (var scope = app.Services.CreateScope())
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='TradingAccounts'";
         var tableExists = await cmd.ExecuteScalarAsync() != null;
 
-        if (tableExists)
+        if (!tableExists)
+        {
+            // 기존 DB에 TradingAccounts 테이블이 없으면 생성
+            cmd.CommandText = @"
+                CREATE TABLE TradingAccounts (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    AccountName TEXT NOT NULL DEFAULT '',
+                    BrokerType INTEGER NOT NULL DEFAULT 0,
+                    ApiKey TEXT NOT NULL DEFAULT '',
+                    ApiSecret TEXT NOT NULL DEFAULT '',
+                    Environment TEXT NOT NULL DEFAULT 'Paper',
+                    IsActive INTEGER NOT NULL DEFAULT 0,
+                    IsEnabled INTEGER NOT NULL DEFAULT 1,
+                    Notes TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    LastConnectedAt TEXT
+                )";
+            await cmd.ExecuteNonQueryAsync();
+
+            cmd.CommandText = "CREATE INDEX IX_TradingAccounts_BrokerType ON TradingAccounts (BrokerType)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_TradingAccounts_IsActive ON TradingAccounts (IsActive)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        else
         {
             // 기존 TradingAccounts 테이블에 신규 컬럼이 있으면 추가 (하위 호환성)
             cmd.CommandText = "PRAGMA table_info(TradingAccounts)";

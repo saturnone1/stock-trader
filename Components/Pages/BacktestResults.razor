@@ -1223,6 +1223,10 @@
         </MudTable>
     }
 }
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mt-4" CloseIconClicked="() => _errorMessage = null" ShowCloseIcon="true">@_errorMessage</MudAlert>
+}
 else if (!_isRunning)
 {
     <MudAlert Severity="Severity.Info">매개변수를 설정하고 "백테스트 실행" 버튼을 클릭하여 시작하세요.</MudAlert>
@@ -1248,6 +1252,7 @@ else if (!_isRunning)
     };
     private BacktestResult? _result;
     private bool _isRunning;
+    private string? _errorMessage;
 
     // ── 리스크 관리 파라미터 (백테스트 전용, appsettings.json 기본값과 일치) ──
     private decimal _riskPerTradePercent = 0.01m;         // 거래당 리스크 1%
@@ -1504,6 +1509,14 @@ else if (!_isRunning)
                 ParameterOverrides = _p.ToOverrides()
             };
             _result = await BacktestService.RunAsync(request);
+        }
+        catch (OperationCanceledException)
+        {
+            _errorMessage = "백테스트가 취소되었습니다.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"백테스트 실패: {ex.Message}";
         }
         finally
         {
