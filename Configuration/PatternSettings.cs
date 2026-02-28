@@ -38,11 +38,11 @@ public class GapUpPullbackConfig
 
 public class BreakoutConfig
 {
-    public int LookbackDays { get; set; } = 15;
+    public int LookbackDays { get; set; } = 10;
     public decimal MinVolumeMultiplier { get; set; } = 1.0m;
     public decimal BreakoutMarginPercent { get; set; } = 0.001m;
-    public decimal AtrStopMultiplier { get; set; } = 2.0m;
-    public decimal AtrTargetMultiplier { get; set; } = 3.0m;
+    public decimal AtrStopMultiplier { get; set; } = 1.5m;
+    public decimal AtrTargetMultiplier { get; set; } = 4.0m;
 }
 
 public class VwapReversionConfig
@@ -67,7 +67,7 @@ public class TrendPullbackConfig
     public decimal MaxPullbackFromMa { get; set; } = 0.025m;
     public int TrendConfirmationDays { get; set; } = 7;
     public decimal AtrStopMultiplier { get; set; } = 1.5m;
-    public decimal AtrTargetMultiplier { get; set; } = 4.0m;
+    public decimal AtrTargetMultiplier { get; set; } = 5.0m;
 }
 
 public class OrbConfig
