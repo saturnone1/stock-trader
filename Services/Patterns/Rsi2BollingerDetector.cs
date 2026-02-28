@@ -57,7 +57,8 @@ public class Rsi2BollingerDetector : IPatternDetector
 
         // RSI(2) oversold: below threshold (default 10)
         var rsi2 = _indicators.RSI(closes, _config.RsiPeriod);
-        if (rsi2[i] <= 0 || rsi2[i] >= _config.RsiThreshold)
+        // Skip if RSI warmup incomplete (index < period → RSI = 0 placeholder, not real oversold)
+        if (i < _config.RsiPeriod || rsi2[i] >= _config.RsiThreshold)
             return Task.FromResult<PatternSignal?>(null);
 
         // Price below lower Bollinger Band
@@ -82,7 +83,9 @@ public class Rsi2BollingerDetector : IPatternDetector
         // Confidence: the more oversold RSI(2) is, the higher the confidence.
         // RSI(2) range [0, threshold] → confidence [0.5, 1.0]
         // e.g. RSI(2)=0 → 1.0, RSI(2)=10 → 0.5
-        var rsiRatio = rsi2[i] / _config.RsiThreshold; // 0 = maximally oversold, 1 = at threshold
+        var rsiRatio = _config.RsiThreshold > 0
+            ? rsi2[i] / _config.RsiThreshold  // 0 = maximally oversold, 1 = at threshold
+            : 0m;
         var confidence = Math.Round(1.0m - rsiRatio * 0.5m, 2);
         confidence = Math.Max(0.5m, Math.Min(1.0m, confidence));
 

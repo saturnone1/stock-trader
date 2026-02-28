@@ -58,6 +58,10 @@ public class VolatilityBreakoutDetector : IPatternDetector
         if (prevRange <= 0)
             return Task.FromResult<PatternSignal?>(null);
 
+        // Guard: bad data feed can produce Open=0 → breakoutLevel ≈ prevRange*K (spurious signal)
+        if (curr.Open <= 0 || curr.High <= 0 || curr.Close <= 0)
+            return Task.FromResult<PatternSignal?>(null);
+
         // Breakout trigger price = today's open + previous range * K
         var breakoutLevel = curr.Open + prevRange * _config.BreakoutFactor;
 

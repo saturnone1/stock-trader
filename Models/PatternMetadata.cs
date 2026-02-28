@@ -138,6 +138,24 @@ public static class PatternMetadataMap
             "Keltner(EMA20, ATR10), RSI(14)",
             "#4CAF50"
         ),
+        [PatternType.Rsi2Bollinger] = new(
+            PatternType.Rsi2Bollinger,
+            "RSI(2) 볼린저", "RSI(2) + Bollinger Band",
+            TradingStyle.Swing, "스윙",
+            "2~5일",
+            "RSI(2) 극단 과매도 + 볼린저밴드 하단 이탈 + 200SMA 상승추세. 평균회귀 매수.",
+            "RSI(2), BB(20,2σ), SMA(200), ATR",
+            "#E91E63" // Pink
+        ),
+        [PatternType.VolatilityBreakout] = new(
+            PatternType.VolatilityBreakout,
+            "변동성 돌파", "Volatility Breakout",
+            TradingStyle.DayTrading, "단타",
+            "1~2일",
+            "래리 윌리엄스 전략. 시가 + 전일레인지×K 돌파 시 매수. 거래량 1.2배+ 확인.",
+            "PrevRange, K=0.6, Volume, ATR",
+            "#FF5722" // Deep Orange
+        ),
     };
 
     public static PatternMetadata Get(PatternType type)
