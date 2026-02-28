@@ -759,7 +759,18 @@ public class BacktestService : IBacktestService
 
             if (openPosition != null) continue;
 
-            var windowSize = Math.Min(i + 1, 260);
+            // Daily bars → 260 is enough for 200-SMA warmup.
+            // Intraday bars need more: 5-min has 78 bars/day, so 260 bars = ~3.3 days.
+            // Patterns like RSI(2)+Bollinger need 205+ bars and the SMA warmup needs actual
+            // trading-day data, so we need a larger window for intraday.
+            var maxWindow = timeFrame switch
+            {
+                TimeFrame.OneMinute     => 800,  // ~2 trading days
+                TimeFrame.FiveMinute    => 800,  // ~10 trading days
+                TimeFrame.FifteenMinute => 600,  // ~11 trading days
+                _                       => 260
+            };
+            var windowSize = Math.Min(i + 1, maxWindow);
             var windowBars = bars.Skip(i + 1 - windowSize).Take(windowSize).ToArray();
 
             foreach (var detector in detectors)
