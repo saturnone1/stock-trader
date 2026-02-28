@@ -675,6 +675,7 @@ public class BacktestService : IBacktestService
             {
                 var currentAtr = atrArray[i] > 0 ? atrArray[i] : openPosition.EntryAtr;
                 var barsSinceEntry = i - openPosition.EntryBarIndex;
+                var pep = PatternExitProfile.For(openPosition.PatternType);
 
                 // 1. Update highest high since entry (for Chandelier trailing stop)
                 if (currentBar.High > openPosition.HighestHighSinceEntry)
@@ -691,39 +692,37 @@ public class BacktestService : IBacktestService
                     }
                 }
 
-                // 3. Trailing stop (Chandelier): activate once price moves 1R in favor
-                if (ep.EnableTrailingStop)
+                // 3. Trailing stop (Chandelier): pattern-specific activation R & ATR multiplier
+                if (pep.EnableTrailingStop)
                 {
-                    var oneRTarget = openPosition.EntryPrice + openPosition.RiskDistance;
-                    if (!openPosition.TrailingStopActivated && currentBar.Close >= oneRTarget)
+                    var activationTarget = openPosition.EntryPrice
+                        + openPosition.RiskDistance * pep.TrailingActivationR;
+                    if (!openPosition.TrailingStopActivated && currentBar.Close >= activationTarget)
                         openPosition.TrailingStopActivated = true;
 
                     if (openPosition.TrailingStopActivated && currentAtr > 0)
                     {
-                        var chandelier = openPosition.HighestHighSinceEntry - currentAtr * ep.TrailingStopAtrMultiplier;
+                        var chandelier = openPosition.HighestHighSinceEntry
+                            - currentAtr * pep.TrailingStopAtrMultiplier;
                         if (chandelier > openPosition.StopLoss)
                             openPosition.StopLoss = chandelier;
                     }
                 }
 
-                // 4. Partial profit at 2R: close 50%, keep rest trailing
-                //    Tqqq200Sma는 부분 익절 비활성 (SMA200 이탈까지 전량 보유하는 레짐 전략)
-                if (ep.EnablePartialProfit && !openPosition.PartialProfitTaken
-                    && openPosition.PatternType != PatternType.Tqqq200Sma)
+                // 4. Partial profit: pattern-specific R-multiple threshold
+                if (pep.EnablePartialProfit && !openPosition.PartialProfitTaken)
                 {
                     var partialProfitTarget = openPosition.EntryPrice
-                        + openPosition.RiskDistance * ep.PartialProfitRMultiple;
+                        + openPosition.RiskDistance * pep.PartialProfitRMultiple;
                     if (currentBar.High >= partialProfitTarget && openPosition.Quantity >= 2)
                     {
                         var halfQty = openPosition.Quantity / 2;
                         var remainQty = openPosition.Quantity - halfQty;
 
-                        // Record partial exit trade
                         trades.Add(CreateTradeRecordWithQty(
                             symbol, openPosition, partialProfitTarget,
-                            currentBar.Timestamp, $"부분 익절({ep.PartialProfitRMultiple}R)", halfQty));
+                            currentBar.Timestamp, $"부분 익절({pep.PartialProfitRMultiple}R)", halfQty));
 
-                        // Update position: remaining quantity, stop → entry (lock in profit)
                         openPosition.PartialProfitTaken = true;
                         openPosition = new OpenPosition
                         {
@@ -738,7 +737,7 @@ public class BacktestService : IBacktestService
                             EntryAtr                 = openPosition.EntryAtr,
                             HighestHighSinceEntry    = openPosition.HighestHighSinceEntry,
                             TrailingStopActivated    = openPosition.TrailingStopActivated,
-                            BreakevenApplied         = true,   // definitely breakeven now
+                            BreakevenApplied         = true,
                             PartialProfitTaken       = true,
                             RiskDistance             = openPosition.RiskDistance
                         };
@@ -746,22 +745,20 @@ public class BacktestService : IBacktestService
                 }
 
                 // 5. Regime-based dynamic exit (Tqqq200Sma: SMA200 trailing stop)
-                //    SMA200이 상승하면 손절도 따라 올라감 → 원본 전략의 "SMA200 이탈 시 전량 매도" 구현
                 if (openPosition.PatternType == PatternType.Tqqq200Sma
                     && sma200Array[i] > 0)
                 {
-                    var dynamicSmaStop = sma200Array[i] * 0.99m; // SMA200 -1%
+                    var dynamicSmaStop = sma200Array[i] * 0.99m;
                     if (dynamicSmaStop > openPosition.StopLoss)
                         openPosition.StopLoss = dynamicSmaStop;
                 }
 
-                // 6. Check exits (stop, target, time-based) — evaluated after updates
+                // 6. Check exits (stop, target, time-based) — pattern profile controls each
                 decimal exitPrice = 0;
                 string exitReason = "";
 
                 if (currentBar.Low <= openPosition.StopLoss)
                 {
-                    // Gap-through protection: exit at stop, not lower
                     exitPrice = openPosition.StopLoss;
                     exitReason = openPosition.PatternType == PatternType.Tqqq200Sma
                         ? "SMA200 이탈"
@@ -769,19 +766,15 @@ public class BacktestService : IBacktestService
                             ? "트레일링 손절"
                             : "손절";
                 }
-                else if (openPosition.PatternType != PatternType.Tqqq200Sma
-                         && currentBar.High >= openPosition.Target)
+                else if (pep.EnableTargetExit && currentBar.High >= openPosition.Target)
                 {
-                    // Tqqq200Sma는 목표가 청산 안 함 (트레일링 스탑에 위임)
                     exitPrice = openPosition.Target;
                     exitReason = "목표 도달";
                 }
-                else if (openPosition.PatternType != PatternType.Tqqq200Sma
-                         && barsSinceEntry >= ep.MaxHoldingBars)
+                else if (pep.EnableTimeExit && barsSinceEntry >= pep.MaxHoldingBars)
                 {
-                    // Tqqq200Sma는 시간 청산 안 함 (수개월 보유 전략)
                     exitPrice = currentBar.Close;
-                    exitReason = $"시간 청산({ep.MaxHoldingBars}봉)";
+                    exitReason = $"시간 청산({pep.MaxHoldingBars}봉)";
                 }
 
                 if (exitPrice > 0)
@@ -914,6 +907,52 @@ public class BacktestService : IBacktestService
             MaxHoldingBars:            20,
             EnablePartialProfit:       true,
             PartialProfitRMultiple:    2.0m);
+    };
+
+    /// <summary>
+    /// Pattern-specific exit profile. Each pattern category has optimal holding period,
+    /// trailing stop behavior, and partial profit settings tuned to its trading style.
+    /// </summary>
+    internal sealed record PatternExitProfile(
+        int MaxHoldingBars,
+        bool EnableTrailingStop,
+        decimal TrailingStopAtrMultiplier,
+        decimal TrailingActivationR,
+        bool EnablePartialProfit,
+        decimal PartialProfitRMultiple,
+        bool EnableTargetExit,
+        bool EnableTimeExit)
+    {
+        public static PatternExitProfile For(PatternType pt) => pt switch
+        {
+            // ── Day Trading (1~5봉): 빠른 청산, 트레일링 불필요 ──
+            PatternType.GapUpPullback          => new( 3, false, 0m,   0m,   true,  2.0m, true,  true),
+            PatternType.VwapReversion          => new( 3, false, 0m,   0m,   true,  1.5m, true,  true),
+            PatternType.OpeningRangeBreakout   => new( 3, false, 0m,   0m,   true,  2.0m, true,  true),
+            PatternType.VolumeSpikeContinuation=> new( 5, true,  1.5m, 1.0m, false, 0m,   true,  true),
+            PatternType.VolatilityBreakout     => new( 5, true,  2.0m, 1.0m, false, 0m,   true,  true),
+
+            // ── Mean Reversion (5~7봉): 평균 회귀, 트레일링 최소화 ──
+            PatternType.RsiMeanReversion       => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
+            PatternType.VolatilityExpansion    => new( 7, true,  2.0m, 1.5m, true,  2.0m, true,  true),
+            PatternType.MeanReversionChannel   => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
+            PatternType.Rsi2Bollinger          => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
+
+            // ── Swing Trading (10~15봉): 중기 보유, 트레일링 적극 활용 ──
+            PatternType.Breakout               => new(15, true,  2.5m, 1.5m, true,  2.5m, true,  true),
+            PatternType.MomentumReversal       => new(10, true,  2.5m, 1.5m, true,  2.0m, true,  true),
+            PatternType.IndexRegimeFilter      => new(15, true,  2.5m, 1.5m, true,  2.0m, true,  true),
+
+            // ── Position/Trend (20~30봉): 장기 보유, 넓은 트레일링 ──
+            PatternType.TrendPullback          => new(20, true,  3.0m, 2.0m, true,  3.0m, true,  true),
+            PatternType.EarningsDrift          => new(20, true,  2.5m, 1.5m, true,  2.0m, true,  true),
+            PatternType.MultiTimeframeTrend    => new(30, true,  3.0m, 2.0m, true,  3.0m, true,  true),
+
+            // ── Regime (SMA200 이탈까지 무제한 보유) ──
+            PatternType.Tqqq200Sma             => new(999, false, 0m,  0m,   false, 0m,   false, false),
+
+            _ => new(20, true, 2.5m, 1.0m, true, 2.0m, true, true)
+        };
     };
 
     private static string GetTimeFrameLabel(TimeFrame tf) => tf switch
