@@ -71,12 +71,18 @@
 @* ── 계좌 요약 ── *@
 @if (_account != null)
 {
+    var totalPnL = _account.TotalEquity - _accountSize;
+    var totalPnLPercent = _accountSize > 0 ? totalPnL / _accountSize * 100 : 0;
     <MudGrid Class="mb-2">
         <MudItem xs="6" sm="3">
             <MudCard Style="min-height: 80px;">
                 <MudCardContent Class="text-center pa-3">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">총 자산</MudText>
                     <MudText Typo="Typo.h5" Class="mt-1">$@_account.TotalEquity.ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption"
+                             Color="@(totalPnL >= 0 ? Color.Success : Color.Error)">
+                        원금 $@_accountSize.ToString("N0") 대비 @(totalPnL >= 0 ? "+" : "")@totalPnL.ToString("N0") (@(totalPnL >= 0 ? "+" : "")@totalPnLPercent.ToString("F2")%)
+                    </MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -236,6 +242,7 @@
     private RiskState _riskState = new();
     private MarketRegime? _regime = new() { RegimeLabel = "로딩 중..." };
     private BrokerAccount? _account;
+    private decimal _accountSize = 100_000m;
 
     // 리스크 상태 주기적 갱신용 타이머 (30초마다)
     private Timer? _riskRefreshTimer;
@@ -289,7 +296,9 @@
             }
 
             var accountTask = broker.GetAccountAsync();
-            await Task.WhenAll(signalsTask, positionsTask, riskTask, accountTask);
+            var settingsTask = SettingsRepo.GetAsync();
+            await Task.WhenAll(signalsTask, positionsTask, riskTask, accountTask, settingsTask);
+            _accountSize = settingsTask.Result.AccountSize;
 
             _activeSignals = signalsTask.Result;
             _openPositions = positionsTask.Result;
