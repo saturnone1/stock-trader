@@ -2,7 +2,7 @@
 
 <MudCard>
     <MudCardContent>
-        <MudTooltip Text="오늘 하루 손익. 계좌의 -3% 도달 시 거래 자동 중단, 다음 거래일 재개">
+        <MudTooltip Text="@($"오늘 하루 손익. 계좌의 -{DailyLossLimitPercent * 100:F0}% 도달 시 거래 자동 중단, 다음 거래일 재개")">
             <MudText Typo="Typo.subtitle2" Style="cursor:help">일일 손익 ⓘ</MudText>
         </MudTooltip>
         <MudProgressLinear Color="@BarColor"
@@ -11,7 +11,7 @@
                            Rounded="true"
                            Class="my-2" />
         <MudStack Row="true" Justify="Justify.SpaceBetween">
-            <MudText Typo="Typo.caption" Color="Color.Error">한도: -3.00%</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Error">한도: -@((DailyLossLimitPercent * 100m).ToString("F2"))%</MudText>
             <MudText Typo="Typo.caption"
                      Color="@(State.DailyPnL >= 0 ? Color.Success : Color.Error)">
                 $@State.DailyPnL.ToString("N2")
@@ -28,11 +28,12 @@
 
 @code {
     [Parameter] public RiskState State { get; set; } = new();
+    [Parameter] public decimal DailyLossLimitPercent { get; set; } = 0.03m;
 
     private Color BarColor => State.DailyPnLPercent >= 0
         ? Color.Success
         : State.IsTradingHalted ? Color.Error : Color.Warning;
 
     private double BarWidth => Math.Min(100, Math.Max(5,
-        Math.Abs((double)State.DailyPnLPercent) / 0.03 * 100));
+        Math.Abs((double)State.DailyPnLPercent) / (double)DailyLossLimitPercent * 100));
 }

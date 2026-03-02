@@ -37,7 +37,7 @@
 </MudDialog>
 
 @* Period selector *@
-<MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center">
+<MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
     <MudDatePicker @bind-Date="_from" Label="시작일" Variant="Variant.Outlined" Margin="Margin.Dense" />
     <MudDatePicker @bind-Date="_to" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" Disabled="_loading">

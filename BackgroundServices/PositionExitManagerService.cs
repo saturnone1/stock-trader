@@ -105,6 +105,12 @@ public class PositionExitManagerService : BackgroundService
         _liveExitOverrides = await liveParamService.GetLiveOverridesAsync(ct);
 
         var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
+
+        // Remove stale exit states for positions that are no longer open.
+        var openIds = new HashSet<long>(openPositions.Select(p => p.Id));
+        foreach (var key in _exitStates.Keys.Where(k => !openIds.Contains(k)).ToList())
+            _exitStates.TryRemove(key, out _);
+
         if (openPositions.Count == 0) return;
 
         var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);

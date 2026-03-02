@@ -16,12 +16,14 @@ public class PatternStatsRepository : IPatternStatsRepository
         CancellationToken ct = default)
     {
         return await _db.PatternStats
+            .AsNoTracking()
             .FirstOrDefaultAsync(s => s.PatternType == patternType && s.Symbol == symbol, ct);
     }
 
     public async Task<List<PatternStats>> GetAllAsync(CancellationToken ct = default)
     {
         return await _db.PatternStats
+            .AsNoTracking()
             .OrderBy(s => s.PatternType)
             .ToListAsync(ct);
     }
@@ -51,11 +53,14 @@ public class PatternStatsRepository : IPatternStatsRepository
 
     public async Task SaveBatchAsync(IEnumerable<PatternStats> statsList, CancellationToken ct = default)
     {
-        // Load all existing rows in a single query, keyed by (PatternType, Symbol)
-        var existing = await _db.PatternStats.ToListAsync(ct);
-        var lookup = existing.ToDictionary(s => (s.PatternType, s.Symbol));
-
         var incoming = statsList.ToList();
+
+        // Only load rows whose PatternType appears in the incoming batch — avoids full table scan
+        var incomingTypes = incoming.Select(s => s.PatternType).Distinct().ToList();
+        var existing = await _db.PatternStats
+            .Where(s => incomingTypes.Contains(s.PatternType))
+            .ToListAsync(ct);
+        var lookup = existing.ToDictionary(s => (s.PatternType, s.Symbol));
 
         var now = DateTime.UtcNow;
         foreach (var stats in incoming)

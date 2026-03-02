@@ -3,8 +3,11 @@
 @using StockTrader.Models
 @using StockTrader.Data.Repositories
 @using StockTrader.Services.Risk
+@using StockTrader.Services.Notification
 @inject IRiskManagementService RiskService
 @inject ITradeRepository TradeRepo
+@inject INotificationService NotificationService
+@implements IDisposable
 
 <PageTitle>리스크 모니터 - 주식 트레이더</PageTitle>
 
@@ -135,13 +138,28 @@
     private RiskState _riskState = new();
     private List<StockTrader.Models.Position> _openPositions = new();
 
+    // Throttle: allow at most one full refresh per 30 seconds.
+    private long _lastRefreshTicks;
+    private static readonly long RefreshThrottleTicks = TimeSpan.FromSeconds(30).Ticks;
+
     protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+        // Unsubscribe first to guard against SignalR reconnect re-invocations.
+        NotificationService.OnPriceUpdate -= OnPriceUpdate;
+        NotificationService.OnPriceUpdate += OnPriceUpdate;
+    }
+
+    private async Task LoadDataAsync()
     {
         _loading = true;
         try
         {
-            _riskState = await RiskService.GetCurrentRiskStateAsync();
-            _openPositions = await TradeRepo.GetOpenPositionsAsync();
+            var riskTask      = RiskService.GetCurrentRiskStateAsync();
+            var positionsTask = TradeRepo.GetOpenPositionsAsync();
+            await Task.WhenAll(riskTask, positionsTask);
+            _riskState     = riskTask.Result;
+            _openPositions = positionsTask.Result;
         }
         catch (Exception ex)
         {
@@ -151,5 +169,26 @@
         {
             _loading = false;
         }
+    }
+
+    // Refresh risk data at most every 30 seconds whenever a price update arrives.
+    private void OnPriceUpdate(PriceUpdate update)
+    {
+        var now  = DateTime.UtcNow.Ticks;
+        var last = Interlocked.Read(ref _lastRefreshTicks);
+        if (now - last < RefreshThrottleTicks) return;
+        if (Interlocked.CompareExchange(ref _lastRefreshTicks, now, last) != last) return;
+
+        _ = InvokeAsync(async () =>
+        {
+            try { await LoadDataAsync(); StateHasChanged(); }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex) { _error = ex.Message; StateHasChanged(); }
+        });
+    }
+
+    public void Dispose()
+    {
+        NotificationService.OnPriceUpdate -= OnPriceUpdate;
     }
 }
