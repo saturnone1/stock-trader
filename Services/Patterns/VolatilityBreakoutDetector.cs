@@ -31,7 +31,7 @@ public class VolatilityBreakoutDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.VolatilityBreakout;
 
-    public VolatilityBreakoutDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public VolatilityBreakoutDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.VolatilityBreakout;

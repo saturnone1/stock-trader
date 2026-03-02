@@ -5,8 +5,8 @@ using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
+using StockTrader.Services.Market;
 using StockTrader.Services.Streaming;
-using TimeZoneConverter;
 
 namespace StockTrader.BackgroundServices;
 
@@ -19,6 +19,7 @@ public class MarketDataIngestionService : BackgroundService
     private readonly Channel<string> _symbolChannel;
     private readonly TradingSettings _settings;
     private readonly IStreamingStatusService _streamingStatus;
+    private readonly IMarketCalendar _marketCalendar;
     private readonly ILogger<MarketDataIngestionService> _logger;
 
     private int _consecutiveFailures = 0;
@@ -28,12 +29,14 @@ public class MarketDataIngestionService : BackgroundService
         Channel<string> symbolChannel,
         IOptions<TradingSettings> settings,
         IStreamingStatusService streamingStatus,
+        IMarketCalendar marketCalendar,
         ILogger<MarketDataIngestionService> logger)
     {
         _scopeFactory = scopeFactory;
         _symbolChannel = symbolChannel;
         _settings = settings.Value;
         _streamingStatus = streamingStatus;
+        _marketCalendar = marketCalendar;
         _logger = logger;
     }
 
@@ -132,14 +135,8 @@ public class MarketDataIngestionService : BackgroundService
 
     private bool IsMarketHours()
     {
-        var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
-            TZConvert.GetTimeZoneInfo("America/New_York"));
-
-        if (now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday)
-            return false;
-
-        var open = TimeSpan.Parse(_settings.MarketOpenET);
-        var close = TimeSpan.Parse(_settings.MarketCloseET);
-        return now.TimeOfDay >= open && now.TimeOfDay <= close;
+        // US 또는 KRX 어느 쪽이든 장이 열려 있으면 true
+        return _marketCalendar.IsMarketOpen(MarketType.US)
+            || _marketCalendar.IsMarketOpen(MarketType.KRX);
     }
 }

@@ -19,6 +19,7 @@ public class DailyDataSyncService : BackgroundService
     private readonly ILogger<DailyDataSyncService> _logger;
 
     private int _consecutiveFailures = 0;
+    private DateTime _lastSyncDateUtc = DateTime.MinValue;
 
     public DailyDataSyncService(
         IServiceScopeFactory scopeFactory,
@@ -40,6 +41,10 @@ public class DailyDataSyncService : BackgroundService
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            // 오늘 이미 싱크 완료했으면 스킵 (30분마다 tick이 오지만 하루 1회로 제한)
+            if (DateTime.UtcNow.Date == _lastSyncDateUtc)
+                continue;
+
             // US 또는 KRX 장 마감 후 1시간이 지나야 동기화 시작
             var usNow = _marketCalendar.GetLocalNow(MarketType.US);
             var krxNow = _marketCalendar.GetLocalNow(MarketType.KRX);
@@ -76,6 +81,7 @@ public class DailyDataSyncService : BackgroundService
                     maxRetries: 3,
                     ct: stoppingToken);
 
+                _lastSyncDateUtc = DateTime.UtcNow.Date;
                 _consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

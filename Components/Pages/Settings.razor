@@ -5,7 +5,9 @@
 @using StockTrader.Data.Repositories
 @using StockTrader.Configuration
 @using StockTrader.Services.Notification
+@using StockTrader.Services.LiveParameter
 @using Microsoft.Extensions.Options
+@using System.Reflection
 @inject ISettingsRepository SettingsRepo
 @inject ISnackbar Snackbar
 @inject INotificationDispatcher NotificationDispatcher
@@ -13,7 +15,8 @@
 @inject IOptions<TradingSettings> TradingOptions
 @inject IMarketCalendar MarketCalendar
 @inject IOptions<AlpacaSettings> AlpacaOptions
-@inject IOptions<PatternSettings> PatternOptions
+@inject IOptionsSnapshot<PatternSettings> PatternOptions
+@inject ILiveParameterService LiveParameterService
 
 <PageTitle>설정 - 주식 트레이더</PageTitle>
 
@@ -63,7 +66,10 @@
     <MudCard Class="mb-4">
         <MudCardHeader>
             <CardHeaderContent>
-                <MudText Typo="Typo.h6">API 설정</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" Color="Color.Info" />
+                    <MudText Typo="Typo.h6">시세 데이터 소스</MudText>
+                </MudStack>
             </CardHeaderContent>
         </MudCardHeader>
         <MudCardContent>
@@ -77,13 +83,19 @@
                         }
                     </MudSelect>
                     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
-                        Alpaca: 실시간 데이터, VWAP 포함 (API 키 필요). Yahoo: 15분 지연 데이터, 무료 (API 키 불필요).
+                        패턴 감지를 위한 시세 데이터 출처입니다. 실거래 주문은 항상 Alpaca API를 사용합니다.
                     </MudText>
                 </MudItem>
             </MudGrid>
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
-                보안을 위해 API 키는 appsettings.json에서 설정합니다.
-            </MudText>
+            <MudPaper Outlined="true" Class="pa-2 mt-3" Style="border-color:rgba(33,150,243,0.3);background:rgba(33,150,243,0.04);">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        <strong>Alpaca</strong>: 실시간 데이터, VWAP 포함 (API 키 필요) · <strong>Yahoo</strong>: 15분 지연 데이터, 무료.
+                        API 키는 보안상 <code>appsettings.json</code>에서 설정합니다.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
         </MudCardContent>
     </MudCard>
 
@@ -384,24 +396,67 @@
                         <MudIconButton Icon="@(_expandedPatterns.Contains(pattern) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
                                        Size="Size.Small" OnClick="@(() => TogglePatternExpand(pattern))" />
                     </MudStack>
-                    @if (_expandedPatterns.Contains(pattern))
+                    @if (_expandedPatterns.Contains(pattern) && PatternFieldDefs.TryGetValue(pattern, out var pFields))
                     {
                         <MudDivider Class="my-2" />
-                        <MudGrid Spacing="2">
-                            @foreach (var param in GetPatternParams(pattern))
-                            {
-                                <MudItem xs="6" md="3">
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@param.Key</MudText>
-                                    <MudText Typo="Typo.body2">@param.Value</MudText>
-                                </MudItem>
-                            }
-                        </MudGrid>
-                        <MudText Typo="Typo.caption" Color="Color.Tertiary" Class="mt-1">
-                            파라미터 변경: appsettings.json → Patterns.@pattern
-                        </MudText>
+                        @foreach (var grp in pFields.GroupBy(f => f.Category).OrderBy(g => g.Key == "exit" ? 1 : 0))
+                        {
+                            <MudText Typo="Typo.caption"
+                                     Color="@(grp.Key == "exit" ? Color.Warning : Color.Primary)"
+                                     Class="@(grp.Key == "exit" ? "mt-2 mb-1" : "mb-1")"
+                                     Style="font-weight:600;">
+                                @(grp.Key == "exit" ? "청산 전략" : "감지 파라미터")
+                            </MudText>
+                            <MudGrid Spacing="2">
+                                @foreach (var field in grp)
+                                {
+                                    var prop = FieldPropCache[field.VmPropName];
+                                    <MudItem xs="6" md="3">
+                                        @if (prop.PropertyType == typeof(decimal))
+                                        {
+                                            <MudNumericField T="decimal"
+                                                Value="@((decimal)prop.GetValue(_liveParams)!)"
+                                                ValueChanged="@((decimal v) => prop.SetValue(_liveParams, v))"
+                                                Label="@field.Label" Variant="Variant.Outlined"
+                                                Margin="Margin.Dense" Format="@field.Format" Step="@field.DecStep" />
+                                        }
+                                        else if (prop.PropertyType == typeof(int))
+                                        {
+                                            <MudNumericField T="int"
+                                                Value="@((int)prop.GetValue(_liveParams)!)"
+                                                ValueChanged="@((int v) => prop.SetValue(_liveParams, v))"
+                                                Label="@field.Label" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                        }
+                                        else if (prop.PropertyType == typeof(string))
+                                        {
+                                            <MudTextField T="string"
+                                                Value="@((string?)prop.GetValue(_liveParams) ?? "")"
+                                                ValueChanged="@((string v) => prop.SetValue(_liveParams, v))"
+                                                Label="@field.Label" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                        }
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        }
                     }
                 </MudPaper>
             }
+
+            @* 파라미터 저장 버튼 *@
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Medium"
+                           StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="SavePatternParamsAsync" Disabled="@_savingParams">
+                    @if (_savingParams)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                    }
+                    파라미터 저장
+                </MudButton>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    변경된 패턴 감지 + 청산 전략 파라미터를 실거래에 즉시 반영합니다.
+                </MudText>
+            </MudStack>
         </MudCardContent>
     </MudCard>
 
@@ -593,6 +648,10 @@
     private string _testingChannel = "";
     private HashSet<PatternType> _expandedPatterns = new();
 
+    // 패턴 파라미터 편집
+    private PatternParamViewModel _liveParams = new();
+    private bool _savingParams;
+
     private string? _error;
 
     protected override async Task OnInitializedAsync()
@@ -604,6 +663,9 @@
             _tradingSettings = TradingOptions.Value;
             _alpacaSettings = AlpacaOptions.Value;
             _patternSettings = PatternOptions.Value;
+
+            var exitOverrides = await LiveParameterService.GetLiveOverridesAsync();
+            _liveParams = PatternParamViewModel.FromLiveSettings(_patternSettings, exitOverrides);
         }
         catch (Exception ex)
         {
@@ -667,6 +729,32 @@
         Snackbar.Add("설정이 저장되었습니다!", Severity.Success);
     }
 
+    private async Task SavePatternParamsAsync()
+    {
+        if (_settings == null) return;
+        _savingParams = true;
+        StateHasChanged();
+        try
+        {
+            await LiveParameterService.ApplyToLiveAsync(
+                _liveParams.ToOverrides(),
+                _settings.EnabledPatterns.ToList(),
+                _settings.RiskPerTradePercent,
+                _settings.DailyLossLimitPercent,
+                _settings.MaxTotalPositions,
+                _settings.MaxPositionsPerSector);
+            Snackbar.Add("패턴 파라미터가 실거래에 적용되었습니다!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"파라미터 저장 실패: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingParams = false;
+        }
+    }
+
     private async Task TestChannelAsync(string channelName)
     {
         _testingChannel = channelName;
@@ -709,102 +797,7 @@
             _expandedPatterns.Add(pattern);
     }
 
-    private Dictionary<string, string> GetPatternParams(PatternType pattern) => pattern switch
-    {
-        PatternType.GapUpPullback => new()
-        {
-            ["최소 갭 %"] = _patternSettings.GapUpPullback.MinGapPercent.ToString("P1"),
-            ["최대 풀백 %"] = _patternSettings.GapUpPullback.MaxPullbackPercent.ToString("P0"),
-            ["최소 거래량"] = _patternSettings.GapUpPullback.MinVolume.ToString("N0")
-        },
-        PatternType.Breakout => new()
-        {
-            ["조회 기간 (일)"] = _patternSettings.Breakout.LookbackDays.ToString(),
-            ["최소 거래량 배수"] = _patternSettings.Breakout.MinVolumeMultiplier.ToString("F1") + "x",
-            ["돌파 마진 %"] = _patternSettings.Breakout.BreakoutMarginPercent.ToString("P2")
-        },
-        PatternType.VwapReversion => new()
-        {
-            ["최대 이탈 %"] = _patternSettings.VwapReversion.MaxDeviationPercent.ToString("P1"),
-            ["최소 반등 %"] = _patternSettings.VwapReversion.MinBouncePercent.ToString("P2")
-        },
-        PatternType.RsiMeanReversion => new()
-        {
-            ["과매도 임계값"] = _patternSettings.RsiMeanReversion.OversoldThreshold.ToString(),
-            ["RSI 기간"] = _patternSettings.RsiMeanReversion.Period.ToString()
-        },
-        PatternType.TrendPullback => new()
-        {
-            ["이평 기간"] = _patternSettings.TrendPullback.MaPeriod.ToString(),
-            ["최대 풀백 %"] = _patternSettings.TrendPullback.MaxPullbackFromMa.ToString("P1"),
-            ["추세 확인 일수"] = _patternSettings.TrendPullback.TrendConfirmationDays.ToString()
-        },
-        PatternType.OpeningRangeBreakout => new()
-        {
-            ["범위 기간 (분)"] = _patternSettings.OpeningRangeBreakout.RangeMinutes.ToString(),
-            ["최소 범위 %"] = _patternSettings.OpeningRangeBreakout.MinRangePercent.ToString("P2")
-        },
-        PatternType.VolumeSpikeContinuation => new()
-        {
-            ["거래량 배수"] = _patternSettings.VolumeSpikeContinuation.VolumeMultiplier.ToString("F1") + "x",
-            ["연속 봉 수"] = _patternSettings.VolumeSpikeContinuation.ContinuationBars.ToString()
-        },
-        PatternType.EarningsDrift => new()
-        {
-            ["드리프트 기간 (일)"] = _patternSettings.EarningsDrift.DriftDays.ToString(),
-            ["최소 서프라이즈 %"] = _patternSettings.EarningsDrift.MinSurprisePercent.ToString("P1")
-        },
-        PatternType.IndexRegimeFilter => new()
-        {
-            ["이평 기간"] = _patternSettings.IndexRegimeFilter.MaPeriod.ToString(),
-            ["기준 지수"] = _patternSettings.IndexRegimeFilter.IndexSymbol
-        },
-        PatternType.VolatilityExpansion => new()
-        {
-            ["볼린저 기간"] = _patternSettings.VolatilityExpansion.BollingerPeriod.ToString(),
-            ["표준편차 배수"] = _patternSettings.VolatilityExpansion.StdDevMultiplier.ToString("F1")
-        },
-        PatternType.MomentumReversal => new()
-        {
-            ["빠른 EMA"] = _patternSettings.MomentumReversal.FastEmaPeriod.ToString(),
-            ["느린 EMA"] = _patternSettings.MomentumReversal.SlowEmaPeriod.ToString(),
-            ["MACD 시그널"] = _patternSettings.MomentumReversal.MacdSignalPeriod.ToString(),
-            ["RSI 기간"] = _patternSettings.MomentumReversal.RsiPeriod.ToString(),
-            ["RSI 과매도"] = _patternSettings.MomentumReversal.RsiOversold.ToString(),
-            ["RSI 과매수"] = _patternSettings.MomentumReversal.RsiOverbought.ToString()
-        },
-        PatternType.MultiTimeframeTrend => new()
-        {
-            ["장기 추세 MA"] = _patternSettings.MultiTimeframeTrend.LongTrendMaPeriod.ToString(),
-            ["단기 진입 MA"] = _patternSettings.MultiTimeframeTrend.ShortEntryMaPeriod.ToString(),
-            ["최대 풀백 %"] = _patternSettings.MultiTimeframeTrend.MaxPullbackPercent.ToString("P1"),
-            ["추세 확인 봉"] = _patternSettings.MultiTimeframeTrend.TrendConfirmationBars.ToString()
-        },
-        PatternType.MeanReversionChannel => new()
-        {
-            ["EMA 기간"] = _patternSettings.MeanReversionChannel.EmaPeriod.ToString(),
-            ["ATR 기간"] = _patternSettings.MeanReversionChannel.AtrPeriod.ToString(),
-            ["ATR 배수"] = _patternSettings.MeanReversionChannel.AtrMultiplier.ToString("F1"),
-            ["RSI 기간"] = _patternSettings.MeanReversionChannel.RsiPeriod.ToString(),
-            ["RSI 과매도"] = _patternSettings.MeanReversionChannel.RsiOversold.ToString()
-        },
-        PatternType.Rsi2Bollinger => new()
-        {
-            ["RSI 기간"] = _patternSettings.Rsi2Bollinger.RsiPeriod.ToString(),
-            ["RSI 임계값"] = _patternSettings.Rsi2Bollinger.RsiThreshold.ToString("F0"),
-            ["BB 기간"] = _patternSettings.Rsi2Bollinger.BollingerPeriod.ToString(),
-            ["BB 표준편차"] = _patternSettings.Rsi2Bollinger.BollingerStdDev.ToString("F1"),
-            ["장기 MA"] = _patternSettings.Rsi2Bollinger.LongTrendMaPeriod.ToString(),
-            ["ATR 손절배수"] = _patternSettings.Rsi2Bollinger.AtrStopMultiplier.ToString("F1")
-        },
-        PatternType.VolatilityBreakout => new()
-        {
-            ["돌파계수 K"] = _patternSettings.VolatilityBreakout.BreakoutFactor.ToString("F2"),
-            ["최소거래량배수"] = _patternSettings.VolatilityBreakout.MinVolumeMultiplier.ToString("F1"),
-            ["거래량평균기간"] = _patternSettings.VolatilityBreakout.VolumeAvgPeriod.ToString(),
-            ["ATR 손절배수"] = _patternSettings.VolatilityBreakout.AtrStopMultiplier.ToString("F1"),
-            ["ATR 목표배수"] = _patternSettings.VolatilityBreakout.AtrTargetMultiplier.ToString("F1")
-        },
-        _ => new()
-    };
+    // PatternParamViewModel.PatternFieldDefs / FieldPropCache 사용 (공유 필드 정의)
+    private static Dictionary<string, PropertyInfo> FieldPropCache => PatternParamViewModel.FieldPropCache;
+    private static Dictionary<PatternType, List<PatternParamViewModel.FieldDef>> PatternFieldDefs => PatternParamViewModel.PatternFieldDefs;
 }

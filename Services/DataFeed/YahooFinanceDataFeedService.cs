@@ -171,11 +171,26 @@ public class YahooFinanceDataFeedService : IDataFeedService
         }
         finally
         {
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(_settings.RateLimitDelayMs);
-                _rateLimiter.Release();
-            }, CancellationToken.None);
+            // fire-and-forget Task.Run + CancellationToken.None 제거:
+            // 앱 종료 시 ThreadPool 누수 및 Release 미보장 문제 해결.
+            // ct를 전달하므로 취소 시 즉시 Release되어 세마포어 교착 방지.
+            _ = ReleaseAfterDelayAsync(ct);
+        }
+    }
+
+    private async Task ReleaseAfterDelayAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(_settings.RateLimitDelayMs, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 취소 시에도 반드시 Release — 세마포어 영구 점유 방지
+        }
+        finally
+        {
+            _rateLimiter.Release();
         }
     }
 

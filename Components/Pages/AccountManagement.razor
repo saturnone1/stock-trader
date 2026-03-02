@@ -403,17 +403,13 @@
         }
     }
 
-    private async void OnAccountsChanged()
+    private void OnAccountsChanged()
     {
-        try
+        _ = InvokeAsync(async () =>
         {
-            await InvokeAsync(async () =>
-            {
-                await LoadAccountsAsync();
-                StateHasChanged();
-            });
-        }
-        catch (ObjectDisposedException) { }
+            try { await LoadAccountsAsync(); StateHasChanged(); }
+            catch (ObjectDisposedException) { }
+        });
     }
 
     private void OpenAddDialogAsync()

@@ -55,6 +55,19 @@
 }
 else if (_stats.Count > 0)
 {
+    @* ── 기대값 차트 ── *@
+    <MudText Typo="Typo.h6" Class="mb-2">패턴별 기대값 비교</MudText>
+    <MudCard Class="mb-4 pa-3">
+        <ApexCharts.ApexChart TItem="ExpectancyItem" Options="_expectancyOpts" Height="280">
+            <ApexCharts.ApexPointSeries TItem="ExpectancyItem"
+                Items="_expectancyItems"
+                SeriesType="ApexCharts.SeriesType.Bar"
+                XValue="@(e => e.Name)"
+                YAggregate="@(e => e.First().Value)"
+                Name="기대값 (%)" />
+        </ApexCharts.ApexChart>
+    </MudCard>
+
     <PatternStatsTable Stats="@_stats" />
 
     <MudText Typo="Typo.h6" Class="mt-4 mb-2">요약</MudText>
@@ -153,6 +166,17 @@ else if (_stats.Count > 0)
     );
 
     private List<StyleGroup> _styleGroups = new();
+    private List<ExpectancyItem> _expectancyItems = new();
+
+    private record ExpectancyItem(string Name, decimal Value);
+
+    private static readonly ApexCharts.ApexChartOptions<ExpectancyItem> _expectancyOpts = new()
+    {
+        Chart = new ApexCharts.Chart { Background = "transparent", ForeColor = "#9E9E9E" },
+        Theme = new ApexCharts.Theme { Mode = ApexCharts.Mode.Dark },
+        PlotOptions = new ApexCharts.PlotOptions { Bar = new ApexCharts.PlotOptionsBar { Horizontal = true } },
+        Yaxis = [new ApexCharts.YAxis { Labels = new ApexCharts.YAxisLabels { Formatter = @"function(v) { return v.toFixed(2) + '%' }" } }]
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -161,6 +185,7 @@ else if (_stats.Count > 0)
         {
             _stats = await StatsService.GetAllStatsAsync();
             BuildStyleGroups();
+            BuildExpectancyItems();
         }
         catch (Exception ex)
         {
@@ -170,6 +195,16 @@ else if (_stats.Count > 0)
         {
             _loading = false;
         }
+    }
+
+    private void BuildExpectancyItems()
+    {
+        _expectancyItems = _stats
+            .OrderByDescending(s => s.Expectancy)
+            .Select(s => new ExpectancyItem(
+                PatternMetadataMap.GetKoreanName(s.PatternType),
+                s.Expectancy * 100))
+            .ToList();
     }
 
     private void BuildStyleGroups()

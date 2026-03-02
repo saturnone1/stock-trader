@@ -12,7 +12,7 @@ public class VolumeSpikeContinuationDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.VolumeSpikeContinuation;
 
-    public VolumeSpikeContinuationDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public VolumeSpikeContinuationDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.VolumeSpikeContinuation;

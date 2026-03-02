@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace StockTrader.Models;
 
 public class TradeRecord
@@ -15,8 +17,8 @@ public class TradeRecord
     public string ExitReason { get; set; } = string.Empty;
 
     // Adaptive slippage: ATR과 거래량 정보 (백테스트에서만 사용, DB 저장 안 됨)
-    public decimal EntryAtr { get; set; }
-    public long EntryVolume { get; set; }
+    [NotMapped] public decimal EntryAtr { get; set; }
+    [NotMapped] public long EntryVolume { get; set; }
 
     public bool IsWin => PnL > 0;
 }

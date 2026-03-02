@@ -30,6 +30,15 @@ public interface IBrokerService
     /// <returns>취소 성공 여부</returns>
     Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default);
 
+    /// <summary>
+    /// 보유 중인 포지션을 시장가로 청산한다.
+    /// 연결된 브라켓 주문(손절/익절 대기 주문)도 자동 취소된다.
+    /// </summary>
+    /// <param name="symbol">종목 코드</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>청산 성공 여부</returns>
+    Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default);
+
     // ── 포지션 조회 ────────────────────────────────────────────────────────
 
     /// <summary>

@@ -87,6 +87,21 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
         }
     }
 
+    public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    {
+        try
+        {
+            await _tradingClient.DeletePositionAsync(new DeletePositionRequest(symbol), ct);
+            _logger.LogInformation("[DynAlpaca] Position closed — {Symbol}", symbol);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DynAlpaca] Failed to close position for {Symbol}", symbol);
+            return false;
+        }
+    }
+
     public async Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
     {
         try

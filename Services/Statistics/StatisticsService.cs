@@ -84,16 +84,23 @@ public class StatisticsService : IStatisticsService
     public async Task RefreshAllStatsAsync(CancellationToken ct = default)
     {
         _logger.LogInformation("Refreshing all pattern stats...");
-        var allTrades = await _tradeRepo.GetTradesAsync(ct: ct);
+        // 전체 거래 이력이 필요: int.MaxValue로 기본 1000건 상한 우회
+        var allTrades = await _tradeRepo.GetTradesAsync(take: int.MaxValue, ct: ct);
 
         // 종목별 캐시 키 수집 (갱신 후 무효화용)
         var symbols = allTrades.Select(t => t.Symbol).Distinct().ToList();
 
+        // 모든 패턴 통계를 메모리에서 먼저 계산한 뒤 단일 SaveChangesAsync로 일괄 저장
+        // 기존: 16회 패턴 × 2쿼리(FindAsync + SaveChangesAsync) = 32 queries
+        // 개선: 1회 SELECT(전체 로드) + 1회 SaveChangesAsync = 2 queries
+        var allStats = new List<PatternStats>();
         foreach (PatternType pattern in Enum.GetValues<PatternType>())
         {
             var stats = await ComputeStatsAsync(pattern, allTrades, ct);
-            await _statsRepo.SaveAsync(stats, ct);
+            allStats.Add(stats);
         }
+
+        await _statsRepo.SaveBatchAsync(allStats, ct);
 
         // 전체 + 패턴별 + 패턴×종목별 캐시 무효화
         _cache.Remove(AllStatsCacheKey);

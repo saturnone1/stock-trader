@@ -4,9 +4,13 @@ namespace StockTrader.Data.Repositories;
 
 public interface ITradeRepository
 {
+    /// <summary>
+    /// 거래 내역을 조회한다. take=0이면 최대 1000건으로 제한된다.
+    /// 전체 조회가 필요한 경우 take에 충분히 큰 값(예: int.MaxValue)을 명시적으로 전달한다.
+    /// </summary>
     Task<List<TradeRecord>> GetTradesAsync(PatternType? patternType = null,
         DateTime? from = null, DateTime? to = null,
-        int skip = 0, int take = 0, CancellationToken ct = default);
+        int skip = 0, int take = 1000, CancellationToken ct = default);
     Task<int> GetTradeCountAsync(PatternType? patternType = null,
         DateTime? from = null, DateTime? to = null, CancellationToken ct = default);
     Task<List<TradeRecord>> GetRecentAsync(int limit = 5000, CancellationToken ct = default);
@@ -19,5 +23,6 @@ public interface ITradeRepository
     Task AddRecommendationAsync(TradeRecommendation recommendation, CancellationToken ct = default);
     Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default);
     Task AddSignalAsync(PatternSignal signal, CancellationToken ct = default);
+    Task AddSignalsBatchAsync(IEnumerable<PatternSignal> signals, CancellationToken ct = default);
     Task DeactivateSignalAsync(long signalId, CancellationToken ct = default);
 }

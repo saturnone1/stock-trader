@@ -31,7 +31,7 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<PatternSignal>(entity =>
         {
-            entity.HasIndex(s => new { s.Symbol, s.PatternType, s.DetectedAt });
+            entity.HasIndex(s => new { s.Symbol, s.PatternType, s.DetectedAt }).IsUnique();
         });
 
         modelBuilder.Entity<PatternStats>(entity =>

@@ -75,8 +75,8 @@ public class OrderService : IOrderService
 
         // 계좌별 브로커 선택 (null이면 활성 계좌)
         var brokerService = accountId.HasValue
-            ? _accountManager.GetBrokerServiceForAccount(accountId.Value)
-            : _accountManager.GetActiveBrokerService();
+            ? await _accountManager.GetBrokerServiceForAccountAsync(accountId.Value, ct)
+            : await _accountManager.GetActiveBrokerServiceAsync(ct);
 
         if (brokerService == null)
         {
@@ -101,7 +101,8 @@ public class OrderService : IOrderService
                 StopLossPrice = recommendation.StopLossPrice,
                 TargetPrice = recommendation.TargetPrice,
                 PatternType = recommendation.PatternType,
-                OpenedAt = DateTime.UtcNow
+                OpenedAt = DateTime.UtcNow,
+                HighSinceEntry = recommendation.EntryPrice
             };
             await _tradeRepo.SavePositionAsync(position, ct);
 
@@ -117,7 +118,7 @@ public class OrderService : IOrderService
     /// <inheritdoc />
     public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
     {
-        var brokerService = _accountManager.GetActiveBrokerService();
+        var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
         if (brokerService == null)
         {
             _logger.LogWarning("[ORDER CANCEL] No active broker service to cancel order {OrderId}", orderId);
@@ -137,7 +138,7 @@ public class OrderService : IOrderService
     /// <inheritdoc />
     public async Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default)
     {
-        var brokerService = _accountManager.GetActiveBrokerService();
+        var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
 
         if (brokerService != null)
         {

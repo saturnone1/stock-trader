@@ -126,10 +126,10 @@ public class OrderServiceTests
 
         // Assert
         _accountManagerMock.Verify(
-            m => m.GetActiveBrokerService(),
+            m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()),
             Times.Never);
         _accountManagerMock.Verify(
-            m => m.GetBrokerServiceForAccount(It.IsAny<int>()),
+            m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -184,8 +184,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns((IBrokerService?)null);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IBrokerService?)null);
 
         var rec = CreateRecommendation(shareQuantity: 10);
         var sut = CreateSut();
@@ -206,8 +206,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns((IBrokerService?)null);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IBrokerService?)null);
 
         var rec = CreateRecommendation(shareQuantity: 10);
         var sut = CreateSut();
@@ -232,8 +232,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -260,8 +260,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -285,8 +285,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -330,8 +330,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -355,8 +355,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -386,8 +386,8 @@ public class OrderServiceTests
         SetupSettingsWithMode(OrderMode.AutoOrder);
         const int targetAccountId = 42;
         _accountManagerMock
-            .Setup(m => m.GetBrokerServiceForAccount(targetAccountId))
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetBrokerServiceForAccountAsync(targetAccountId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -400,8 +400,8 @@ public class OrderServiceTests
 
         // Assert
         result.Should().BeTrue();
-        _accountManagerMock.Verify(m => m.GetBrokerServiceForAccount(targetAccountId), Times.Once);
-        _accountManagerMock.Verify(m => m.GetActiveBrokerService(), Times.Never);
+        _accountManagerMock.Verify(m => m.GetBrokerServiceForAccountAsync(targetAccountId, It.IsAny<CancellationToken>()), Times.Once);
+        _accountManagerMock.Verify(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     /// <summary>
@@ -413,8 +413,8 @@ public class OrderServiceTests
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -426,9 +426,9 @@ public class OrderServiceTests
         await sut.PlaceOrderAsync(rec, accountId: null);
 
         // Assert
-        _accountManagerMock.Verify(m => m.GetActiveBrokerService(), Times.Once);
+        _accountManagerMock.Verify(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()), Times.Once);
         _accountManagerMock.Verify(
-            m => m.GetBrokerServiceForAccount(It.IsAny<int>()),
+            m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -454,8 +454,8 @@ public class OrderServiceTests
         // Arrange — AutoOrder (브로커 연결 없음)
         SetupSettingsWithMode(OrderMode.AutoOrder);
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns((IBrokerService?)null);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IBrokerService?)null);
 
         var recAuto = CreateRecommendation(symbol: "TSLA", shareQuantity: 10);
         await sut.PlaceOrderAsync(recAuto);
@@ -476,8 +476,8 @@ public class OrderServiceTests
     {
         // Arrange
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns((IBrokerService?)null);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IBrokerService?)null);
 
         var sut = CreateSut();
 
@@ -496,8 +496,8 @@ public class OrderServiceTests
     {
         // Arrange
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.CancelOrderAsync("order-123", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -520,8 +520,8 @@ public class OrderServiceTests
     {
         // Arrange
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.CancelOrderAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -552,8 +552,8 @@ public class OrderServiceTests
         };
 
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(brokerPositions);
@@ -586,8 +586,8 @@ public class OrderServiceTests
         };
 
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns(_brokerServiceMock.Object);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
         _brokerServiceMock
             .Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Position>()); // 브로커 빈 목록 반환
@@ -624,8 +624,8 @@ public class OrderServiceTests
         };
 
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerService())
-            .Returns((IBrokerService?)null);
+            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IBrokerService?)null);
 
         _tradeRepoMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))

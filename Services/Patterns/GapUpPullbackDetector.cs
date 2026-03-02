@@ -12,7 +12,7 @@ public class GapUpPullbackDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.GapUpPullback;
 
-    public GapUpPullbackDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public GapUpPullbackDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.GapUpPullback;

@@ -1,0 +1,11 @@
+import sqlite3
+conn = sqlite3.connect('stocktrader.db')
+cur = conn.cursor()
+cur.execute('SELECT Id, OrderMode FROM UserSettings')
+print('Before:', cur.fetchall())
+cur.execute('UPDATE UserSettings SET OrderMode = 1')
+conn.commit()
+cur.execute('SELECT Id, OrderMode FROM UserSettings')
+print('After:', cur.fetchall())
+conn.close()
+print('Done - OrderMode set to AutoOrder(1)')

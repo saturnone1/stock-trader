@@ -1,11 +1,8 @@
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Options;
-using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Services.LsSecurities;
 
 namespace StockTrader.Services.Broker;
 
@@ -17,14 +14,9 @@ namespace StockTrader.Services.Broker;
 public class LsSecuritiesBrokerService : IBrokerService
 {
     private readonly HttpClient _http;
-    private readonly LsSecuritiesSettings _settings;
+    private readonly LsAuthService _auth;
     private readonly ILogger<LsSecuritiesBrokerService> _logger;
 
-    private string? _accessToken;
-    private DateTime _tokenExpiry = DateTime.MinValue;
-    private readonly SemaphoreSlim _tokenLock = new(1, 1);
-
-    private static readonly TimeZoneInfo KstZone = GetKstZone();
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = null, // LS API는 PascalCase/특정 키 사용
@@ -33,100 +25,14 @@ public class LsSecuritiesBrokerService : IBrokerService
 
     public LsSecuritiesBrokerService(
         HttpClient http,
-        IOptions<LsSecuritiesSettings> settings,
+        LsAuthService auth,
         ILogger<LsSecuritiesBrokerService> logger)
     {
         _http = http;
-        _settings = settings.Value;
+        _auth = auth;
         _logger = logger;
-        _http.BaseAddress = new Uri(_settings.EffectiveBaseUrl);
+        _http.BaseAddress = new Uri(_auth.Settings.EffectiveBaseUrl);
     }
-
-    #region Authentication
-
-    /// <summary>Windows("Korea Standard Time") / Linux("Asia/Seoul") 양쪽 호환</summary>
-    private static TimeZoneInfo GetKstZone()
-    {
-        try { return TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"); }
-        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul"); }
-    }
-
-    /// <summary>
-    /// OAuth2 access_token 발급. 만료 시 자동 재발급. SemaphoreSlim으로 레이스 컨디션 방지.
-    /// </summary>
-    private async Task EnsureTokenAsync(CancellationToken ct)
-    {
-        if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
-            return;
-
-        await _tokenLock.WaitAsync(ct);
-        try
-        {
-            // Double-check after acquiring lock
-            if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
-                return;
-
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["grant_type"] = "client_credentials",
-                ["appkey"] = _settings.AppKey,
-                ["appsecretkey"] = _settings.AppSecret,
-                ["scope"] = "oob"
-            });
-
-            var response = await _http.PostAsync("/oauth2/token", content, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS] 토큰 발급 실패: {Status} {Body}", response.StatusCode, json);
-                throw new InvalidOperationException($"LS증권 토큰 발급 실패: {response.StatusCode}");
-            }
-
-            using var doc = JsonDocument.Parse(json);
-            _accessToken = doc.RootElement.GetProperty("access_token").GetString();
-
-            // 토큰 만료: 익일 07:00 KST
-            var kstNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KstZone);
-            var nextExpiry = kstNow.Hour < 7
-                ? kstNow.Date.AddHours(7)
-                : kstNow.Date.AddDays(1).AddHours(7);
-            _tokenExpiry = TimeZoneInfo.ConvertTimeToUtc(nextExpiry, KstZone)
-                .AddMinutes(-5); // 5분 여유
-
-            _logger.LogInformation("[LS] 토큰 발급 성공, 만료: {Expiry:g} KST", nextExpiry);
-        }
-        finally
-        {
-            _tokenLock.Release();
-        }
-    }
-
-    /// <summary>공통 헤더를 설정한 HttpRequestMessage 생성</summary>
-    private async Task<HttpRequestMessage> CreateRequestAsync(
-        HttpMethod method, string path, string trCd,
-        object? body = null, bool isContinuation = false, string? contKey = null,
-        CancellationToken ct = default)
-    {
-        await EnsureTokenAsync(ct);
-
-        var request = new HttpRequestMessage(method, path);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
-        request.Headers.Add("tr_cd", trCd);
-        request.Headers.Add("tr_cont", isContinuation ? "Y" : "N");
-        if (!string.IsNullOrEmpty(contKey))
-            request.Headers.Add("tr_cont_key", contKey);
-
-        if (body != null)
-        {
-            var json = JsonSerializer.Serialize(body, JsonOpts);
-            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-        }
-
-        return request;
-    }
-
-    #endregion
 
     #region IBrokerService
 
@@ -140,8 +46,8 @@ public class LsSecuritiesBrokerService : IBrokerService
             {
                 ["CSPAT00600InBlock1"] = new Dictionary<string, object>
                 {
-                    ["AcntNo"] = _settings.AccountNo,
-                    ["InptPwd"] = _settings.AccountPassword,
+                    ["AcntNo"] = _auth.Settings.AccountNo,
+                    ["InptPwd"] = _auth.Settings.AccountPassword,
                     ["IsuNo"] = $"A{recommendation.Symbol}", // LS 종목코드: A + 6자리
                     ["OrdQty"] = recommendation.ShareQuantity,
                     ["OrdPrc"] = recommendation.EntryPrice,
@@ -153,7 +59,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 }
             };
 
-            var request = await CreateRequestAsync(HttpMethod.Post, "/stock/order",
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
                 "CSPAT00600", orderBody, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -190,15 +96,15 @@ public class LsSecuritiesBrokerService : IBrokerService
             {
                 ["CSPAT00800InBlock1"] = new Dictionary<string, object>
                 {
-                    ["AcntNo"] = _settings.AccountNo,
-                    ["InptPwd"] = _settings.AccountPassword,
+                    ["AcntNo"] = _auth.Settings.AccountNo,
+                    ["InptPwd"] = _auth.Settings.AccountPassword,
                     ["OrgOrdNo"] = orderNo,
                     ["IsuNo"] = "",
                     ["OrdQty"] = 0 // 전량 취소
                 }
             };
 
-            var request = await CreateRequestAsync(HttpMethod.Post, "/stock/order",
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
                 "CSPAT00800", cancelBody, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -221,6 +127,58 @@ public class LsSecuritiesBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
+    public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    {
+        try
+        {
+            // 시장가 매도 주문으로 포지션 청산
+            var positions = await GetPositionsAsync(ct);
+            var pos = positions.FirstOrDefault(p => p.Symbol == symbol);
+            if (pos == null || pos.Quantity <= 0)
+            {
+                _logger.LogWarning("[LS] 청산할 포지션 없음: {Symbol}", symbol);
+                return false;
+            }
+
+            var sellBody = new Dictionary<string, object>
+            {
+                ["CSPAT00600InBlock1"] = new Dictionary<string, object>
+                {
+                    ["AcntNo"] = _auth.Settings.AccountNo,
+                    ["InptPwd"] = _auth.Settings.AccountPassword,
+                    ["IsuNo"] = $"A{symbol}",
+                    ["OrdQty"] = pos.Quantity,
+                    ["OrdPrc"] = 0, // 시장가
+                    ["BnsTpCode"] = "1", // 매도
+                    ["OrdprcPtnCode"] = "03", // 시장가
+                    ["MgntrnCode"] = "000",
+                    ["LoanDt"] = "",
+                    ["OrdCndiTpCode"] = "0"
+                }
+            };
+
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
+                "CSPAT00600", sellBody, ct: ct);
+            var response = await _http.SendAsync(request, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogError("[LS] 포지션 청산 실패: {Symbol} {Status} {Body}", symbol, response.StatusCode, json);
+                return false;
+            }
+
+            _logger.LogInformation("[LS] 포지션 청산 성공: {Symbol} {Qty}주", symbol, pos.Quantity);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
     {
         try
@@ -235,7 +193,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 }
             };
 
-            var request = await CreateRequestAsync(HttpMethod.Post, "/stock/accno",
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/accno",
                 "t0424", body, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -298,7 +256,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 }
             };
 
-            var request = await CreateRequestAsync(HttpMethod.Post, "/stock/accno",
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/accno",
                 "CSPAQ12300", body, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -318,7 +276,7 @@ public class LsSecuritiesBrokerService : IBrokerService
 
             return new BrokerAccount
             {
-                AccountId = _settings.AccountNo,
+                AccountId = _auth.Settings.AccountNo,
                 TotalEquity = block2.TryGetProperty("DpsastTotamt", out var te) ? te.GetDecimal() : 0,
                 Cash = block2.TryGetProperty("D2Dps", out var cash) ? cash.GetDecimal() : 0,
                 BuyingPower = block2.TryGetProperty("MnyOrdAbleAmt", out var bp) ? bp.GetDecimal() : 0,
@@ -367,8 +325,8 @@ public class LsSecuritiesBrokerService : IBrokerService
                 ["CSPAQ13700InBlock1"] = new Dictionary<string, object>
                 {
                     ["RecCnt"] = 300,
-                    ["AcntNo"] = _settings.AccountNo,
-                    ["InptPwd"] = _settings.AccountPassword,
+                    ["AcntNo"] = _auth.Settings.AccountNo,
+                    ["InptPwd"] = _auth.Settings.AccountPassword,
                     ["OrdMktCode"] = "00",
                     ["BnsTpCode"] = "0",
                     ["IsuNo"] = "",
@@ -380,7 +338,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 }
             };
 
-            var request = await CreateRequestAsync(HttpMethod.Post, "/stock/order",
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
                 "CSPAQ13700", body, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);

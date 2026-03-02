@@ -121,12 +121,12 @@
         _activeAccount = _accounts.FirstOrDefault(a => a.IsActive);
     }
 
-    private async void OnAccountsChanged()
+    private void OnAccountsChanged()
     {
-        await InvokeAsync(async () =>
+        _ = InvokeAsync(async () =>
         {
-            await LoadAccountsAsync();
-            StateHasChanged();
+            try { await LoadAccountsAsync(); StateHasChanged(); }
+            catch (ObjectDisposedException) { }
         });
     }
 

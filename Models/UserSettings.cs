@@ -30,4 +30,12 @@ public class UserSettings
 
     /// <summary>최소 기대 수익 (0 = 제한 없음)</summary>
     public decimal MinExpectancy { get; set; } = 0m;
+
+    // ── 실거래 파라미터 오버라이드 ─────────────────────────────────────
+    /// <summary>
+    /// 백테스트에서 최적화된 파라미터를 실거래에 적용할 때 저장하는 JSON.
+    /// PatternParameterOverrides를 직렬화한 값으로, 패턴 감지 + 청산 전략 파라미터 포함.
+    /// null이면 appsettings.json 기본값 사용.
+    /// </summary>
+    public string? LiveParameterOverridesJson { get; set; }
 }

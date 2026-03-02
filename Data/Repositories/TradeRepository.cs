@@ -12,14 +12,19 @@ public class TradeRepository : ITradeRepository
         _db = db;
     }
 
+    // Default take=1000: prevents unbounded full-table scans on large datasets.
+    // Callers that genuinely need all records must pass int.MaxValue explicitly.
     public async Task<List<TradeRecord>> GetTradesAsync(PatternType? patternType = null,
         DateTime? from = null, DateTime? to = null,
-        int skip = 0, int take = 0, CancellationToken ct = default)
+        int skip = 0, int take = 1000, CancellationToken ct = default)
     {
         var query = BuildTradeQuery(patternType, from, to);
 
         if (skip > 0) query = query.Skip(skip);
-        if (take > 0) query = query.Take(take);
+        // take=0 is treated as "use the default limit" to match legacy callers
+        // that relied on take=0 meaning "no limit". Those callers now get the
+        // 1000-row safety cap instead of an unbounded scan.
+        query = query.Take(take > 0 ? take : 1000);
 
         return await query.ToListAsync(ct);
     }
@@ -116,6 +121,13 @@ public class TradeRepository : ITradeRepository
     public async Task AddSignalAsync(PatternSignal signal, CancellationToken ct = default)
     {
         _db.PatternSignals.Add(signal);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task AddSignalsBatchAsync(IEnumerable<PatternSignal> signals, CancellationToken ct = default)
+    {
+        // AddRange stages all entities; single SaveChangesAsync writes them in one transaction
+        _db.PatternSignals.AddRange(signals);
         await _db.SaveChangesAsync(ct);
     }
 

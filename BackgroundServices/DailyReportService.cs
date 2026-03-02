@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
+using StockTrader.Services.Account;
 using StockTrader.Services.Notification;
 using TimeZoneConverter;
 
@@ -17,17 +18,20 @@ public sealed class DailyReportService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly INotificationDispatcher _dispatcher;
+    private readonly IAccountManager _accountManager;
     private readonly NotificationSettings _notificationSettings;
     private readonly ILogger<DailyReportService> _logger;
 
     public DailyReportService(
         IServiceScopeFactory scopeFactory,
         INotificationDispatcher dispatcher,
+        IAccountManager accountManager,
         IOptions<NotificationSettings> notificationSettings,
         ILogger<DailyReportService> logger)
     {
         _scopeFactory = scopeFactory;
         _dispatcher = dispatcher;
+        _accountManager = accountManager;
         _notificationSettings = notificationSettings.Value;
         _logger = logger;
     }
@@ -95,7 +99,7 @@ public sealed class DailyReportService : BackgroundService
 
         var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTime);
         var today = DateOnly.FromDateTime(nowEt);
-        var todayStart = nowEt.Date.ToUniversalTime();
+        var todayStart = TimeZoneInfo.ConvertTimeToUtc(nowEt.Date, EasternTime);
         var todayEnd = todayStart.AddDays(1);
 
         try
@@ -113,12 +117,33 @@ public sealed class DailyReportService : BackgroundService
                 .Where(r => r.GeneratedAt >= todayStart && r.GeneratedAt < todayEnd)
                 .ToList();
 
-            // 손익 계산
+            // 손익 계산 (equity 기반)
+            // 포지션 사이즈가 다를 때 진입금액 합계로 나누면 왜곡됨 →
+            // 활성 계좌의 총 자산(equity)을 분모로 사용한다.
             var dailyPnl = todayTrades.Sum(t => t.PnL);
-            var initialValue = todayTrades.Count > 0
-                ? todayTrades.Sum(t => t.EntryPrice * t.Quantity)
-                : 0m;
-            var dailyPnlPercent = initialValue > 0 ? (dailyPnl / initialValue) * 100m : 0m;
+            decimal dailyPnlPercent = 0m;
+            try
+            {
+                var broker = await _accountManager.GetActiveBrokerServiceAsync(ct);
+                if (broker != null)
+                {
+                    var brokerAccount = await broker.GetAccountAsync(ct);
+                    var totalEquity = brokerAccount?.TotalEquity ?? 0m;
+                    if (totalEquity > 0m)
+                        dailyPnlPercent = dailyPnl / totalEquity * 100m;
+                    else if (dailyPnl != 0m)
+                    {
+                        // equity 조회 실패 → 진입금액 합계로 대체 (부정확하지만 0보다 나음)
+                        var initialValue = todayTrades.Sum(t => t.EntryPrice * t.Quantity);
+                        dailyPnlPercent = initialValue > 0m ? dailyPnl / initialValue * 100m : 0m;
+                        _logger.LogDebug("Daily PnL%: broker equity unavailable, falling back to entry-value denominator");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not fetch broker equity for daily PnL% calculation");
+            }
 
             // 주요 시그널 요약 (상위 5건)
             var topSignals = todayRecs

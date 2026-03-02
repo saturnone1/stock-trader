@@ -28,7 +28,7 @@ public class Rsi2BollingerDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.Rsi2Bollinger;
 
-    public Rsi2BollingerDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public Rsi2BollingerDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.Rsi2Bollinger;

@@ -19,7 +19,7 @@ public class MultiTimeframeTrendDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.MultiTimeframeTrend;
 
-    public MultiTimeframeTrendDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public MultiTimeframeTrendDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.MultiTimeframeTrend;

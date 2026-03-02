@@ -378,7 +378,8 @@ public class StockAnalysisService : IStockAnalysisService
     {
         if (activePatterns.Count == 0) return 20;
 
-        var trades       = await _tradeRepo.GetTradesAsync(ct: ct);
+        // 보유일 통계 계산을 위해 전체 거래 이력 필요
+        var trades       = await _tradeRepo.GetTradesAsync(take: int.MaxValue, ct: ct);
         var patternTypes = activePatterns.Select(p => p.PatternType).ToHashSet();
 
         var relevantTrades = trades
