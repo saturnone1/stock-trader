@@ -44,6 +44,11 @@ out/
 Logs/
 *.log
 
+## Backtest sweep artifacts
+bt_results/
+bt_sweep.ps1
+bt_sweep_runner.py
+
 ## Temp output files
 build_output.txt
 build_check.txt
