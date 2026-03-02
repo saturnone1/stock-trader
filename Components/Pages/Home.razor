@@ -289,19 +289,46 @@
     }
 
     /// <summary>
-    /// 리스크 상태만 갱신한다. 전체 LoadDataAsync 대비 DB 쿼리를 최소화한다.
+    /// 리스크 상태와 포지션 현재가를 갱신한다.
+    /// 장중에는 WebSocket 스트리밍(OnPriceUpdate)이 즉시 업데이트하지만,
+    /// 프리마켓/애프터마켓/장외 시간에는 이 타이머가 REST API 폴링으로 보완한다.
     /// </summary>
     private async Task RefreshRiskStateAsync()
     {
         try
         {
-            _riskState = await RiskService.GetCurrentRiskStateAsync();
+            var broker = BrokerFactory.GetDefaultService();
+            var riskTask = RiskService.GetCurrentRiskStateAsync();
+            var brokerPositionsTask = broker.GetPositionsAsync();
+            var accountTask = broker.GetAccountAsync();
+
+            await Task.WhenAll(riskTask, brokerPositionsTask, accountTask);
+
+            _riskState = riskTask.Result;
+
+            // 브로커에서 받은 최신 가격으로 in-memory 포지션 현재가를 갱신한다.
+            // 장중에는 WebSocket 업데이트가 더 빠르지만, 이 폴링이 중복 적용되어도 무해하다.
+            var brokerPositions = brokerPositionsTask.Result;
+            if (brokerPositions.Count > 0)
+            {
+                var priceMap = brokerPositions.ToDictionary(p => p.Symbol, p => p.CurrentPrice);
+                foreach (var position in _openPositions)
+                {
+                    if (priceMap.TryGetValue(position.Symbol, out var latestPrice) && latestPrice > 0)
+                        position.CurrentPrice = latestPrice;
+                }
+            }
+
+            // 계좌 요약(총 자산, 미실현 손익 등)도 함께 갱신한다.
+            if (accountTask.Result != null)
+                _account = accountTask.Result;
+
             StateHasChanged();
         }
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _error = $"리스크 상태 갱신 실패: {ex.Message}";
+            _error = $"상태 갱신 실패: {ex.Message}";
             StateHasChanged();
         }
     }
