@@ -23,7 +23,7 @@ public class UserSettings
     public decimal DailyLossLimitPercent { get; set; } = 0.03m;
 
     /// <summary>전체 최대 동시 포지션 수</summary>
-    public int MaxTotalPositions { get; set; } = 10;
+    public int MaxTotalPositions { get; set; } = 7;
 
     /// <summary>섹터당 최대 포지션 수</summary>
     public int MaxPositionsPerSector { get; set; } = 2;

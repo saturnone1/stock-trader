@@ -31,6 +31,18 @@ public partial class BacktestResults
     private BacktestResult? _result;
     private bool _isRunning;
     private string? _errorMessage;
+    private MudBlazor.MudTable<TradeRecord>? _tradeTable;
+
+    // ── 차트 다운샘플링 (렉 방지) ──
+    private List<EquityPoint> _chartData = new();
+    private const int MaxChartPoints = 300;
+
+    private static string FormatPrice(decimal price)
+        => price >= 1000 ? $"${price:N0}" : $"${price:N2}";
+
+    /// <summary>자본 대비 수익률 계산 (0 나누기 방지)</summary>
+    private decimal SafeReturnPercent(decimal equity)
+        => _capital > 0 ? equity / _capital - 1 : 0;
 
     // ── 리스크 관리 파라미터 ──
     private decimal _riskPerTradePercent = 0.01m;
@@ -124,6 +136,25 @@ public partial class BacktestResults
         _ => ""
     };
 
+    /// <summary>EquityCurve를 maxPoints 이하로 다운샘플링 (처음/끝 보존, 균등 간격 추출)</summary>
+    private static List<EquityPoint> DownsampleEquityCurve(List<EquityPoint> source, int maxPoints)
+    {
+        if (source.Count <= maxPoints) return source;
+
+        var result = new List<EquityPoint>(maxPoints);
+        result.Add(source[0]);
+
+        var step = (double)(source.Count - 1) / (maxPoints - 1);
+        for (int i = 1; i < maxPoints - 1; i++)
+        {
+            var idx = (int)Math.Round(i * step);
+            result.Add(source[idx]);
+        }
+
+        result.Add(source[^1]);
+        return result;
+    }
+
     private async Task RunBacktestAsync()
     {
         _isRunning = true;
@@ -156,6 +187,7 @@ public partial class BacktestResults
                 ParameterOverrides = _p.ToOverrides()
             };
             _result = await BacktestService.RunAsync(request);
+            _chartData = DownsampleEquityCurve(_result.EquityCurve, MaxChartPoints);
         }
         catch (OperationCanceledException)
         {

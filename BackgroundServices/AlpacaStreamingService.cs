@@ -19,9 +19,8 @@ public class AlpacaStreamingService : BackgroundService
     private readonly INotificationService _notificationService;
     private readonly ILogger<AlpacaStreamingService> _logger;
 
-    private IAlpacaDataStreamingClient? _client;
     private HashSet<string> _subscribedSymbols = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, decimal> _previousClose = new(StringComparer.OrdinalIgnoreCase);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, decimal> _previousClose = new(StringComparer.OrdinalIgnoreCase);
 
     public AlpacaStreamingService(
         IServiceScopeFactory scopeFactory,
@@ -90,11 +89,9 @@ public class AlpacaStreamingService : BackgroundService
     {
         var secretKey = new SecretKey(_settings.ApiKey, _settings.ApiSecret);
 
-        _client = _settings.IsPaper
+        using var client = _settings.IsPaper
             ? Alpaca.Markets.Environments.Paper.GetAlpacaDataStreamingClient(secretKey)
             : Alpaca.Markets.Environments.Live.GetAlpacaDataStreamingClient(secretKey);
-
-        using var client = _client;
 
         var authStatus = await client.ConnectAndAuthenticateAsync(ct);
         if (authStatus != AuthStatus.Authorized)
@@ -215,7 +212,7 @@ public class AlpacaStreamingService : BackgroundService
 
             _notificationService.PublishBarUpdate(symbol);
 
-            _previousClose[symbol] = bar.Close;
+            _previousClose[symbol] = bar.Close; // ConcurrentDictionary: thread-safe indexer
 
             _logger.LogDebug("Streaming bar received: {Symbol} C={Close} V={Volume}",
                 symbol, bar.Close, bar.Volume);

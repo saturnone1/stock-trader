@@ -86,16 +86,23 @@ public class StatisticsService : IStatisticsService
         _logger.LogInformation("Refreshing all pattern stats...");
         var allTrades = await _tradeRepo.GetTradesAsync(ct: ct);
 
+        // 종목별 캐시 키 수집 (갱신 후 무효화용)
+        var symbols = allTrades.Select(t => t.Symbol).Distinct().ToList();
+
         foreach (PatternType pattern in Enum.GetValues<PatternType>())
         {
             var stats = await ComputeStatsAsync(pattern, allTrades, ct);
             await _statsRepo.SaveAsync(stats, ct);
         }
 
-        // Invalidate cache after refresh
+        // 전체 + 패턴별 + 패턴×종목별 캐시 무효화
         _cache.Remove(AllStatsCacheKey);
         foreach (PatternType pattern in Enum.GetValues<PatternType>())
+        {
             _cache.Remove($"PatternStats_{pattern}_ALL");
+            foreach (var symbol in symbols)
+                _cache.Remove($"PatternStats_{pattern}_{symbol}");
+        }
 
         _logger.LogInformation("Pattern stats refresh complete (cache invalidated)");
     }

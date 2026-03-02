@@ -11,6 +11,7 @@
 @inject INotificationDispatcher NotificationDispatcher
 @inject IOptions<NotificationSettings> NotificationOptions
 @inject IOptions<TradingSettings> TradingOptions
+@inject IMarketCalendar MarketCalendar
 @inject IOptions<AlpacaSettings> AlpacaOptions
 @inject IOptions<PatternSettings> PatternOptions
 
@@ -308,20 +309,16 @@
         <MudCardContent>
             <MudGrid>
                 <MudItem xs="6" md="3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">시장 개장 (ET)</MudText>
-                    <MudText Typo="Typo.h6">@_tradingSettings.MarketOpenET</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">US 개장/마감 (ET)</MudText>
+                    <MudText Typo="Typo.h6">@MarketCalendar.GetMarketOpen(MarketType.US).ToString(@"hh\:mm") ~ @MarketCalendar.GetMarketClose(MarketType.US).ToString(@"hh\:mm")</MudText>
                 </MudItem>
                 <MudItem xs="6" md="3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">시장 마감 (ET)</MudText>
-                    <MudText Typo="Typo.h6">@_tradingSettings.MarketCloseET</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">KRX 개장/마감 (KST)</MudText>
+                    <MudText Typo="Typo.h6">@MarketCalendar.GetMarketOpen(MarketType.KRX).ToString(@"hh\:mm") ~ @MarketCalendar.GetMarketClose(MarketType.KRX).ToString(@"hh\:mm")</MudText>
                 </MudItem>
                 <MudItem xs="6" md="3">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">데이터 수집 간격</MudText>
                     <MudText Typo="Typo.h6">@(_tradingSettings.DataFetchIntervalSeconds)초</MudText>
-                </MudItem>
-                <MudItem xs="6" md="3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">패턴 스캔 간격</MudText>
-                    <MudText Typo="Typo.h6">@(_tradingSettings.PatternScanIntervalSeconds)초</MudText>
                 </MudItem>
                 <MudItem xs="6" md="3">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">리스크 체크 간격</MudText>

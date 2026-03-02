@@ -1624,13 +1624,13 @@
     }
 
     @* Equity Curve Chart *@
-    @if (_result.EquityCurve.Count > 1)
+    @if (_chartData.Count > 1)
     {
         <MudText Typo="Typo.h6" Class="mb-2">자산 곡선</MudText>
         <MudCard Class="mb-3 pa-3">
             <ApexCharts.ApexChart TItem="EquityPoint" Options="_equityChartOptions" Height="300">
                 <ApexCharts.ApexPointSeries TItem="EquityPoint"
-                                 Items="_result.EquityCurve"
+                                 Items="_chartData"
                                  SeriesType="ApexCharts.SeriesType.Area"
                                  XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
                                  YAggregate="@(e => e.Last().Equity)"
@@ -1784,35 +1784,35 @@
                             <td>5% (최악)</td>
                             <td>$@_result.MonteCarlo.Percentile5Equity.ToString("N0")</td>
                             <td class="@(_result.MonteCarlo.Percentile5Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @((_result.MonteCarlo.Percentile5Equity / _capital - 1).ToString("P2"))
+                                @(SafeReturnPercent(_result.MonteCarlo.Percentile5Equity).ToString("P2"))
                             </td>
                         </tr>
                         <tr>
                             <td>25%</td>
                             <td>$@_result.MonteCarlo.Percentile25Equity.ToString("N0")</td>
                             <td class="@(_result.MonteCarlo.Percentile25Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @((_result.MonteCarlo.Percentile25Equity / _capital - 1).ToString("P2"))
+                                @(SafeReturnPercent(_result.MonteCarlo.Percentile25Equity).ToString("P2"))
                             </td>
                         </tr>
                         <tr style="font-weight: bold;">
                             <td>50% (중앙값)</td>
                             <td>$@_result.MonteCarlo.MedianFinalEquity.ToString("N0")</td>
                             <td class="@(_result.MonteCarlo.MedianFinalEquity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @((_result.MonteCarlo.MedianFinalEquity / _capital - 1).ToString("P2"))
+                                @(SafeReturnPercent(_result.MonteCarlo.MedianFinalEquity).ToString("P2"))
                             </td>
                         </tr>
                         <tr>
                             <td>75%</td>
                             <td>$@_result.MonteCarlo.Percentile75Equity.ToString("N0")</td>
                             <td class="@(_result.MonteCarlo.Percentile75Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @((_result.MonteCarlo.Percentile75Equity / _capital - 1).ToString("P2"))
+                                @(SafeReturnPercent(_result.MonteCarlo.Percentile75Equity).ToString("P2"))
                             </td>
                         </tr>
                         <tr>
                             <td>95% (최선)</td>
                             <td>$@_result.MonteCarlo.Percentile95Equity.ToString("N0")</td>
                             <td class="@(_result.MonteCarlo.Percentile95Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @((_result.MonteCarlo.Percentile95Equity / _capital - 1).ToString("P2"))
+                                @(SafeReturnPercent(_result.MonteCarlo.Percentile95Equity).ToString("P2"))
                             </td>
                         </tr>
                     </tbody>
@@ -1887,8 +1887,9 @@
     @if (_result.Trades.Count > 0)
     {
         <MudText Typo="Typo.h6" Class="mt-4 mb-2">거래 내역 (@(_result.Trades.Count)건)</MudText>
-        <MudTable Items="@_result.Trades" Dense="true" Hover="true" Striped="true"
-                  FixedHeader="true" Height="500px">
+        <MudTable @ref="_tradeTable" Items="@_result.Trades" Dense="true" Hover="true" Striped="true"
+                  FixedHeader="true" Height="500px" RowsPerPage="50"
+                  CurrentPage="0">
             <HeaderContent>
                 <MudTh>#</MudTh>
                 <MudTh>종목</MudTh>
@@ -1903,42 +1904,41 @@
                 <MudTh>청산 사유</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@(_result.Trades.IndexOf(context) + 1)</MudTd>
-                <MudTd><b>@context.Symbol</b></MudTd>
-                <MudTd>
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                        <MudText Typo="Typo.body2" Style="white-space: nowrap;">
-                            @PatternMetadataMap.GetKoreanName(context.PatternType)
-                        </MudText>
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
-                                 Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
-                                 Style="height: 18px; font-size: 10px; padding: 0 6px; min-width: 0;">
+                @{ var rowIdx = _result.Trades.IndexOf(context); }
+                <MudTd DataLabel="#">@(rowIdx + 1)</MudTd>
+                <MudTd DataLabel="종목"><b>@context.Symbol</b></MudTd>
+                <MudTd DataLabel="패턴">
+                    <span style="white-space: nowrap;">
+                        @PatternMetadataMap.GetKoreanName(context.PatternType)
+                        <span class="mud-chip mud-chip-size-small" style="height:18px;font-size:10px;padding:0 6px;background:var(--mud-palette-primary);color:white;border-radius:12px;vertical-align:middle;">
                             @PatternMetadataMap.GetStyleLabel(context.PatternType)
-                        </MudChip>
-                    </MudStack>
+                        </span>
+                    </span>
                 </MudTd>
-                <MudTd>$@context.EntryPrice.ToString("N2")</MudTd>
-                <MudTd>$@context.ExitPrice.ToString("N2")</MudTd>
-                <MudTd>@context.Quantity</MudTd>
-                <MudTd>@context.EntryTime.ToString("yyyy-MM-dd")</MudTd>
-                <MudTd>@context.ExitTime.ToString("yyyy-MM-dd")</MudTd>
-                <MudTd>
-                    <MudText Color="@(context.PnL >= 0 ? Color.Success : Color.Error)">
-                        @(context.PnL >= 0 ? "+" : "")$@context.PnL.ToString("N2")
-                    </MudText>
+                <MudTd DataLabel="진입가">@FormatPrice(context.EntryPrice)</MudTd>
+                <MudTd DataLabel="청산가">@FormatPrice(context.ExitPrice)</MudTd>
+                <MudTd DataLabel="수량">@context.Quantity</MudTd>
+                <MudTd DataLabel="진입일">@context.EntryTime.ToString("yy-MM-dd")</MudTd>
+                <MudTd DataLabel="청산일">@context.ExitTime.ToString("yy-MM-dd")</MudTd>
+                <MudTd DataLabel="손익 ($)">
+                    <span style="color: @(context.PnL >= 0 ? "var(--mud-palette-success)" : "var(--mud-palette-error)")">
+                        @(context.PnL >= 0 ? "+" : "")@context.PnL.ToString("N0")
+                    </span>
                 </MudTd>
-                <MudTd>
-                    <MudText Color="@(context.PnLPercent >= 0 ? Color.Success : Color.Error)">
-                        @(context.PnLPercent >= 0 ? "+" : "")@context.PnLPercent.ToString("P2")
-                    </MudText>
+                <MudTd DataLabel="손익 (%)">
+                    <span style="color: @(context.PnLPercent >= 0 ? "var(--mud-palette-success)" : "var(--mud-palette-error)")">
+                        @(context.PnLPercent >= 0 ? "+" : "")@context.PnLPercent.ToString("P1")
+                    </span>
                 </MudTd>
-                <MudTd>
-                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
-                             Color="@(context.ExitReason == "목표 도달" ? Color.Success : context.ExitReason == "손절" ? Color.Error : Color.Warning)">
+                <MudTd DataLabel="청산 사유">
+                    <span class="mud-chip mud-chip-size-small" style="height:18px;font-size:10px;padding:0 6px;border-radius:12px;color:white;background:@(context.ExitReason == "목표 도달" ? "var(--mud-palette-success)" : context.ExitReason == "손절" ? "var(--mud-palette-error)" : "var(--mud-palette-warning)");">
                         @context.ExitReason
-                    </MudChip>
+                    </span>
                 </MudTd>
             </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 50, 100 }" />
+            </PagerContent>
         </MudTable>
     }
 }
