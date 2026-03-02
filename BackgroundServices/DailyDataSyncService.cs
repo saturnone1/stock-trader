@@ -22,7 +22,8 @@ public class DailyDataSyncService : BackgroundService
 
     // BUG-W04: 동일 날짜 중복 싱크 방지 — 마지막 싱크 완료 날짜(UTC)를 기록한다.
     // PeriodicTimer는 30분마다 tick을 발생시키지만, 싱크는 하루에 단 1회만 실행해야 한다.
-    private DateTime _lastSyncDateUtc = DateTime.MinValue;
+    // DateOnly 사용: DateTime.Date 비교는 tick 경계에서 race condition 발생 가능.
+    private DateOnly _lastSyncDate = DateOnly.MinValue;
 
     public DailyDataSyncService(
         IServiceScopeFactory scopeFactory,
@@ -47,7 +48,7 @@ public class DailyDataSyncService : BackgroundService
             // BUG-W04: 오늘 이미 싱크 완료했으면 스킵.
             // 장 마감 조건(usReady/krxReady)이 30분 tick마다 계속 true가 되어
             // 동일 날짜 데이터를 하루에 수십 번 재싱크하는 문제를 방지한다.
-            if (DateTime.UtcNow.Date == _lastSyncDateUtc)
+            if (DateOnly.FromDateTime(DateTime.UtcNow) == _lastSyncDate)
                 continue;
 
             // US 또는 KRX 장 마감 후 1시간이 지나야 동기화 시작
@@ -79,15 +80,21 @@ public class DailyDataSyncService : BackgroundService
 
             try
             {
+                var errors = 0;
                 await RetryHelper.ExecuteWithRetryAsync(
-                    () => SyncDailyDataAsync(stoppingToken),
+                    async () => { errors = await SyncDailyDataAsync(stoppingToken); },
                     _logger,
                     "DailyDataSync",
                     maxRetries: 3,
                     ct: stoppingToken);
 
-                // BUG-W04: 싱크 성공 후 오늘 날짜를 기록하여 이후 tick에서 중복 실행을 막는다.
-                _lastSyncDateUtc = DateTime.UtcNow.Date;
+                // BUG-W04: 모든 심볼이 성공했을 때만 오늘 날짜를 기록한다.
+                // 부분 실패(일부 심볼 오류) 시에는 날짜를 기록하지 않아 다음 tick에서 재시도한다.
+                if (errors == 0)
+                    _lastSyncDate = DateOnly.FromDateTime(DateTime.UtcNow);
+                else
+                    _logger.LogWarning("Partial sync: {Errors} symbols failed, will retry next cycle", errors);
+
                 _consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -104,7 +111,11 @@ public class DailyDataSyncService : BackgroundService
         }
     }
 
-    private async Task SyncDailyDataAsync(CancellationToken ct)
+    /// <summary>
+    /// 모든 심볼의 일봉 데이터를 동기화한다.
+    /// Returns: 동기화 중 발생한 심볼별 오류 수 (0 = 완전 성공).
+    /// </summary>
+    private async Task<int> SyncDailyDataAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
@@ -155,5 +166,7 @@ public class DailyDataSyncService : BackgroundService
         _logger.LogInformation(
             "Daily sync complete: {Synced}/{Total} symbols, {Bars} bars synced, {Errors} errors",
             synced, settings.WatchlistSymbols.Count, totalBars, errors);
+
+        return errors;
     }
 }

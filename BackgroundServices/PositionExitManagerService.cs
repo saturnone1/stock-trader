@@ -204,13 +204,16 @@ public class PositionExitManagerService : BackgroundService
         var pep = TradeSimulator.PatternExitProfile.For(position.PatternType, _liveExitOverrides);
         var state = _exitStates.GetOrAdd(position.Id, _ => new ExitState());
 
-        // ATR 계산: DB에 저장된 EntryAtr 우선 사용, 없으면 최근 봉에서 계산
+        // ATR 계산: DB에 저장된 EntryAtr 우선 사용, 없으면 최근 봉에서 계산.
+        // ATR(14)는 15개 봉(TR 14개 + 이전 종가 1개)이 필요하다.
+        // 20일 달력 기간으로 조회하면 주말·공휴일 제외 시 실질 영업일이 14개 이하가 되어
+        // ATR이 0으로 반환될 위험이 있다. 30일로 확장하면 약 21영업일을 확보할 수 있다.
         var atr = position.EntryAtr;
         if (atr <= 0)
         {
             var bars = await ohlcvRepo.GetBarsAsync(position.Symbol, TimeFrame.Daily,
-                DateTime.UtcNow.AddDays(-20), DateTime.UtcNow, ct);
-            if (bars.Count >= 14)
+                DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, ct);
+            if (bars.Count >= 15)
                 atr = CalculateSimpleAtr(bars, 14);
         }
 
