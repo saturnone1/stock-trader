@@ -74,14 +74,14 @@ public class PatternDetectionServiceTests
             .ReturnsAsync(settings);
     }
 
-    private static OhlcvBar[] MakeBars(int count = 10)
+    private static OhlcvBar[] MakeBars(int count = 10, TimeFrame timeFrame = TimeFrame.Daily)
     {
         return Enumerable.Range(0, count)
             .Select(i => new OhlcvBar
             {
                 Symbol = "AAPL",
-                Timestamp = DateTime.UtcNow.AddMinutes(-i),
-                TimeFrame = TimeFrame.OneMinute,
+                Timestamp = DateTime.UtcNow.AddDays(-i),
+                TimeFrame = timeFrame,
                 Open = 100m + i,
                 High = 102m + i,
                 Low = 99m + i,

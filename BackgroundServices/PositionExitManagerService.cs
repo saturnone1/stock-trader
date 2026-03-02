@@ -107,7 +107,7 @@ public class PositionExitManagerService : BackgroundService
         var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
         if (openPositions.Count == 0) return;
 
-        var brokerService = _accountManager.GetActiveBrokerService();
+        var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
         if (brokerService == null) return;
 
         // 브로커에서 현재 포지션 가져와서 현재가 업데이트

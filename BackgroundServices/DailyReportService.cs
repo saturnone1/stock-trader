@@ -130,13 +130,16 @@ public sealed class DailyReportService : BackgroundService
                     var brokerAccount = await broker.GetAccountAsync(ct);
                     var totalEquity = brokerAccount?.TotalEquity ?? 0m;
                     if (totalEquity > 0m)
+                    {
                         dailyPnlPercent = dailyPnl / totalEquity * 100m;
+                    }
                     else if (dailyPnl != 0m)
                     {
                         // equity 조회 실패 → 진입금액 합계로 대체 (부정확하지만 0보다 나음)
                         var initialValue = todayTrades.Sum(t => t.EntryPrice * t.Quantity);
                         dailyPnlPercent = initialValue > 0m ? dailyPnl / initialValue * 100m : 0m;
-                        _logger.LogDebug("Daily PnL%: broker equity unavailable, falling back to entry-value denominator");
+                        _logger.LogDebug(
+                            "Daily PnL%: broker equity unavailable, falling back to entry-value denominator");
                     }
                 }
             }

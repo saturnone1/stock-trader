@@ -93,14 +93,23 @@ public class StatisticsService : IStatisticsService
         // 모든 패턴 통계를 메모리에서 먼저 계산한 뒤 단일 SaveChangesAsync로 일괄 저장
         // 기존: 16회 패턴 × 2쿼리(FindAsync + SaveChangesAsync) = 32 queries
         // 개선: 1회 SELECT(전체 로드) + 1회 SaveChangesAsync = 2 queries
+        // 이번 계산에서 실제로 통계가 존재하는 (PatternType, Symbol) 조합을 추적
+        var activeKeys = new HashSet<(PatternType, string?)>();
         var allStats = new List<PatternStats>();
+
         foreach (PatternType pattern in Enum.GetValues<PatternType>())
         {
             var stats = await ComputeStatsAsync(pattern, allTrades, ct);
             allStats.Add(stats);
+            // SampleSize > 0인 경우만 활성 키로 기록 (거래가 없는 패턴은 stale 대상)
+            if (stats.SampleSize > 0)
+                activeKeys.Add((pattern, stats.Symbol));
         }
 
         await _statsRepo.SaveBatchAsync(allStats, ct);
+
+        // 현재 거래 이력에 없는 stale 통계 행 삭제 (예: 데이터 초기화 후 남은 이전 통계)
+        await _statsRepo.DeleteStaleAsync(activeKeys, ct);
 
         // 전체 + 패턴별 + 패턴×종목별 캐시 무효화
         _cache.Remove(AllStatsCacheKey);

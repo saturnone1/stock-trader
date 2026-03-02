@@ -19,6 +19,9 @@ public class DailyDataSyncService : BackgroundService
     private readonly ILogger<DailyDataSyncService> _logger;
 
     private int _consecutiveFailures = 0;
+
+    // BUG-W04: 동일 날짜 중복 싱크 방지 — 마지막 싱크 완료 날짜(UTC)를 기록한다.
+    // PeriodicTimer는 30분마다 tick을 발생시키지만, 싱크는 하루에 단 1회만 실행해야 한다.
     private DateTime _lastSyncDateUtc = DateTime.MinValue;
 
     public DailyDataSyncService(
@@ -41,7 +44,9 @@ public class DailyDataSyncService : BackgroundService
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            // 오늘 이미 싱크 완료했으면 스킵 (30분마다 tick이 오지만 하루 1회로 제한)
+            // BUG-W04: 오늘 이미 싱크 완료했으면 스킵.
+            // 장 마감 조건(usReady/krxReady)이 30분 tick마다 계속 true가 되어
+            // 동일 날짜 데이터를 하루에 수십 번 재싱크하는 문제를 방지한다.
             if (DateTime.UtcNow.Date == _lastSyncDateUtc)
                 continue;
 
@@ -81,6 +86,7 @@ public class DailyDataSyncService : BackgroundService
                     maxRetries: 3,
                     ct: stoppingToken);
 
+                // BUG-W04: 싱크 성공 후 오늘 날짜를 기록하여 이후 tick에서 중복 실행을 막는다.
                 _lastSyncDateUtc = DateTime.UtcNow.Date;
                 _consecutiveFailures = 0;
             }
