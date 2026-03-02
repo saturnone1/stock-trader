@@ -52,8 +52,6 @@ public static class ServiceCollectionExtensions
         // Data Feed - Keyed services for multiple providers
         services.AddKeyedScoped<IDataFeedService, AlpacaDataFeedService>(DataSource.Alpaca);
         services.AddKeyedScoped<IDataFeedService, YahooFinanceDataFeedService>(DataSource.Yahoo);
-        services.AddKeyedScoped<IDataFeedService, LsSecuritiesDataFeedService>(DataSource.LsSecurities);
-
         // HttpClient for Yahoo Finance
         services.AddHttpClient<YahooFinanceDataFeedService>(client =>
         {
@@ -63,8 +61,10 @@ public static class ServiceCollectionExtensions
             client.DefaultRequestHeaders.Add("User-Agent", yahooConfig.UserAgent);
         });
 
-        // HttpClient for LS Securities
+        // HttpClient + Keyed DI for LS Securities (Typed Client → factory delegate로 해석)
         services.AddHttpClient<LsSecuritiesDataFeedService>();
+        services.AddKeyedScoped<IDataFeedService>(DataSource.LsSecurities,
+            (sp, _) => sp.GetRequiredService<LsSecuritiesDataFeedService>());
         services.AddHttpClient<LsSecuritiesBrokerService>();
 
         // Data Feed Factory for runtime provider switching
@@ -107,7 +107,8 @@ public static class ServiceCollectionExtensions
         services.AddKeyedScoped<IBrokerService, AlpacaBrokerService>(BrokerType.Alpaca);
         services.AddKeyedScoped<IBrokerService, KoreaInvestmentBrokerService>(BrokerType.KoreaInvestment);
         services.AddKeyedScoped<IBrokerService, KiwoomBrokerService>(BrokerType.Kiwoom);
-        services.AddKeyedScoped<IBrokerService, LsSecuritiesBrokerService>(BrokerType.LsSecurities);
+        services.AddKeyedScoped<IBrokerService>(BrokerType.LsSecurities,
+            (sp, _) => sp.GetRequiredService<LsSecuritiesBrokerService>());
 
         // BrokerServiceFactory — appsettings의 DefaultBrokerType으로 기본 브로커 결정
         services.AddScoped<IBrokerServiceFactory>(sp =>

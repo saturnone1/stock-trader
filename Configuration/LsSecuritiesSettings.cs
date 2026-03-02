@@ -20,14 +20,20 @@ public class LsSecuritiesSettings
     /// <summary>모의투자 여부 (true=모의, false=실전)</summary>
     public bool IsPaper { get; set; } = true;
 
-    /// <summary>REST API 기본 URL</summary>
+    /// <summary>REST API 운영 URL</summary>
     public string BaseUrl { get; set; } = "https://openapi.ls-sec.co.kr:8080";
+
+    /// <summary>REST API 모의투자 URL</summary>
+    public string PaperBaseUrl { get; set; } = "https://openapi.ls-sec.co.kr:29080";
 
     /// <summary>WebSocket URL (운영)</summary>
     public string WebSocketUrl { get; set; } = "wss://openapi.ls-sec.co.kr:9443/websocket";
 
     /// <summary>WebSocket URL (모의투자)</summary>
     public string WebSocketPaperUrl { get; set; } = "wss://openapi.ls-sec.co.kr:29443/websocket";
+
+    /// <summary>실제 사용할 REST URL (IsPaper 기반 자동 분기)</summary>
+    public string EffectiveBaseUrl => IsPaper ? PaperBaseUrl : BaseUrl;
 
     /// <summary>실제 사용할 WebSocket URL</summary>
     public string EffectiveWebSocketUrl => IsPaper ? WebSocketPaperUrl : WebSocketUrl;
