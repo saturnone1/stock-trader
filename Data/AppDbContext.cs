@@ -51,6 +51,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Position>(entity =>
         {
             entity.HasIndex(p => p.ClosedAt);
+            entity.HasIndex(p => p.Symbol);
             entity.Ignore(p => p.IsOpen);
             entity.Ignore(p => p.UnrealizedPnL);
             entity.Ignore(p => p.RealizedPnL);

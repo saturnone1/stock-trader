@@ -725,9 +725,19 @@
     {
         if (_settings == null) return;
         _saving = true;
-        await SettingsRepo.SaveAsync(_settings);
-        _saving = false;
-        Snackbar.Add("설정이 저장되었습니다!", Severity.Success);
+        try
+        {
+            await SettingsRepo.SaveAsync(_settings);
+            Snackbar.Add("설정이 저장되었습니다!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"설정 저장 실패: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
     private async Task SavePatternParamsAsync()

@@ -17,6 +17,7 @@ public class OhlcvRepository : IOhlcvRepository
         DateTime from, DateTime to, CancellationToken ct = default)
     {
         return await _db.OhlcvBars
+            .AsNoTracking()
             .Where(b => b.Symbol == symbol && b.TimeFrame == timeFrame
                 && b.Timestamp >= from && b.Timestamp <= to)
             .OrderBy(b => b.Timestamp)
@@ -27,6 +28,7 @@ public class OhlcvRepository : IOhlcvRepository
         CancellationToken ct = default)
     {
         return await _db.OhlcvBars
+            .AsNoTracking()
             .Where(b => b.Symbol == symbol && b.TimeFrame == timeFrame)
             .OrderByDescending(b => b.Timestamp)
             .FirstOrDefaultAsync(ct);
@@ -37,34 +39,61 @@ public class OhlcvRepository : IOhlcvRepository
         var barList = bars.ToList();
         if (barList.Count == 0) return;
 
-        // Bulk check: load all existing keys in one query instead of N+1
-        var symbols = barList.Select(b => b.Symbol).Distinct().ToList();
-        var timeFrames = barList.Select(b => b.TimeFrame).Distinct().ToList();
-        var minTs = barList.Min(b => b.Timestamp);
-        var maxTs = barList.Max(b => b.Timestamp);
+        // INSERT OR IGNORE leverages the unique index on (Symbol, TimeFrame, Timestamp).
+        // No need to load existing rows into memory — SQLite deduplicates at DB level.
+        var conn = _db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync(ct);
 
-        var existingKeys = await _db.OhlcvBars
-            .Where(b => symbols.Contains(b.Symbol)
-                && timeFrames.Contains(b.TimeFrame)
-                && b.Timestamp >= minTs && b.Timestamp <= maxTs)
-            .Select(b => new { b.Symbol, b.TimeFrame, b.Timestamp })
-            .ToListAsync(ct);
-
-        var existingSet = new HashSet<(string, TimeFrame, DateTime)>(
-            existingKeys.Select(k => (k.Symbol, k.TimeFrame, k.Timestamp)));
-
-        foreach (var bar in barList)
+        using var tx = await _db.Database.BeginTransactionAsync(ct);
+        try
         {
-            if (!existingSet.Contains((bar.Symbol, bar.TimeFrame, bar.Timestamp)))
-                _db.OhlcvBars.Add(bar);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "INSERT OR IGNORE INTO OhlcvBars " +
+                "(Symbol, TimeFrame, Timestamp, Open, High, Low, Close, Volume, Vwap) " +
+                "VALUES (@sym, @tf, @ts, @open, @high, @low, @close, @vol, @vwap)";
+
+            // Pre-create parameters once; rebind values per row
+            var pSym   = cmd.CreateParameter(); pSym.ParameterName   = "@sym";   cmd.Parameters.Add(pSym);
+            var pTf    = cmd.CreateParameter(); pTf.ParameterName    = "@tf";    cmd.Parameters.Add(pTf);
+            var pTs    = cmd.CreateParameter(); pTs.ParameterName    = "@ts";    cmd.Parameters.Add(pTs);
+            var pOpen  = cmd.CreateParameter(); pOpen.ParameterName  = "@open";  cmd.Parameters.Add(pOpen);
+            var pHigh  = cmd.CreateParameter(); pHigh.ParameterName  = "@high";  cmd.Parameters.Add(pHigh);
+            var pLow   = cmd.CreateParameter(); pLow.ParameterName   = "@low";   cmd.Parameters.Add(pLow);
+            var pClose = cmd.CreateParameter(); pClose.ParameterName = "@close"; cmd.Parameters.Add(pClose);
+            var pVol   = cmd.CreateParameter(); pVol.ParameterName   = "@vol";   cmd.Parameters.Add(pVol);
+            var pVwap  = cmd.CreateParameter(); pVwap.ParameterName  = "@vwap";  cmd.Parameters.Add(pVwap);
+
+            foreach (var bar in barList)
+            {
+                pSym.Value   = bar.Symbol;
+                pTf.Value    = (int)bar.TimeFrame;
+                pTs.Value    = bar.Timestamp.ToString("O"); // ISO 8601 — SQLite stores as TEXT
+                pOpen.Value  = bar.Open;
+                pHigh.Value  = bar.High;
+                pLow.Value   = bar.Low;
+                pClose.Value = bar.Close;
+                pVol.Value   = bar.Volume;
+                pVwap.Value  = bar.Vwap.HasValue ? (object)bar.Vwap.Value : DBNull.Value;
+
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
         }
-        await _db.SaveChangesAsync(ct);
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
     }
 
     public async Task<DateTime?> GetLastTimestampAsync(string symbol, TimeFrame timeFrame,
         CancellationToken ct = default)
     {
         return await _db.OhlcvBars
+            .AsNoTracking()
             .Where(b => b.Symbol == symbol && b.TimeFrame == timeFrame)
             .MaxAsync(b => (DateTime?)b.Timestamp, ct);
     }

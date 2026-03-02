@@ -134,7 +134,7 @@
                 <MudText Typo="Typo.caption" Color="Color.Secondary">일일 손익</MudText>
                 <MudText Typo="Typo.h4" Class="mt-1"
                          Color="@(_riskState.DailyPnL >= 0 ? Color.Success : Color.Error)">
-                    $@_riskState.DailyPnL.ToString("N2")
+                    @(_riskState.DailyPnL >= 0 ? "+" : "")$@_riskState.DailyPnL.ToString("N2")
                 </MudText>
             </MudCardContent>
         </MudCard>

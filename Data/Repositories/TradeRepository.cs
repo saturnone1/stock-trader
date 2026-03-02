@@ -32,7 +32,7 @@ public class TradeRepository : ITradeRepository
     public async Task<int> GetTradeCountAsync(PatternType? patternType = null,
         DateTime? from = null, DateTime? to = null, CancellationToken ct = default)
     {
-        var query = _db.TradeRecords.AsQueryable();
+        var query = _db.TradeRecords.AsNoTracking();
 
         if (patternType.HasValue)
             query = query.Where(t => t.PatternType == patternType.Value);
@@ -46,7 +46,7 @@ public class TradeRepository : ITradeRepository
 
     private IQueryable<TradeRecord> BuildTradeQuery(PatternType? patternType, DateTime? from, DateTime? to)
     {
-        var query = _db.TradeRecords.AsQueryable();
+        var query = _db.TradeRecords.AsNoTracking();
 
         if (patternType.HasValue)
             query = query.Where(t => t.PatternType == patternType.Value);
@@ -61,6 +61,7 @@ public class TradeRepository : ITradeRepository
     public async Task<List<TradeRecord>> GetRecentAsync(int limit = 5000, CancellationToken ct = default)
     {
         return await _db.TradeRecords
+            .AsNoTracking()
             .OrderByDescending(t => t.EntryTime)
             .Take(limit)
             .ToListAsync(ct);
@@ -75,6 +76,7 @@ public class TradeRepository : ITradeRepository
     public async Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default)
     {
         return await _db.Positions
+            .AsNoTracking()
             .Where(p => p.ClosedAt == null)
             .OrderByDescending(p => p.OpenedAt)
             .ToListAsync(ct);
@@ -98,6 +100,7 @@ public class TradeRepository : ITradeRepository
         CancellationToken ct = default)
     {
         return await _db.TradeRecommendations
+            .AsNoTracking()
             .OrderByDescending(r => r.GeneratedAt)
             .Take(count)
             .ToListAsync(ct);
@@ -113,6 +116,7 @@ public class TradeRepository : ITradeRepository
     public async Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default)
     {
         return await _db.PatternSignals
+            .AsNoTracking()
             .Where(s => s.IsActive)
             .OrderByDescending(s => s.DetectedAt)
             .ToListAsync(ct);

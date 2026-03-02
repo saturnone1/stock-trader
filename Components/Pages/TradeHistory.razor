@@ -71,6 +71,18 @@
     <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
+@* Capture a snapshot at render time to guard against DivideByZero and collection mutation. *@
+@{ var tradesSnapshot = _trades;
+   var tradeCount     = tradesSnapshot.Count;
+   var totalPnL       = tradeCount > 0 ? tradesSnapshot.Sum(t => t.PnL) : 0m;
+   var winRate        = tradeCount > 0
+                        ? (decimal)tradesSnapshot.Count(t => t.IsWin) / tradeCount
+                        : 0m;
+   var avgHoldDays    = tradeCount > 0
+                        ? tradesSnapshot.Average(t => (t.ExitTime - t.EntryTime).TotalDays)
+                        : 0.0;
+}
+
 @if (_trades.Count > 0)
 {
     <MudGrid Class="mb-3">
@@ -78,8 +90,8 @@
             <MudCard>
                 <MudCardContent Class="text-center py-2">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">총 손익</MudText>
-                    <MudText Typo="Typo.h6" Color="@(_trades.Sum(t => t.PnL) >= 0 ? Color.Success : Color.Error)">
-                        $@_trades.Sum(t => t.PnL).ToString("N2")
+                    <MudText Typo="Typo.h6" Color="@(totalPnL >= 0 ? Color.Success : Color.Error)">
+                        $@totalPnL.ToString("N2")
                     </MudText>
                 </MudCardContent>
             </MudCard>
@@ -88,7 +100,7 @@
             <MudCard>
                 <MudCardContent Class="text-center py-2">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">승률</MudText>
-                    <MudText Typo="Typo.h6">@(((decimal)_trades.Count(t => t.IsWin) / _trades.Count).ToString("P1"))</MudText>
+                    <MudText Typo="Typo.h6">@winRate.ToString("P1")</MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -96,7 +108,7 @@
             <MudCard>
                 <MudCardContent Class="text-center py-2">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">총 거래수</MudText>
-                    <MudText Typo="Typo.h6">@_trades.Count</MudText>
+                    <MudText Typo="Typo.h6">@tradeCount</MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -104,7 +116,7 @@
             <MudCard>
                 <MudCardContent Class="text-center py-2">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">평균 보유기간</MudText>
-                    <MudText Typo="Typo.h6">@(_trades.Average(t => (t.ExitTime - t.EntryTime).TotalDays).ToString("F1"))일</MudText>
+                    <MudText Typo="Typo.h6">@avgHoldDays.ToString("F1")일</MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -128,7 +140,7 @@
         </HeaderContent>
         <RowTemplate>
             @{
-                var meta = PatternMetadataMap.Get(context.PatternType);
+                var meta     = PatternMetadataMap.Get(context.PatternType);
                 var holdDays = (context.ExitTime - context.EntryTime).TotalDays;
             }
             <MudTd><b>@context.Symbol</b></MudTd>

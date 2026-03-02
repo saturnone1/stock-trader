@@ -1,27 +1,27 @@
-﻿@page "/Error"
+@page "/Error"
 @using System.Diagnostics
 
-<PageTitle>Error</PageTitle>
+<PageTitle>오류</PageTitle>
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+<h1 class="text-danger">오류.</h1>
+<h2 class="text-danger">요청을 처리하는 중 오류가 발생했습니다.</h2>
 
 @if (ShowRequestId)
 {
     <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
+        <strong>요청 ID:</strong> <code>@RequestId</code>
     </p>
 }
 
-<h3>Development Mode</h3>
+<h3>개발 모드</h3>
 <p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
+    <strong>개발(Development)</strong> 환경으로 전환하면 발생한 오류에 대한 더 자세한 정보를 확인할 수 있습니다.
 </p>
 <p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
+    <strong>개발 환경은 배포된 애플리케이션에서 활성화하지 마십시오.</strong>
+    예외의 민감한 정보가 최종 사용자에게 노출될 수 있습니다.
+    로컬 디버깅을 위해서는 <strong>ASPNETCORE_ENVIRONMENT</strong> 환경 변수를 <strong>Development</strong>로 설정하고
+    앱을 재시작하여 <strong>개발</strong> 환경을 활성화하세요.
 </p>
 
 @code{

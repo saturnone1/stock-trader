@@ -42,7 +42,7 @@
 <MudGrid Class="mb-2">
     <MudItem xs="12" md="5">
         <!-- 패턴 필터: 한국어이름 (스타일) 형태로 표시 -->
-        <MudSelect T="string" @bind-Value="_filterPattern" Label="패턴 필터" Variant="Variant.Outlined" Dense="true">
+        <MudSelect T="string" Value="_filterPattern" ValueChanged="@(v => { _filterPattern = v; RebuildFilteredSignals(); })" Label="패턴 필터" Variant="Variant.Outlined" Dense="true">
             <MudSelectItem T="string" Value="@("")">전체 패턴</MudSelectItem>
             @foreach (var pattern in Enum.GetValues<PatternType>())
             {
@@ -54,12 +54,12 @@
         </MudSelect>
     </MudItem>
     <MudItem xs="12" md="4">
-        <MudTextField @bind-Value="_filterSymbol" Label="종목 검색" Placeholder="종목 검색..."
+        <MudTextField Value="_filterSymbol" ValueChanged="@((string v) => { _filterSymbol = v; RebuildFilteredSignals(); })" Label="종목 검색" Placeholder="종목 검색..."
                       Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
     </MudItem>
     <MudItem xs="12" md="3">
-        <MudSelect T="string" @bind-Value="_sortBy" Label="정렬" Variant="Variant.Outlined" Dense="true">
+        <MudSelect T="string" Value="_sortBy" ValueChanged="@(v => { _sortBy = v; RebuildFilteredSignals(); })" Label="정렬" Variant="Variant.Outlined" Dense="true">
             <MudSelectItem T="string" Value="@("time-desc")">최신순</MudSelectItem>
             <MudSelectItem T="string" Value="@("time-asc")">오래된순</MudSelectItem>
             <MudSelectItem T="string" Value="@("confidence-desc")">신뢰도 높은순</MudSelectItem>
@@ -75,7 +75,7 @@
              Color="@(_filterStyle == null ? Color.Primary : Color.Default)"
              Variant="@(_filterStyle == null ? Variant.Filled : Variant.Outlined)"
              Size="Size.Small"
-             OnClick="@(() => _filterStyle = null)">
+             OnClick="@(() => { _filterStyle = null; RebuildFilteredSignals(); })">
         전체
     </MudChip>
     <MudChip T="string"
@@ -106,12 +106,8 @@
              OnClick="@(() => ToggleStyleFilter(TradingStyle.Position))">
         포지션
     </MudChip>
-    <!-- 현재 필터 결과 카운트 표시 -->
-    @{
-        var count = FilteredSignals.Count();
-    }
     <MudText Typo="Typo.caption" Color="Color.Secondary" Style="line-height: 32px; margin-left: 8px;">
-        @(count)개 시그널
+        @(_filteredSignals?.Count ?? 0)개 시그널
     </MudText>
 </MudStack>
 
@@ -128,13 +124,13 @@
 {
     <MudAlert Severity="Severity.Info">현재 활성 시그널이 없습니다</MudAlert>
 }
-else if (!FilteredSignals.Any())
+else if (_filteredSignals.Count == 0)
 {
     <MudAlert Severity="Severity.Info">선택한 조건에 맞는 시그널이 없습니다</MudAlert>
 }
 else
 {
-    @foreach (var signal in FilteredSignals)
+    @foreach (var signal in _filteredSignals)
     {
         <SignalCard Signal="@signal" />
     }
@@ -145,31 +141,30 @@ else
     private bool _loading;
     private string? _error;
     private List<PatternSignal> _signals = new();
+    // Materialized cache — rebuilt once per filter/data change, not on every render pass.
+    private List<PatternSignal> _filteredSignals = new();
     private string _filterPattern = "";
     private string _filterSymbol = "";
     private TradingStyle? _filterStyle = null;
     private string _sortBy = "time-desc";
 
-    private IEnumerable<PatternSignal> FilteredSignals
+    private void RebuildFilteredSignals()
     {
-        get
-        {
-            var q = _signals
-                .Where(s => string.IsNullOrEmpty(_filterPattern)
-                    || s.PatternType.ToString() == _filterPattern)
-                .Where(s => string.IsNullOrEmpty(_filterSymbol)
-                    || s.Symbol.Contains(_filterSymbol, StringComparison.OrdinalIgnoreCase))
-                .Where(s => _filterStyle == null
-                    || PatternMetadataMap.Get(s.PatternType).Style == _filterStyle);
+        var q = _signals
+            .Where(s => string.IsNullOrEmpty(_filterPattern)
+                || s.PatternType.ToString() == _filterPattern)
+            .Where(s => string.IsNullOrEmpty(_filterSymbol)
+                || s.Symbol.Contains(_filterSymbol, StringComparison.OrdinalIgnoreCase))
+            .Where(s => _filterStyle == null
+                || PatternMetadataMap.Get(s.PatternType).Style == _filterStyle);
 
-            return _sortBy switch
-            {
-                "time-asc" => q.OrderBy(s => s.DetectedAt),
-                "confidence-desc" => q.OrderByDescending(s => s.Confidence),
-                "rr-desc" => q.OrderByDescending(s => CalcRR(s)),
-                _ => q.OrderByDescending(s => s.DetectedAt)
-            };
-        }
+        _filteredSignals = (_sortBy switch
+        {
+            "time-asc"         => q.OrderBy(s => s.DetectedAt),
+            "confidence-desc"  => q.OrderByDescending(s => s.Confidence),
+            "rr-desc"          => q.OrderByDescending(s => CalcRR(s)),
+            _                  => q.OrderByDescending(s => s.DetectedAt)
+        }).ToList();
     }
 
     private static decimal CalcRR(PatternSignal s)
@@ -184,6 +179,7 @@ else
         try
         {
             _signals = await TradeRepo.GetActiveSignalsAsync();
+            RebuildFilteredSignals();
         }
         catch (Exception ex)
         {
@@ -206,6 +202,7 @@ else
             try
             {
                 _signals = await TradeRepo.GetActiveSignalsAsync();
+                RebuildFilteredSignals();
                 StateHasChanged();
             }
             catch (ObjectDisposedException) { }
@@ -220,6 +217,7 @@ else
     private void ToggleStyleFilter(TradingStyle style)
     {
         _filterStyle = _filterStyle == style ? null : style;
+        RebuildFilteredSignals();
     }
 
     public void Dispose()

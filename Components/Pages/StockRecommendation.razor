@@ -576,7 +576,12 @@ else
 
     private void SelectSymbol(string symbol)
     {
-        _ = OnSymbolChanged(symbol);
+        _ = InvokeAsync(async () =>
+        {
+            try { await OnSymbolChanged(symbol); }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex) { _errorMessage = $"종목 선택 오류: {ex.Message}"; StateHasChanged(); }
+        });
     }
 
     // 헬퍼 메서드들

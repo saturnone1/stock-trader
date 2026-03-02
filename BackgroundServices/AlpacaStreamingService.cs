@@ -19,6 +19,10 @@ public class AlpacaStreamingService : BackgroundService
     private readonly INotificationService _notificationService;
     private readonly ILogger<AlpacaStreamingService> _logger;
 
+    // Bar batching buffer: bars are written here and flushed to DB every 5 seconds
+    private readonly Channel<OhlcvBar> _barBuffer = Channel.CreateUnbounded<OhlcvBar>(
+        new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
+
     private readonly HashSet<string> _subscribedSymbols = new(StringComparer.OrdinalIgnoreCase);
     // BUG-C05 fix: store subscription objects keyed by symbol so unsubscribe reuses the same instance
     private readonly Dictionary<string, IAlpacaDataSubscription<IBar>> _subscriptions = new(StringComparer.OrdinalIgnoreCase);
@@ -53,6 +57,9 @@ public class AlpacaStreamingService : BackgroundService
 
         _logger.LogInformation("AlpacaStreamingService starting");
 
+        // Start the bar-flush loop as a concurrent background task
+        var flushTask = BarFlushLoopAsync(stoppingToken);
+
         var attempt = 0;
 
         while (!stoppingToken.IsCancellationRequested)
@@ -77,7 +84,7 @@ public class AlpacaStreamingService : BackgroundService
                     _logger.LogWarning(
                         "Max reconnect attempts ({Max}) exceeded. Falling back to polling",
                         _settings.MaxReconnectAttempts);
-                    return;
+                    break;
                 }
 
                 var delay = CalculateBackoffDelay(attempt);
@@ -87,6 +94,64 @@ public class AlpacaStreamingService : BackgroundService
 
                 await Task.Delay(delay, stoppingToken);
             }
+        }
+
+        // Signal the flush loop to drain remaining bars, then wait for it to finish
+        _barBuffer.Writer.TryComplete();
+        await flushTask;
+    }
+
+    /// <summary>
+    /// Drains <see cref="_barBuffer"/> on a 5-second periodic timer and persists all
+    /// buffered bars in a single DI scope / DB transaction, reducing per-bar scope overhead.
+    /// </summary>
+    private async Task BarFlushLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+
+        // Keep flushing until the timer is cancelled AND the channel is drained
+        while (true)
+        {
+            // Wait for the next tick; if cancelled, do a final drain pass then exit
+            var ticked = false;
+            try
+            {
+                ticked = await timer.WaitForNextTickAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancellation requested — perform one final flush then return
+                await FlushBarBatchAsync(CancellationToken.None);
+                return;
+            }
+
+            if (!ticked) break;
+
+            await FlushBarBatchAsync(ct);
+        }
+    }
+
+    private async Task FlushBarBatchAsync(CancellationToken ct)
+    {
+        var batch = new List<OhlcvBar>();
+
+        // Drain all currently available bars without blocking
+        while (_barBuffer.Reader.TryRead(out var bar))
+            batch.Add(bar);
+
+        if (batch.Count == 0) return;
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
+            await ohlcvRepo.AddBarsAsync(batch, ct);
+
+            _logger.LogDebug("Bar flush: persisted {Count} bars to DB", batch.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error flushing {Count} streaming bars to DB", batch.Count);
         }
     }
 
@@ -257,7 +322,7 @@ public class AlpacaStreamingService : BackgroundService
         {
             _streamingStatus.MarkActive(DateTime.UtcNow);
 
-            // Save bar to DB
+            // Buffer bar for batch DB persist — BarFlushLoopAsync drains every 5 seconds
             var ohlcvBar = new OhlcvBar
             {
                 Symbol = symbol,
@@ -270,10 +335,7 @@ public class AlpacaStreamingService : BackgroundService
                 Volume = (long)bar.Volume,
                 Vwap = bar.Vwap
             };
-
-            using var scope = _scopeFactory.CreateScope();
-            var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
-            await ohlcvRepo.AddBarsAsync([ohlcvBar]);
+            await _barBuffer.Writer.WriteAsync(ohlcvBar);
 
             // Push symbol to pattern scanner channel
             await _symbolChannel.Writer.WriteAsync(symbol);
