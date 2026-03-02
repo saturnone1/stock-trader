@@ -3,6 +3,17 @@ using StockTrader.Models.Enums;
 namespace StockTrader.Models;
 
 /// <summary>
+/// 슬리피지 계산 모델
+/// </summary>
+public enum SlippageModel
+{
+    /// <summary>고정 비율 (SlippagePercent 사용)</summary>
+    Fixed,
+    /// <summary>적응형: ATR(변동성) + 거래량(유동성) 기반 동적 계산</summary>
+    Adaptive
+}
+
+/// <summary>
 /// 백테스트 실행 시 패턴별 파라미터를 일시적으로 오버라이드합니다.
 /// 라이브 트레이딩 설정(appsettings.json)은 변경하지 않습니다.
 /// 키는 파라미터 이름(C# 프로퍼티명), 값은 decimal 또는 int 또는 string.
@@ -217,8 +228,13 @@ public class BacktestRequest
     public TimeFrame TimeFrame { get; set; } = TimeFrame.Daily;
 
     // Slippage & Commission
-    public decimal SlippagePercent { get; set; } = 0.05m;    // 0.05% per trade
+    public decimal SlippagePercent { get; set; } = 0.05m;    // 0.05% per trade (Fixed 모드용)
     public decimal CommissionPerTrade { get; set; } = 1.00m;  // $1 per trade
+
+    /// <summary>
+    /// 슬리피지 모델 선택. Fixed=고정비율, Adaptive=변동성/유동성 반영.
+    /// </summary>
+    public SlippageModel SlippageModel { get; set; } = SlippageModel.Adaptive;
 
     // Walk-Forward
     public bool EnableWalkForward { get; set; }
