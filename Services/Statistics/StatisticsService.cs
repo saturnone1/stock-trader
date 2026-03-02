@@ -87,6 +87,15 @@ public class StatisticsService : IStatisticsService
         // 전체 거래 이력이 필요: int.MaxValue로 기본 1000건 상한 우회
         var allTrades = await _tradeRepo.GetTradesAsync(take: int.MaxValue, ct: ct);
 
+        // 거래 이력이 전혀 없으면 기존 통계를 보존하고 종료한다.
+        // 이력이 없는 상태에서 계속 진행하면 activeKeys가 비어 있어 DeleteStaleAsync가
+        // 기존 PatternStats 행 전체를 삭제하는 버그가 발생한다.
+        if (allTrades.Count == 0)
+        {
+            _logger.LogInformation("No trade records found — skipping stats refresh to preserve existing stats.");
+            return;
+        }
+
         // 종목별 캐시 키 수집 (갱신 후 무효화용)
         var symbols = allTrades.Select(t => t.Symbol).Distinct().ToList();
 
