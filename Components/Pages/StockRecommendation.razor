@@ -186,16 +186,23 @@
                             @foreach (var pattern in _selectedAnalysis.ActivePatterns)
                             {
                                 var meta = PatternMetadataMap.Get(pattern.PatternType);
-                                <MudTooltip Text="@($"{meta.Description} | 보유기간: {meta.HoldingPeriod}")"
+                                <MudTooltip Text="@($"{meta.Description} | 보유기간: {meta.HoldingPeriod}{(meta.Status != PatternStatus.Verified ? $" | {meta.StatusNote}" : "")}")"
                                             Placement="Placement.Bottom" Arrow="true">
                                     <MudChip T="string"
-                                             Color="@PatternMetadataMap.GetMudColor(pattern.PatternType)"
-                                             Variant="Variant.Filled"
+                                             Color="@(meta.Status == PatternStatus.Poor ? MudBlazor.Color.Error : meta.Status == PatternStatus.Untuned ? MudBlazor.Color.Warning : PatternMetadataMap.GetMudColor(pattern.PatternType))"
+                                             Variant="@(meta.Status != PatternStatus.Verified ? Variant.Outlined : Variant.Filled)"
                                              Size="Size.Small">
                                         @meta.KoreanName
-                                        <span style="opacity: 0.8; margin-left: 4px;">
-                                            승률 @((pattern.HistoricalWinRate * 100).ToString("F0"))%
-                                        </span>
+                                        @if (meta.Status != PatternStatus.Verified)
+                                        {
+                                            <span style="opacity: 0.8; margin-left: 4px;">@PatternMetadataMap.GetStatusLabel(meta.Status)</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="opacity: 0.8; margin-left: 4px;">
+                                                승률 @((pattern.HistoricalWinRate * 100).ToString("F0"))%
+                                            </span>
+                                        }
                                     </MudChip>
                                 </MudTooltip>
                             }

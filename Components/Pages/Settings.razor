@@ -365,7 +365,22 @@
                                        ValueChanged="@(v => TogglePattern(pattern, v))"
                                        Color="Color.Primary" />
                             <div>
-                                <MudText Typo="Typo.subtitle2">@meta.KoreanName</MudText>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudText Typo="Typo.subtitle2">@meta.KoreanName</MudText>
+                                    @if (meta.Status != PatternStatus.Verified)
+                                    {
+                                        <MudTooltip Text="@meta.StatusNote">
+                                            <MudChip T="string"
+                                                     Color="@PatternMetadataMap.GetStatusColor(meta.Status)"
+                                                     Variant="Variant.Outlined"
+                                                     Size="Size.Small"
+                                                     Icon="@PatternMetadataMap.GetStatusIcon(meta.Status)"
+                                                     Style="height: 20px; font-size: 10px;">
+                                                @PatternMetadataMap.GetStatusLabel(meta.Status)
+                                            </MudChip>
+                                        </MudTooltip>
+                                    }
+                                </MudStack>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">@pattern — @meta.StyleLabel · @meta.HoldingPeriod</MudText>
                             </div>
                         </MudStack>

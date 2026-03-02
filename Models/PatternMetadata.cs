@@ -3,6 +3,19 @@ using StockTrader.Models.Enums;
 namespace StockTrader.Models;
 
 /// <summary>
+/// 패턴 검증 상태
+/// </summary>
+public enum PatternStatus
+{
+    /// <summary>검증 완료 (백테스트 최적화됨)</summary>
+    Verified,
+    /// <summary>미튜닝 (데이터 부족 등으로 파라미터 미최적화)</summary>
+    Untuned,
+    /// <summary>성능 불량 (승률/수익률 기준 미달)</summary>
+    Poor
+}
+
+/// <summary>
 /// 패턴 타입별 메타데이터 (한국어 이름, 트레이딩 스타일, 설명 등)
 /// </summary>
 public record PatternMetadata(
@@ -14,7 +27,9 @@ public record PatternMetadata(
     string HoldingPeriod,
     string Description,
     string Indicators,
-    string ColorHex
+    string ColorHex,
+    PatternStatus Status = PatternStatus.Verified,
+    string? StatusNote = null
 );
 
 public static class PatternMetadataMap
@@ -28,7 +43,8 @@ public static class PatternMetadataMap
             "1~3일",
             "전일 종가 대비 2%+ 갭업 후 되돌림 매수. 거래량 50만주 이상 필터.",
             "Gap%, Volume, Candle",
-            "#FF9800" // Orange
+            "#FF9800", // Orange
+            PatternStatus.Untuned, "분봉 데이터 부족으로 미튜닝"
         ),
         [PatternType.Breakout] = new(
             PatternType.Breakout,
@@ -46,7 +62,8 @@ public static class PatternMetadataMap
             "수시간~1일",
             "가격이 VWAP 대비 2%+ 하방 이탈 후 반등 시 매수. 목표가는 VWAP 회귀.",
             "VWAP, Candle",
-            "#FF9800"
+            "#FF9800",
+            PatternStatus.Untuned, "분봉 데이터 부족으로 미튜닝"
         ),
         [PatternType.RsiMeanReversion] = new(
             PatternType.RsiMeanReversion,
@@ -82,7 +99,8 @@ public static class PatternMetadataMap
             "1~3일",
             "거래량 20일 평균 2배+ 급증 + 3봉 연속 양봉 시 매수. 매수세 지속 추종.",
             "Volume(20MA), ATR, Candle",
-            "#FF9800"
+            "#FF9800",
+            PatternStatus.Untuned, "분봉 데이터 부족으로 미튜닝"
         ),
         [PatternType.EarningsDrift] = new(
             PatternType.EarningsDrift,
@@ -127,7 +145,8 @@ public static class PatternMetadataMap
             "5~15일",
             "장기 SMA(50) 상승추세 + 단기 SMA(20) 근접 눌림목 + 양봉 반등 시 매수.",
             "SMA(50), SMA(20), ATR",
-            "#2196F3" // Blue
+            "#2196F3", // Blue
+            PatternStatus.Poor, "승률 18~20% — 사용 비권장"
         ),
         [PatternType.MeanReversionChannel] = new(
             PatternType.MeanReversionChannel,
@@ -154,7 +173,8 @@ public static class PatternMetadataMap
             "1~2일",
             "래리 윌리엄스 전략. 시가 + 전일레인지×K 돌파 시 매수. 거래량 1.2배+ 확인.",
             "PrevRange, K=0.6, Volume, ATR",
-            "#FF5722" // Deep Orange
+            "#FF5722", // Deep Orange
+            PatternStatus.Poor, "승률 34~45% — 사용 비권장"
         ),
         [PatternType.Tqqq200Sma] = new(
             PatternType.Tqqq200Sma,
@@ -192,4 +212,28 @@ public static class PatternMetadataMap
 
     public static MudBlazor.Color GetMudColor(PatternType type)
         => GetMudColor(Get(type).Style);
+
+    public static PatternStatus GetStatus(PatternType type) => Get(type).Status;
+    public static string? GetStatusNote(PatternType type) => Get(type).StatusNote;
+
+    public static string GetStatusLabel(PatternStatus status) => status switch
+    {
+        PatternStatus.Untuned => "미튜닝",
+        PatternStatus.Poor => "성능불량",
+        _ => ""
+    };
+
+    public static MudBlazor.Color GetStatusColor(PatternStatus status) => status switch
+    {
+        PatternStatus.Untuned => MudBlazor.Color.Warning,
+        PatternStatus.Poor => MudBlazor.Color.Error,
+        _ => MudBlazor.Color.Default
+    };
+
+    public static string GetStatusIcon(PatternStatus status) => status switch
+    {
+        PatternStatus.Untuned => MudBlazor.Icons.Material.Filled.Science,
+        PatternStatus.Poor => MudBlazor.Icons.Material.Filled.Warning,
+        _ => ""
+    };
 }

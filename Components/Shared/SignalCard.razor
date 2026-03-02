@@ -26,6 +26,19 @@
                              Size="Size.Small">
                         @PatternMetadataMap.GetStyleLabel(Signal.PatternType)
                     </MudChip>
+                    @{ var _status = PatternMetadataMap.GetStatus(Signal.PatternType); }
+                    @if (_status != PatternStatus.Verified)
+                    {
+                        <MudTooltip Text="@PatternMetadataMap.GetStatusNote(Signal.PatternType)">
+                            <MudChip T="string"
+                                     Color="@PatternMetadataMap.GetStatusColor(_status)"
+                                     Variant="Variant.Outlined"
+                                     Size="Size.Small"
+                                     Icon="@PatternMetadataMap.GetStatusIcon(_status)">
+                                @PatternMetadataMap.GetStatusLabel(_status)
+                            </MudChip>
+                        </MudTooltip>
+                    }
                     <MudText Typo="Typo.subtitle1"><strong>@Signal.Symbol</strong></MudText>
                 </MudStack>
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
