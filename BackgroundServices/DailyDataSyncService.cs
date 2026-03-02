@@ -3,8 +3,8 @@ using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
+using StockTrader.Services.Market;
 using StockTrader.Services.Statistics;
-using TimeZoneConverter;
 
 namespace StockTrader.BackgroundServices;
 
@@ -15,6 +15,7 @@ public class DailyDataSyncService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TradingSettings _settings;
+    private readonly IMarketCalendar _marketCalendar;
     private readonly ILogger<DailyDataSyncService> _logger;
 
     private int _consecutiveFailures = 0;
@@ -22,10 +23,12 @@ public class DailyDataSyncService : BackgroundService
     public DailyDataSyncService(
         IServiceScopeFactory scopeFactory,
         IOptions<TradingSettings> settings,
+        IMarketCalendar marketCalendar,
         ILogger<DailyDataSyncService> logger)
     {
         _scopeFactory = scopeFactory;
         _settings = settings.Value;
+        _marketCalendar = marketCalendar;
         _logger = logger;
     }
 
@@ -37,14 +40,19 @@ public class DailyDataSyncService : BackgroundService
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
-                TZConvert.GetTimeZoneInfo("America/New_York"));
+            // US 또는 KRX 장 마감 후 1시간이 지나야 동기화 시작
+            var usNow = _marketCalendar.GetLocalNow(MarketType.US);
+            var krxNow = _marketCalendar.GetLocalNow(MarketType.KRX);
 
-            if (now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday)
-                continue;
+            var usWeekend = usNow.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+            var krxWeekend = krxNow.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
 
-            var closeTime = TimeSpan.Parse(_settings.MarketCloseET);
-            if (now.TimeOfDay < closeTime.Add(TimeSpan.FromHours(1)))
+            var usClose = _marketCalendar.GetMarketClose(MarketType.US);
+            var krxClose = _marketCalendar.GetMarketClose(MarketType.KRX);
+            var usReady = !usWeekend && usNow.TimeOfDay >= usClose.Add(TimeSpan.FromHours(1));
+            var krxReady = !krxWeekend && krxNow.TimeOfDay >= krxClose.Add(TimeSpan.FromHours(1));
+
+            if (!usReady && !krxReady)
                 continue;
 
             // Circuit breaker: cooldown when too many consecutive failures.
@@ -123,7 +131,14 @@ public class DailyDataSyncService : BackgroundService
             }
         }
 
-        await statsService.RefreshAllStatsAsync(ct);
+        try
+        {
+            await statsService.RefreshAllStatsAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "통계 갱신 중 오류 (데이터 동기화는 완료됨)");
+        }
 
         _logger.LogInformation(
             "Daily sync complete: {Synced}/{Total} symbols, {Bars} bars synced, {Errors} errors",

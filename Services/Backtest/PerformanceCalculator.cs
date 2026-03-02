@@ -49,6 +49,10 @@ internal static class PerformanceCalculator
         return stats;
     }
 
+    /// <summary>
+    /// 연율화 샤프 비율. 거래 PnL%의 mean/stdDev에 sqrt(연간 추정 거래 횟수)를 곱한다.
+    /// 거래 기간(첫 진입~마지막 청산)을 기준으로 연간 거래 횟수를 추정.
+    /// </summary>
     public static decimal ComputeSharpeRatio(
         List<TradeRecord> trades,
         TimeFrame timeFrame = TimeFrame.Daily)
@@ -71,17 +75,13 @@ internal static class PerformanceCalculator
 
         if (stdDev <= 0) return 0;
 
-        var annualizationFactor = timeFrame switch
-        {
-            TimeFrame.OneMinute     => 252.0 * 390.0,
-            TimeFrame.FiveMinute    => 252.0 * 78.0,
-            TimeFrame.FifteenMinute => 252.0 * 26.0,
-            TimeFrame.Daily         => 252.0,
-            TimeFrame.Weekly        => 52.0,
-            _                       => 252.0
-        };
+        // 거래 기간에서 연간 거래 횟수 추정
+        var firstEntry = trades.Min(t => t.EntryTime);
+        var lastExit = trades.Max(t => t.ExitTime != default ? t.ExitTime : t.EntryTime);
+        var tradingDays = Math.Max(1.0, (lastExit - firstEntry).TotalDays);
+        var tradesPerYear = n / tradingDays * 365.25;
 
-        return avgReturn / stdDev * (decimal)Math.Sqrt(annualizationFactor / Math.Max(1, trades.Count));
+        return avgReturn / stdDev * (decimal)Math.Sqrt(tradesPerYear);
     }
 
     public static List<SymbolStats> ComputePerSymbolStats(

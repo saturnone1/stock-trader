@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
@@ -12,35 +13,32 @@ namespace StockTrader.Services.Risk;
 /// 핵심 설계 원칙:
 /// - 각 계좌(AccountId)는 독립적인 RiskState를 유지 → 계좌 A의 손실이 계좌 B에 영향 없음
 /// - 전체 포트폴리오(PortfolioRiskState)는 모든 계좌의 합산으로 별도 추적
-/// - 기존 IRiskManagementService를 상속하여 backward compatible 유지
-///   (단일 계좌 모드에서는 활성 계좌의 RiskState를 반환)
+/// - Singleton 등록: 리스크 상태는 앱 전체에서 공유 (Scoped → 매 요청마다 상태가 초기화되는 버그 방지)
+/// - IServiceScopeFactory로 Scoped 리포지토리 안전 접근
 /// </summary>
 public class MultiAccountRiskService : IRiskManagementService
 {
-    private readonly ITradeRepository _tradeRepo;
-    private readonly ISettingsRepository _settingsRepo;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly TradingSettings _tradingSettings;
     private readonly IAccountManager _accountManager;
     private readonly ILogger<MultiAccountRiskService> _logger;
 
-    // 계좌 ID → 독립 RiskState
-    private readonly Dictionary<int, RiskState> _accountRiskStates = new();
+    // 계좌 ID → 독립 RiskState (ConcurrentDictionary: 스레드 안전)
+    private readonly ConcurrentDictionary<int, RiskState> _accountRiskStates = new();
 
     // 전체 포트폴리오 리스크 (모든 계좌 합산)
-    private RiskState _portfolioRiskState = new();
+    private volatile RiskState _portfolioRiskState = new();
 
     // 활성 계좌가 없는 경우의 기본 상태
-    private RiskState _fallbackRiskState = new();
+    private volatile RiskState _fallbackRiskState = new();
 
     public MultiAccountRiskService(
-        ITradeRepository tradeRepo,
-        ISettingsRepository settingsRepo,
+        IServiceScopeFactory scopeFactory,
         IOptions<TradingSettings> tradingSettings,
         IAccountManager accountManager,
         ILogger<MultiAccountRiskService> logger)
     {
-        _tradeRepo = tradeRepo;
-        _settingsRepo = settingsRepo;
+        _scopeFactory = scopeFactory;
         _tradingSettings = tradingSettings.Value;
         _accountManager = accountManager;
         _logger = logger;
@@ -81,7 +79,9 @@ public class MultiAccountRiskService : IRiskManagementService
         if (riskState.IsTradingHalted)
             return (false, "Trading halted: daily loss limit reached");
 
-        var openPositions = await _tradeRepo.GetOpenPositionsAsync(ct);
+        using var scope = _scopeFactory.CreateScope();
+        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+        var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
 
         if (openPositions.Count >= _tradingSettings.MaxTotalPositions)
             return (false, $"Max total positions ({_tradingSettings.MaxTotalPositions}) reached");
@@ -116,8 +116,12 @@ public class MultiAccountRiskService : IRiskManagementService
     /// </summary>
     public async Task UpdateDailyPnLAsync(CancellationToken ct = default)
     {
-        var settings = await _settingsRepo.GetAsync(ct);
-        var openPositions = await _tradeRepo.GetOpenPositionsAsync(ct);
+        using var scope = _scopeFactory.CreateScope();
+        var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
+        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+
+        var settings = await settingsRepo.GetAsync(ct);
+        var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
         var accounts = await _accountManager.GetAllAccountsAsync(ct);
 
         if (accounts.Count == 0)
@@ -140,7 +144,7 @@ public class MultiAccountRiskService : IRiskManagementService
 
             try
             {
-                var broker = _accountManager.GetBrokerServiceForAccount(account.Id);
+                var broker = await _accountManager.GetBrokerServiceForAccountAsync(account.Id, ct);
                 if (broker != null)
                 {
                     var brokerAccount = await broker.GetAccountAsync(ct);

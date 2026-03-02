@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -37,12 +38,34 @@ public class MultiAccountRiskServiceTests
     private MultiAccountRiskService CreateSut(TradingSettings? settings = null)
     {
         var opts = Options.Create(settings ?? _defaultSettings);
+
+        // IServiceScopeFactory mock: CreateScope → ServiceProvider → GetRequiredService
+        var scopeFactory = CreateMockScopeFactory();
+
         return new MultiAccountRiskService(
-            _tradeRepoMock.Object,
-            _settingsRepoMock.Object,
+            scopeFactory,
             opts,
             _accountManagerMock.Object,
             NullLogger<MultiAccountRiskService>.Instance);
+    }
+
+    private IServiceScopeFactory CreateMockScopeFactory()
+    {
+        var serviceProviderMock = new Mock<IServiceProvider>();
+        serviceProviderMock
+            .Setup(sp => sp.GetService(typeof(ITradeRepository)))
+            .Returns(_tradeRepoMock.Object);
+        serviceProviderMock
+            .Setup(sp => sp.GetService(typeof(ISettingsRepository)))
+            .Returns(_settingsRepoMock.Object);
+
+        var scopeMock = new Mock<IServiceScope>();
+        scopeMock.Setup(s => s.ServiceProvider).Returns(serviceProviderMock.Object);
+
+        var scopeFactoryMock = new Mock<IServiceScopeFactory>();
+        scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
+
+        return scopeFactoryMock.Object;
     }
 
     private static TradingAccount MakeAccount(int id = 1, bool isActive = true) =>
@@ -99,8 +122,8 @@ public class MultiAccountRiskServiceTests
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TradingAccount> { account });
         _accountManagerMock
-            .Setup(m => m.GetBrokerServiceForAccount(account.Id))
-            .Returns((StockTrader.Services.Broker.IBrokerService?)null); // 브로커 없으면 기본값 사용
+            .Setup(m => m.GetBrokerServiceForAccountAsync(account.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null); // 브로커 없으면 기본값 사용
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);
@@ -196,8 +219,8 @@ public class MultiAccountRiskServiceTests
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TradingAccount> { account });
         _accountManagerMock
-            .Setup(m => m.GetBrokerServiceForAccount(account.Id))
-            .Returns((StockTrader.Services.Broker.IBrokerService?)null);
+            .Setup(m => m.GetBrokerServiceForAccountAsync(account.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);
@@ -475,8 +498,8 @@ public class MultiAccountRiskServiceTests
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TradingAccount> { account1 });
         _accountManagerMock
-            .Setup(m => m.GetBrokerServiceForAccount(It.IsAny<int>()))
-            .Returns((StockTrader.Services.Broker.IBrokerService?)null);
+            .Setup(m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);
@@ -521,8 +544,8 @@ public class MultiAccountRiskServiceTests
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TradingAccount> { account1, account2 });
         _accountManagerMock
-            .Setup(m => m.GetBrokerServiceForAccount(It.IsAny<int>()))
-            .Returns((StockTrader.Services.Broker.IBrokerService?)null);
+            .Setup(m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);

@@ -22,12 +22,12 @@ public class AccountManager : IAccountManager
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly ILogger<AccountManager> _logger;
 
-    // 계좌 ID → IBrokerService 런타임 캐시
-    private readonly Dictionary<int, IBrokerService> _brokerCache = new();
-    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    // 계좌 ID → IBrokerService 런타임 캐시 (ConcurrentDictionary: 스레드 안전)
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, IBrokerService> _brokerCache = new();
 
-    // 현재 활성 계좌 ID 캐시 (DB 왕복 최소화)
-    private int? _activeAccountId;
+    // 현재 활성 계좌 ID 캐시 (DB 왕복 최소화, Interlocked/Volatile로 스레드 안전 접근)
+    private const int NoActiveAccount = -1;
+    private int _activeAccountId = NoActiveAccount;
 
     public event Action? OnAccountsChanged;
 
@@ -90,7 +90,7 @@ public class AccountManager : IAccountManager
         await db.SaveChangesAsync(ct);
 
         if (account.IsActive)
-            _activeAccountId = account.Id;
+            Interlocked.Exchange(ref _activeAccountId, account.Id);
 
         _logger.LogInformation("Account added: [{Id}] {Name} ({BrokerType})",
             account.Id, account.AccountName, account.BrokerType);
@@ -126,26 +126,31 @@ public class AccountManager : IAccountManager
         await db.SaveChangesAsync(ct);
 
         // 삭제한 계좌가 활성 계좌였으면 다른 계좌를 활성화
+        // AsNoTracking: 삭제 후 change tracker에 잔여 엔티티가 없도록 별도 쿼리
         if (wasActive)
         {
-            var next = await db.TradingAccounts
+            var nextId = await db.TradingAccounts
+                .AsNoTracking()
                 .Where(a => a.IsEnabled)
                 .OrderBy(a => a.CreatedAt)
+                .Select(a => (int?)a.Id)
                 .FirstOrDefaultAsync(ct);
 
-            if (next != null)
+            if (nextId.HasValue)
             {
-                next.IsActive = true;
-                next.UpdatedAt = DateTime.UtcNow;
-                await db.SaveChangesAsync(ct);
-                _activeAccountId = next.Id;
+                await db.TradingAccounts
+                    .Where(a => a.Id == nextId.Value)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(a => a.IsActive, true)
+                        .SetProperty(a => a.UpdatedAt, DateTime.UtcNow), ct);
 
-                _logger.LogInformation("Active account switched to [{Id}] {Name} after deletion",
-                    next.Id, next.AccountName);
+                Interlocked.Exchange(ref _activeAccountId, nextId.Value);
+
+                _logger.LogInformation("Active account switched to [{Id}] after deletion", nextId.Value);
             }
             else
             {
-                _activeAccountId = null;
+                Interlocked.Exchange(ref _activeAccountId, NoActiveAccount);
             }
         }
 
@@ -176,35 +181,35 @@ public class AccountManager : IAccountManager
         if (rows == 0)
             throw new InvalidOperationException($"Account {accountId} not found.");
 
-        _activeAccountId = accountId;
+        Interlocked.Exchange(ref _activeAccountId, accountId);
         _logger.LogInformation("Active account set to [{Id}]", accountId);
         OnAccountsChanged?.Invoke();
     }
 
     // ── 브로커 서비스 접근 ─────────────────────────────────────────────────
 
-    public IBrokerService? GetActiveBrokerService()
+    public async Task<IBrokerService?> GetActiveBrokerServiceAsync(CancellationToken ct = default)
     {
         // 캐시에서 활성 계좌의 브로커 서비스 반환
-        if (_activeAccountId.HasValue && _brokerCache.TryGetValue(_activeAccountId.Value, out var cached))
+        var activeId = Volatile.Read(ref _activeAccountId);
+        if (activeId != NoActiveAccount && _brokerCache.TryGetValue(activeId, out var cached))
             return cached;
 
-        // 캐시 미스: DB에서 활성 계좌 조회 (SynchronizationContext 데드락 방지)
-        var account = Task.Run(() => GetActiveAccountAsync()).GetAwaiter().GetResult();
+        var account = await GetActiveAccountAsync(ct);
         if (account == null) return null;
 
-        return GetOrCreateBrokerService(account);
+        return await GetOrCreateBrokerServiceAsync(account);
     }
 
-    public IBrokerService? GetBrokerServiceForAccount(int accountId)
+    public async Task<IBrokerService?> GetBrokerServiceForAccountAsync(int accountId, CancellationToken ct = default)
     {
         if (_brokerCache.TryGetValue(accountId, out var cached))
             return cached;
 
-        var account = Task.Run(() => GetAccountByIdAsync(accountId)).GetAwaiter().GetResult();
+        var account = await GetAccountByIdAsync(accountId, ct);
         if (account == null) return null;
 
-        return GetOrCreateBrokerService(account);
+        return await GetOrCreateBrokerServiceAsync(account);
     }
 
     // ── 연결 상태 조회 ─────────────────────────────────────────────────────
@@ -225,7 +230,7 @@ public class AccountManager : IAccountManager
 
         try
         {
-            var broker = GetBrokerServiceForAccount(accountId);
+            var broker = await GetBrokerServiceForAccountAsync(accountId, ct);
             if (broker == null)
             {
                 status.StatusMessage = "브로커 서비스 초기화 실패";
@@ -265,25 +270,18 @@ public class AccountManager : IAccountManager
 
     /// <summary>
     /// 계좌 정보를 바탕으로 IBrokerService를 생성하거나 캐시에서 반환한다.
+    /// null 결과는 캐시하지 않아 다음 호출 시 재시도.
     /// </summary>
-    private IBrokerService? GetOrCreateBrokerService(TradingAccount account)
+    private Task<IBrokerService?> GetOrCreateBrokerServiceAsync(TradingAccount account)
     {
-        _cacheLock.Wait();
-        try
-        {
-            if (_brokerCache.TryGetValue(account.Id, out var existing))
-                return existing;
+        if (_brokerCache.TryGetValue(account.Id, out var cached))
+            return Task.FromResult<IBrokerService?>(cached);
 
-            var service = CreateBrokerService(account);
-            if (service != null)
-                _brokerCache[account.Id] = service;
+        var service = CreateBrokerService(account);
+        if (service != null)
+            _brokerCache.TryAdd(account.Id, service);
 
-            return service;
-        }
-        finally
-        {
-            _cacheLock.Release();
-        }
+        return Task.FromResult<IBrokerService?>(service);
     }
 
     /// <summary>
@@ -338,17 +336,10 @@ public class AccountManager : IAccountManager
         return new KiwoomBrokerService(logger);
     }
 
-    private async Task InvalidateBrokerCacheAsync(int accountId)
+    private Task InvalidateBrokerCacheAsync(int accountId)
     {
-        await _cacheLock.WaitAsync();
-        try
-        {
-            _brokerCache.Remove(accountId);
-        }
-        finally
-        {
-            _cacheLock.Release();
-        }
+        _brokerCache.TryRemove(accountId, out _);
+        return Task.CompletedTask;
     }
 
     private async Task UpdateLastConnectedAsync(int accountId, CancellationToken ct)

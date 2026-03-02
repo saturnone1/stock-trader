@@ -142,12 +142,11 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
-        await conn.CloseAsync();
     }
     catch (Exception ex)
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogWarning(ex, "UserSettings 스키마 마이그레이션 중 오류 발생 (무시하고 계속)");
+        logger.LogWarning(ex, "스키마 마이그레이션 중 오류 발생 (무시하고 계속)");
     }
 
     // appsettings.json의 기존 Alpaca 설정으로 기본 계좌 시드 (계좌가 0개일 때만)

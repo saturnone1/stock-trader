@@ -4,6 +4,7 @@ using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
+// IServiceScopeFactory: Singleton에서 Scoped 의존성 안전 접근
 
 namespace StockTrader.Services.ML;
 
@@ -27,34 +28,31 @@ public class MLModelTrainingService : IMLModelTrainingService
 {
     private readonly IMarketRegimeClassifier _regimeClassifier;
     private readonly ISignalScorer _signalScorer;
-    private readonly ITradeRepository _tradeRepo;
-    private readonly IDataFeedServiceFactory _dataFeedFactory;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly MLSettings _mlSettings;
     private readonly ILogger<MLModelTrainingService> _logger;
 
-    // 학습 진행 상태 (UI에 표시)
-    private bool _isTraining;
-    private string _trainingStatus = string.Empty;
+    // 학습 진행 상태 (UI에 표시, Interlocked으로 동시 학습 방지)
+    private int _isTraining; // 0=idle, 1=training
+    private volatile string _trainingStatus = string.Empty;
 
     public MLModelTrainingService(
         IMarketRegimeClassifier regimeClassifier,
         ISignalScorer signalScorer,
-        ITradeRepository tradeRepo,
-        IDataFeedServiceFactory dataFeedFactory,
+        IServiceScopeFactory scopeFactory,
         IOptions<MLSettings> mlSettings,
         ILogger<MLModelTrainingService> logger)
     {
         _regimeClassifier = regimeClassifier;
         _signalScorer = signalScorer;
-        _tradeRepo = tradeRepo;
-        _dataFeedFactory = dataFeedFactory;
+        _scopeFactory = scopeFactory;
         _mlSettings = mlSettings.Value;
         _logger = logger;
     }
 
     public async Task<MlTrainingResult> TrainAllAsync(CancellationToken ct = default)
     {
-        if (_isTraining)
+        if (Interlocked.CompareExchange(ref _isTraining, 1, 0) != 0)
         {
             return new MlTrainingResult
             {
@@ -62,8 +60,6 @@ public class MLModelTrainingService : IMLModelTrainingService
                 Message = "이미 학습이 진행 중입니다. 잠시 후 다시 시도하세요."
             };
         }
-
-        _isTraining = true;
         var startTime = DateTime.UtcNow;
 
         try
@@ -75,7 +71,9 @@ public class MLModelTrainingService : IMLModelTrainingService
             OhlcvBar[] spyBars = Array.Empty<OhlcvBar>();
             try
             {
-                var dataFeed = await _dataFeedFactory.GetServiceAsync(ct);
+                using var dataScope = _scopeFactory.CreateScope();
+                var dataFeedFactory = dataScope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
+                var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
                 var spyFrom = DateTime.UtcNow.AddDays(-_mlSettings.RegimeTrainingDays);
                 var spyList = await dataFeed.GetHistoricalBarsAsync("SPY", TimeFrame.Daily, spyFrom, DateTime.UtcNow, ct);
                 spyBars = spyList.ToArray();
@@ -104,7 +102,9 @@ public class MLModelTrainingService : IMLModelTrainingService
             _trainingStatus = "거래 내역 로딩 중...";
             _logger.LogInformation("ML 학습: 시그널 스코어러");
 
-            var trades = await _tradeRepo.GetRecentAsync(limit: 5000, ct: ct);
+            using var tradeScope = _scopeFactory.CreateScope();
+            var tradeRepo = tradeScope.ServiceProvider.GetRequiredService<ITradeRepository>();
+            var trades = await tradeRepo.GetRecentAsync(limit: 5000, ct: ct);
 
             bool scorerTrained = false;
             double accuracy = 0;
@@ -164,7 +164,7 @@ public class MLModelTrainingService : IMLModelTrainingService
         }
         finally
         {
-            _isTraining = false;
+            Interlocked.Exchange(ref _isTraining, 0);
         }
     }
 
@@ -178,7 +178,7 @@ public class MLModelTrainingService : IMLModelTrainingService
         RegimeTrainingSamples = _regimeClassifier.TrainingSamples,
         SignalScorerTrainingSamples = _signalScorer.TrainingSamples,
         SignalScorerFeatureImportances = _signalScorer.FeatureImportances,
-        IsTraining = _isTraining,
+        IsTraining = Volatile.Read(ref _isTraining) != 0,
         TrainingStatus = _trainingStatus
     };
 
