@@ -23,6 +23,14 @@ public class LsSecuritiesDataFeedService : IDataFeedService
 
     private string? _accessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
+    private readonly SemaphoreSlim _tokenLock = new(1, 1);
+
+    private static readonly TimeZoneInfo KstZone = GetKstZone();
+    private static TimeZoneInfo GetKstZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul"); }
+    }
 
     public LsSecuritiesDataFeedService(
         HttpClient http,
@@ -32,7 +40,7 @@ public class LsSecuritiesDataFeedService : IDataFeedService
         _http = http;
         _settings = settings.Value;
         _logger = logger;
-        _http.BaseAddress = new Uri(_settings.BaseUrl);
+        _http.BaseAddress = new Uri(_settings.EffectiveBaseUrl);
     }
 
     #region Authentication
@@ -42,36 +50,45 @@ public class LsSecuritiesDataFeedService : IDataFeedService
         if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
             return;
 
-        var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        await _tokenLock.WaitAsync(ct);
+        try
         {
-            ["grant_type"] = "client_credentials",
-            ["appkey"] = _settings.AppKey,
-            ["appsecretkey"] = _settings.AppSecret,
-            ["scope"] = "oob"
-        });
+            if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
+                return;
 
-        var response = await _http.PostAsync("/oauth2/token", content, ct);
-        var json = await response.Content.ReadAsStringAsync(ct);
+            var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["appkey"] = _settings.AppKey,
+                ["appsecretkey"] = _settings.AppSecret,
+                ["scope"] = "oob"
+            });
 
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("[LS Data] 토큰 발급 실패: {Status} {Body}", response.StatusCode, json);
-            throw new InvalidOperationException($"LS증권 토큰 발급 실패: {response.StatusCode}");
+            var response = await _http.PostAsync("/oauth2/token", content, ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("[LS Data] 토큰 발급 실패: {Status} {Body}", response.StatusCode, json);
+                throw new InvalidOperationException($"LS증권 토큰 발급 실패: {response.StatusCode}");
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            _accessToken = doc.RootElement.GetProperty("access_token").GetString();
+
+            var kstNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KstZone);
+            var nextExpiry = kstNow.Hour < 7
+                ? kstNow.Date.AddHours(7)
+                : kstNow.Date.AddDays(1).AddHours(7);
+            _tokenExpiry = TimeZoneInfo.ConvertTimeToUtc(nextExpiry, KstZone)
+                .AddMinutes(-5);
+
+            _logger.LogInformation("[LS Data] 토큰 발급 성공");
         }
-
-        using var doc = JsonDocument.Parse(json);
-        _accessToken = doc.RootElement.GetProperty("access_token").GetString();
-
-        var kstNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
-            TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"));
-        var nextExpiry = kstNow.Hour < 7
-            ? kstNow.Date.AddHours(7)
-            : kstNow.Date.AddDays(1).AddHours(7);
-        _tokenExpiry = TimeZoneInfo.ConvertTimeToUtc(nextExpiry,
-            TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"))
-            .AddMinutes(-5);
-
-        _logger.LogInformation("[LS Data] 토큰 발급 성공");
+        finally
+        {
+            _tokenLock.Release();
+        }
     }
 
     private async Task<HttpRequestMessage> CreateRequestAsync(
@@ -113,7 +130,7 @@ public class LsSecuritiesDataFeedService : IDataFeedService
     public async Task<OhlcvBar?> GetLatestBarAsync(string symbol, TimeFrame timeFrame,
         CancellationToken ct = default)
     {
-        var to = DateTime.Now;
+        var to = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KstZone);
         var from = timeFrame == TimeFrame.Daily ? to.AddDays(-5) : to.AddHours(-2);
         var bars = await GetHistoricalBarsAsync(symbol, timeFrame, from, to, ct);
         return bars.Count > 0 ? bars[^1] : null;

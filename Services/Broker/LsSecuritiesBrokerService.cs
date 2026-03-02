@@ -22,7 +22,9 @@ public class LsSecuritiesBrokerService : IBrokerService
 
     private string? _accessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
+    private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
+    private static readonly TimeZoneInfo KstZone = GetKstZone();
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = null, // LS API는 PascalCase/특정 키 사용
@@ -37,50 +39,67 @@ public class LsSecuritiesBrokerService : IBrokerService
         _http = http;
         _settings = settings.Value;
         _logger = logger;
-        _http.BaseAddress = new Uri(_settings.BaseUrl);
+        _http.BaseAddress = new Uri(_settings.EffectiveBaseUrl);
     }
 
     #region Authentication
 
+    /// <summary>Windows("Korea Standard Time") / Linux("Asia/Seoul") 양쪽 호환</summary>
+    private static TimeZoneInfo GetKstZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul"); }
+    }
+
     /// <summary>
-    /// OAuth2 access_token 발급. 만료 시 자동 재발급.
+    /// OAuth2 access_token 발급. 만료 시 자동 재발급. SemaphoreSlim으로 레이스 컨디션 방지.
     /// </summary>
     private async Task EnsureTokenAsync(CancellationToken ct)
     {
         if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
             return;
 
-        var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        await _tokenLock.WaitAsync(ct);
+        try
         {
-            ["grant_type"] = "client_credentials",
-            ["appkey"] = _settings.AppKey,
-            ["appsecretkey"] = _settings.AppSecret,
-            ["scope"] = "oob"
-        });
+            // Double-check after acquiring lock
+            if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
+                return;
 
-        var response = await _http.PostAsync("/oauth2/token", content, ct);
-        var json = await response.Content.ReadAsStringAsync(ct);
+            var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["appkey"] = _settings.AppKey,
+                ["appsecretkey"] = _settings.AppSecret,
+                ["scope"] = "oob"
+            });
 
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("[LS] 토큰 발급 실패: {Status} {Body}", response.StatusCode, json);
-            throw new InvalidOperationException($"LS증권 토큰 발급 실패: {response.StatusCode}");
+            var response = await _http.PostAsync("/oauth2/token", content, ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("[LS] 토큰 발급 실패: {Status} {Body}", response.StatusCode, json);
+                throw new InvalidOperationException($"LS증권 토큰 발급 실패: {response.StatusCode}");
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            _accessToken = doc.RootElement.GetProperty("access_token").GetString();
+
+            // 토큰 만료: 익일 07:00 KST
+            var kstNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KstZone);
+            var nextExpiry = kstNow.Hour < 7
+                ? kstNow.Date.AddHours(7)
+                : kstNow.Date.AddDays(1).AddHours(7);
+            _tokenExpiry = TimeZoneInfo.ConvertTimeToUtc(nextExpiry, KstZone)
+                .AddMinutes(-5); // 5분 여유
+
+            _logger.LogInformation("[LS] 토큰 발급 성공, 만료: {Expiry:g} KST", nextExpiry);
         }
-
-        using var doc = JsonDocument.Parse(json);
-        _accessToken = doc.RootElement.GetProperty("access_token").GetString();
-
-        // 토큰 만료: 익일 07:00 KST → UTC로는 전일 22:00
-        var kstNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
-            TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"));
-        var nextExpiry = kstNow.Hour < 7
-            ? kstNow.Date.AddHours(7)
-            : kstNow.Date.AddDays(1).AddHours(7);
-        _tokenExpiry = TimeZoneInfo.ConvertTimeToUtc(nextExpiry,
-            TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"))
-            .AddMinutes(-5); // 5분 여유
-
-        _logger.LogInformation("[LS] 토큰 발급 성공, 만료: {Expiry:g} KST", nextExpiry);
+        finally
+        {
+            _tokenLock.Release();
+        }
     }
 
     /// <summary>공통 헤더를 설정한 HttpRequestMessage 생성</summary>
@@ -161,13 +180,19 @@ public class LsSecuritiesBrokerService : IBrokerService
     {
         try
         {
+            if (!long.TryParse(orderId, out var orderNo))
+            {
+                _logger.LogWarning("[LS] 잘못된 주문번호 형식: {OrderId}", orderId);
+                return false;
+            }
+
             var cancelBody = new Dictionary<string, object>
             {
                 ["CSPAT00800InBlock1"] = new Dictionary<string, object>
                 {
                     ["AcntNo"] = _settings.AccountNo,
                     ["InptPwd"] = _settings.AccountPassword,
-                    ["OrgOrdNo"] = long.Parse(orderId),
+                    ["OrgOrdNo"] = orderNo,
                     ["IsuNo"] = "",
                     ["OrdQty"] = 0 // 전량 취소
                 }
@@ -285,7 +310,11 @@ public class LsSecuritiesBrokerService : IBrokerService
             }
 
             using var doc = JsonDocument.Parse(json);
-            var block2 = doc.RootElement.GetProperty("CSPAQ12300OutBlock2");
+            if (!doc.RootElement.TryGetProperty("CSPAQ12300OutBlock2", out var block2))
+            {
+                _logger.LogWarning("[LS] 계좌 응답에 OutBlock2 없음: {Body}", json);
+                return null;
+            }
 
             return new BrokerAccount
             {
@@ -311,6 +340,28 @@ public class LsSecuritiesBrokerService : IBrokerService
     {
         try
         {
+            // CSPAQ13700은 단일 일자(OrdDt) 조회 TR — from~to 범위를 순차 조회
+            var allOrders = new List<BrokerOrder>();
+            for (var date = from.Date; date <= to.Date; date = date.AddDays(1))
+            {
+                var dayOrders = await GetOrdersForDateAsync(date, ct);
+                allOrders.AddRange(dayOrders);
+            }
+            _logger.LogInformation("[LS] 주문 내역 {Count}건 조회 ({From:d}~{To:d})",
+                allOrders.Count, from, to);
+            return allOrders;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LS] 체결내역 조회 중 예외");
+            return [];
+        }
+    }
+
+    private async Task<List<BrokerOrder>> GetOrdersForDateAsync(DateTime date, CancellationToken ct)
+    {
+        try
+        {
             var body = new Dictionary<string, object>
             {
                 ["CSPAQ13700InBlock1"] = new Dictionary<string, object>
@@ -318,11 +369,11 @@ public class LsSecuritiesBrokerService : IBrokerService
                     ["RecCnt"] = 300,
                     ["AcntNo"] = _settings.AccountNo,
                     ["InptPwd"] = _settings.AccountPassword,
-                    ["OrdMktCode"] = "00", // 전체
-                    ["BnsTpCode"] = "0",   // 전체
+                    ["OrdMktCode"] = "00",
+                    ["BnsTpCode"] = "0",
                     ["IsuNo"] = "",
-                    ["ExecYn"] = "0",      // 전체
-                    ["OrdDt"] = from.ToString("yyyyMMdd"),
+                    ["ExecYn"] = "0",
+                    ["OrdDt"] = date.ToString("yyyyMMdd"),
                     ["SrtOrdNo2"] = 0,
                     ["BkseqTpCode"] = "0",
                     ["OrdPtnCode"] = "00"
@@ -370,7 +421,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                         AverageFillPrice = execPrc > 0 ? execPrc : null,
                         Status = execQty >= ordQty ? BrokerOrderStatus.Filled
                             : execQty > 0 ? BrokerOrderStatus.PartiallyFilled
-                            : BrokerOrderStatus.Accepted,
+                            : BrokerOrderStatus.Pending,
                         OrderType = BrokerOrderType.Limit,
                         SubmittedAt = DateTime.UtcNow
                     });
