@@ -523,7 +523,7 @@
 
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var status = await AccountManager.GetConnectionStatusAsync(accountId, cts.Token);
 
             var existing = _connectionStatuses.FirstOrDefault(s => s.AccountId == accountId);
@@ -538,6 +538,10 @@
 
             // 계좌 목록 갱신 (LastConnectedAt 업데이트 반영)
             _accounts = await AccountManager.GetAllAccountsAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("연결 테스트 시간 초과", Severity.Warning);
         }
         catch (Exception ex)
         {

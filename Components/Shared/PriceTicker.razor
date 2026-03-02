@@ -1,5 +1,6 @@
 @using StockTrader.Models
 @using StockTrader.Services.Notification
+@using System.Collections.Concurrent
 @inject INotificationService NotificationService
 @implements IDisposable
 
@@ -20,7 +21,10 @@
 }
 
 @code {
-    private readonly Dictionary<string, PriceUpdate> _prices = new(StringComparer.OrdinalIgnoreCase);
+    // Fix 5: lock 제거 - ConcurrentDictionary로 thread-safe 업데이트 구현
+    // OnPriceUpdate는 백그라운드 스레드에서 호출될 수 있으므로 lock 없이 안전한 컬렉션 사용
+    private readonly ConcurrentDictionary<string, PriceUpdate> _prices =
+        new(StringComparer.OrdinalIgnoreCase);
     private DateTime _lastRender = DateTime.MinValue;
     private Timer? _throttleTimer;
     private volatile bool _pendingUpdate;
@@ -33,10 +37,8 @@
 
     private void OnPriceUpdate(PriceUpdate update)
     {
-        lock (_prices)
-        {
-            _prices[update.Symbol] = update;
-        }
+        // ConcurrentDictionary.indexer setter는 atomic하므로 별도 lock 불필요
+        _prices[update.Symbol] = update;
         _pendingUpdate = true;
     }
 

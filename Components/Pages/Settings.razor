@@ -754,11 +754,13 @@
                 _settings.DailyLossLimitPercent,
                 _settings.MaxTotalPositions,
                 _settings.MaxPositionsPerSector);
-            Snackbar.Add("패턴 파라미터가 실거래에 적용되었습니다!", Severity.Success);
+            Snackbar.Add("패턴 파라미터가 실거래에 적용되었습니다!", Severity.Success,
+                config => { config.VisibleStateDuration = 3000; });
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"파라미터 저장 실패: {ex.Message}", Severity.Error);
+            Snackbar.Add($"파라미터 저장 실패: {ex.Message}", Severity.Error,
+                config => { config.VisibleStateDuration = 5000; });
         }
         finally
         {

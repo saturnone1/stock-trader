@@ -420,9 +420,14 @@
 
     private void ComputeMetrics()
     {
+        // localCount를 계산 시작 시점에 캡처하여 중간에 _trades.Count가 변경되는
+        // 엣지 케이스를 방지한다.
+        var localCount = _trades.Count;
+        if (localCount == 0) return;
+
         _totalPnl = _trades.Sum(t => t.PnL);
-        _avgPnl = _trades.Average(t => t.PnL);
-        _winRate = (decimal)_trades.Count(t => t.IsWin) / _trades.Count;
+        _avgPnl = _totalPnl / localCount;
+        _winRate = (decimal)_trades.Count(t => t.IsWin) / localCount;
 
         var totalWins = _trades.Where(t => t.IsWin).Sum(t => t.PnL);
         var totalLosses = Math.Abs(_trades.Where(t => !t.IsWin).Sum(t => t.PnL));

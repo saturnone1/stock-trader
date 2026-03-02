@@ -124,7 +124,24 @@
                             $@context.UnrealizedPnL.ToString("N2")
                         </MudText>
                     </MudTd>
-                    <MudTd>@(context.EntryPrice != 0 ? ((context.CurrentPrice - context.StopLossPrice) / context.EntryPrice).ToString("P1") : "N/A")</MudTd>
+                    <MudTd>
+                        @{
+                            // Fix 6: Infinity/NaN 방어 - EntryPrice가 0이거나 계산 결과가 유효하지 않으면 "N/A" 표시
+                            string stopDistText;
+                            if (context.EntryPrice == 0)
+                            {
+                                stopDistText = "N/A";
+                            }
+                            else
+                            {
+                                var stopDist = (double)(context.CurrentPrice - context.StopLossPrice) / (double)context.EntryPrice;
+                                stopDistText = (double.IsInfinity(stopDist) || double.IsNaN(stopDist))
+                                    ? "N/A"
+                                    : stopDist.ToString("P1");
+                            }
+                        }
+                        @stopDistText
+                    </MudTd>
                 </RowTemplate>
             </MudTable>
         }
