@@ -280,6 +280,7 @@ public class BacktestResult
     public int TotalTrades { get; set; }
     public decimal OverallWinRate { get; set; }
     public Dictionary<PatternType, PatternStats> PerPatternStats { get; set; } = new();
+    public List<SymbolStats> PerSymbolStats { get; set; } = new();
 
     /// <summary>백테스트에 사용된 타임프레임 (결과 표시용)</summary>
     public TimeFrame UsedTimeFrame { get; set; } = TimeFrame.Daily;
@@ -309,6 +310,20 @@ public class BacktestResult
 
     /// <summary>실제 데이터 조회에 사용된 시작일 (분봉 기간 제한으로 조정된 경우 요청일과 다를 수 있음)</summary>
     public DateTime? ActualDataFrom { get; set; }
+}
+
+/// <summary>종목별 백테스트 성과 요약</summary>
+public class SymbolStats
+{
+    public string Symbol { get; set; } = "";
+    public int TradeCount { get; set; }
+    public decimal WinRate { get; set; }
+    public decimal TotalPnL { get; set; }
+    public decimal AvgPnLPercent { get; set; }
+    /// <summary>최대 1회 투입 금액 (진입가 × 수량)</summary>
+    public decimal MaxPositionSize { get; set; }
+    /// <summary>자본금 대비 최대 배분 비율</summary>
+    public decimal MaxAllocationPercent { get; set; }
 }
 
 public record EquityPoint(DateTime Date, decimal Equity);

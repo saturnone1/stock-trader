@@ -1,122 +1,34 @@
 using System.Globalization;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
-using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Services.LsSecurities;
 
 namespace StockTrader.Services.DataFeed;
 
 /// <summary>
 /// LS증권 OPEN API 시세 데이터 서비스.
 /// 분봉(t8412): 1분~60분, 최대 1년치 히스토리.
-/// 일봉(t8413): 일/주/월봉, 연속조회로 수년치 가능.
+/// 일봉(t8410): 기간별 주가 조회, 수년치 일/주/월/년봉 지원.
 /// 현재가(t1102): 종목별 시세(현재가, 등락, 거래량 등).
 /// </summary>
 public class LsSecuritiesDataFeedService : IDataFeedService
 {
     private readonly HttpClient _http;
-    private readonly LsSecuritiesSettings _settings;
+    private readonly LsAuthService _auth;
     private readonly ILogger<LsSecuritiesDataFeedService> _logger;
-
-    private string? _accessToken;
-    private DateTime _tokenExpiry = DateTime.MinValue;
-    private readonly SemaphoreSlim _tokenLock = new(1, 1);
-
-    // LS증권 차트 TR rate limit: 초당 1건 이내
-    private DateTime _lastChartRequest = DateTime.MinValue;
-    private readonly SemaphoreSlim _chartRateLock = new(1, 1);
-
-    private static readonly TimeZoneInfo KstZone = GetKstZone();
-    private static TimeZoneInfo GetKstZone()
-    {
-        try { return TimeZoneInfo.FindSystemTimeZoneById("Korea Standard Time"); }
-        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul"); }
-    }
 
     public LsSecuritiesDataFeedService(
         HttpClient http,
-        IOptions<LsSecuritiesSettings> settings,
+        LsAuthService auth,
         ILogger<LsSecuritiesDataFeedService> logger)
     {
         _http = http;
-        _settings = settings.Value;
+        _auth = auth;
         _logger = logger;
-        // LS증권: 분봉(t8412)·현재가(t1102)는 운영서버에서 작동, 일봉(t8413)은 모의서버 전용
-        // → 항상 운영서버 사용 + 일봉은 분봉 집계로 대체
-        _http.BaseAddress = new Uri(_settings.BaseUrl);
+        // LS증권: 분봉(t8412)·일봉(t8410)·현재가(t1102) 모두 운영서버 사용
+        _http.BaseAddress = new Uri(_auth.Settings.BaseUrl);
     }
-
-    #region Authentication
-
-    private async Task EnsureTokenAsync(CancellationToken ct)
-    {
-        if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
-            return;
-
-        await _tokenLock.WaitAsync(ct);
-        try
-        {
-            if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
-                return;
-
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["grant_type"] = "client_credentials",
-                ["appkey"] = _settings.AppKey,
-                ["appsecretkey"] = _settings.AppSecret,
-                ["scope"] = "oob"
-            });
-
-            var response = await _http.PostAsync("/oauth2/token", content, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS Data] 토큰 발급 실패: {Status} {Body}", response.StatusCode, json);
-                throw new InvalidOperationException($"LS증권 토큰 발급 실패: {response.StatusCode}");
-            }
-
-            using var doc = JsonDocument.Parse(json);
-            _accessToken = doc.RootElement.GetProperty("access_token").GetString();
-
-            var kstNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KstZone);
-            var nextExpiry = kstNow.Hour < 7
-                ? kstNow.Date.AddHours(7)
-                : kstNow.Date.AddDays(1).AddHours(7);
-            _tokenExpiry = TimeZoneInfo.ConvertTimeToUtc(nextExpiry, KstZone)
-                .AddMinutes(-5);
-
-            _logger.LogInformation("[LS Data] 토큰 발급 성공");
-        }
-        finally
-        {
-            _tokenLock.Release();
-        }
-    }
-
-    private async Task<HttpRequestMessage> CreateRequestAsync(
-        string path, string trCd, object body,
-        bool isContinuation = false, string? contKey = null,
-        CancellationToken ct = default)
-    {
-        await EnsureTokenAsync(ct);
-
-        var request = new HttpRequestMessage(HttpMethod.Post, path);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
-        request.Headers.Add("tr_cd", trCd);
-        request.Headers.Add("tr_cont", isContinuation ? "Y" : "N");
-        if (!string.IsNullOrEmpty(contKey))
-            request.Headers.Add("tr_cont_key", contKey);
-
-        var jsonStr = JsonSerializer.Serialize(body);
-        request.Content = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-        return request;
-    }
-
-    #endregion
 
     #region IDataFeedService
 
@@ -136,7 +48,7 @@ public class LsSecuritiesDataFeedService : IDataFeedService
     public async Task<OhlcvBar?> GetLatestBarAsync(string symbol, TimeFrame timeFrame,
         CancellationToken ct = default)
     {
-        var to = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KstZone);
+        var to = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, LsAuthService.KstZone);
         var from = timeFrame == TimeFrame.Daily ? to.AddDays(-5) : to.AddHours(-2);
         var bars = await GetHistoricalBarsAsync(symbol, timeFrame, from, to, ct);
         return bars.Count > 0 ? bars[^1] : null;
@@ -163,7 +75,7 @@ public class LsSecuritiesDataFeedService : IDataFeedService
                 }
             };
 
-            var request = await CreateRequestAsync("/stock/market-data", "t1102", body, ct: ct);
+            var request = await _auth.CreateRequestAsync(_http, "/stock/market-data", "t1102", body, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
 
@@ -241,17 +153,9 @@ public class LsSecuritiesDataFeedService : IDataFeedService
             };
 
             // rate limit: 차트 TR은 초당 1건
-            await _chartRateLock.WaitAsync(ct);
-            try
-            {
-                var elapsed = DateTime.UtcNow - _lastChartRequest;
-                if (elapsed.TotalMilliseconds < 1000)
-                    await Task.Delay(1000 - (int)elapsed.TotalMilliseconds, ct);
-                _lastChartRequest = DateTime.UtcNow;
-            }
-            finally { _chartRateLock.Release(); }
+            await _auth.WaitForChartRateLimitAsync(ct);
 
-            var request = await CreateRequestAsync("/stock/chart", "t8412", body,
+            var request = await _auth.CreateRequestAsync(_http, "/stock/chart", "t8412", body,
                 isCont, contKey, ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -336,27 +240,159 @@ public class LsSecuritiesDataFeedService : IDataFeedService
 
     #endregion
 
-    #region Private - Daily Bars (분봉 집계)
+    #region Private - Daily/Weekly Bars (t8410 기간별 주가)
 
     /// <summary>
-    /// 일봉 데이터를 60분봉(t8412) 조회 후 날짜별 OHLCV로 집계하여 생성.
-    /// t8413 일봉 TR이 운영서버에서 데이터를 반환하지 않는 제한이 있어 이 방식을 사용.
-    /// 60분봉은 하루 약 7개(09:00~15:30) → 500건/페이지로 약 70일치 가능.
+    /// 일봉/주봉 데이터를 t8410(기간별 주가) TR로 직접 조회.
+    /// t8410은 수년치 일/주/월/년봉 데이터를 지원하며 수정주가 옵션 포함.
+    /// t8410 실패 시 60분봉(t8412) 집계로 폴백 (최대 ~1년치).
     /// </summary>
     private async Task<List<OhlcvBar>> GetDailyBarsAsync(
         string symbol, TimeFrame timeFrame,
         DateTime from, DateTime to, CancellationToken ct)
     {
-        // 60분봉으로 조회 → 하루당 바 수가 적어 효율적
+        // 1차: t8410 기간별 주가 직접 조회
+        var bars = await GetDailyBarsViaT8410Async(symbol, timeFrame, from, to, ct);
+        if (bars.Count > 0)
+            return bars;
+
+        // 폴백: 60분봉 집계 (최대 ~1년치)
+        _logger.LogWarning("[LS Data] {Symbol} t8410 조회 실패, 60분봉 집계로 폴백", symbol);
+        return await GetDailyBarsViaMinuteAggregationAsync(symbol, timeFrame, from, to, ct);
+    }
+
+    /// <summary>t8410 기간별 주가 조회. gubun: 2=일, 3=주, 4=월, 5=년</summary>
+    private async Task<List<OhlcvBar>> GetDailyBarsViaT8410Async(
+        string symbol, TimeFrame timeFrame,
+        DateTime from, DateTime to, CancellationToken ct)
+    {
+        var gubun = timeFrame == TimeFrame.Weekly ? "3" : "2"; // 2=일봉, 3=주봉
+        var allBars = new List<OhlcvBar>();
+        var contKey = "";
+        var isCont = false;
+        var maxPages = 20; // 500건/페이지 × 20 = 10,000일 (약 40년)
+
+        for (int page = 0; page < maxPages; page++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var body = new Dictionary<string, object>
+            {
+                ["t8410InBlock"] = new Dictionary<string, object>
+                {
+                    ["shcode"] = symbol,
+                    ["gubun"] = gubun,
+                    ["qrycnt"] = 500,
+                    ["sdate"] = from.ToString("yyyyMMdd"),
+                    ["edate"] = to.ToString("yyyyMMdd"),
+                    ["cts_date"] = "",
+                    ["comp_yn"] = "N",
+                    ["sujung"] = "Y"
+                }
+            };
+
+            await _auth.WaitForChartRateLimitAsync(ct);
+
+            var request = await _auth.CreateRequestAsync(_http, "/stock/chart", "t8410", body,
+                isCont, contKey, ct);
+            var response = await _http.SendAsync(request, ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[LS Data] t8410 일봉 조회 실패: {Symbol} {Status} {Body}",
+                    symbol, response.StatusCode, json.Length > 300 ? json[..300] : json);
+                break;
+            }
+
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("t8410OutBlock1", out var items))
+                break;
+
+            var count = 0;
+            foreach (var item in items.EnumerateArray())
+            {
+                var bar = ParseDailyBar(item, symbol, timeFrame);
+                if (bar != null)
+                {
+                    allBars.Add(bar);
+                    count++;
+                }
+            }
+
+            if (count == 0) break;
+
+            // 연속조회: cts_date가 비어있지 않으면 추가 데이터 존재
+            var hasMore = false;
+            if (doc.RootElement.TryGetProperty("t8410OutBlock", out var header)
+                && header.TryGetProperty("cts_date", out var ctsDate))
+            {
+                var ctsDateStr = ctsDate.GetString() ?? "";
+                if (!string.IsNullOrEmpty(ctsDateStr))
+                {
+                    contKey = response.Headers.TryGetValues("tr_cont_key", out var keyVals)
+                        ? keyVals.FirstOrDefault() ?? ""
+                        : "";
+                    isCont = true;
+                    hasMore = true;
+                }
+            }
+
+            if (!hasMore) break;
+        }
+
+        allBars.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+
+        _logger.LogInformation("[LS Data] {Symbol} t8410 일봉 {Count}건 조회 ({From:d}~{To:d})",
+            symbol, allBars.Count, from, to);
+
+        return allBars;
+    }
+
+    private static OhlcvBar? ParseDailyBar(JsonElement item, string symbol, TimeFrame tf)
+    {
+        var dateStr = item.TryGetProperty("date", out var d) ? d.GetString() : null;
+        if (string.IsNullOrEmpty(dateStr)) return null;
+
+        if (!DateTime.TryParseExact(dateStr, "yyyyMMdd",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var ts))
+            return null;
+
+        // t8410은 volume 또는 jdiff_vol 필드를 사용
+        long volume = 0;
+        if (item.TryGetProperty("jdiff_vol", out var jv))
+            volume = jv.GetInt64();
+        else if (item.TryGetProperty("volume", out var vol))
+            volume = vol.GetInt64();
+
+        return new OhlcvBar
+        {
+            Symbol = symbol,
+            Timestamp = ts,
+            TimeFrame = tf,
+            Open = item.TryGetProperty("open", out var o) ? o.GetDecimal() : 0,
+            High = item.TryGetProperty("high", out var h) ? h.GetDecimal() : 0,
+            Low = item.TryGetProperty("low", out var l) ? l.GetDecimal() : 0,
+            Close = item.TryGetProperty("close", out var c) ? c.GetDecimal() : 0,
+            Volume = volume
+        };
+    }
+
+    /// <summary>폴백: 60분봉(t8412)을 날짜별 집계하여 일봉 생성 (최대 ~1년치)</summary>
+    private async Task<List<OhlcvBar>> GetDailyBarsViaMinuteAggregationAsync(
+        string symbol, TimeFrame timeFrame,
+        DateTime from, DateTime to, CancellationToken ct)
+    {
         var minuteBars = await GetMinuteBarsInternal(symbol, 60, from, to, ct);
 
         if (minuteBars.Count == 0)
         {
-            _logger.LogWarning("[LS Data] {Symbol} 일봉 집계: 분봉 데이터 없음 ({From:d}~{To:d})", symbol, from, to);
+            _logger.LogWarning("[LS Data] {Symbol} 일봉 폴백 집계: 분봉 데이터도 없음 ({From:d}~{To:d})",
+                symbol, from, to);
             return [];
         }
 
-        // 날짜별로 그룹핑하여 일봉 생성
         var dailyBars = minuteBars
             .GroupBy(b => b.Timestamp.Date)
             .Select(g => new OhlcvBar
@@ -373,8 +409,8 @@ public class LsSecuritiesDataFeedService : IDataFeedService
             .OrderBy(b => b.Timestamp)
             .ToList();
 
-        _logger.LogInformation("[LS Data] {Symbol} {TF} 일봉 {Count}건 집계 ({From:d}~{To:d})",
-            symbol, timeFrame, dailyBars.Count, from, to);
+        _logger.LogInformation("[LS Data] {Symbol} 일봉 폴백 집계 {Count}건 ({From:d}~{To:d})",
+            symbol, dailyBars.Count, from, to);
         return dailyBars;
     }
 
