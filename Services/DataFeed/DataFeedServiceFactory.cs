@@ -32,6 +32,7 @@ public class DataFeedServiceFactory : IDataFeedServiceFactory
     {
         DataSource.Alpaca => _serviceProvider.GetRequiredKeyedService<IDataFeedService>(DataSource.Alpaca),
         DataSource.Yahoo => _serviceProvider.GetRequiredKeyedService<IDataFeedService>(DataSource.Yahoo),
+        DataSource.LsSecurities => _serviceProvider.GetRequiredKeyedService<IDataFeedService>(DataSource.LsSecurities),
         _ => _serviceProvider.GetRequiredKeyedService<IDataFeedService>(DataSource.Alpaca)
     };
 }

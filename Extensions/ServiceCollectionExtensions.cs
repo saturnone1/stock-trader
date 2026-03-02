@@ -37,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.Configure<PatternSettings>(configuration.GetSection("Patterns"));
         services.Configure<NotificationSettings>(configuration.GetSection("Notification"));
         services.Configure<MLSettings>(configuration.GetSection("ML"));
+        services.Configure<LsSecuritiesSettings>(configuration.GetSection("LsSecurities"));
 
         // Database (Factory=Singleton for use in singleton services; AppDbContext itself is still scoped)
         services.AddDbContextFactory<AppDbContext>(options =>
@@ -51,6 +52,7 @@ public static class ServiceCollectionExtensions
         // Data Feed - Keyed services for multiple providers
         services.AddKeyedScoped<IDataFeedService, AlpacaDataFeedService>(DataSource.Alpaca);
         services.AddKeyedScoped<IDataFeedService, YahooFinanceDataFeedService>(DataSource.Yahoo);
+        services.AddKeyedScoped<IDataFeedService, LsSecuritiesDataFeedService>(DataSource.LsSecurities);
 
         // HttpClient for Yahoo Finance
         services.AddHttpClient<YahooFinanceDataFeedService>(client =>
@@ -60,6 +62,10 @@ public static class ServiceCollectionExtensions
             client.BaseAddress = new Uri(yahooConfig.BaseUrl);
             client.DefaultRequestHeaders.Add("User-Agent", yahooConfig.UserAgent);
         });
+
+        // HttpClient for LS Securities
+        services.AddHttpClient<LsSecuritiesDataFeedService>();
+        services.AddHttpClient<LsSecuritiesBrokerService>();
 
         // Data Feed Factory for runtime provider switching
         services.AddScoped<IDataFeedServiceFactory, DataFeedServiceFactory>();
@@ -101,6 +107,7 @@ public static class ServiceCollectionExtensions
         services.AddKeyedScoped<IBrokerService, AlpacaBrokerService>(BrokerType.Alpaca);
         services.AddKeyedScoped<IBrokerService, KoreaInvestmentBrokerService>(BrokerType.KoreaInvestment);
         services.AddKeyedScoped<IBrokerService, KiwoomBrokerService>(BrokerType.Kiwoom);
+        services.AddKeyedScoped<IBrokerService, LsSecuritiesBrokerService>(BrokerType.LsSecurities);
 
         // BrokerServiceFactory — appsettings의 DefaultBrokerType으로 기본 브로커 결정
         services.AddScoped<IBrokerServiceFactory>(sp =>
