@@ -241,14 +241,20 @@
     private Timer? _riskRefreshTimer;
     private static readonly TimeSpan RiskRefreshInterval = TimeSpan.FromSeconds(30);
 
+    // Fix 3: 에러 쓰로틀링 - 마지막 에러 발생 시각 추적
+    private DateTime _lastErrorTime = DateTime.MinValue;
+
     private static readonly TimeZoneInfo EasternTz =
         TZConvert.GetTimeZoneInfo("America/New_York");
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadDataAsync();
+        // Fix 1: 이벤트 핸들러를 LoadDataAsync 이전에 등록한다.
+        // 데이터 로드 중 도착하는 시그널/가격 업데이트를 누락하지 않기 위한 경쟁 조건 방지.
         NotificationService.OnNewRecommendation += OnNewRecommendation;
         NotificationService.OnPriceUpdate += OnPriceUpdate;
+
+        await LoadDataAsync();
 
         // 리스크 상태를 30초마다 갱신한다.
         // OnPriceUpdate는 이제 포지션 가격만 in-memory 업데이트하므로
@@ -269,8 +275,20 @@
             var signalsTask = TradeRepo.GetActiveSignalsAsync();
             var positionsTask = TradeRepo.GetOpenPositionsAsync();
             var riskTask = RiskService.GetCurrentRiskStateAsync();
-            var accountTask = BrokerFactory.GetDefaultService().GetAccountAsync();
 
+            // Fix 2: 브로커 서비스 null 체크 - 초기화 실패 시 의미있는 오류 메시지 표시
+            var broker = BrokerFactory.GetDefaultService();
+            if (broker == null)
+            {
+                _error = "브로커 서비스를 초기화할 수 없습니다.";
+                await Task.WhenAll(signalsTask, positionsTask, riskTask);
+                _activeSignals = signalsTask.Result;
+                _openPositions = positionsTask.Result;
+                _riskState = riskTask.Result;
+                return;
+            }
+
+            var accountTask = broker.GetAccountAsync();
             await Task.WhenAll(signalsTask, positionsTask, riskTask, accountTask);
 
             _activeSignals = signalsTask.Result;
@@ -328,8 +346,15 @@
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _error = $"상태 갱신 실패: {ex.Message}";
-            StateHasChanged();
+            // Fix 3: 에러 쓰로틀링 - 30초 타이머가 에러를 반복 표시하지 않도록
+            // 마지막 에러로부터 60초 이상 경과한 경우에만 에러 메시지를 갱신한다.
+            var now = DateTime.UtcNow;
+            if ((now - _lastErrorTime).TotalSeconds >= 60)
+            {
+                _lastErrorTime = now;
+                _error = $"상태 갱신 실패: {ex.Message}";
+                StateHasChanged();
+            }
         }
     }
 

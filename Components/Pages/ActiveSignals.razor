@@ -140,6 +140,7 @@ else
     private bool _showHelp;
     private bool _loading;
     private string? _error;
+    private bool _subscribed;
     private List<PatternSignal> _signals = new();
     // Materialized cache — rebuilt once per filter/data change, not on every render pass.
     private List<PatternSignal> _filteredSignals = new();
@@ -190,9 +191,12 @@ else
             _loading = false;
         }
         // SignalR 재연결 시 OnInitializedAsync가 재실행될 수 있으므로
-        // -= 후 += 로 항상 정확히 한 번만 구독되도록 보장
-        NotificationService.OnNewRecommendation -= OnNewRecommendation;
-        NotificationService.OnNewRecommendation += OnNewRecommendation;
+        // _subscribed 플래그로 정확히 한 번만 구독되도록 보장
+        if (!_subscribed)
+        {
+            NotificationService.OnNewRecommendation += OnNewRecommendation;
+            _subscribed = true;
+        }
     }
 
     private void OnNewRecommendation(TradeRecommendation rec)

@@ -34,6 +34,9 @@
         ? Color.Success
         : State.IsTradingHalted ? Color.Error : Color.Warning;
 
-    private double BarWidth => Math.Min(100, Math.Max(5,
-        Math.Abs((double)State.DailyPnLPercent) / (double)DailyLossLimitPercent * 100));
+    // Fix 4: DailyLossLimitPercent가 0 이하이면 0으로 나누기 방지 - 안전한 기본값 5 반환
+    private double BarWidth => DailyLossLimitPercent <= 0
+        ? 5
+        : Math.Min(100, Math.Max(5,
+            Math.Abs((double)State.DailyPnLPercent) / (double)DailyLossLimitPercent * 100));
 }
