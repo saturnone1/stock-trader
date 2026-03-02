@@ -238,7 +238,8 @@ public class BacktestService : IBacktestService
             request.Symbols, dataFeed, activeDetectors, regimeByDate,
             request.From, request.To, request.InitialCapital,
             request.SlippagePercent, request.CommissionPerTrade,
-            request.TimeFrame, riskParams, request.ParameterOverrides, ct);
+            request.TimeFrame, riskParams, request.ParameterOverrides,
+            request.SlippageModel, ct);
 
         result.UsedTimeFrame = request.TimeFrame;
 
@@ -278,6 +279,7 @@ public class BacktestService : IBacktestService
         TimeFrame timeFrame = TimeFrame.Daily,
         RiskParams? riskParams = null,
         PatternParameterOverrides? exitOverrides = null,
+        SlippageModel slippageModel = SlippageModel.Adaptive,
         CancellationToken ct = default)
     {
         // riskParams가 없으면 appsettings.json 기본값으로 구성
@@ -333,7 +335,30 @@ public class BacktestService : IBacktestService
         foreach (var trade in allTrades)
         {
             // Slippage cost: applies to both entry and exit (adverse direction)
-            var slippageCost = (trade.EntryPrice + trade.ExitPrice) * (slippagePercent / 100m) * trade.Quantity;
+            decimal slippageCost;
+            if (slippageModel == SlippageModel.Adaptive && trade.EntryAtr > 0 && trade.EntryPrice > 0)
+            {
+                // Adaptive slippage = baseRate × volatilityFactor × liquidityFactor
+                // volatilityFactor: ATR/Price 비율 (높은 변동성 → 더 큰 슬리피지)
+                // liquidityFactor: 주문량/거래량 비율 (거래량 대비 큰 주문 → 더 큰 슬리피지)
+                var atrPct = trade.EntryAtr / trade.EntryPrice; // 일반적으로 0.01~0.05 (1~5%)
+                var volatilityFactor = Math.Max(0.5m, Math.Min(3.0m, atrPct / 0.02m)); // 기준: ATR 2%
+
+                var liquidityFactor = 1.0m;
+                if (trade.EntryVolume > 0)
+                {
+                    var orderRatio = (decimal)trade.Quantity / trade.EntryVolume;
+                    // 주문이 거래량의 1% 이하면 1.0, 이상이면 비례 증가 (최대 3배)
+                    liquidityFactor = Math.Max(0.5m, Math.Min(3.0m, 1.0m + (orderRatio - 0.01m) * 50m));
+                }
+
+                var adaptiveSlippagePct = slippagePercent / 100m * volatilityFactor * liquidityFactor;
+                slippageCost = (trade.EntryPrice + trade.ExitPrice) * adaptiveSlippagePct * trade.Quantity;
+            }
+            else
+            {
+                slippageCost = (trade.EntryPrice + trade.ExitPrice) * (slippagePercent / 100m) * trade.Quantity;
+            }
             var tradePnl = trade.PnL - slippageCost - commissionPerTrade;
 
             // Update trade with adjusted PnL
@@ -412,14 +437,16 @@ public class BacktestService : IBacktestService
                 request.Symbols, dataFeed, detectors, regimeByDate,
                 isFrom, isTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
-                request.TimeFrame, riskParams, request.ParameterOverrides, ct);
+                request.TimeFrame, riskParams, request.ParameterOverrides,
+                request.SlippageModel, ct);
 
             // Run OOS backtest (동일한 리스크 파라미터 전달)
             var oosResult = await RunCoreAsync(
                 request.Symbols, dataFeed, detectors, regimeByDate,
                 oosFrom, oosTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
-                request.TimeFrame, riskParams, request.ParameterOverrides, ct);
+                request.TimeFrame, riskParams, request.ParameterOverrides,
+                request.SlippageModel, ct);
 
             var efficiency = isResult.TotalReturnPercent != 0
                 ? oosResult.TotalReturnPercent / isResult.TotalReturnPercent
@@ -766,6 +793,7 @@ public class BacktestService : IBacktestService
                             EntryTime                = openPosition.EntryTime,
                             EntryBarIndex            = openPosition.EntryBarIndex,
                             EntryAtr                 = openPosition.EntryAtr,
+                            EntryVolume              = openPosition.EntryVolume,
                             HighestHighSinceEntry    = openPosition.HighestHighSinceEntry,
                             TrailingStopActivated    = openPosition.TrailingStopActivated,
                             BreakevenApplied         = true,
@@ -883,6 +911,7 @@ public class BacktestService : IBacktestService
                         EntryTime             = currentBar.Timestamp,
                         EntryBarIndex         = i,
                         EntryAtr              = entryAtr,
+                        EntryVolume           = currentBar.Volume,
                         HighestHighSinceEntry = currentBar.High,
                         RiskDistance          = stopDistance
                     };
@@ -1066,7 +1095,9 @@ public class BacktestService : IBacktestService
             ExitTime = exitTime,
             PnL = pnl,
             PnLPercent = pnlPct,
-            ExitReason = exitReason
+            ExitReason = exitReason,
+            EntryAtr = pos.EntryAtr,
+            EntryVolume = pos.EntryVolume
         };
     }
 
@@ -1179,6 +1210,7 @@ public class BacktestService : IBacktestService
         public DateTime EntryTime { get; init; }
         public int EntryBarIndex { get; init; }      // bars[] index at entry, for time-based exit
         public decimal EntryAtr { get; init; }       // ATR value at entry bar, for breakeven calculation
+        public long EntryVolume { get; init; }         // Volume at entry bar, for adaptive slippage
 
         // ── Mutable tracking state ────────────────────────────────────
 

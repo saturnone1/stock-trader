@@ -95,11 +95,18 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="2">
-                <MudNumericField @bind-Value="_slippagePercent" Label="슬리피지 (%)"
+                <MudSelect @bind-Value="_slippageModel" Label="슬리피지 모델" T="SlippageModel"
+                           Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="SlippageModel" Value="SlippageModel.Adaptive">적응형 (ATR+거래량)</MudSelectItem>
+                    <MudSelectItem T="SlippageModel" Value="SlippageModel.Fixed">고정 비율</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudNumericField @bind-Value="_slippagePercent" Label="@(_slippageModel == SlippageModel.Fixed ? "슬리피지 (%)" : "기본 슬리피지 (%)")"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="F3"
                                  Step="0.01m" Min="0m" Max="1m" />
             </MudItem>
-            <MudItem xs="12" md="3">
+            <MudItem xs="12" md="2">
                 <MudNumericField @bind-Value="_commissionPerTrade" Label="수수료 ($/거래)"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="F2"
                                  Step="0.5m" Min="0m" />
@@ -1912,6 +1919,7 @@ else if (!_isRunning)
     private decimal _capital = 100_000m;
     private TimeFrame _timeFrame = TimeFrame.Daily;
     private DataSource? _dataSource = null;
+    private SlippageModel _slippageModel = SlippageModel.Adaptive;
     private decimal _slippagePercent = 0.05m;
     private decimal _commissionPerTrade = 1.00m;
     private bool _enableWalkForward;
@@ -2397,6 +2405,7 @@ else if (!_isRunning)
                 InitialCapital = _capital,
                 TimeFrame = _timeFrame,
                 SlippagePercent = _slippagePercent,
+                SlippageModel = _slippageModel,
                 CommissionPerTrade = _commissionPerTrade,
                 EnableWalkForward = _enableWalkForward,
                 WalkForwardInSampleMonths = _wfInSampleMonths,
