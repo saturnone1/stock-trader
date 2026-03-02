@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.ML;
 using Microsoft.ML.Data;
@@ -331,6 +332,16 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
         return Path.Combine(dir, _settings.RegimeModelFileName);
     }
 
+    /// <summary>
+    /// 클러스터 레이블 매핑 JSON 파일 경로.
+    /// 모델 파일과 같은 디렉터리에 "regime_labels.json"으로 저장한다.
+    /// </summary>
+    private string GetLabelsPath()
+    {
+        var modelPath = GetModelPath();
+        return Path.Combine(Path.GetDirectoryName(modelPath)!, "regime_labels.json");
+    }
+
     private void SaveModel()
     {
         if (_model == null) return;
@@ -339,6 +350,16 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
             var path = GetModelPath();
             _mlContext.Model.Save(_model, null, path);
             _logger.LogInformation("레짐 분류기 모델 저장 완료: {Path}", path);
+
+            // 클러스터→레이블 매핑을 JSON으로 저장한다.
+            // 재시작 후 TryLoadModel()에서 이 파일을 읽어 정확한 매핑을 복원한다.
+            // 저장하지 않으면 순서(0→강세장, 1→약세장…)로 할당되어 학습 결과와 불일치할 수 있다.
+            var labelsPath = GetLabelsPath();
+            var serializable = _clusterLabels.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value);
+            var json = JsonSerializer.Serialize(serializable,
+                new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(labelsPath, json);
+            _logger.LogInformation("클러스터 레이블 매핑 저장 완료: {Path}", labelsPath);
         }
         catch (Exception ex)
         {
@@ -364,9 +385,38 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
             // 파일 생성 시각을 TrainedAt으로 사용
             TrainedAt = File.GetLastWriteTimeUtc(path);
 
-            // 저장된 클러스터 레이블 복원 (기본값)
-            for (uint i = 0; i < _settings.RegimeClusterCount; i++)
-                _clusterLabels[i] = RegimeNames[i % RegimeNames.Length];
+            // 클러스터 레이블 매핑 복원:
+            // 학습 시 저장된 JSON 파일이 있으면 그 매핑을 그대로 사용한다.
+            // JSON 파일이 없으면 순서 기반 기본값으로 폴백한다 (이전 동작과 동일).
+            var labelsPath = GetLabelsPath();
+            if (File.Exists(labelsPath))
+            {
+                try
+                {
+                    var json = File.ReadAllText(labelsPath);
+                    var raw = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                    if (raw != null)
+                    {
+                        _clusterLabels = raw
+                            .Where(kv => uint.TryParse(kv.Key, out _))
+                            .ToDictionary(kv => uint.Parse(kv.Key), kv => kv.Value);
+                        _logger.LogInformation(
+                            "클러스터 레이블 매핑 복원 완료: {Labels}", _clusterLabels);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "클러스터 레이블 JSON 파싱 실패 — 기본값 사용");
+                    AssignDefaultLabels();
+                }
+            }
+            else
+            {
+                // JSON 파일 없음 → 순서 기반 기본값 (이전 동작)
+                AssignDefaultLabels();
+                _logger.LogWarning(
+                    "클러스터 레이블 매핑 파일 없음. 재학습하면 정확한 매핑이 저장됩니다.");
+            }
 
             _logger.LogInformation("레짐 분류기 모델 로드 완료: {Path}", path);
         }
@@ -374,6 +424,12 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
         {
             _logger.LogWarning(ex, "저장된 레짐 분류기 모델 로드 실패 (신규 학습 필요)");
         }
+    }
+
+    private void AssignDefaultLabels()
+    {
+        for (uint i = 0; i < _settings.RegimeClusterCount; i++)
+            _clusterLabels[i] = RegimeNames[i % RegimeNames.Length];
     }
 
     // ──────────────────────────────────────────────────────────────────────

@@ -39,8 +39,9 @@ public class BreakoutDetectorTests
         {
             Breakout = config ?? DefaultConfig
         };
-        var opts = Options.Create(settings);
-        return new BreakoutDetector(indicatorsMock.Object, opts);
+        var snapshotMock = new Mock<IOptionsSnapshot<PatternSettings>>();
+        snapshotMock.Setup(x => x.Value).Returns(settings);
+        return new BreakoutDetector(indicatorsMock.Object, snapshotMock.Object);
     }
 
     private static MarketRegime BullRegime() => new()

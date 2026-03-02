@@ -40,12 +40,16 @@
         _pendingUpdate = true;
     }
 
-    private async void ThrottleCallback(object? state)
+    private void ThrottleCallback(object? state)
     {
         if (!_pendingUpdate) return;
         _pendingUpdate = false;
 
-        await InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(() =>
+        {
+            try { StateHasChanged(); }
+            catch (ObjectDisposedException) { }
+        });
     }
 
     public void Dispose()

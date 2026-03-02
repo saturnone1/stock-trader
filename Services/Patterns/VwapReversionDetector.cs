@@ -12,7 +12,7 @@ public class VwapReversionDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.VwapReversion;
 
-    public VwapReversionDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public VwapReversionDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.VwapReversion;

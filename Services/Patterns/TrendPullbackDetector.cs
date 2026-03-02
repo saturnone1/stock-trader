@@ -13,7 +13,7 @@ public class TrendPullbackDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.TrendPullback;
 
-    public TrendPullbackDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public TrendPullbackDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.TrendPullback;

@@ -2,6 +2,7 @@ using Alpaca.Markets;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
+using TimeZoneConverter;
 using TimeFrame = StockTrader.Models.Enums.TimeFrame;
 
 namespace StockTrader.Services.DataFeed;
@@ -10,12 +11,14 @@ public class AlpacaDataFeedService : IDataFeedService
 {
     private readonly IAlpacaDataClient _dataClient;
     private readonly ILogger<AlpacaDataFeedService> _logger;
+    private readonly bool _isPaper;
 
     public AlpacaDataFeedService(IOptions<AlpacaSettings> settings,
         ILogger<AlpacaDataFeedService> logger)
     {
         _logger = logger;
         var config = settings.Value;
+        _isPaper = config.IsPaper;
         var secretKey = new SecretKey(config.ApiKey, config.ApiSecret);
 
         _dataClient = config.IsPaper
@@ -30,14 +33,25 @@ public class AlpacaDataFeedService : IDataFeedService
         {
             var barTimeFrame = ToAlpacaTimeFrame(timeFrame);
             var request = new HistoricalBarsRequest(symbol, from, to, barTimeFrame);
+            if (_isPaper) request.Feed = MarketDataFeed.Iex;
 
             var bars = new List<OhlcvBar>();
-            var page = await _dataClient.ListHistoricalBarsAsync(request, ct);
+            string? pageToken = null;
 
-            foreach (var bar in page.Items)
+            do
             {
-                bars.Add(MapBar(symbol, timeFrame, bar));
-            }
+                if (pageToken != null)
+                    request.Pagination.Token = pageToken;
+
+                var page = await _dataClient.ListHistoricalBarsAsync(request, ct);
+
+                foreach (var bar in page.Items)
+                {
+                    bars.Add(MapBar(symbol, timeFrame, bar));
+                }
+
+                pageToken = page.NextPageToken;
+            } while (!string.IsNullOrEmpty(pageToken));
 
             _logger.LogInformation("Fetched {Count} {TimeFrame} bars for {Symbol} ({From:d} ~ {To:d})",
                 bars.Count, timeFrame, symbol, from, to);
@@ -55,8 +69,9 @@ public class AlpacaDataFeedService : IDataFeedService
     {
         try
         {
-            var bar = await _dataClient.GetLatestBarAsync(
-                new LatestMarketDataRequest(symbol), ct);
+            var latestRequest = new LatestMarketDataRequest(symbol);
+            if (_isPaper) latestRequest.Feed = MarketDataFeed.Iex;
+            var bar = await _dataClient.GetLatestBarAsync(latestRequest, ct);
             return MapBar(symbol, timeFrame, bar);
         }
         catch (Exception ex)
@@ -71,17 +86,31 @@ public class AlpacaDataFeedService : IDataFeedService
     {
         try
         {
-            var from = date.Date.AddHours(13).AddMinutes(30); // 9:30 ET in UTC
-            var to = date.Date.AddHours(20); // 4:00 PM ET in UTC
+            var eastern = TZConvert.GetTimeZoneInfo("America/New_York");
+            var marketOpenEt = new DateTime(date.Year, date.Month, date.Day, 9, 30, 0, DateTimeKind.Unspecified);
+            var marketCloseEt = new DateTime(date.Year, date.Month, date.Day, 16, 0, 0, DateTimeKind.Unspecified);
+            var from = TimeZoneInfo.ConvertTimeToUtc(marketOpenEt, eastern);
+            var to = TimeZoneInfo.ConvertTimeToUtc(marketCloseEt, eastern);
             var request = new HistoricalBarsRequest(symbol, from, to, BarTimeFrame.Minute);
+            if (_isPaper) request.Feed = MarketDataFeed.Iex;
 
             var bars = new List<OhlcvBar>();
-            var page = await _dataClient.ListHistoricalBarsAsync(request, ct);
+            string? intradayPageToken = null;
 
-            foreach (var bar in page.Items)
+            do
             {
-                bars.Add(MapBar(symbol, TimeFrame.OneMinute, bar));
-            }
+                if (intradayPageToken != null)
+                    request.Pagination.Token = intradayPageToken;
+
+                var page = await _dataClient.ListHistoricalBarsAsync(request, ct);
+
+                foreach (var bar in page.Items)
+                {
+                    bars.Add(MapBar(symbol, TimeFrame.OneMinute, bar));
+                }
+
+                intradayPageToken = page.NextPageToken;
+            } while (!string.IsNullOrEmpty(intradayPageToken));
 
             _logger.LogInformation("Fetched {Count} intraday bars for {Symbol} on {Date:d}",
                 bars.Count, symbol, date);
@@ -98,8 +127,9 @@ public class AlpacaDataFeedService : IDataFeedService
     {
         try
         {
-            var trade = await _dataClient.GetLatestTradeAsync(
-                new LatestMarketDataRequest(symbol), ct);
+            var tradeRequest = new LatestMarketDataRequest(symbol);
+            if (_isPaper) tradeRequest.Feed = MarketDataFeed.Iex;
+            var trade = await _dataClient.GetLatestTradeAsync(tradeRequest, ct);
             return trade.Price;
         }
         catch (Exception ex)

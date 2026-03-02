@@ -313,8 +313,16 @@ public class AccountManager : IAccountManager
     {
         if (string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret))
         {
-            _logger.LogWarning("Account [{Id}] {Name}: API key or secret is empty",
+            _logger.LogError(
+                "Account [{Id}] {Name}: API key or secret is not configured. " +
+                "All broker API calls will fail with 401. " +
+                "Set ApiKey and ApiSecret in the account settings.",
                 account.Id, account.AccountName);
+
+            // null 반환 → GetOrCreateBrokerServiceAsync가 캐시하지 않고 호출부에서 null 체크
+            throw new InvalidOperationException(
+                $"계좌 [{account.AccountName}]의 API 키가 설정되지 않았습니다. " +
+                "계좌 관리 화면에서 API Key와 Secret을 입력해 주세요.");
         }
 
         var isPaper = !string.Equals(account.Environment, "Live", StringComparison.OrdinalIgnoreCase);

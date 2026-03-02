@@ -26,8 +26,9 @@ public class GapUpPullbackDetectorTests
         {
             GapUpPullback = config ?? DefaultConfig
         };
-        var opts = Options.Create(settings);
-        return new GapUpPullbackDetector(indicatorsMock.Object, opts);
+        var snapshotMock = new Mock<IOptionsSnapshot<PatternSettings>>();
+        snapshotMock.Setup(x => x.Value).Returns(settings);
+        return new GapUpPullbackDetector(indicatorsMock.Object, snapshotMock.Object);
     }
 
     private static MarketRegime BullRegime() => new()

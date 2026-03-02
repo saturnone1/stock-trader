@@ -18,7 +18,7 @@ public class MomentumReversalDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.MomentumReversal;
 
-    public MomentumReversalDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public MomentumReversalDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.MomentumReversal;

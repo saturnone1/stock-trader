@@ -34,7 +34,7 @@ public class Tqqq200SmaDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.Tqqq200Sma;
 
-    public Tqqq200SmaDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public Tqqq200SmaDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.Tqqq200Sma;

@@ -19,7 +19,12 @@ public class AlpacaStreamingService : BackgroundService
     private readonly INotificationService _notificationService;
     private readonly ILogger<AlpacaStreamingService> _logger;
 
-    private HashSet<string> _subscribedSymbols = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _subscribedSymbols = new(StringComparer.OrdinalIgnoreCase);
+    // BUG-C05 fix: store subscription objects to reuse on unsubscribe (same lock as _subscribedSymbols)
+    private readonly Dictionary<string, IAlpacaDataSubscription<IBar>> _subscriptions = new(StringComparer.OrdinalIgnoreCase);
+    // BUG-C05 fix: store named handlers so -= actually removes the right delegate
+    private readonly Dictionary<string, Action<IBar>> _barHandlers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _symbolsLock = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, decimal> _previousClose = new(StringComparer.OrdinalIgnoreCase);
 
     public AlpacaStreamingService(
@@ -93,6 +98,19 @@ public class AlpacaStreamingService : BackgroundService
             ? Alpaca.Markets.Environments.Paper.GetAlpacaDataStreamingClient(secretKey)
             : Alpaca.Markets.Environments.Live.GetAlpacaDataStreamingClient(secretKey);
 
+        // BUG-C06 fix: cancel the sync loop when the socket drops unexpectedly
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        client.SocketClosed += () =>
+        {
+            _logger.LogWarning("Alpaca WebSocket closed unexpectedly — triggering reconnect");
+            _streamingStatus.MarkReconnecting();
+            _notificationService.PublishStreamingStatus(false);
+            // Cancel the watchlist sync loop so ConnectAndStreamAsync returns,
+            // letting the outer ExecuteAsync backoff loop handle reconnection.
+            cts.Cancel();
+        };
+
         var authStatus = await client.ConnectAndAuthenticateAsync(ct);
         if (authStatus != AuthStatus.Authorized)
         {
@@ -100,6 +118,14 @@ public class AlpacaStreamingService : BackgroundService
         }
 
         _logger.LogInformation("Alpaca WebSocket streaming connected and authenticated");
+
+        // Clear stale subscription state from a previous connection
+        lock (_symbolsLock)
+        {
+            _subscribedSymbols.Clear();
+            _subscriptions.Clear();
+            _barHandlers.Clear();
+        }
 
         // Initial subscription
         var symbols = await GetWatchlistSymbolsAsync(ct);
@@ -110,10 +136,17 @@ public class AlpacaStreamingService : BackgroundService
 
         _notificationService.PublishStreamingStatus(true);
 
-        // Run watchlist sync and keep-alive in parallel
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-
-        await WatchlistSyncLoopAsync(client, cts.Token);
+        // Run watchlist sync loop — exits when ct or cts is cancelled
+        try
+        {
+            await WatchlistSyncLoopAsync(client, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // SocketClosed triggered cts.Cancel(); propagate as a connection failure
+            // so the outer backoff loop retries the connection.
+            throw new IOException("WebSocket connection closed — reconnecting");
+        }
     }
 
     private async Task WatchlistSyncLoopAsync(IAlpacaDataStreamingClient client, CancellationToken ct)
@@ -127,8 +160,13 @@ public class AlpacaStreamingService : BackgroundService
                 var currentSymbols = await GetWatchlistSymbolsAsync(ct);
                 var currentSet = new HashSet<string>(currentSymbols, StringComparer.OrdinalIgnoreCase);
 
-                var toSubscribe = currentSet.Except(_subscribedSymbols, StringComparer.OrdinalIgnoreCase).ToList();
-                var toUnsubscribe = _subscribedSymbols.Except(currentSet, StringComparer.OrdinalIgnoreCase).ToList();
+                List<string> toSubscribe;
+                List<string> toUnsubscribe;
+                lock (_symbolsLock)
+                {
+                    toSubscribe = currentSet.Except(_subscribedSymbols, StringComparer.OrdinalIgnoreCase).ToList();
+                    toUnsubscribe = _subscribedSymbols.Except(currentSet, StringComparer.OrdinalIgnoreCase).ToList();
+                }
 
                 if (toSubscribe.Count > 0)
                 {
@@ -152,9 +190,20 @@ public class AlpacaStreamingService : BackgroundService
         foreach (var symbol in symbols)
         {
             var subscription = client.GetMinuteBarSubscription(symbol);
-            subscription.Received += bar => _ = ProcessBarAsync(symbol, bar);
+
+            // BUG-C05 fix: capture named delegate so unsubscribe can remove the exact same reference
+            var sym = symbol; // capture for closure
+            Action<IBar> handler = bar => _ = ProcessBarAsync(sym, bar);
+            subscription.Received += handler;
+
             await client.SubscribeAsync(subscription, ct);
-            _subscribedSymbols.Add(symbol);
+
+            lock (_symbolsLock)
+            {
+                _subscribedSymbols.Add(symbol);
+                _subscriptions[symbol] = subscription;
+                _barHandlers[symbol] = handler;
+            }
         }
 
         _logger.LogInformation("Subscribed to streaming for {Count} symbols: {Symbols}",
@@ -166,9 +215,34 @@ public class AlpacaStreamingService : BackgroundService
     {
         foreach (var symbol in symbols)
         {
-            var subscription = client.GetMinuteBarSubscription(symbol);
-            await client.UnsubscribeAsync(subscription, ct);
-            _subscribedSymbols.Remove(symbol);
+            IAlpacaDataSubscription<IBar>? subscription;
+            Action<IBar>? handler;
+            lock (_symbolsLock)
+            {
+                _subscriptions.TryGetValue(symbol, out subscription);
+                _barHandlers.TryGetValue(symbol, out handler);
+            }
+
+            if (subscription is null)
+            {
+                _logger.LogWarning("Subscription object not found for {Symbol}; skipping unsubscribe", symbol);
+            }
+            else
+            {
+                // BUG-C05 fix: remove the exact same delegate instance to stop stale bar callbacks
+                if (handler is not null)
+                {
+                    subscription.Received -= handler;
+                }
+                await client.UnsubscribeAsync(subscription, ct);
+            }
+
+            lock (_symbolsLock)
+            {
+                _subscribedSymbols.Remove(symbol);
+                _subscriptions.Remove(symbol);
+                _barHandlers.Remove(symbol);
+            }
         }
 
         _logger.LogInformation("Unsubscribed from streaming for {Count} symbols: {Symbols}",

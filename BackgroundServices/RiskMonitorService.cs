@@ -16,6 +16,7 @@ public class RiskMonitorService : BackgroundService
     private readonly ILogger<RiskMonitorService> _logger;
 
     private int _consecutiveFailures = 0;
+    private DateTime _lastHaltAlertUtc = DateTime.MinValue;
 
     public RiskMonitorService(
         IServiceScopeFactory scopeFactory,
@@ -93,10 +94,12 @@ public class RiskMonitorService : BackgroundService
             "Risk check: PnL={PnL:C2} ({PnLPct:P2}), Positions={Positions}, Halted={Halted}",
             state.DailyPnL, state.DailyPnLPercent, state.OpenPositionCount, state.IsTradingHalted);
 
-        if (state.IsTradingHalted)
+        if (state.IsTradingHalted
+            && (DateTime.UtcNow - _lastHaltAlertUtc).TotalHours >= 1)
         {
             _notificationService.Alert(
                 $"거래 중단: 일일 손실 {state.DailyPnLPercent:P2}이(가) 한도를 초과했습니다");
+            _lastHaltAlertUtc = DateTime.UtcNow;
         }
     }
 }

@@ -62,10 +62,19 @@
                 <MudText>진입: <strong>$@Signal.EntryPrice.ToString("F2")</strong></MudText>
                 <MudText Color="Color.Error">손절: $@Signal.StopLossPrice.ToString("F2")</MudText>
                 <MudText Color="Color.Success">목표: $@Signal.TargetPrice.ToString("F2")</MudText>
-                <!-- 신뢰도 표시 -->
-                <MudText Typo="Typo.caption" Style="@($"color: {ConfidenceColor};")">
-                    신뢰도 @((Signal.Confidence * 100).ToString("F0"))%
-                </MudText>
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-1">
+                    <MudTooltip Text="리스크 대비 리워드 비율. 2:1 이상이면 양호">
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(RiskRewardRatio >= 2m ? Color.Success : RiskRewardRatio >= 1m ? Color.Warning : Color.Error)"
+                                 Variant="Variant.Outlined"
+                                 Style="height:20px; font-size:11px; padding:0 6px; min-width:0; cursor:help;">
+                            R:R @RiskRewardRatio.ToString("F1")
+                        </MudChip>
+                    </MudTooltip>
+                    <MudText Typo="Typo.caption" Style="@($"color: {ConfidenceColor};")">
+                        신뢰도 @((Signal.Confidence * 100).ToString("F0"))%
+                    </MudText>
+                </MudStack>
             </div>
         </MudStack>
         @if (!string.IsNullOrEmpty(Signal.Details))
@@ -89,4 +98,14 @@
         : Signal.Confidence > 0.4m
         ? "var(--mud-palette-warning)"
         : "var(--mud-palette-error)";
+
+    private decimal RiskRewardRatio
+    {
+        get
+        {
+            var risk = Math.Abs(Signal.EntryPrice - Signal.StopLossPrice);
+            var reward = Math.Abs(Signal.TargetPrice - Signal.EntryPrice);
+            return risk > 0 ? Math.Round(reward / risk, 1) : 0;
+        }
+    }
 }

@@ -1,6 +1,7 @@
 @page "/history"
 @rendermode InteractiveServer
 @using StockTrader.Models
+@using StockTrader.Models.Enums
 @using StockTrader.Data.Repositories
 @inject ITradeRepository TradeRepo
 
@@ -102,44 +103,64 @@
         <MudItem xs="12" md="3">
             <MudCard>
                 <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">최고 수익</MudText>
-                    <MudText Typo="Typo.h6" Color="Color.Success">$@_trades.Max(t => t.PnL).ToString("N2")</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">평균 보유기간</MudText>
+                    <MudText Typo="Typo.h6">@(_trades.Average(t => (t.ExitTime - t.EntryTime).TotalDays).ToString("F1"))일</MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
     </MudGrid>
 
     <MudTable Items="@_trades" Dense="true" Hover="true" Striped="true"
+              SortLabel="정렬"
               RowStyleFunc="@((TradeRecord t, int _) => !t.IsWin ? "background: rgba(198,40,40,0.15);" : "")">
         <HeaderContent>
-            <MudTh>종목</MudTh>
-            <MudTh>패턴</MudTh>
-            <MudTh>진입가</MudTh>
-            <MudTh>청산가</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<TradeRecord, object>(x => x.Symbol)">종목</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<TradeRecord, object>(x => x.PatternType)">패턴</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<TradeRecord, object>(x => x.EntryPrice)">진입가</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<TradeRecord, object>(x => x.ExitPrice)">청산가</MudTableSortLabel></MudTh>
             <MudTh>수량</MudTh>
-            <MudTh>손익</MudTh>
-            <MudTh>손익률</MudTh>
+            <MudTh><MudTableSortLabel InitialDirection="MudBlazor.SortDirection.Descending" SortBy="new Func<TradeRecord, object>(x => x.PnL)">손익</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<TradeRecord, object>(x => x.PnLPercent)">손익률</MudTableSortLabel></MudTh>
+            <MudTh>보유기간</MudTh>
             <MudTh>청산 사유</MudTh>
-            <MudTh>날짜</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<TradeRecord, object>(x => x.EntryTime)">진입일</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<TradeRecord, object>(x => x.ExitTime)">청산일</MudTableSortLabel></MudTh>
         </HeaderContent>
         <RowTemplate>
+            @{
+                var meta = PatternMetadataMap.Get(context.PatternType);
+                var holdDays = (context.ExitTime - context.EntryTime).TotalDays;
+            }
             <MudTd><b>@context.Symbol</b></MudTd>
-            <MudTd>@context.PatternType</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small"
+                         Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
+                         Variant="Variant.Filled"
+                         Style="height:20px; font-size:10px; padding:0 6px; min-width:0;">
+                    @meta.KoreanName
+                </MudChip>
+            </MudTd>
             <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
             <MudTd>$@context.ExitPrice.ToString("F2")</MudTd>
             <MudTd>@context.Quantity</MudTd>
             <MudTd>
                 <MudText Color="@(context.IsWin ? Color.Success : Color.Error)">
-                    $@context.PnL.ToString("N2")
+                    @(context.IsWin ? "+" : "")$@context.PnL.ToString("N2")
                 </MudText>
             </MudTd>
             <MudTd>
                 <MudText Color="@(context.IsWin ? Color.Success : Color.Error)">
-                    @context.PnLPercent.ToString("P2")
+                    @(context.PnLPercent >= 0 ? "+" : "")@context.PnLPercent.ToString("P2")
+                </MudText>
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.caption">
+                    @(holdDays < 1 ? "당일" : $"{holdDays:F0}일")
                 </MudText>
             </MudTd>
             <MudTd>@context.ExitReason</MudTd>
-            <MudTd>@context.EntryTime.ToString("MM/dd")</MudTd>
+            <MudTd>@context.EntryTime.ToString("yy/MM/dd")</MudTd>
+            <MudTd>@context.ExitTime.ToString("yy/MM/dd")</MudTd>
         </RowTemplate>
     </MudTable>
 }

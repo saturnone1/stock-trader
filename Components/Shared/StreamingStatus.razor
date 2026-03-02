@@ -18,13 +18,17 @@
         NotificationService.OnStreamingStatusChanged += OnStatusChanged;
     }
 
-    private async void OnStatusChanged(bool isActive)
+    private void OnStatusChanged(bool isActive)
     {
-        await InvokeAsync(() =>
+        _ = InvokeAsync(() =>
         {
-            _isActive = isActive;
-            _tooltip = isActive ? "스트리밍: 실시간 연결" : "스트리밍: 비활성 (폴링 모드)";
-            StateHasChanged();
+            try
+            {
+                _isActive = isActive;
+                _tooltip = isActive ? "스트리밍: 실시간 연결" : "스트리밍: 비활성 (폴링 모드)";
+                StateHasChanged();
+            }
+            catch (ObjectDisposedException) { }
         });
     }
 

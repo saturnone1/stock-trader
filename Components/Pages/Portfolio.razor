@@ -1,6 +1,7 @@
 @page "/portfolio"
 @rendermode InteractiveServer
 @using StockTrader.Models
+@using StockTrader.Models.Enums
 @using StockTrader.Data.Repositories
 @inject ITradeRepository TradeRepo
 @inject IPatternStatsRepository StatsRepo
@@ -126,6 +127,46 @@
         </MudItem>
     </MudGrid>
 
+    @* ── 리스크 지표 ── *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudTooltip Text="위험 조정 수익률. 1.0 이상이면 양호, 2.0 이상이면 매우 우수" Placement="Placement.Top">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">Sharpe Ratio ⓘ</MudText>
+                    </MudTooltip>
+                    <MudText Typo="Typo.h6" Color="@(_sharpeRatio >= 1 ? Color.Success : _sharpeRatio >= 0 ? Color.Warning : Color.Error)">
+                        @_sharpeRatio.ToString("F2")
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">최대 연승</MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Success">@_maxConsecutiveWins</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">최대 연패</MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Error">@_maxConsecutiveLosses</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudCard>
+                <MudCardContent Class="text-center py-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">평균 보유기간</MudText>
+                    <MudText Typo="Typo.h6">@_avgHoldingDays.ToString("F1")일</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
     @* Equity Curve *@
     <MudText Typo="Typo.h6" Class="mb-2">수익 곡선</MudText>
     <MudCard Class="mb-4 pa-3">
@@ -198,7 +239,23 @@
                 <MudTh>손익비</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd><b>@context.Name</b></MudTd>
+                <MudTd>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        @if (Enum.TryParse<PatternType>(context.Name, out var pt))
+                        {
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@PatternMetadataMap.GetMudColor(pt)"
+                                     Variant="Variant.Filled"
+                                     Style="height:20px; font-size:10px; padding:0 6px; min-width:0;">
+                                @PatternMetadataMap.GetKoreanName(pt)
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <b>@context.Name</b>
+                        }
+                    </MudStack>
+                </MudTd>
                 <MudTd>@context.TradeCount</MudTd>
                 <MudTd>@context.WinRatePct.ToString("F1")%</MudTd>
                 <MudTd>
@@ -266,6 +323,9 @@
     private bool _loading;
     private string? _error;
     private decimal _totalPnl, _avgPnl, _winRate, _maxDrawdown, _profitFactor;
+    private decimal _sharpeRatio;
+    private int _maxConsecutiveWins, _maxConsecutiveLosses;
+    private decimal _avgHoldingDays;
 
     // Chart options
     private static readonly ApexCharts.ApexChartOptions<EquityDataPoint> _equityOpts = new()
@@ -330,7 +390,15 @@
         try
         {
             _trades = await TradeRepo.GetTradesAsync(from: _from, to: _to);
-            if (_trades.Count == 0) return;
+            if (_trades.Count == 0)
+            {
+                // 필터 결과가 0거래일 때 이전 필터의 차트/지표 데이터가 잔류하지 않도록 초기화
+                _totalPnl = 0; _avgPnl = 0; _winRate = 0; _maxDrawdown = 0; _profitFactor = 0;
+                _sharpeRatio = 0; _maxConsecutiveWins = 0; _maxConsecutiveLosses = 0; _avgHoldingDays = 0;
+                _equityCurve = new(); _drawdownCurve = new();
+                _monthlyPnl = new(); _patternPerf = new(); _topSymbols = new();
+                return;
+            }
 
             _trades = _trades.OrderBy(t => t.ExitTime).ToList();
             ComputeMetrics();
@@ -338,6 +406,7 @@
             ComputePatternPerformance();
             ComputeMonthlyPnl();
             ComputeTopSymbols();
+            ComputeRiskMetrics();
         }
         catch (Exception ex)
         {
@@ -394,7 +463,7 @@
                 var totalLoss = Math.Abs(losses.Sum(t => t.PnL));
                 return new PatternPerfItem
                 {
-                    Name = g.Key.ToString(),
+                    Name = PatternMetadataMap.GetKoreanName(g.Key),
                     TradeCount = all.Count,
                     WinRatePct = all.Count > 0 ? (decimal)wins.Count / all.Count * 100 : 0,
                     TotalPnl = all.Sum(t => t.PnL),
@@ -435,6 +504,41 @@
             .OrderByDescending(s => Math.Abs(s.TotalPnl))
             .Take(10)
             .ToList();
+    }
+
+    private void ComputeRiskMetrics()
+    {
+        // Sharpe Ratio (annualized, standard formula)
+        // Uses sample std dev (n-1) and annualizes by average holding period to derive trades-per-year
+        if (_trades.Count > 1)
+        {
+            var returns = _trades.Select(t => (double)t.PnLPercent).ToArray();
+            var avgReturn = returns.Average();
+            // Sample standard deviation (n-1) instead of population (n)
+            var variance = returns.Select(r => Math.Pow(r - avgReturn, 2)).Sum() / (returns.Length - 1);
+            var stdDev = Math.Sqrt(variance);
+            // Annualization factor based on average holding period in trading days
+            var avgHoldingDays = _trades.Average(t => Math.Max(1, (t.ExitTime - t.EntryTime).TotalDays));
+            var tradesPerYear = 252.0 / avgHoldingDays;
+            _sharpeRatio = stdDev > 0
+                ? (decimal)(avgReturn / stdDev * Math.Sqrt(tradesPerYear))
+                : 0;
+        }
+
+        // Consecutive wins/losses
+        int curWins = 0, curLosses = 0;
+        _maxConsecutiveWins = 0;
+        _maxConsecutiveLosses = 0;
+        foreach (var t in _trades)
+        {
+            if (t.IsWin) { curWins++; curLosses = 0; }
+            else { curLosses++; curWins = 0; }
+            _maxConsecutiveWins = Math.Max(_maxConsecutiveWins, curWins);
+            _maxConsecutiveLosses = Math.Max(_maxConsecutiveLosses, curLosses);
+        }
+
+        // Average holding period
+        _avgHoldingDays = (decimal)_trades.Average(t => (t.ExitTime - t.EntryTime).TotalDays);
     }
 
     public record EquityDataPoint(DateTime Date, decimal Value);

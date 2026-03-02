@@ -1,11 +1,16 @@
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Backtest;
+using StockTrader.Services.LiveParameter;
 
 namespace StockTrader.Components.Pages;
 
 public partial class BacktestResults
 {
+    private bool _isApplying;
+    private bool _applySuccess;
+    private string? _applyError;
+
     private bool _showHelp;
     private string _symbols = "AAPL,MSFT,GOOGL,AMZN,TSLA,NVDA,META,SPY,QQQ,TQQQ";
     private DateTime? _from = new DateTime(2020, 1, 1);
@@ -200,6 +205,36 @@ public partial class BacktestResults
         finally
         {
             _isRunning = false;
+        }
+    }
+
+    private async Task ApplyToLiveAsync()
+    {
+        _isApplying = true;
+        _applySuccess = false;
+        _applyError = null;
+
+        try
+        {
+            await LiveParameterService.ApplyToLiveAsync(
+                _p.ToOverrides(),
+                _selectedPatterns.ToList(),
+                _riskPerTradePercent,
+                _riskDailyLossLimitPercent,
+                _riskMaxTotalPositions,
+                _riskMaxPositionsPerSector);
+
+            _applySuccess = true;
+            Snackbar.Add("실거래 파라미터가 성공적으로 적용되었습니다.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _applyError = $"적용 실패: {ex.Message}";
+            Snackbar.Add(_applyError, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _isApplying = false;
         }
     }
 }

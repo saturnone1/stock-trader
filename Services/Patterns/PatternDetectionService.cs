@@ -1,5 +1,6 @@
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 using StockTrader.Services.ML;
 
 namespace StockTrader.Services.Patterns;
@@ -34,8 +35,12 @@ public class PatternDetectionService
     {
         var settings = await _settingsRepo.GetAsync(ct);
 
-        // ML 기반 레짐 분류 (모델 없으면 기존 regime 그대로 사용)
-        var effectiveRegime = _regimeClassifier.IsModelLoaded
+        // ML 레짐 분류기는 일봉 데이터로 학습됨.
+        // 분봉 bars를 그대로 넘기면 수익률/변동성 피처가 왜곡되므로 분봉인 경우 스킵한다.
+        var isIntraday = bars.Length > 0 && bars[0].TimeFrame is
+            TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute;
+
+        var effectiveRegime = (!isIntraday && _regimeClassifier.IsModelLoaded)
             ? await _regimeClassifier.ClassifyAsync(bars, ct)
             : regime;
 

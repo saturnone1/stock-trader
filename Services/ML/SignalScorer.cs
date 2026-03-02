@@ -236,7 +236,7 @@ public class SignalScorer : ISignalScorer
             VolumeRatio = 1.0f,
             MarketRegimeCode = 0f,    // 레짐 데이터 없음 → 강세 기본값
             AtrPercent = 0.02f,
-            HistoricalWinRate = trade.IsWin ? 1f : 0f,
+            HistoricalWinRate = 0.5f, // 중립값 사용 — IsWin(레이블)을 피처로 쓰면 데이터 누출 발생
             RiskRewardRatio = (float)Math.Clamp(rrRatio, 0, 5),
             PriceVs200Ma = 0f
         };

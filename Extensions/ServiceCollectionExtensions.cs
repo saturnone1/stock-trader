@@ -8,6 +8,7 @@ using StockTrader.Services.Market;
 using StockTrader.Services.ML;
 using StockTrader.Services.Order;
 using StockTrader.Services.Risk;
+using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Signal;
 using StockTrader.Services.Statistics;
 
@@ -56,6 +57,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IBacktestService, BacktestService>();
+        services.AddScoped<ILiveParameterService, LiveParameterService>();
         services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 
         return services;

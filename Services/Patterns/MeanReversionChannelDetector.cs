@@ -18,7 +18,7 @@ public class MeanReversionChannelDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.MeanReversionChannel;
 
-    public MeanReversionChannelDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public MeanReversionChannelDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.MeanReversionChannel;

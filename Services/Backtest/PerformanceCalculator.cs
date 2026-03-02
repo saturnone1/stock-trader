@@ -70,7 +70,8 @@ internal static class PerformanceCalculator
             var d = trades[i].PnLPercent - avgReturn;
             sumSqDiff += d * d;
         }
-        var variance = sumSqDiff / n;
+        // 표본 분산(sample variance): n-1 분모 사용. n==1이면 stdDev=0 → 0 반환
+        var variance = n > 1 ? sumSqDiff / (n - 1) : 0m;
         var stdDev = (decimal)Math.Sqrt((double)variance);
 
         if (stdDev <= 0) return 0;

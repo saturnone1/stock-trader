@@ -54,13 +54,13 @@ public interface IAccountManager
     /// 활성 계좌의 IBrokerService를 반환한다.
     /// 계좌가 없으면 null (graceful degradation).
     /// </summary>
-    IBrokerService? GetActiveBrokerService();
+    Task<IBrokerService?> GetActiveBrokerServiceAsync(CancellationToken ct = default);
 
     /// <summary>
     /// 특정 계좌의 IBrokerService를 반환한다.
     /// 계좌가 존재하지 않거나 브로커 초기화에 실패하면 null.
     /// </summary>
-    IBrokerService? GetBrokerServiceForAccount(int accountId);
+    Task<IBrokerService?> GetBrokerServiceForAccountAsync(int accountId, CancellationToken ct = default);
 
     // ── 연결 상태 조회 ─────────────────────────────────────────────────────
 

@@ -13,7 +13,7 @@ public class RsiMeanReversionDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.RsiMeanReversion;
 
-    public RsiMeanReversionDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public RsiMeanReversionDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.RsiMeanReversion;

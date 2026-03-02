@@ -58,6 +58,14 @@
                       Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
     </MudItem>
+    <MudItem xs="12" md="3">
+        <MudSelect T="string" @bind-Value="_sortBy" Label="정렬" Variant="Variant.Outlined" Dense="true">
+            <MudSelectItem T="string" Value="@("time-desc")">최신순</MudSelectItem>
+            <MudSelectItem T="string" Value="@("time-asc")">오래된순</MudSelectItem>
+            <MudSelectItem T="string" Value="@("confidence-desc")">신뢰도 높은순</MudSelectItem>
+            <MudSelectItem T="string" Value="@("rr-desc")">R:R 높은순</MudSelectItem>
+        </MudSelect>
+    </MudItem>
 </MudGrid>
 
 <!-- 트레이딩 스타일 빠른 필터 -->
@@ -140,14 +148,35 @@ else
     private string _filterPattern = "";
     private string _filterSymbol = "";
     private TradingStyle? _filterStyle = null;
+    private string _sortBy = "time-desc";
 
-    private IEnumerable<PatternSignal> FilteredSignals => _signals
-        .Where(s => string.IsNullOrEmpty(_filterPattern)
-            || s.PatternType.ToString() == _filterPattern)
-        .Where(s => string.IsNullOrEmpty(_filterSymbol)
-            || s.Symbol.Contains(_filterSymbol, StringComparison.OrdinalIgnoreCase))
-        .Where(s => _filterStyle == null
-            || PatternMetadataMap.Get(s.PatternType).Style == _filterStyle);
+    private IEnumerable<PatternSignal> FilteredSignals
+    {
+        get
+        {
+            var q = _signals
+                .Where(s => string.IsNullOrEmpty(_filterPattern)
+                    || s.PatternType.ToString() == _filterPattern)
+                .Where(s => string.IsNullOrEmpty(_filterSymbol)
+                    || s.Symbol.Contains(_filterSymbol, StringComparison.OrdinalIgnoreCase))
+                .Where(s => _filterStyle == null
+                    || PatternMetadataMap.Get(s.PatternType).Style == _filterStyle);
+
+            return _sortBy switch
+            {
+                "time-asc" => q.OrderBy(s => s.DetectedAt),
+                "confidence-desc" => q.OrderByDescending(s => s.Confidence),
+                "rr-desc" => q.OrderByDescending(s => CalcRR(s)),
+                _ => q.OrderByDescending(s => s.DetectedAt)
+            };
+        }
+    }
+
+    private static decimal CalcRR(PatternSignal s)
+    {
+        var risk = Math.Abs(s.EntryPrice - s.StopLossPrice);
+        return risk > 0 ? Math.Abs(s.TargetPrice - s.EntryPrice) / risk : 0;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -164,28 +193,28 @@ else
         {
             _loading = false;
         }
+        // SignalR 재연결 시 OnInitializedAsync가 재실행될 수 있으므로
+        // -= 후 += 로 항상 정확히 한 번만 구독되도록 보장
+        NotificationService.OnNewRecommendation -= OnNewRecommendation;
         NotificationService.OnNewRecommendation += OnNewRecommendation;
     }
 
-    private async void OnNewRecommendation(TradeRecommendation rec)
+    private void OnNewRecommendation(TradeRecommendation rec)
     {
-        try
+        _ = InvokeAsync(async () =>
         {
-            await InvokeAsync(async () =>
+            try
             {
-                try
-                {
-                    _signals = await TradeRepo.GetActiveSignalsAsync();
-                    StateHasChanged();
-                }
-                catch (Exception ex)
-                {
-                    _error = $"시그널 갱신 실패: {ex.Message}";
-                    StateHasChanged();
-                }
-            });
-        }
-        catch (ObjectDisposedException) { }
+                _signals = await TradeRepo.GetActiveSignalsAsync();
+                StateHasChanged();
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                _error = $"시그널 갱신 실패: {ex.Message}";
+                StateHasChanged();
+            }
+        });
     }
 
     private void ToggleStyleFilter(TradingStyle style)

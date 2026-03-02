@@ -34,6 +34,12 @@ public class KoreaInvestmentBrokerService : IBrokerService
             "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
     }
 
+    public Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    {
+        throw new NotImplementedException(
+            "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+    }
+
     public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
     {
         throw new NotImplementedException(

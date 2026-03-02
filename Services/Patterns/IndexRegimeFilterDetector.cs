@@ -12,7 +12,7 @@ public class IndexRegimeFilterDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.IndexRegimeFilter;
 
-    public IndexRegimeFilterDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public IndexRegimeFilterDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.IndexRegimeFilter;

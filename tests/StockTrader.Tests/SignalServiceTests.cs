@@ -1,8 +1,10 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using StockTrader.Configuration;
+using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -12,12 +14,13 @@ using StockTrader.Services.Statistics;
 
 namespace StockTrader.Tests;
 
-public class SignalServiceTests
+public class SignalServiceTests : IDisposable
 {
     private readonly Mock<IStatisticsService> _statsMock;
     private readonly Mock<IRiskManagementService> _riskMock;
     private readonly Mock<ISettingsRepository> _settingsRepoMock;
     private readonly TradingSettings _defaultSettings;
+    private readonly AppDbContext _db;
 
     public SignalServiceTests()
     {
@@ -34,7 +37,15 @@ public class SignalServiceTests
             MaxTotalPositions = 10,
             MinExpectancy = 0m
         };
+
+        // InMemory DB — 테스트별로 독립된 DB 인스턴스 사용
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        _db = new AppDbContext(options);
     }
+
+    public void Dispose() => _db.Dispose();
 
     private SignalService CreateSut(TradingSettings? settings = null)
     {
@@ -43,6 +54,7 @@ public class SignalServiceTests
             _statsMock.Object,
             _riskMock.Object,
             _settingsRepoMock.Object,
+            _db,
             opts,
             NullLogger<SignalService>.Instance);
     }
@@ -97,7 +109,8 @@ public class SignalServiceTests
 
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, "", It.IsAny<CancellationToken>()))
+        // W02 fix: sector는 Ticker DB에서 조회 — DB에 없으면 symbol이 sector로 사용됨
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, string.Empty));
         _riskMock.Setup(r => r.CalculatePositionSize(
                 userSettings.AccountSize,
@@ -152,19 +165,26 @@ public class SignalServiceTests
     }
 
     [Fact]
-    public async Task EvaluateSignalsAsync_NullStats_FiltersSignal()
+    public async Task EvaluateSignalsAsync_NullStats_AllowsSignal()
     {
+        // Gap 3 fix: 거래 이력 없는 패턴(stats==null)은 통과시켜서 신규 패턴도 거래 가능
         var sut = CreateSut();
         var signal = CreateSignal();
 
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((PatternStats?)null);
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, string.Empty));
+        _riskMock.Setup(r => r.CalculatePositionSize(
+                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
+            .Returns(5_000m);
         _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
 
         var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
 
-        result.Should().BeEmpty();
+        result.Should().HaveCount(1);
+        result[0].Expectancy.Should().Be(0m);
     }
 
     // ────────────────────────────────────────────────────────────
@@ -180,7 +200,7 @@ public class SignalServiceTests
 
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, "", It.IsAny<CancellationToken>()))
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((false, "Max total positions reached"));
         _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
@@ -191,13 +211,71 @@ public class SignalServiceTests
     }
 
     // ────────────────────────────────────────────────────────────
+    // W02 fix: Ticker에 섹터 정보가 있으면 실제 섹터로 CanOpenPosition 호출
+    // ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_WithTickerSector_PassesCorrectSector()
+    {
+        var sut = CreateSut();
+        var signal = CreateSignal(symbol: "AAPL");
+        var stats = CreateStats();
+
+        // Tickers DB에 AAPL = "Technology" 섹터 등록
+        _db.Tickers.Add(new Ticker { Symbol = "AAPL", Sector = "Technology" });
+        await _db.SaveChangesAsync();
+
+        string? capturedSector = null;
+        _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(stats);
+        _riskMock.Setup(r => r.CanOpenPositionAsync("AAPL", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((sym, sec, ct) => capturedSector = sec)
+            .ReturnsAsync((true, string.Empty));
+        _riskMock.Setup(r => r.CalculatePositionSize(
+                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
+            .Returns(5_000m);
+        _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+
+        await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
+
+        capturedSector.Should().Be("Technology");
+    }
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_WithoutTickerSector_FallsBackToSymbol()
+    {
+        // Ticker DB에 없으면 symbol 자체가 sector로 사용됨
+        var sut = CreateSut();
+        var signal = CreateSignal(symbol: "NVDA");
+        var stats = CreateStats();
+
+        string? capturedSector = null;
+        _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(stats);
+        _riskMock.Setup(r => r.CanOpenPositionAsync("NVDA", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((sym, sec, ct) => capturedSector = sec)
+            .ReturnsAsync((true, string.Empty));
+        _riskMock.Setup(r => r.CalculatePositionSize(
+                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
+            .Returns(5_000m);
+        _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+
+        await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
+
+        capturedSector.Should().Be("NVDA"); // symbol fallback
+    }
+
+    // ────────────────────────────────────────────────────────────
     // Position sizing and share quantity calculation
     // ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task EvaluateSignalsAsync_CalculatesShareQuantityCorrectly()
     {
-        // positionSize = 20000, entryPrice = 100 → shareQty = floor(20000/100) = 200
+        // positionSize = 20000 from risk calc, but capped at AccountSize/MaxTotalPositions = 100000/10 = 10000
+        // entryPrice = 100 → shareQty = floor(10000/100) = 100
         var sut = CreateSut();
 
         var signal = CreateSignal(entryPrice: 100m, stopLossPrice: 95m);
@@ -207,7 +285,7 @@ public class SignalServiceTests
 
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, "", It.IsAny<CancellationToken>()))
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, string.Empty));
         _riskMock.Setup(r => r.CalculatePositionSize(
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
@@ -218,14 +296,16 @@ public class SignalServiceTests
         var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
 
         result.Should().HaveCount(1);
-        result[0].ShareQuantity.Should().Be(200);
-        result[0].PositionSize.Should().Be(20_000m);
+        // Position size capped: min(20000, 100000/10) = 10000
+        result[0].ShareQuantity.Should().Be(100);
+        result[0].PositionSize.Should().Be(10_000m);
     }
 
     [Fact]
     public async Task EvaluateSignalsAsync_ShareQuantityIsFlooredNotRounded()
     {
-        // positionSize = 15050, entryPrice = 100 → floor(150.5) = 150 (not 151)
+        // positionSize = 8050, entryPrice = 100 → floor(80.5) = 80 (not 81)
+        // Using size below cap (100000/10=10000) so cap doesn't interfere
         var sut = CreateSut();
 
         var signal = CreateSignal(entryPrice: 100m, stopLossPrice: 95m);
@@ -233,17 +313,17 @@ public class SignalServiceTests
 
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, "", It.IsAny<CancellationToken>()))
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, string.Empty));
         _riskMock.Setup(r => r.CalculatePositionSize(
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
-            .Returns(15_050m);
+            .Returns(8_050m);
         _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
 
         var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
 
-        result[0].ShareQuantity.Should().Be(150);
+        result[0].ShareQuantity.Should().Be(80);
     }
 
     [Fact]
@@ -256,7 +336,7 @@ public class SignalServiceTests
 
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, "", It.IsAny<CancellationToken>()))
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, string.Empty));
         _riskMock.Setup(r => r.CalculatePositionSize(
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
@@ -293,7 +373,7 @@ public class SignalServiceTests
 
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, "", It.IsAny<CancellationToken>()))
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, string.Empty));
         _riskMock.Setup(r => r.CalculatePositionSize(
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
@@ -319,9 +399,9 @@ public class SignalServiceTests
 
         _statsMock.Setup(s => s.GetStatsAsync(It.IsAny<PatternType>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync("AAPL", "", It.IsAny<CancellationToken>()))
+        _riskMock.Setup(r => r.CanOpenPositionAsync("AAPL", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((true, string.Empty));
-        _riskMock.Setup(r => r.CanOpenPositionAsync("TSLA", "", It.IsAny<CancellationToken>()))
+        _riskMock.Setup(r => r.CanOpenPositionAsync("TSLA", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((false, "Max total positions reached"));
         _riskMock.Setup(r => r.CalculatePositionSize(
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))

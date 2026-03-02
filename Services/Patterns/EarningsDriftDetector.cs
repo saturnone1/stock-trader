@@ -12,7 +12,7 @@ public class EarningsDriftDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.EarningsDrift;
 
-    public EarningsDriftDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public EarningsDriftDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.EarningsDrift;

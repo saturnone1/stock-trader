@@ -390,6 +390,7 @@ else
     private string? _errorMessage;
     private Timer? _refreshTimer;
     private CancellationTokenSource _cts = new();
+    private bool _disposed;
 
     // 점진적 렌더링용 카운터
     private int _totalCount;
@@ -462,8 +463,10 @@ else
     /// </summary>
     private async Task LoadAllAnalysesAsync()
     {
+        if (_disposed) return;
+
         // 이전 요청 취소 후 새 토큰 발급
-        await _cts.CancelAsync();
+        try { await _cts.CancelAsync(); } catch (ObjectDisposedException) { return; }
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
@@ -628,8 +631,9 @@ else
 
     public void Dispose()
     {
+        _disposed = true;
         _refreshTimer?.Dispose();
-        _cts.Cancel();
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
         _cts.Dispose();
     }
 }

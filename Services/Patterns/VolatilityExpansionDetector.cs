@@ -13,7 +13,7 @@ public class VolatilityExpansionDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.VolatilityExpansion;
 
-    public VolatilityExpansionDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public VolatilityExpansionDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.VolatilityExpansion;

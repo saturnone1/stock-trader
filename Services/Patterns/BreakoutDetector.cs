@@ -12,7 +12,7 @@ public class BreakoutDetector : IPatternDetector
 
     public PatternType PatternType => PatternType.Breakout;
 
-    public BreakoutDetector(IIndicatorService indicators, IOptions<PatternSettings> settings)
+    public BreakoutDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
     {
         _indicators = indicators;
         _config = settings.Value.Breakout;

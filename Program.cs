@@ -74,6 +74,7 @@ using (var scope = app.Services.CreateScope())
             ["MaxTotalPositions"]     = "ALTER TABLE UserSettings ADD COLUMN MaxTotalPositions INTEGER NOT NULL DEFAULT 10",
             ["MaxPositionsPerSector"] = "ALTER TABLE UserSettings ADD COLUMN MaxPositionsPerSector INTEGER NOT NULL DEFAULT 2",
             ["MinExpectancy"]         = "ALTER TABLE UserSettings ADD COLUMN MinExpectancy REAL NOT NULL DEFAULT 0.0",
+            ["LiveParameterOverridesJson"] = "ALTER TABLE UserSettings ADD COLUMN LiveParameterOverridesJson TEXT",
         };
 
         foreach (var (col, sql) in alterStatements)
@@ -142,6 +143,41 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
+        // Positions 테이블에 Exit Management용 신규 컬럼 추가
+        cmd.CommandText = "PRAGMA table_info(Positions)";
+        var positionColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var reader3 = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader3.ReadAsync())
+                positionColumns.Add(reader3.GetString(1));
+        }
+
+        var positionAlterStatements = new Dictionary<string, string>
+        {
+            ["HighSinceEntry"] = "ALTER TABLE Positions ADD COLUMN HighSinceEntry REAL NOT NULL DEFAULT 0",
+            ["EntryAtr"]       = "ALTER TABLE Positions ADD COLUMN EntryAtr REAL NOT NULL DEFAULT 0",
+            // AccountId: 계좌별 포지션 격리용. 레거시 행은 0(미지정)으로 채워짐.
+            ["AccountId"]      = "ALTER TABLE Positions ADD COLUMN AccountId INTEGER NOT NULL DEFAULT 0",
+        };
+
+        foreach (var (col, sql) in positionAlterStatements)
+        {
+            if (!positionColumns.Contains(col))
+            {
+                cmd.CommandText = sql;
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        // OrderMode를 AutoOrder(1)로 설정 (기본값이 AlertOnly(0)인 경우)
+        cmd.CommandText = "UPDATE UserSettings SET OrderMode = 1 WHERE OrderMode = 0";
+        var updated = await cmd.ExecuteNonQueryAsync();
+        if (updated > 0)
+        {
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger.LogInformation("OrderMode를 AutoOrder(1)로 업데이트했습니다 ({Count}건)", updated);
+        }
+
     }
     catch (Exception ex)
     {
@@ -153,7 +189,7 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var seedDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var accountCount = seedDb.TradingAccounts.Count();
+        var accountCount = await seedDb.TradingAccounts.CountAsync();
 
         if (accountCount == 0)
         {

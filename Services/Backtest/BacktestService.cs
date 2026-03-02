@@ -184,6 +184,9 @@ public class BacktestService : IBacktestService
         var pepCache = new Dictionary<PatternType, TradeSimulator.PatternExitProfile>();
         var maxTotalPositions = riskParams.MaxTotalPositions;
         var riskPerTrade = riskParams.RiskPerTradePercent;
+        // currentEquity: 실현된 거래 PnL을 누적하여 복리 포지션 사이징에 사용.
+        // 미실현 포지션의 가치는 포함하지 않는다 (보수적 접근).
+        var currentEquity = initialCapital;
         var maxWindow = timeFrame switch
         {
             TimeFrame.OneMinute     => 800,
@@ -203,13 +206,19 @@ public class BacktestService : IBacktestService
                 if (!symbolDataMap.TryGetValue(symbol, out var sd)) continue;
                 if (!sd.DateToIndex.TryGetValue(date, out var barIdx)) continue;
 
+                var tradesBefore = trades.Count;
                 var exitResult = simulator.ProcessExitLogic(
                     openPositions[symbol], sd.Bars[barIdx], barIdx,
                     sd.Atr[barIdx], sd.Sma200[barIdx],
                     pepCache, exitOverrides, symbol, trades);
 
+                // 청산된 경우 실현 PnL을 currentEquity에 즉시 반영 (복리 사이징용)
                 if (exitResult == null)
+                {
+                    for (int ti = tradesBefore; ti < trades.Count; ti++)
+                        currentEquity += trades[ti].PnL;
                     openPositions.Remove(symbol);
+                }
                 else
                     openPositions[symbol] = exitResult;
             }
@@ -240,14 +249,16 @@ public class BacktestService : IBacktestService
                         var stopDistance = Math.Abs(signal.EntryPrice - signal.StopLossPrice);
                         if (stopDistance <= 0) continue;
 
-                        // 모든 패턴 동일한 포지션 사이징 (TQQQ 올인 제거)
-                        var riskAmount = initialCapital * riskPerTrade;
+                        // currentEquity 기준 복리 포지션 사이징.
+                        // 수익 누적 시 점차 큰 포지션, 손실 시 자동 축소 (Kelly 원칙).
+                        var effectiveEquity = Math.Max(currentEquity, initialCapital * 0.10m); // 최소 초기자본 10%
+                        var riskAmount = effectiveEquity * riskPerTrade;
                         var quantity = (int)(riskAmount / stopDistance);
                         if (quantity <= 0) quantity = 1;
 
                         var maxPositionCapitalRatio = maxTotalPositions > 0
                             ? 1.0m / maxTotalPositions : 0.10m;
-                        var maxQty = (int)(initialCapital * maxPositionCapitalRatio / signal.EntryPrice);
+                        var maxQty = (int)(effectiveEquity * maxPositionCapitalRatio / signal.EntryPrice);
                         if (maxQty > 0) quantity = Math.Min(quantity, maxQty);
 
                         var entryAtr = sd.Atr[barIdx] > 0 ? sd.Atr[barIdx] : stopDistance;
@@ -412,7 +423,9 @@ public class BacktestService : IBacktestService
                 request.TimeFrame, riskParams, request.ParameterOverrides,
                 request.SlippageModel, ct);
 
-            var efficiency = isResult.TotalReturnPercent != 0
+            // W06 fix: IS가 음수이면 비율이 의미 없음(음수/음수 = 양수 오해 위험).
+            // IS 수익률이 양수일 때만 OOS/IS 효율을 계산하고, 그 외는 0으로 처리.
+            var efficiency = isResult.TotalReturnPercent > 0
                 ? oosResult.TotalReturnPercent / isResult.TotalReturnPercent
                 : 0;
 
@@ -445,7 +458,8 @@ public class BacktestService : IBacktestService
             ? windows.Max(w => w.OutOfSampleMaxDrawdown) : 0;
         var oosWinWindows = windows.Count(w => w.OutOfSampleReturnPercent > 0);
         var oosWinRate = windows.Count > 0 ? (decimal)oosWinWindows / windows.Count : 0;
-        var wfEfficiency = totalIsReturn != 0 ? totalOosReturn / totalIsReturn : 0;
+        // W06 fix: 집계 효율도 IS 총 수익이 양수일 때만 의미 있음.
+        var wfEfficiency = totalIsReturn > 0 ? totalOosReturn / totalIsReturn : 0;
 
         _logger.LogInformation(
             "Walk-Forward 완료: {Count}개 윈도우, OOS 평균 수익률 {Avg:P2}, WF 효율 {Eff:P2}",
@@ -540,7 +554,7 @@ public class BacktestService : IBacktestService
             return _detectors.Where(d => patterns.Contains(d.PatternType)).ToList();
 
         var mergedSettings = PatternOverrideMerger.Merge(_basePatternSettings, overrides);
-        var opts = new OptionsWrapper<PatternSettings>(mergedSettings);
+        var opts = new OptionsSnapshotWrapper<PatternSettings>(mergedSettings);
         var allDetectors = new List<IPatternDetector>
         {
             new GapUpPullbackDetector(_indicators, opts),
@@ -564,4 +578,12 @@ public class BacktestService : IBacktestService
     }
 
     #endregion
+
+    /// <summary>IOptionsSnapshot 래퍼. BacktestService에서 수동 생성한 detector에 전달용.</summary>
+    private sealed class OptionsSnapshotWrapper<T> : IOptionsSnapshot<T> where T : class, new()
+    {
+        public T Value { get; }
+        public OptionsSnapshotWrapper(T value) => Value = value;
+        public T Get(string? name) => Value;
+    }
 }

@@ -5,6 +5,7 @@ public class StreamingStatusService : IStreamingStatusService
     private static readonly TimeSpan StalenessWindow = TimeSpan.FromMinutes(3);
 
     private volatile bool _isActive;
+    private volatile bool _isReconnecting;
     private DateTime? _lastBarReceivedUtc;
     private readonly object _lock = new();
 
@@ -27,6 +28,8 @@ public class StreamingStatusService : IStreamingStatusService
         }
     }
 
+    public bool IsReconnecting => _isReconnecting;
+
     public DateTime? LastBarReceivedUtc
     {
         get { lock (_lock) { return _lastBarReceivedUtc; } }
@@ -38,6 +41,7 @@ public class StreamingStatusService : IStreamingStatusService
         {
             _lastBarReceivedUtc = receivedUtc;
             _isActive = true;
+            _isReconnecting = false;
         }
     }
 
@@ -46,6 +50,16 @@ public class StreamingStatusService : IStreamingStatusService
         lock (_lock)
         {
             _isActive = false;
+            _isReconnecting = false;
+        }
+    }
+
+    public void MarkReconnecting()
+    {
+        lock (_lock)
+        {
+            _isActive = false;
+            _isReconnecting = true;
         }
     }
 }

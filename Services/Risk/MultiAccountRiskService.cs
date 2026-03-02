@@ -81,17 +81,23 @@ public class MultiAccountRiskService : IRiskManagementService
 
         using var scope = _scopeFactory.CreateScope();
         var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
-        var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
+        var allOpenPositions = await tradeRepo.GetOpenPositionsAsync(ct);
 
-        if (openPositions.Count >= _tradingSettings.MaxTotalPositions)
+        // 이 계좌의 포지션만 필터링.
+        // AccountId == 0은 레거시(계좌 미지정) 데이터이므로 활성 계좌 포지션으로 포함한다.
+        var accountPositions = allOpenPositions
+            .Where(p => p.AccountId == activeAccount.Id || p.AccountId == 0)
+            .ToList();
+
+        if (accountPositions.Count >= _tradingSettings.MaxTotalPositions)
             return (false, $"Max total positions ({_tradingSettings.MaxTotalPositions}) reached");
 
-        if (openPositions.Any(p => p.Symbol == symbol))
+        if (accountPositions.Any(p => p.Symbol == symbol))
             return (false, $"Already have open position in {symbol}");
 
         if (!string.IsNullOrEmpty(sector))
         {
-            var sectorCount = openPositions.Count(p => p.Sector == sector);
+            var sectorCount = accountPositions.Count(p => p.Sector == sector);
             if (sectorCount >= _tradingSettings.MaxPositionsPerSector)
                 return (false, $"Max positions per sector ({_tradingSettings.MaxPositionsPerSector}) reached for {sector}");
         }
@@ -121,23 +127,27 @@ public class MultiAccountRiskService : IRiskManagementService
         var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
 
         var settings = await settingsRepo.GetAsync(ct);
-        var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
+        var allOpenPositions = await tradeRepo.GetOpenPositionsAsync(ct);
         var accounts = await _accountManager.GetAllAccountsAsync(ct);
 
         if (accounts.Count == 0)
         {
             // 계좌 없음: 기본 상태 업데이트
-            UpdateFallbackState(settings, openPositions);
+            UpdateFallbackState(settings, allOpenPositions);
             return;
         }
 
         decimal totalPnL = 0;
         decimal totalAccountSize = 0;
 
-        // 각 계좌별 RiskState 갱신
-        // 현재는 단순히 포지션을 공유하지만, 향후 계좌별 포지션 필터링으로 확장 가능
         foreach (var account in accounts.Where(a => a.IsEnabled))
         {
+            // 이 계좌 소속 포지션만 필터링.
+            // AccountId == 0은 레거시(마이그레이션 전) 데이터 — 첫 번째 활성 계좌 소속으로 간주.
+            var accountPositions = allOpenPositions
+                .Where(p => p.AccountId == account.Id || p.AccountId == 0)
+                .ToList();
+
             // 계좌별 잔고 조회 (브로커 API 호출)
             decimal accountSize = settings.AccountSize; // 기본값
             decimal dailyPnL = 0;
@@ -163,12 +173,12 @@ public class MultiAccountRiskService : IRiskManagementService
                     account.Id);
             }
 
-            // 포지션 기반 미실현 손익 계산
-            var positionPnL = openPositions.Sum(p => p.UnrealizedPnL);
+            // 포지션 기반 미실현 손익 계산 (이 계좌 소속 포지션만 사용)
+            var positionPnL = accountPositions.Sum(p => p.UnrealizedPnL);
             var effectivePnL = dailyPnL != 0 ? dailyPnL : positionPnL;
             var pnlPercent = accountSize > 0 ? effectivePnL / accountSize : 0;
 
-            var sectorCounts = openPositions
+            var sectorCounts = accountPositions
                 .GroupBy(p => p.Sector)
                 .ToDictionary(g => g.Key, g => g.Count());
 
@@ -177,7 +187,7 @@ public class MultiAccountRiskService : IRiskManagementService
                 DailyPnL = effectivePnL,
                 DailyPnLPercent = pnlPercent,
                 IsTradingHalted = pnlPercent <= -_tradingSettings.DailyLossLimitPercent,
-                OpenPositionCount = openPositions.Count,
+                OpenPositionCount = accountPositions.Count,
                 PositionsPerSector = sectorCounts,
                 LastUpdated = DateTime.UtcNow
             };
@@ -194,9 +204,9 @@ public class MultiAccountRiskService : IRiskManagementService
             totalAccountSize += accountSize;
         }
 
-        // 포트폴리오 전체 리스크 집계
+        // 포트폴리오 전체 리스크 집계 (모든 계좌 합산)
         var totalPnLPercent = totalAccountSize > 0 ? totalPnL / totalAccountSize : 0;
-        var allSectorCounts = openPositions
+        var allSectorCounts = allOpenPositions
             .GroupBy(p => p.Sector)
             .ToDictionary(g => g.Key, g => g.Count());
 
@@ -205,7 +215,7 @@ public class MultiAccountRiskService : IRiskManagementService
             DailyPnL = totalPnL,
             DailyPnLPercent = totalPnLPercent,
             IsTradingHalted = totalPnLPercent <= -_tradingSettings.DailyLossLimitPercent,
-            OpenPositionCount = openPositions.Count,
+            OpenPositionCount = allOpenPositions.Count,
             PositionsPerSector = allSectorCounts,
             LastUpdated = DateTime.UtcNow
         };
