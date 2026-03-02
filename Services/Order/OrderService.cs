@@ -4,6 +4,7 @@ using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
 using StockTrader.Services.Broker;
 using StockTrader.Services.Notification;
+using TimeZoneConverter;
 
 namespace StockTrader.Services.Order;
 
@@ -65,7 +66,23 @@ public class OrderService : IOrderService
             return true;
         }
 
-        // 3. AutoOrder 모드: 계좌별 브로커를 통한 실제 주문 실행
+        // 3. 장외 시간 주문 차단 (Market Order + TimeInForce.Day는 정규장에서만 체결됨)
+        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
+            TZConvert.GetTimeZoneInfo("America/New_York"));
+        var timeOfDay = nowEt.TimeOfDay;
+        var isRegularHours = nowEt.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)
+            && timeOfDay >= new TimeSpan(9, 30, 0)
+            && timeOfDay < new TimeSpan(16, 0, 0);
+
+        if (!isRegularHours)
+        {
+            _logger.LogWarning(
+                "[ORDER BLOCKED] {Pattern} {Symbol}: 장외 시간 주문 차단 (ET {Time:HH:mm}, {DayOfWeek})",
+                recommendation.PatternType, recommendation.Symbol, nowEt, nowEt.DayOfWeek);
+            return true; // 추천은 저장됨, 주문만 차단
+        }
+
+        // 4. AutoOrder 모드: 계좌별 브로커를 통한 실제 주문 실행
         if (recommendation.ShareQuantity <= 0)
         {
             _logger.LogWarning("Cannot place order for {Symbol}: quantity is {Qty}",
