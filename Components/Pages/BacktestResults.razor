@@ -85,7 +85,16 @@
                     <MudSelectItem T="TimeFrame" Value="TimeFrame.Weekly">주봉 (장기)</MudSelectItem>
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" md="3">
+            <MudItem xs="12" md="2">
+                <MudSelect T="DataSource?" @bind-Value="_dataSource" Label="데이터 소스"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           HelperText="null=기본설정 사용">
+                    <MudSelectItem T="DataSource?" Value="@((DataSource?)null)">기본 설정</MudSelectItem>
+                    <MudSelectItem T="DataSource?" Value="DataSource.Alpaca">Alpaca</MudSelectItem>
+                    <MudSelectItem T="DataSource?" Value="DataSource.Yahoo">Yahoo Finance</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
                 <MudNumericField @bind-Value="_slippagePercent" Label="슬리피지 (%)"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="F3"
                                  Step="0.01m" Min="0m" Max="1m" />
@@ -1683,7 +1692,7 @@
                 <MudTh>효율</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@(Array.IndexOf(_result.WalkForward.Windows.ToArray(), context) + 1)</MudTd>
+                <MudTd>@(_result.WalkForward.Windows.IndexOf(context) + 1)</MudTd>
                 <MudTd>@context.InSampleFrom.ToString("yy/MM") ~ @context.InSampleTo.ToString("yy/MM")</MudTd>
                 <MudTd>@context.InSampleTrades</MudTd>
                 <MudTd>
@@ -1847,7 +1856,7 @@
                 <MudTh>청산 사유</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@(Array.IndexOf(_result.Trades.ToArray(), context) + 1)</MudTd>
+                <MudTd>@(_result.Trades.IndexOf(context) + 1)</MudTd>
                 <MudTd><b>@context.Symbol</b></MudTd>
                 <MudTd>
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
@@ -1902,6 +1911,7 @@ else if (!_isRunning)
     private DateTime? _to = DateTime.Today;
     private decimal _capital = 100_000m;
     private TimeFrame _timeFrame = TimeFrame.Daily;
+    private DataSource? _dataSource = null;
     private decimal _slippagePercent = 0.05m;
     private decimal _commissionPerTrade = 1.00m;
     private bool _enableWalkForward;
@@ -2380,7 +2390,7 @@ else if (!_isRunning)
         {
             var request = new BacktestRequest
             {
-                Symbols = _symbols.Split(',').Select(s => s.Trim()).ToList(),
+                Symbols = _symbols.Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList(),
                 Patterns = _selectedPatterns.ToList(),
                 From = _from ?? DateTime.Today.AddYears(-5),
                 To = _to ?? DateTime.Today,
@@ -2398,6 +2408,8 @@ else if (!_isRunning)
                 DailyLossLimitPercent = _riskDailyLossLimitPercent,
                 MaxTotalPositions = _riskMaxTotalPositions,
                 MaxPositionsPerSector = _riskMaxPositionsPerSector,
+                // 데이터 소스 지정 (null이면 UserSettings 기본값)
+                DataSource = _dataSource,
                 // 패턴 파라미터 오버라이드 (백테스트 전용, 라이브 설정 불변)
                 ParameterOverrides = _p.ToOverrides()
             };

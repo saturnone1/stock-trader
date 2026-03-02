@@ -162,27 +162,27 @@ public class BreakoutDetectorTests
     }
 
     [Fact]
-    public async Task DetectAsync_ValidBreakout_StopLossIsCloseMinusTwoAtr()
+    public async Task DetectAsync_ValidBreakout_StopLossIsCloseMinusAtrTimesMultiplier()
     {
-        // curr.Close=200, ATR=2 → stopLoss = 200 - 2*2 = 196
+        // curr.Close=200, ATR=2, AtrStopMultiplier=1.5 → stopLoss = 200 - 2*1.5 = 197
         var (bars, config) = CreateValidBreakoutSetup();
         var sut = CreateSut(config, atrValue: 2m);
 
         var result = await sut.DetectAsync("AAPL", bars, BullRegime());
 
-        result!.StopLossPrice.Should().Be(196m);
+        result!.StopLossPrice.Should().Be(197m);
     }
 
     [Fact]
-    public async Task DetectAsync_ValidBreakout_TargetIsClosePlusThreeAtr()
+    public async Task DetectAsync_ValidBreakout_TargetIsClosePlusAtrTimesMultiplier()
     {
-        // curr.Close=200, ATR=2 → target = 200 + 2*3 = 206
+        // curr.Close=200, ATR=2, AtrTargetMultiplier=4.0 → target = 200 + 2*4 = 208
         var (bars, config) = CreateValidBreakoutSetup();
         var sut = CreateSut(config, atrValue: 2m);
 
         var result = await sut.DetectAsync("AAPL", bars, BullRegime());
 
-        result!.TargetPrice.Should().Be(206m);
+        result!.TargetPrice.Should().Be(208m);
     }
 
     // ────────────────────────────────────────────────────────────
