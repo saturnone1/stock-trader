@@ -12,13 +12,16 @@
     <MudText Typo="Typo.h5">포트폴리오 분석</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
 </MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">수익 곡선, 드로다운, 패턴별 성과를 한눈에 분석하세요.</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">실시간 포트폴리오 현황과 과거 성과를 분석하세요.</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">포트폴리오 분석 도움말</MudText></TitleContent>
     <DialogContent>
-        <MudText Typo="Typo.body2" Class="mb-2">전체 포트폴리오의 성과를 다양한 차트로 시각화합니다.</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">상단은 현재 보유 중인 포지션, 하단은 과거 성과 분석입니다.</MudText>
         <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>실시간 포트폴리오</strong>: 청산 전에도 항상 표시. 미실현 손익 기준
+            </MudListItem>
             <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
                 <strong>수익 곡선</strong>: 누적 손익의 시간 흐름. 우상향이면 양호
             </MudListItem>
@@ -28,26 +31,10 @@
             <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
                 <strong>손익비</strong>: 총 수익 / 총 손실. 1.5 이상이면 양호
             </MudListItem>
-            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
-                <strong>최대 낙폭</strong>: 최고점에서 최저점까지의 최대 하락. 감내 가능한 수준인지 확인
-            </MudListItem>
         </MudList>
     </DialogContent>
     <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
 </MudDialog>
-
-@* Period selector *@
-<MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
-    <MudDatePicker @bind-Date="_from" Label="시작일" Variant="Variant.Outlined" Margin="Margin.Dense" />
-    <MudDatePicker @bind-Date="_to" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" Disabled="_loading">
-        @if (_loading)
-        {
-            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-        }
-        분석
-    </MudButton>
-</MudStack>
 
 @if (_loading)
 {
@@ -58,260 +45,538 @@
     <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
-@if (_trades.Count == 0 && !_loading)
-{
-    <MudAlert Severity="Severity.Info">거래 기록이 없습니다. 거래가 실행된 후 포트폴리오 분석을 사용할 수 있습니다.</MudAlert>
-}
+@* ════════════════════════════════════════════════════
+   실시간 포트폴리오 섹션 — 포지션이 없어도 항상 표시
+   ════════════════════════════════════════════════════ *@
+<MudCard Class="mb-4" Style="border: 1px solid rgba(255,255,255,0.08);">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Primary" Size="Size.Small" />
+                <MudText Typo="Typo.h6">실시간 포트폴리오</MudText>
+                @if (_openPositions.Count > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                             Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                        @_openPositions.Count 종목 보유중
+                    </MudChip>
+                }
+                <MudSpacer />
+                <MudTooltip Text="포지션 새로고침">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                                   Color="Color.Default" OnClick="LoadOpenPositionsAsync" />
+                </MudTooltip>
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent Class="pt-0">
 
-@if (_trades.Count > 0)
-{
-    @* Summary metrics *@
-    <MudGrid Class="mb-4">
-        <MudItem xs="6" md="2">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 손익</MudText>
-                    <MudText Typo="Typo.h6" Color="@(_totalPnl >= 0 ? Color.Success : Color.Error)">
-                        $@_totalPnl.ToString("N2")
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="2">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">승률</MudText>
-                    <MudText Typo="Typo.h6">@_winRate.ToString("P1")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="2">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudTooltip Text="최고점 대비 최대 하락폭. -20% 이내면 양호" Placement="Placement.Top">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">최대 낙폭 ⓘ</MudText>
-                    </MudTooltip>
-                    <MudText Typo="Typo.h6" Color="Color.Error">@_maxDrawdown.ToString("P2")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="2">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 거래</MudText>
-                    <MudText Typo="Typo.h6">@_trades.Count</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="2">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">평균 손익</MudText>
-                    <MudText Typo="Typo.h6" Color="@(_avgPnl >= 0 ? Color.Success : Color.Error)">
-                        $@_avgPnl.ToString("N2")
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="2">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudTooltip Text="총 수익 / 총 손실. 1.5 이상이면 양호" Placement="Placement.Top">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">손익비 ⓘ</MudText>
-                    </MudTooltip>
-                    <MudText Typo="Typo.h6" Color="@(_profitFactor >= 1 ? Color.Success : Color.Error)">
-                        @_profitFactor.ToString("F2")
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
+        @{
+            var totalPositions  = _openPositions.Count;
+            var totalInvested   = _openPositions.Sum(p => p.EntryPrice * p.Quantity);
+            var totalUnrealized = _openPositions.Sum(p => p.UnrealizedPnL);
+            var unrealizedPct   = totalInvested > 0 ? totalUnrealized / totalInvested : 0m;
+            var winningCount    = _openPositions.Count(p => p.UnrealizedPnL >= 0);
+            var losingCount     = _openPositions.Count(p => p.UnrealizedPnL < 0);
+        }
 
-    @* ── 리스크 지표 ── *@
-    <MudGrid Class="mb-4">
-        <MudItem xs="6" md="3">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudTooltip Text="위험 조정 수익률. 1.0 이상이면 양호, 2.0 이상이면 매우 우수" Placement="Placement.Top">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">Sharpe Ratio ⓘ</MudText>
-                    </MudTooltip>
-                    <MudText Typo="Typo.h6" Color="@(_sharpeRatio >= 1 ? Color.Success : _sharpeRatio >= 0 ? Color.Warning : Color.Error)">
-                        @_sharpeRatio.ToString("F2")
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="3">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">최대 연승</MudText>
-                    <MudText Typo="Typo.h6" Color="Color.Success">@_maxConsecutiveWins</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="3">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">최대 연패</MudText>
-                    <MudText Typo="Typo.h6" Color="Color.Error">@_maxConsecutiveLosses</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" md="3">
-            <MudCard>
-                <MudCardContent Class="text-center py-2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">평균 보유기간</MudText>
-                    <MudText Typo="Typo.h6">@_avgHoldingDays.ToString("F1")일</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
-
-    @* Equity Curve *@
-    <MudText Typo="Typo.h6" Class="mb-2">수익 곡선</MudText>
-    <MudCard Class="mb-4 pa-3">
-        <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_equityOpts" Height="300">
-            <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
-                Items="_equityCurve"
-                SeriesType="ApexCharts.SeriesType.Area"
-                XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
-                YAggregate="@(e => e.Last().Value)"
-                Name="누적 손익" />
-        </ApexCharts.ApexChart>
-    </MudCard>
-
-    @* Drawdown Chart *@
-    <MudText Typo="Typo.h6" Class="mb-2">드로다운</MudText>
-    <MudCard Class="mb-4 pa-3">
-        <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_drawdownOpts" Height="250">
-            <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
-                Items="_drawdownCurve"
-                SeriesType="ApexCharts.SeriesType.Area"
-                XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
-                YAggregate="@(e => e.Last().Value)"
-                Name="드로다운 %" />
-        </ApexCharts.ApexChart>
-    </MudCard>
-
-    @* Pattern performance comparison *@
-    @if (_patternPerf.Count > 0)
-    {
-        <MudText Typo="Typo.h6" Class="mb-2">패턴별 성과 비교</MudText>
-        <MudGrid Class="mb-4">
-            <MudItem xs="12" md="6">
-                <MudCard Class="pa-3">
-                    <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 총 손익</MudText>
-                    <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_barOpts" Height="300">
-                        <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
-                            Items="_patternPerf"
-                            SeriesType="ApexCharts.SeriesType.Bar"
-                            XValue="@(p => p.Name)"
-                            YAggregate="@(p => p.First().TotalPnl)"
-                            Name="총 손익 ($)" />
-                    </ApexCharts.ApexChart>
-                </MudCard>
+        @* 포트폴리오 요약 카드 *@
+        <MudGrid Class="mb-3">
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-3 text-center" Style="background: rgba(255,255,255,0.03);" Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">보유 포지션</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Info">@totalPositions</MudText>
+                    @if (totalPositions > 0)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            수익 @winningCount / 손실 @losingCount
+                        </MudText>
+                    }
+                </MudPaper>
             </MudItem>
-            <MudItem xs="12" md="6">
-                <MudCard Class="pa-3">
-                    <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 승률</MudText>
-                    <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_winRateOpts" Height="300">
-                        <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
-                            Items="_patternPerf"
-                            SeriesType="ApexCharts.SeriesType.Bar"
-                            XValue="@(p => p.Name)"
-                            YAggregate="@(p => p.First().WinRatePct)"
-                            Name="승률 (%)" />
-                    </ApexCharts.ApexChart>
-                </MudCard>
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-3 text-center" Style="background: rgba(255,255,255,0.03);" Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 투자금</MudText>
+                    <MudText Typo="Typo.h5">@(totalInvested > 0 ? "$" + totalInvested.ToString("N0") : "-")</MudText>
+                    @if (totalPositions > 0)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            평균 $@(totalPositions > 0 ? (totalInvested / totalPositions).ToString("N0") : "0")/포지션
+                        </MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-3 text-center"
+                          Style="@($"background: rgba({(totalUnrealized >= 0 ? "46,125,50" : "198,40,40")},0.08);")"
+                          Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">미실현 손익</MudText>
+                    <MudText Typo="Typo.h5" Color="@(totalUnrealized >= 0 ? Color.Success : Color.Error)">
+                        @(totalUnrealized >= 0 ? "+" : "")$@totalUnrealized.ToString("N2")
+                    </MudText>
+                    @if (totalPositions > 0)
+                    {
+                        <MudText Typo="Typo.caption" Color="@(totalUnrealized >= 0 ? Color.Success : Color.Error)">
+                            @(unrealizedPct >= 0 ? "+" : "")@unrealizedPct.ToString("P2")
+                        </MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-3 text-center" Style="background: rgba(255,255,255,0.03);" Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">포지션 현황</MudText>
+                    @if (totalPositions > 0)
+                    {
+                        <MudStack Row="true" Justify="Justify.Center" Spacing="1" Class="mt-1">
+                            @if (winningCount > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Style="height:22px; font-size:11px;">
+                                    수익 @winningCount
+                                </MudChip>
+                            }
+                            @if (losingCount > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled"
+                                         Style="height:22px; font-size:11px;">
+                                    손실 @losingCount
+                                </MudChip>
+                            }
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5" Color="Color.Secondary">-</MudText>
+                    }
+                </MudPaper>
             </MudItem>
         </MudGrid>
 
-        @* Pattern detail table *@
-        <MudTable Items="_patternPerf" Dense="true" Hover="true" Striped="true" Class="mb-4">
-            <HeaderContent>
-                <MudTh>패턴</MudTh>
-                <MudTh>거래수</MudTh>
-                <MudTh>승률</MudTh>
-                <MudTh>총 손익</MudTh>
-                <MudTh>평균 손익</MudTh>
-                <MudTh>최대 수익</MudTh>
-                <MudTh>최대 손실</MudTh>
-                <MudTh>손익비</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                        @if (Enum.TryParse<PatternType>(context.Name, out var pt))
-                        {
-                            <MudChip T="string" Size="Size.Small"
-                                     Color="@PatternMetadataMap.GetMudColor(pt)"
-                                     Variant="Variant.Filled"
-                                     Style="height:20px; font-size:10px; padding:0 6px; min-width:0;">
-                                @PatternMetadataMap.GetKoreanName(pt)
+        @if (_openPositions.Count > 0)
+        {
+            @* 포지션 상세 테이블 *@
+            <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true" SortLabel="정렬"
+                      Class="mb-3"
+                      RowStyleFunc="@((StockTrader.Models.Position p, int _) => p.UnrealizedPnL >= 0
+                          ? "background: rgba(46,125,50,0.06);"
+                          : "background: rgba(198,40,40,0.06);")">
+                <HeaderContent>
+                    <MudTh><MudTableSortLabel SortBy="new Func<StockTrader.Models.Position, object>(x => x.Symbol)">종목</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<StockTrader.Models.Position, object>(x => x.PatternType)">패턴</MudTableSortLabel></MudTh>
+                    <MudTh>수량</MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<StockTrader.Models.Position, object>(x => x.EntryPrice)">진입가</MudTableSortLabel></MudTh>
+                    <MudTh>현재가</MudTh>
+                    <MudTh><MudTableSortLabel InitialDirection="MudBlazor.SortDirection.Descending" SortBy="new Func<StockTrader.Models.Position, object>(x => x.UnrealizedPnL)">미실현 손익</MudTableSortLabel></MudTh>
+                    <MudTh>수익률</MudTh>
+                    <MudTh>손절가</MudTh>
+                    <MudTh>목표가</MudTh>
+                    <MudTh>보유기간</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    @{
+                        var pMeta    = PatternMetadataMap.Get(context.PatternType);
+                        var holdDays = (DateTime.UtcNow - context.OpenedAt).TotalDays;
+                        var pnlPct   = context.EntryPrice > 0
+                                       ? (context.CurrentPrice - context.EntryPrice) / context.EntryPrice
+                                       : 0m;
+                        var isProfit = context.UnrealizedPnL >= 0;
+                    }
+                    <MudTd>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <b>@context.Symbol</b>
+                            @if (!string.IsNullOrWhiteSpace(context.Sector))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Sector</MudText>
+                            }
+                        </MudStack>
+                    </MudTd>
+                    <MudTd>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudText Typo="Typo.body2" Style="white-space:nowrap;">@pMeta.KoreanName</MudText>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
+                                     Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">
+                                @pMeta.StyleLabel
                             </MudChip>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd>@(context.Quantity)주</MudTd>
+                    <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+                    <MudTd>
+                        @if (context.CurrentPrice > 0)
+                        {
+                            <MudText Color="@(isProfit ? Color.Success : Color.Error)">
+                                $@context.CurrentPrice.ToString("F2")
+                            </MudText>
                         }
                         else
                         {
-                            <b>@context.Name</b>
+                            <MudText Color="Color.Secondary">-</MudText>
                         }
-                    </MudStack>
-                </MudTd>
-                <MudTd>@context.TradeCount</MudTd>
-                <MudTd>@context.WinRatePct.ToString("F1")%</MudTd>
-                <MudTd>
-                    <MudText Color="@(context.TotalPnl >= 0 ? Color.Success : Color.Error)">
-                        $@context.TotalPnl.ToString("N2")
-                    </MudText>
-                </MudTd>
-                <MudTd>
-                    <MudText Color="@(context.AvgPnl >= 0 ? Color.Success : Color.Error)">
-                        $@context.AvgPnl.ToString("N2")
-                    </MudText>
-                </MudTd>
-                <MudTd><MudText Color="Color.Success">$@context.MaxWin.ToString("N2")</MudText></MudTd>
-                <MudTd><MudText Color="Color.Error">$@context.MaxLoss.ToString("N2")</MudText></MudTd>
-                <MudTd>
-                    <MudText Color="@(context.ProfitFactor >= 1 ? Color.Success : Color.Error)">
-                        @context.ProfitFactor.ToString("F2")
-                    </MudText>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
-    }
+                    </MudTd>
+                    <MudTd>
+                        <MudText Typo="Typo.body1" Color="@(isProfit ? Color.Success : Color.Error)"
+                                 Style="font-weight:600;">
+                            @(isProfit ? "+" : "")$@context.UnrealizedPnL.ToString("N2")
+                        </MudText>
+                    </MudTd>
+                    <MudTd>
+                        <MudText Color="@(isProfit ? Color.Success : Color.Error)">
+                            @(pnlPct >= 0 ? "+" : "")@pnlPct.ToString("P2")
+                        </MudText>
+                    </MudTd>
+                    <MudTd><MudText Color="Color.Error">$@context.StopLossPrice.ToString("F2")</MudText></MudTd>
+                    <MudTd><MudText Color="Color.Success">$@context.TargetPrice.ToString("F2")</MudText></MudTd>
+                    <MudTd>
+                        <MudText Typo="Typo.caption">
+                            @(holdDays < 1 ? "당일" : $"{holdDays:F0}일")
+                        </MudText>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
 
-    @* Win/Loss distribution *@
-    <MudGrid Class="mb-4">
-        <MudItem xs="12" md="6">
-            <MudText Typo="Typo.h6" Class="mb-2">월별 손익</MudText>
-            <MudCard Class="pa-3">
-                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_monthlyOpts" Height="250">
+            @* 섹터별 배분 *@
+            @if (_openPositions.Any(p => !string.IsNullOrWhiteSpace(p.Sector)))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary"
+                         Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase;"
+                         Class="mb-2 d-block">
+                    섹터별 배분
+                </MudText>
+                <MudDivider Class="mb-2" />
+                <MudGrid Class="mb-2">
+                    @foreach (var sg in _openPositions.Where(p => !string.IsNullOrWhiteSpace(p.Sector)).GroupBy(p => p.Sector).OrderByDescending(g => g.Sum(p => p.EntryPrice * p.Quantity)))
+                    {
+                        var sectorValue  = sg.Sum(p => p.EntryPrice * p.Quantity);
+                        var sectorPct    = totalInvested > 0 ? sectorValue / totalInvested : 0m;
+                        var sectorPnl    = sg.Sum(p => p.UnrealizedPnL);
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudPaper Class="pa-2" Elevation="0" Outlined="true"
+                                      Style="background: rgba(255,255,255,0.02);">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body2"><b>@sg.Key</b></MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @sg.Count()종목 · $@sectorValue.ToString("N0") (@sectorPct.ToString("P0"))
+                                        </MudText>
+                                    </MudStack>
+                                    <MudText Typo="Typo.body2" Color="@(sectorPnl >= 0 ? Color.Success : Color.Error)">
+                                        @(sectorPnl >= 0 ? "+" : "")$@sectorPnl.ToString("N2")
+                                    </MudText>
+                                </MudStack>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+        }
+        else if (!_loading)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Text">
+                현재 보유 중인 포지션이 없습니다. 포지션이 열리면 여기서 실시간으로 확인할 수 있습니다.
+            </MudAlert>
+        }
+
+    </MudCardContent>
+</MudCard>
+
+@* ════════════════════════════════════════════════════
+   과거 성과 분석 섹션 — 청산된 거래가 있을 때만 표시
+   ════════════════════════════════════════════════════ *@
+<MudCard Style="border: 1px solid rgba(255,255,255,0.08);">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Analytics" Color="Color.Secondary" Size="Size.Small" />
+                <MudText Typo="Typo.h6">과거 성과 분석</MudText>
+                @if (_trades.Count > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
+                             Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                        @_trades.Count 거래
+                    </MudChip>
+                }
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent Class="pt-0">
+
+        @* 기간 선택 *@
+        <MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudDatePicker @bind-Date="_from" Label="시작일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudDatePicker @bind-Date="_to" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadHistoricalAsync" Disabled="_loading">
+                @if (_loading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                분석
+            </MudButton>
+        </MudStack>
+
+        @if (_trades.Count == 0 && !_loading)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Text">
+                청산된 거래 기록이 없습니다. 거래가 종료되면 성과 분석이 여기에 표시됩니다.
+            </MudAlert>
+        }
+
+        @if (_trades.Count > 0)
+        {
+            @* 요약 지표 *@
+            <MudGrid Class="mb-4">
+                <MudItem xs="6" md="2">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">총 손익</MudText>
+                            <MudText Typo="Typo.h6" Color="@(_totalPnl >= 0 ? Color.Success : Color.Error)">
+                                $@_totalPnl.ToString("N2")
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">승률</MudText>
+                            <MudText Typo="Typo.h6">@_winRate.ToString("P1")</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudTooltip Text="최고점 대비 최대 하락폭. -20% 이내면 양호" Placement="Placement.Top">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">최대 낙폭 ⓘ</MudText>
+                            </MudTooltip>
+                            <MudText Typo="Typo.h6" Color="Color.Error">@_maxDrawdown.ToString("P2")</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">총 거래</MudText>
+                            <MudText Typo="Typo.h6">@_trades.Count</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">평균 손익</MudText>
+                            <MudText Typo="Typo.h6" Color="@(_avgPnl >= 0 ? Color.Success : Color.Error)">
+                                $@_avgPnl.ToString("N2")
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudTooltip Text="총 수익 / 총 손실. 1.5 이상이면 양호" Placement="Placement.Top">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">손익비 ⓘ</MudText>
+                            </MudTooltip>
+                            <MudText Typo="Typo.h6" Color="@(_profitFactor >= 1 ? Color.Success : Color.Error)">
+                                @_profitFactor.ToString("F2")
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            @* 리스크 지표 *@
+            <MudGrid Class="mb-4">
+                <MudItem xs="6" md="3">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudTooltip Text="위험 조정 수익률. 1.0 이상이면 양호, 2.0 이상이면 매우 우수" Placement="Placement.Top">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="cursor:help">Sharpe Ratio ⓘ</MudText>
+                            </MudTooltip>
+                            <MudText Typo="Typo.h6" Color="@(_sharpeRatio >= 1 ? Color.Success : _sharpeRatio >= 0 ? Color.Warning : Color.Error)">
+                                @_sharpeRatio.ToString("F2")
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">최대 연승</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Success">@_maxConsecutiveWins</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">최대 연패</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Error">@_maxConsecutiveLosses</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudCard>
+                        <MudCardContent Class="text-center py-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">평균 보유기간</MudText>
+                            <MudText Typo="Typo.h6">@_avgHoldingDays.ToString("F1")일</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            @* 수익 곡선 *@
+            <MudText Typo="Typo.h6" Class="mb-2">수익 곡선</MudText>
+            <MudCard Class="mb-4 pa-3">
+                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_equityOpts" Height="300">
                     <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
-                        Items="_monthlyPnl"
-                        SeriesType="ApexCharts.SeriesType.Bar"
-                        XValue="@(e => e.Date.ToString("yyyy-MM"))"
-                        YAggregate="@(e => e.Sum(x => x.Value))"
-                        Name="월별 손익 ($)" />
+                        Items="_equityCurve"
+                        SeriesType="ApexCharts.SeriesType.Area"
+                        XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
+                        YAggregate="@(e => e.Last().Value)"
+                        Name="누적 손익" />
                 </ApexCharts.ApexChart>
             </MudCard>
-        </MudItem>
-        <MudItem xs="12" md="6">
-            <MudText Typo="Typo.h6" Class="mb-2">종목별 손익 (상위 10)</MudText>
-            <MudCard Class="pa-3">
-                <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_symbolOpts" Height="250">
-                    <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
-                        Items="_topSymbols"
-                        SeriesType="ApexCharts.SeriesType.Bar"
-                        XValue="@(s => s.Name)"
-                        YAggregate="@(s => s.First().TotalPnl)"
-                        Name="손익 ($)" />
+
+            @* 드로다운 *@
+            <MudText Typo="Typo.h6" Class="mb-2">드로다운</MudText>
+            <MudCard Class="mb-4 pa-3">
+                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_drawdownOpts" Height="250">
+                    <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
+                        Items="_drawdownCurve"
+                        SeriesType="ApexCharts.SeriesType.Area"
+                        XValue="@(e => e.Date.ToString("yyyy-MM-dd"))"
+                        YAggregate="@(e => e.Last().Value)"
+                        Name="드로다운 %" />
                 </ApexCharts.ApexChart>
             </MudCard>
-        </MudItem>
-    </MudGrid>
-}
+
+            @* 패턴별 성과 *@
+            @if (_patternPerf.Count > 0)
+            {
+                <MudText Typo="Typo.h6" Class="mb-2">패턴별 성과 비교</MudText>
+                <MudGrid Class="mb-4">
+                    <MudItem xs="12" md="6">
+                        <MudCard Class="pa-3">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 총 손익</MudText>
+                            <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_barOpts" Height="300">
+                                <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
+                                    Items="_patternPerf"
+                                    SeriesType="ApexCharts.SeriesType.Bar"
+                                    XValue="@(p => p.Name)"
+                                    YAggregate="@(p => p.First().TotalPnl)"
+                                    Name="총 손익 ($)" />
+                            </ApexCharts.ApexChart>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudCard Class="pa-3">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 승률</MudText>
+                            <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_winRateOpts" Height="300">
+                                <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
+                                    Items="_patternPerf"
+                                    SeriesType="ApexCharts.SeriesType.Bar"
+                                    XValue="@(p => p.Name)"
+                                    YAggregate="@(p => p.First().WinRatePct)"
+                                    Name="승률 (%)" />
+                            </ApexCharts.ApexChart>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
+
+                <MudTable Items="_patternPerf" Dense="true" Hover="true" Striped="true" Class="mb-4">
+                    <HeaderContent>
+                        <MudTh>패턴</MudTh>
+                        <MudTh>거래수</MudTh>
+                        <MudTh>승률</MudTh>
+                        <MudTh>총 손익</MudTh>
+                        <MudTh>평균 손익</MudTh>
+                        <MudTh>최대 수익</MudTh>
+                        <MudTh>최대 손실</MudTh>
+                        <MudTh>손익비</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                @if (Enum.TryParse<PatternType>(context.Name, out var pt))
+                                {
+                                    <MudChip T="string" Size="Size.Small"
+                                             Color="@PatternMetadataMap.GetMudColor(pt)"
+                                             Variant="Variant.Filled"
+                                             Style="height:20px; font-size:10px; padding:0 6px; min-width:0;">
+                                        @PatternMetadataMap.GetKoreanName(pt)
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <b>@context.Name</b>
+                                }
+                            </MudStack>
+                        </MudTd>
+                        <MudTd>@context.TradeCount</MudTd>
+                        <MudTd>@context.WinRatePct.ToString("F1")%</MudTd>
+                        <MudTd>
+                            <MudText Color="@(context.TotalPnl >= 0 ? Color.Success : Color.Error)">
+                                $@context.TotalPnl.ToString("N2")
+                            </MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudText Color="@(context.AvgPnl >= 0 ? Color.Success : Color.Error)">
+                                $@context.AvgPnl.ToString("N2")
+                            </MudText>
+                        </MudTd>
+                        <MudTd><MudText Color="Color.Success">$@context.MaxWin.ToString("N2")</MudText></MudTd>
+                        <MudTd><MudText Color="Color.Error">$@context.MaxLoss.ToString("N2")</MudText></MudTd>
+                        <MudTd>
+                            <MudText Color="@(context.ProfitFactor >= 1 ? Color.Success : Color.Error)">
+                                @context.ProfitFactor.ToString("F2")
+                            </MudText>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+
+            @* 월별 손익 + 종목별 손익 *@
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6" Class="mb-2">월별 손익</MudText>
+                    <MudCard Class="pa-3">
+                        <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_monthlyOpts" Height="250">
+                            <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
+                                Items="_monthlyPnl"
+                                SeriesType="ApexCharts.SeriesType.Bar"
+                                XValue="@(e => e.Date.ToString("yyyy-MM"))"
+                                YAggregate="@(e => e.Sum(x => x.Value))"
+                                Name="월별 손익 ($)" />
+                        </ApexCharts.ApexChart>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6" Class="mb-2">종목별 손익 (상위 10)</MudText>
+                    <MudCard Class="pa-3">
+                        <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_symbolOpts" Height="250">
+                            <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
+                                Items="_topSymbols"
+                                SeriesType="ApexCharts.SeriesType.Bar"
+                                XValue="@(s => s.Name)"
+                                YAggregate="@(s => s.First().TotalPnl)"
+                                Name="손익 ($)" />
+                        </ApexCharts.ApexChart>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+
+    </MudCardContent>
+</MudCard>
 
 @code {
     private bool _showHelp;
+
+    // Open positions (live section)
+    private List<StockTrader.Models.Position> _openPositions = new();
+
+    // Closed trades (historical section)
     private List<TradeRecord> _trades = new();
     private List<EquityDataPoint> _equityCurve = new();
     private List<EquityDataPoint> _drawdownCurve = new();
@@ -378,10 +643,25 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync();
+        await Task.WhenAll(
+            LoadOpenPositionsAsync(),
+            LoadHistoricalAsync()
+        );
     }
 
-    private async Task LoadAsync()
+    private async Task LoadOpenPositionsAsync()
+    {
+        try
+        {
+            _openPositions = await TradeRepo.GetOpenPositionsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"포지션 로드 실패: {ex.Message}";
+        }
+    }
+
+    private async Task LoadHistoricalAsync()
     {
         _loading = true;
         _error = null;
@@ -392,7 +672,6 @@
             _trades = await TradeRepo.GetTradesAsync(from: _from, to: _to);
             if (_trades.Count == 0)
             {
-                // 필터 결과가 0거래일 때 이전 필터의 차트/지표 데이터가 잔류하지 않도록 초기화
                 _totalPnl = 0; _avgPnl = 0; _winRate = 0; _maxDrawdown = 0; _profitFactor = 0;
                 _sharpeRatio = 0; _maxConsecutiveWins = 0; _maxConsecutiveLosses = 0; _avgHoldingDays = 0;
                 _equityCurve = new(); _drawdownCurve = new();
@@ -420,8 +699,6 @@
 
     private void ComputeMetrics()
     {
-        // localCount를 계산 시작 시점에 캡처하여 중간에 _trades.Count가 변경되는
-        // 엣지 케이스를 방지한다.
         var localCount = _trades.Count;
         if (localCount == 0) return;
 
@@ -513,16 +790,12 @@
 
     private void ComputeRiskMetrics()
     {
-        // Sharpe Ratio (annualized, standard formula)
-        // Uses sample std dev (n-1) and annualizes by average holding period to derive trades-per-year
         if (_trades.Count > 1)
         {
             var returns = _trades.Select(t => (double)t.PnLPercent).ToArray();
             var avgReturn = returns.Average();
-            // Sample standard deviation (n-1) instead of population (n)
             var variance = returns.Select(r => Math.Pow(r - avgReturn, 2)).Sum() / (returns.Length - 1);
             var stdDev = Math.Sqrt(variance);
-            // Annualization factor based on average holding period in trading days
             var avgHoldingDays = _trades.Average(t => Math.Max(1, (t.ExitTime - t.EntryTime).TotalDays));
             var tradesPerYear = 252.0 / avgHoldingDays;
             _sharpeRatio = stdDev > 0
@@ -530,7 +803,6 @@
                 : 0;
         }
 
-        // Consecutive wins/losses
         int curWins = 0, curLosses = 0;
         _maxConsecutiveWins = 0;
         _maxConsecutiveLosses = 0;
@@ -542,7 +814,6 @@
             _maxConsecutiveLosses = Math.Max(_maxConsecutiveLosses, curLosses);
         }
 
-        // Average holding period
         _avgHoldingDays = (decimal)_trades.Average(t => (t.ExitTime - t.EntryTime).TotalDays);
     }
 
