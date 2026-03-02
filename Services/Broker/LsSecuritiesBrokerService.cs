@@ -82,6 +82,62 @@ public class LsSecuritiesBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
+    public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    {
+        try
+        {
+            // 보유 잔고 조회 후 전량 시장가 매도
+            var positions = await GetPositionsAsync(ct);
+            var pos = positions.FirstOrDefault(p => p.Symbol == symbol
+                || p.Symbol == $"A{symbol}");
+
+            if (pos == null || pos.Quantity <= 0)
+            {
+                _logger.LogWarning("[LS] 청산할 포지션 없음: {Symbol}", symbol);
+                return false;
+            }
+
+            var sellBody = new Dictionary<string, object>
+            {
+                ["CSPAT00600InBlock1"] = new Dictionary<string, object>
+                {
+                    ["AcntNo"] = _auth.Settings.AccountNo,
+                    ["InptPwd"] = _auth.Settings.AccountPassword,
+                    ["IsuNo"] = $"A{symbol}",
+                    ["OrdQty"] = pos.Quantity,
+                    ["OrdPrc"] = 0,       // 시장가
+                    ["BnsTpCode"] = "1",  // 매도
+                    ["OrdprcPtnCode"] = "03", // 시장가
+                    ["MgntrnCode"] = "000",
+                    ["LoanDt"] = "",
+                    ["OrdCndiTpCode"] = "0"
+                }
+            };
+
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
+                "CSPAT00600", sellBody, ct: ct);
+            var response = await _http.SendAsync(request, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogError("[LS] 포지션 청산 실패: {Symbol} {Status} {Body}",
+                    symbol, response.StatusCode, body);
+                return false;
+            }
+
+            _logger.LogInformation("[LS] 포지션 청산 성공: {Symbol} {Qty}주",
+                symbol, pos.Quantity);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
     {
         try
@@ -122,58 +178,6 @@ public class LsSecuritiesBrokerService : IBrokerService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LS] 주문 취소 중 예외: {OrderId}", orderId);
-            return false;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
-    {
-        try
-        {
-            // 시장가 매도 주문으로 포지션 청산
-            var positions = await GetPositionsAsync(ct);
-            var pos = positions.FirstOrDefault(p => p.Symbol == symbol);
-            if (pos == null || pos.Quantity <= 0)
-            {
-                _logger.LogWarning("[LS] 청산할 포지션 없음: {Symbol}", symbol);
-                return false;
-            }
-
-            var sellBody = new Dictionary<string, object>
-            {
-                ["CSPAT00600InBlock1"] = new Dictionary<string, object>
-                {
-                    ["AcntNo"] = _auth.Settings.AccountNo,
-                    ["InptPwd"] = _auth.Settings.AccountPassword,
-                    ["IsuNo"] = $"A{symbol}",
-                    ["OrdQty"] = pos.Quantity,
-                    ["OrdPrc"] = 0, // 시장가
-                    ["BnsTpCode"] = "1", // 매도
-                    ["OrdprcPtnCode"] = "03", // 시장가
-                    ["MgntrnCode"] = "000",
-                    ["LoanDt"] = "",
-                    ["OrdCndiTpCode"] = "0"
-                }
-            };
-
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
-                "CSPAT00600", sellBody, ct: ct);
-            var response = await _http.SendAsync(request, ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var json = await response.Content.ReadAsStringAsync(ct);
-                _logger.LogError("[LS] 포지션 청산 실패: {Symbol} {Status} {Body}", symbol, response.StatusCode, json);
-                return false;
-            }
-
-            _logger.LogInformation("[LS] 포지션 청산 성공: {Symbol} {Qty}주", symbol, pos.Quantity);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
             return false;
         }
     }

@@ -333,8 +333,9 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
     }
 
     /// <summary>
-    /// 클러스터 레이블 매핑 JSON 파일 경로.
+    /// BUG-L01: 클러스터 레이블 매핑 JSON 파일 경로.
     /// 모델 파일과 같은 디렉터리에 "regime_labels.json"으로 저장한다.
+    /// 재시작 후 TryLoadModel()이 이 파일을 읽어 학습 당시의 레이블 매핑을 복원한다.
     /// </summary>
     private string GetLabelsPath()
     {
@@ -351,9 +352,10 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
             _mlContext.Model.Save(_model, null, path);
             _logger.LogInformation("레짐 분류기 모델 저장 완료: {Path}", path);
 
-            // 클러스터→레이블 매핑을 JSON으로 저장한다.
-            // 재시작 후 TryLoadModel()에서 이 파일을 읽어 정확한 매핑을 복원한다.
-            // 저장하지 않으면 순서(0→강세장, 1→약세장…)로 할당되어 학습 결과와 불일치할 수 있다.
+            // BUG-L01: 클러스터→레이블 매핑을 JSON으로 저장한다.
+            // 재시작 시 K-Means 클러스터 번호는 유지되지만 번호와 레이블의 대응 관계는
+            // 모델 파일에 포함되지 않으므로, 별도 JSON으로 영속화해야 한다.
+            // 저장하지 않으면 순서(0→강세장, 1→약세장…)로 할당되어 실제 매핑과 불일치한다.
             var labelsPath = GetLabelsPath();
             var serializable = _clusterLabels.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value);
             var json = JsonSerializer.Serialize(serializable,
@@ -385,9 +387,9 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
             // 파일 생성 시각을 TrainedAt으로 사용
             TrainedAt = File.GetLastWriteTimeUtc(path);
 
-            // 클러스터 레이블 매핑 복원:
-            // 학습 시 저장된 JSON 파일이 있으면 그 매핑을 그대로 사용한다.
-            // JSON 파일이 없으면 순서 기반 기본값으로 폴백한다 (이전 동작과 동일).
+            // BUG-L01: 클러스터 레이블 매핑 복원.
+            // 학습 시 저장된 JSON이 있으면 정확한 매핑을 사용하고,
+            // JSON이 없으면 순서 기반 기본값으로 폴백한다 (구버전 모델 호환).
             var labelsPath = GetLabelsPath();
             if (File.Exists(labelsPath))
             {
@@ -401,7 +403,11 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
                             .Where(kv => uint.TryParse(kv.Key, out _))
                             .ToDictionary(kv => uint.Parse(kv.Key), kv => kv.Value);
                         _logger.LogInformation(
-                            "클러스터 레이블 매핑 복원 완료: {Labels}", _clusterLabels);
+                            "클러스터 레이블 매핑 복원 완료: {@Labels}", _clusterLabels);
+                    }
+                    else
+                    {
+                        AssignDefaultLabels();
                     }
                 }
                 catch (Exception ex)
@@ -412,10 +418,10 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
             }
             else
             {
-                // JSON 파일 없음 → 순서 기반 기본값 (이전 동작)
+                // JSON 파일 없음 → 순서 기반 기본값 (이전 동작과 동일)
                 AssignDefaultLabels();
                 _logger.LogWarning(
-                    "클러스터 레이블 매핑 파일 없음. 재학습하면 정확한 매핑이 저장됩니다.");
+                    "클러스터 레이블 매핑 파일이 없습니다. 재학습하면 정확한 매핑이 저장됩니다.");
             }
 
             _logger.LogInformation("레짐 분류기 모델 로드 완료: {Path}", path);
@@ -426,6 +432,9 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
         }
     }
 
+    /// <summary>
+    /// 순서 기반 기본 레이블 할당 (JSON 파일 없을 때 폴백).
+    /// </summary>
     private void AssignDefaultLabels()
     {
         for (uint i = 0; i < _settings.RegimeClusterCount; i++)

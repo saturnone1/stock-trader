@@ -184,8 +184,8 @@ public class BacktestService : IBacktestService
         var pepCache = new Dictionary<PatternType, TradeSimulator.PatternExitProfile>();
         var maxTotalPositions = riskParams.MaxTotalPositions;
         var riskPerTrade = riskParams.RiskPerTradePercent;
-        // currentEquity: 실현된 거래 PnL을 누적하여 복리 포지션 사이징에 사용.
-        // 미실현 포지션의 가치는 포함하지 않는다 (보수적 접근).
+        // currentEquity: 실현된 거래 PnL 누적 → 복리 포지션 사이징에 사용
+        // 미실현 포지션 가치 제외 (보수적 접근)
         var currentEquity = initialCapital;
         var maxWindow = timeFrame switch
         {
@@ -215,6 +215,7 @@ public class BacktestService : IBacktestService
                 // 청산된 경우 실현 PnL을 currentEquity에 즉시 반영 (복리 사이징용)
                 if (exitResult == null)
                 {
+                    // 청산된 거래의 PnL을 currentEquity에 즉시 반영 (복리 사이징용)
                     for (int ti = tradesBefore; ti < trades.Count; ti++)
                         currentEquity += trades[ti].PnL;
                     openPositions.Remove(symbol);
@@ -249,9 +250,10 @@ public class BacktestService : IBacktestService
                         var stopDistance = Math.Abs(signal.EntryPrice - signal.StopLossPrice);
                         if (stopDistance <= 0) continue;
 
-                        // currentEquity 기준 복리 포지션 사이징.
-                        // 수익 누적 시 점차 큰 포지션, 손실 시 자동 축소 (Kelly 원칙).
-                        var effectiveEquity = Math.Max(currentEquity, initialCapital * 0.10m); // 최소 초기자본 10%
+                        // currentEquity 기준 복리 포지션 사이징
+                        // 수익 누적 시 점차 큰 포지션, 손실 시 자동 축소 (Kelly 원칙)
+                        // 최소 초기자본 10%: 연속 손실로 equity가 지나치게 작아지는 것 방지
+                        var effectiveEquity = Math.Max(currentEquity, initialCapital * 0.10m);
                         var riskAmount = effectiveEquity * riskPerTrade;
                         var quantity = (int)(riskAmount / stopDistance);
                         if (quantity <= 0) quantity = 1;

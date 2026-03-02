@@ -6,7 +6,7 @@ public interface ITradeRepository
 {
     /// <summary>
     /// 거래 내역을 조회한다. take=0이면 최대 1000건으로 제한된다.
-    /// 전체 조회가 필요한 경우 take에 충분히 큰 값(예: int.MaxValue)을 명시적으로 전달한다.
+    /// 전체 조회가 필요한 경우 take에 int.MaxValue를 명시적으로 전달한다.
     /// </summary>
     Task<List<TradeRecord>> GetTradesAsync(PatternType? patternType = null,
         DateTime? from = null, DateTime? to = null,

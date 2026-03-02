@@ -188,6 +188,22 @@ public class AccountManager : IAccountManager
 
     // ── 브로커 서비스 접근 ─────────────────────────────────────────────────
 
+    /// <inheritdoc />
+    public IBrokerService? GetActiveBrokerService()
+    {
+        var activeId = Volatile.Read(ref _activeAccountId);
+        if (activeId == NoActiveAccount) return null;
+        _brokerCache.TryGetValue(activeId, out var cached);
+        return cached;
+    }
+
+    /// <inheritdoc />
+    public IBrokerService? GetBrokerServiceForAccount(int accountId)
+    {
+        _brokerCache.TryGetValue(accountId, out var cached);
+        return cached;
+    }
+
     public async Task<IBrokerService?> GetActiveBrokerServiceAsync(CancellationToken ct = default)
     {
         // 캐시에서 활성 계좌의 브로커 서비스 반환
@@ -313,13 +329,15 @@ public class AccountManager : IAccountManager
     {
         if (string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret))
         {
+            // Error 레벨: 이후 모든 브로커 API 호출이 401로 실패하므로 즉시 인지해야 함
             _logger.LogError(
                 "Account [{Id}] {Name}: API key or secret is not configured. " +
                 "All broker API calls will fail with 401. " +
                 "Set ApiKey and ApiSecret in the account settings.",
                 account.Id, account.AccountName);
 
-            // null 반환 → GetOrCreateBrokerServiceAsync가 캐시하지 않고 호출부에서 null 체크
+            // 의미있는 예외를 던져 GetOrCreateBrokerServiceAsync가 null을 반환하게 한다.
+            // 호출부(GetConnectionStatusAsync 등)는 null 체크 후 사용자에게 명확한 메시지를 표시한다.
             throw new InvalidOperationException(
                 $"계좌 [{account.AccountName}]의 API 키가 설정되지 않았습니다. " +
                 "계좌 관리 화면에서 API Key와 Secret을 입력해 주세요.");

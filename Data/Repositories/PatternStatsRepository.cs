@@ -55,11 +55,7 @@ public class PatternStatsRepository : IPatternStatsRepository
         var existing = await _db.PatternStats.ToListAsync(ct);
         var lookup = existing.ToDictionary(s => (s.PatternType, s.Symbol));
 
-        // Build the incoming set for stale-row detection after upsert
         var incoming = statsList.ToList();
-        var incomingKeys = incoming
-            .Select(s => (s.PatternType, s.Symbol))
-            .ToHashSet();
 
         var now = DateTime.UtcNow;
         foreach (var stats in incoming)
@@ -80,15 +76,21 @@ public class PatternStatsRepository : IPatternStatsRepository
             }
         }
 
-        // Remove stale rows that are no longer present in the current trade history.
-        // This handles the case where a pattern×symbol combination has had all its trades
-        // removed (e.g., data reset or symbol removed from watchlist).
-        var staleRows = existing
-            .Where(s => !incomingKeys.Contains((s.PatternType, s.Symbol)))
-            .ToList();
-        if (staleRows.Count > 0)
-            _db.PatternStats.RemoveRange(staleRows);
-
         await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task DeleteStaleAsync(ISet<(PatternType PatternType, string? Symbol)> activeKeys,
+        CancellationToken ct = default)
+    {
+        var existing = await _db.PatternStats.ToListAsync(ct);
+        var stale = existing
+            .Where(s => !activeKeys.Contains((s.PatternType, s.Symbol)))
+            .ToList();
+
+        if (stale.Count > 0)
+        {
+            _db.PatternStats.RemoveRange(stale);
+            await _db.SaveChangesAsync(ct);
+        }
     }
 }
