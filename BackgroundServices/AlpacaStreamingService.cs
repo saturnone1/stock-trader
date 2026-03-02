@@ -19,9 +19,15 @@ public class AlpacaStreamingService : BackgroundService
     private readonly INotificationService _notificationService;
     private readonly ILogger<AlpacaStreamingService> _logger;
 
-    // Bar batching buffer: bars are written here and flushed to DB every 5 seconds
-    private readonly Channel<OhlcvBar> _barBuffer = Channel.CreateUnbounded<OhlcvBar>(
-        new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
+    // Bar batching buffer: bars are written here and flushed to DB every 5 seconds.
+    // Bounded with DropOldest to prevent unbounded memory growth under backpressure.
+    private readonly Channel<OhlcvBar> _barBuffer = Channel.CreateBounded<OhlcvBar>(
+        new BoundedChannelOptions(10000)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            AllowSynchronousContinuations = false
+        });
 
     private readonly HashSet<string> _subscribedSymbols = new(StringComparer.OrdinalIgnoreCase);
     // BUG-C05 fix: store subscription objects keyed by symbol so unsubscribe reuses the same instance
@@ -185,14 +191,6 @@ public class AlpacaStreamingService : BackgroundService
 
         _logger.LogInformation("Alpaca WebSocket streaming connected and authenticated");
 
-        // Clear stale subscription tracking from any previous connection attempt
-        lock (_symbolsLock)
-        {
-            _subscribedSymbols.Clear();
-            _subscriptions.Clear();
-            _barHandlers.Clear();
-        }
-
         // Initial subscription
         var symbols = await GetWatchlistSymbolsAsync(ct);
         if (symbols.Count > 0)
@@ -202,7 +200,9 @@ public class AlpacaStreamingService : BackgroundService
 
         _notificationService.PublishStreamingStatus(true);
 
-        // Run watchlist sync loop — exits when ct (app stop) or cts (socket closed) is cancelled
+        // Run watchlist sync loop — exits when ct (app stop) or cts (socket closed) is cancelled.
+        // Clear _subscribedSymbols only AFTER the sync loop has fully exited to avoid a race
+        // where SocketClosed fires while WatchlistSyncLoopAsync is still iterating the set.
         try
         {
             await WatchlistSyncLoopAsync(client, cts.Token);
@@ -212,6 +212,16 @@ public class AlpacaStreamingService : BackgroundService
             // SocketClosed triggered cts.Cancel(); surface as a connection failure
             // so the outer backoff loop retries.
             throw new IOException("WebSocket connection closed — scheduling reconnect");
+        }
+        finally
+        {
+            // Safe to clear now: sync loop has exited and no more bar callbacks can update these
+            lock (_symbolsLock)
+            {
+                _subscribedSymbols.Clear();
+                _subscriptions.Clear();
+                _barHandlers.Clear();
+            }
         }
     }
 
@@ -257,9 +267,23 @@ public class AlpacaStreamingService : BackgroundService
         {
             var subscription = client.GetMinuteBarSubscription(symbol);
 
-            // BUG-C05 fix: store the handler instance so unsubscribe can remove the exact delegate
+            // BUG-C05 fix: store the handler instance so unsubscribe can remove the exact delegate.
+            // Wrap in Task.Run + try-catch so exceptions are logged rather than silently lost.
             var capturedSymbol = symbol;
-            Action<IBar> handler = bar => _ = ProcessBarAsync(capturedSymbol, bar);
+            Action<IBar> handler = bar =>
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ProcessBarAsync(capturedSymbol, bar);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing bar for {Symbol}", capturedSymbol);
+                    }
+                });
+            };
             subscription.Received += handler;
 
             await client.SubscribeAsync(subscription, ct);

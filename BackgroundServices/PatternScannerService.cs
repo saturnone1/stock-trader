@@ -36,6 +36,14 @@ public class PatternScannerService : BackgroundService
     /// </summary>
     private readonly ConcurrentDictionary<string, DateOnly> _lastScanDate = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// SPY 레짐 캐시: 하루에 한 번만 DB 쿼리.
+    /// 채널 기반 구조에서 심볼마다 ComputeRegimeAsync를 호출하면 심볼 수만큼 SPY DB 쿼리가 발생한다.
+    /// DateOnly 키로 당일 캐시를 보장하고, 다음날 자동 갱신된다.
+    /// </summary>
+    private MarketRegime? _cachedRegime;
+    private DateOnly _regimeCacheDate = DateOnly.MinValue;
+
     public PatternScannerService(
         IServiceScopeFactory scopeFactory,
         Channel<string> symbolChannel,
@@ -135,7 +143,14 @@ public class PatternScannerService : BackgroundService
         // 스캔 완료 기록 (데이터 로드 후, 결과와 무관하게)
         _lastScanDate[symbol] = todayEt;
 
-        var regime = await ComputeRegimeAsync(ohlcvRepo, ct);
+        // SPY 레짐 캐시: 당일 첫 심볼 스캔 시에만 DB 쿼리, 이후 심볼은 캐시 재사용.
+        // 채널에서 심볼을 개별 수신하는 구조에서 심볼마다 SPY 쿼리가 발생하는 N+1 문제를 방지한다.
+        if (_cachedRegime is null || _regimeCacheDate != todayEt)
+        {
+            _cachedRegime = await ComputeRegimeAsync(ohlcvRepo, ct);
+            _regimeCacheDate = todayEt;
+        }
+        var regime = _cachedRegime;
         var signals = await patternDetection.ScanSymbolAsync(symbol, bars.ToArray(), regime, ct);
 
         if (signals.Count == 0) return;

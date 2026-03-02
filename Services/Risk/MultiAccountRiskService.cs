@@ -151,6 +151,7 @@ public class MultiAccountRiskService : IRiskManagementService
             // 계좌별 잔고 조회 (브로커 API 호출)
             decimal accountSize = settings.AccountSize; // 기본값
             decimal dailyPnL = 0;
+            bool hasBrokerPnL = false;
 
             try
             {
@@ -164,6 +165,7 @@ public class MultiAccountRiskService : IRiskManagementService
                             ? brokerAccount.TotalEquity
                             : settings.AccountSize;
                         dailyPnL = brokerAccount.DailyPnL;
+                        hasBrokerPnL = true;
                     }
                 }
             }
@@ -175,7 +177,10 @@ public class MultiAccountRiskService : IRiskManagementService
 
             // 포지션 기반 미실현 손익 계산 (이 계좌 소속 포지션만 사용)
             var positionPnL = accountPositions.Sum(p => p.UnrealizedPnL);
-            var effectivePnL = dailyPnL != 0 ? dailyPnL : positionPnL;
+            // hasBrokerPnL 플래그로 fallback 여부 결정:
+            // dailyPnL != 0 비교는 브로커가 정상적으로 0.0을 반환할 때도 positionPnL로
+            // 잘못 교체하는 버그를 유발한다. 브로커 응답 여부만으로 판단해야 한다.
+            var effectivePnL = hasBrokerPnL ? dailyPnL : positionPnL;
             var pnlPercent = accountSize > 0 ? effectivePnL / accountSize : 0;
 
             var sectorCounts = accountPositions
