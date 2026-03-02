@@ -13,5 +13,8 @@ public enum BrokerType
     KoreaInvestment = 10,
 
     /// <summary>키움증권 (OpenAPI+) — 구현 예정</summary>
-    Kiwoom = 11
+    Kiwoom = 11,
+
+    /// <summary>LS증권 (OPEN API, REST) — 국내주식 자동매매</summary>
+    LsSecurities = 12
 }

@@ -4,5 +4,6 @@ public enum DataSource
 {
     Alpaca,
     Polygon,
-    Yahoo
+    Yahoo,
+    LsSecurities
 }

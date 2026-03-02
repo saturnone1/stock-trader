@@ -39,6 +39,8 @@ public class BrokerServiceFactory : IBrokerServiceFactory
             _serviceProvider.GetRequiredKeyedService<IBrokerService>(BrokerType.KoreaInvestment),
         BrokerType.Kiwoom =>
             _serviceProvider.GetRequiredKeyedService<IBrokerService>(BrokerType.Kiwoom),
+        BrokerType.LsSecurities =>
+            _serviceProvider.GetRequiredKeyedService<IBrokerService>(BrokerType.LsSecurities),
         _ => throw new ArgumentOutOfRangeException(nameof(brokerType),
             $"Unsupported broker type: {brokerType}")
     };
