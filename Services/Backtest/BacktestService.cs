@@ -214,7 +214,9 @@ public class BacktestService : IBacktestService
         var dataFeed = request.DataSource.HasValue
             ? _dataFeedFactory.GetService(request.DataSource.Value)
             : await _dataFeedFactory.GetServiceAsync(ct);
-        var regimeByDate = await BuildRegimeMapAsync(dataFeed, request.From, request.To, ct);
+        // 한국 데이터소스면 KOSPI200 ETF(069500), 아니면 SPY
+        var regimeSymbol = request.DataSource == DataSource.LsSecurities ? "069500" : "SPY";
+        var regimeByDate = await BuildRegimeMapAsync(dataFeed, request.From, request.To, regimeSymbol, ct);
         if (regimeByDate == null) return new BacktestResult();
 
         var activeDetectors = BuildDetectors(request.Patterns, request.ParameterOverrides);
@@ -591,42 +593,55 @@ public class BacktestService : IBacktestService
     #region Regime Map
 
     internal async Task<Dictionary<DateOnly, MarketRegime>?> BuildRegimeMapAsync(
-        IDataFeedService dataFeed, DateTime from, DateTime to, CancellationToken ct)
+        IDataFeedService dataFeed, DateTime from, DateTime to, string regimeSymbol = "SPY", CancellationToken ct = default)
     {
-        var spyFrom = from.AddDays(-400);
-        List<OhlcvBar> spyBars;
+        var lookbackFrom = from.AddDays(-400);
+        List<OhlcvBar> indexBars;
         try
         {
-            spyBars = await dataFeed.GetHistoricalBarsAsync("SPY", TimeFrame.Daily, spyFrom, to, ct);
+            indexBars = await dataFeed.GetHistoricalBarsAsync(regimeSymbol, TimeFrame.Daily, lookbackFrom, to, ct);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SPY 데이터 조회 실패");
+            _logger.LogError(ex, "{Symbol} 데이터 조회 실패", regimeSymbol);
             return null;
         }
 
-        if (spyBars.Count < 200)
+        if (indexBars.Count < 200)
         {
-            _logger.LogWarning("SPY 데이터 부족: {Count}개 (최소 200개 필요)", spyBars.Count);
-            return null;
+            _logger.LogWarning("{Symbol} 데이터 부족: {Count}개 (최소 200개 필요), 기본 강세 레짐 적용", regimeSymbol, indexBars.Count);
+            // 데이터 부족 시 (한국 주식 분봉 집계 등) 모든 날짜를 강세로 가정
+            var fallbackRegime = new Dictionary<DateOnly, MarketRegime>();
+            for (var d = from.Date; d <= to.Date; d = d.AddDays(1))
+            {
+                fallbackRegime[DateOnly.FromDateTime(d)] = new MarketRegime
+                {
+                    SpyAbove200Ma = true,
+                    SpyPrice = 0,
+                    Spy200Ma = 0,
+                    RegimeLabel = "강세(기본)",
+                    AsOf = d
+                };
+            }
+            return fallbackRegime;
         }
 
-        var spyBarsArray = spyBars.ToArray();
-        var spyCloses = IndicatorService.ExtractCloses(spyBarsArray);
-        var spy200Sma = _indicators.SMA(spyCloses, 200);
+        var indexBarsArray = indexBars.ToArray();
+        var indexCloses = IndicatorService.ExtractCloses(indexBarsArray);
+        var index200Sma = _indicators.SMA(indexCloses, 200);
         var regimeByDate = new Dictionary<DateOnly, MarketRegime>();
 
-        for (int i = 0; i < spyBarsArray.Length; i++)
+        for (int i = 0; i < indexBarsArray.Length; i++)
         {
-            var date = DateOnly.FromDateTime(spyBarsArray[i].Timestamp);
-            var aboveMa = spy200Sma[i] > 0 && spyBarsArray[i].Close > spy200Sma[i];
+            var date = DateOnly.FromDateTime(indexBarsArray[i].Timestamp);
+            var aboveMa = index200Sma[i] > 0 && indexBarsArray[i].Close > index200Sma[i];
             regimeByDate[date] = new MarketRegime
             {
                 SpyAbove200Ma = aboveMa,
-                SpyPrice = spyBarsArray[i].Close,
-                Spy200Ma = spy200Sma[i],
+                SpyPrice = indexBarsArray[i].Close,
+                Spy200Ma = index200Sma[i],
                 RegimeLabel = aboveMa ? "강세" : "약세",
-                AsOf = spyBarsArray[i].Timestamp
+                AsOf = indexBarsArray[i].Timestamp
             };
         }
 
