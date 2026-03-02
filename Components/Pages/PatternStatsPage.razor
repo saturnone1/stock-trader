@@ -1,8 +1,11 @@
 @page "/patterns"
 @rendermode InteractiveServer
 @using StockTrader.Models
+@using StockTrader.Models.Enums
 @using StockTrader.Services.Statistics
+@using StockTrader.Data.Repositories
 @inject IStatisticsService StatsService
+@inject ITradeRepository TradeRepo
 
 <PageTitle>패턴 통계 - 주식 트레이더</PageTitle>
 
@@ -47,9 +50,186 @@
     <MudAlert Severity="Severity.Error" Class="mb-2" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
+@* ── 섹션 1: 패턴 카탈로그 (항상 표시) ── *@
+<MudText Typo="Typo.subtitle2" Class="mb-2"
+         Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color: var(--mud-palette-text-secondary);">
+    패턴 카탈로그
+</MudText>
+<MudDivider Class="mb-3" />
+
+<MudTable Items="@_allPatterns" Dense="true" Hover="true" Striped="true" Class="mb-5"
+          FixedHeader="true">
+    <HeaderContent>
+        <MudTh>패턴명</MudTh>
+        <MudTh>스타일</MudTh>
+        <MudTh>보유기간</MudTh>
+        <MudTh>상태</MudTh>
+        <MudTh>설명</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        @{
+            var meta = PatternMetadataMap.Get(context);
+            var status = meta.Status;
+            var statusColor = PatternMetadataMap.GetStatusColor(status);
+        }
+        <MudTd>
+            <MudTooltip Text="@meta.EnglishName">
+                <MudText Typo="Typo.body2" Style="white-space: nowrap; font-weight: 500;">
+                    @meta.KoreanName
+                </MudText>
+            </MudTooltip>
+        </MudTd>
+        <MudTd>
+            <MudChip T="string"
+                     Color="@PatternMetadataMap.GetMudColor(context)"
+                     Size="Size.Small"
+                     Variant="Variant.Filled"
+                     Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                @meta.StyleLabel
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Style="white-space:nowrap;">
+                @meta.HoldingPeriod
+            </MudText>
+        </MudTd>
+        <MudTd>
+            @if (status == PatternStatus.Verified)
+            {
+                <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Outlined"
+                         Icon="@Icons.Material.Filled.CheckCircle"
+                         Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                    검증됨
+                </MudChip>
+            }
+            else
+            {
+                <MudTooltip Text="@(meta.StatusNote ?? "")">
+                    <MudChip T="string" Color="@statusColor" Size="Size.Small" Variant="Variant.Outlined"
+                             Icon="@PatternMetadataMap.GetStatusIcon(status)"
+                             Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                        @PatternMetadataMap.GetStatusLabel(status)
+                    </MudChip>
+                </MudTooltip>
+            }
+        </MudTd>
+        <MudTd>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@meta.Description</MudText>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@* ── 섹션 2: 시그널 활동 현황 ── *@
+<MudText Typo="Typo.subtitle2" Class="mb-2"
+         Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color: var(--mud-palette-text-secondary);">
+    시그널 활동
+</MudText>
+<MudDivider Class="mb-3" />
+
+@if (_signalRows.Count == 0 && _recentRecs.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-5">
+        아직 시그널 기록이 없습니다. 패턴 스캐너가 실행되면 여기에 활동 내역이 표시됩니다.
+    </MudAlert>
+}
+else
+{
+    <MudGrid Class="mb-3">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-divider);">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">총 시그널</MudText>
+                <MudText Typo="Typo.h5">@_signalRows.Sum(r => r.Generated)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-divider);">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">활성 시그널</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Primary">@_activeSignalCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-divider);">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">실행됨</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Success">@_signalRows.Sum(r => r.Executed)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-divider);">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">실행율</MudText>
+                @{
+                    var totalGen = _signalRows.Sum(r => r.Generated);
+                    var totalExec = _signalRows.Sum(r => r.Executed);
+                    var overallRate = totalGen > 0 ? (double)totalExec / totalGen * 100.0 : 0.0;
+                }
+                <MudText Typo="Typo.h5" Color="@(overallRate >= 50 ? Color.Success : Color.Warning)">
+                    @overallRate.ToString("F0")%
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_signalRows.Count > 0)
+    {
+        <MudTable Items="@_signalRows" Dense="true" Hover="true" Class="mb-5">
+            <HeaderContent>
+                <MudTh>패턴</MudTh>
+                <MudTh>스타일</MudTh>
+                <MudTh Style="text-align:right">생성</MudTh>
+                <MudTh Style="text-align:right">실행됨</MudTh>
+                <MudTh Style="text-align:right">필터됨</MudTh>
+                <MudTh Style="text-align:right">실행율</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudTooltip Text="@PatternMetadataMap.GetDescription(context.PatternType)">
+                        <MudText Typo="Typo.body2" Style="white-space:nowrap; font-weight:500; cursor:help;">
+                            @PatternMetadataMap.GetKoreanName(context.PatternType)
+                        </MudText>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string"
+                             Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
+                             Size="Size.Small"
+                             Variant="Variant.Filled"
+                             Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">
+                        @PatternMetadataMap.GetStyleLabel(context.PatternType)
+                    </MudChip>
+                </MudTd>
+                <MudTd Style="text-align:right">@context.Generated</MudTd>
+                <MudTd Style="text-align:right">
+                    <MudText Color="Color.Success">@context.Executed</MudText>
+                </MudTd>
+                <MudTd Style="text-align:right">
+                    <MudText Color="@(context.Filtered > 0 ? Color.Warning : Color.Default)">
+                        @context.Filtered
+                    </MudText>
+                </MudTd>
+                <MudTd Style="text-align:right">
+                    @{
+                        var rate = context.Generated > 0
+                            ? (double)context.Executed / context.Generated * 100.0
+                            : 0.0;
+                    }
+                    <MudText Color="@(rate >= 50 ? Color.Success : Color.Default)">
+                        @rate.ToString("F0")%
+                    </MudText>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@* ── 섹션 3: 과거 성과 통계 (거래 데이터 있을 때만) ── *@
+<MudText Typo="Typo.subtitle2" Class="mb-2"
+         Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color: var(--mud-palette-text-secondary);">
+    과거 성과 통계
+</MudText>
+<MudDivider Class="mb-3" />
+
 @if (!_loading && _stats.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">
+    <MudAlert Severity="Severity.Info" Class="mb-4">
         아직 통계 데이터가 없습니다. 백테스트를 실행하거나 거래 데이터가 쌓일 때까지 기다려 주세요.
     </MudAlert>
 }
@@ -158,11 +338,27 @@ else if (_stats.Count > 0)
     private string? _error;
     private List<PatternStats> _stats = new();
 
+    // 시그널 활동
+    private List<SignalActivityRow> _signalRows = new();
+    private int _activeSignalCount;
+    private List<TradeRecommendation> _recentRecs = new();
+
+    // 패턴 카탈로그 — 항상 렌더링 가능한 정적 목록
+    private static readonly List<PatternType> _allPatterns =
+        Enum.GetValues<PatternType>().ToList();
+
     private record StyleGroup(
         string StyleLabel,
         MudBlazor.Color MudColor,
         int Count,
         decimal? AvgExpectancy
+    );
+
+    private sealed record SignalActivityRow(
+        PatternType PatternType,
+        int Generated,
+        int Executed,
+        int Filtered
     );
 
     private List<StyleGroup> _styleGroups = new();
@@ -183,7 +379,18 @@ else if (_stats.Count > 0)
         _loading = true;
         try
         {
-            _stats = await StatsService.GetAllStatsAsync();
+            var statsTask   = StatsService.GetAllStatsAsync();
+            var signalsTask = TradeRepo.GetActiveSignalsAsync();
+            var recsTask    = TradeRepo.GetRecentRecommendationsAsync(200);
+
+            await Task.WhenAll(statsTask, signalsTask, recsTask);
+
+            _stats      = statsTask.Result;
+            var activeSignals = signalsTask.Result;
+            _recentRecs = recsTask.Result;
+            _activeSignalCount = activeSignals.Count;
+
+            BuildSignalActivityRows(activeSignals, _recentRecs);
             BuildStyleGroups();
             BuildExpectancyItems();
         }
@@ -195,6 +402,36 @@ else if (_stats.Count > 0)
         {
             _loading = false;
         }
+    }
+
+    private void BuildSignalActivityRows(
+        List<PatternSignal> activeSignals,
+        List<TradeRecommendation> recs)
+    {
+        // 추천 목록에서 패턴별 생성/실행 집계
+        var recsByPattern = recs
+            .GroupBy(r => r.PatternType)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // 활성 시그널에서 패턴별 집계
+        var activeCounts = activeSignals
+            .GroupBy(s => s.PatternType)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // 두 소스를 합쳐 패턴 목록 구성
+        var allPatterns = recsByPattern.Keys
+            .Union(activeCounts.Keys)
+            .Distinct()
+            .OrderBy(p => p);
+
+        _signalRows = allPatterns.Select(pt =>
+        {
+            var patternRecs  = recsByPattern.TryGetValue(pt, out var r) ? r : new();
+            var generated    = patternRecs.Count + (activeCounts.TryGetValue(pt, out var a) ? a : 0);
+            var executed     = patternRecs.Count(rec => rec.WasExecuted);
+            var filtered     = patternRecs.Count(rec => !rec.WasExecuted);
+            return new SignalActivityRow(pt, generated, executed, filtered);
+        }).ToList();
     }
 
     private void BuildExpectancyItems()
