@@ -37,7 +37,10 @@
             <MudSelectItem T="string" Value="@("")">전체</MudSelectItem>
             @foreach (var pattern in Enum.GetValues<PatternType>())
             {
-                <MudSelectItem T="string" Value="@(((int)pattern).ToString())">@pattern</MudSelectItem>
+                var thMeta = PatternMetadataMap.Get(pattern);
+                <MudSelectItem T="string" Value="@(((int)pattern).ToString())">
+                    @thMeta.KoreanName@(thMeta.Status != PatternStatus.Verified ? $" ⚠ {PatternMetadataMap.GetStatusLabel(thMeta.Status)}" : "")
+                </MudSelectItem>
             }
         </MudSelect>
     </MudItem>

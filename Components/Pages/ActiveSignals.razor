@@ -48,7 +48,7 @@
             {
                 var meta = PatternMetadataMap.Get(pattern);
                 <MudSelectItem T="string" Value="@pattern.ToString()">
-                    @meta.KoreanName (@meta.StyleLabel)
+                    @meta.KoreanName (@meta.StyleLabel)@(meta.Status != PatternStatus.Verified ? $" ⚠ {PatternMetadataMap.GetStatusLabel(meta.Status)}" : "")
                 </MudSelectItem>
             }
         </MudSelect>

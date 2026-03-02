@@ -195,6 +195,16 @@
                                              Style="height: 18px; font-size: 10px; padding: 0 6px; min-width: 0;">
                                         @meta.StyleLabel
                                     </MudChip>
+                                    @if (meta.Status != PatternStatus.Verified)
+                                    {
+                                        <MudChip T="string" Size="Size.Small"
+                                                 Color="@PatternMetadataMap.GetStatusColor(meta.Status)"
+                                                 Variant="Variant.Outlined"
+                                                 Icon="@PatternMetadataMap.GetStatusIcon(meta.Status)"
+                                                 Style="height: 18px; font-size: 10px; padding: 0 6px; min-width: 0;">
+                                            @PatternMetadataMap.GetStatusLabel(meta.Status)
+                                        </MudChip>
+                                    }
                                 </MudStack>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary"
                                          Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
