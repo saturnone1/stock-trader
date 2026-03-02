@@ -247,6 +247,11 @@ public class BacktestRequest
     /// </summary>
     public PatternParameterOverrides? ParameterOverrides { get; set; }
 
+    /// <summary>
+    /// 데이터 소스 지정. null이면 UserSettings의 PreferredDataSource 사용.
+    /// </summary>
+    public DataSource? DataSource { get; set; }
+
 }
 
 public class BacktestResult

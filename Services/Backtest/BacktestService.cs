@@ -211,7 +211,9 @@ public class BacktestService : IBacktestService
         _logger.LogInformation("백테스트 시작: {Symbols} ({From:d} ~ {To:d}) [타임프레임: {TimeFrame}]",
             string.Join(", ", request.Symbols), request.From, request.To, request.TimeFrame);
 
-        var dataFeed = await _dataFeedFactory.GetServiceAsync(ct);
+        var dataFeed = request.DataSource.HasValue
+            ? _dataFeedFactory.GetService(request.DataSource.Value)
+            : await _dataFeedFactory.GetServiceAsync(ct);
         var regimeByDate = await BuildRegimeMapAsync(dataFeed, request.From, request.To, ct);
         if (regimeByDate == null) return new BacktestResult();
 
