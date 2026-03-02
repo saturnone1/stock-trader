@@ -38,8 +38,8 @@
             @foreach (var pattern in Enum.GetValues<PatternType>())
             {
                 var thMeta = PatternMetadataMap.Get(pattern);
-                <MudSelectItem T="string" Value="@(((int)pattern).ToString())">
-                    @thMeta.KoreanName@(thMeta.Status != PatternStatus.Verified ? $" ⚠ {PatternMetadataMap.GetStatusLabel(thMeta.Status)}" : "")
+                <MudSelectItem T="string" Value="@pattern.ToString()">
+                    @thMeta.KoreanName (@thMeta.StyleLabel)@(thMeta.Status != PatternStatus.Verified ? $" ⚠ {PatternMetadataMap.GetStatusLabel(thMeta.Status)}" : "")
                 </MudSelectItem>
             }
         </MudSelect>
@@ -168,8 +168,8 @@ else
         _error = null;
         try
         {
-            PatternType? pattern = string.IsNullOrEmpty(_filterPattern)
-                ? null : (PatternType)int.Parse(_filterPattern);
+            PatternType? pattern = Enum.TryParse<PatternType>(_filterPattern, out var parsed)
+                ? parsed : null;
             _trades = await TradeRepo.GetTradesAsync(pattern, _fromDate, _toDate);
         }
         catch (Exception ex)

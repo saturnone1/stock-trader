@@ -519,7 +519,9 @@ public class BacktestService : IBacktestService
         // are strictly less than initialCapital.
         int bsResult = Array.BinarySearch(finalEquities, initialCapital);
         int firstNotLess = bsResult >= 0 ? bsResult : ~bsResult;
-        // Scan backward to include duplicates equal to initialCapital as "not a loss".
+        // Scan backward to exclude duplicates equal to initialCapital from loss count.
+        while (firstNotLess > 0 && finalEquities[firstNotLess - 1] >= initialCapital)
+            firstNotLess--;
         var lossCount = firstNotLess;
 
         return new MonteCarloResult
