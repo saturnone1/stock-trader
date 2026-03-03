@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using Serilog;
@@ -6,6 +9,7 @@ using StockTrader.Data;
 using StockTrader.Extensions;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Services.Auth;
 using StockTrader.Services.Backtest;
 
 // Serilog bootstrap logger — captures startup errors before host is built
@@ -40,6 +44,17 @@ builder.Services.AddMemoryCache();
 
 // Add StockTrader services (DI, DB, background services, etc.)
 builder.Services.AddStockTraderServices(builder.Configuration);
+
+// Add security services (cookie auth, crypto, rate limiting)
+builder.Services.AddSecurityServices(builder.Configuration);
+
+// Auth HttpClient — Blazor Server 컴포넌트에서 자체 API(/api/auth/*)를 호출할 때 사용
+// Kestrel은 0.0.0.0:5239로 바인딩되므로, 자체 호출에는 localhost 사용
+builder.Services.AddHttpClient("Auth", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5239");
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 var app = builder.Build();
 
@@ -184,6 +199,51 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
+        // AppUsers 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='AppUsers'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE AppUsers (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Username TEXT NOT NULL DEFAULT '',
+                    PasswordHash TEXT NOT NULL DEFAULT '',
+                    Salt TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    LastLoginAt TEXT,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    FailedLoginAttempts INTEGER NOT NULL DEFAULT 0,
+                    LockedUntil TEXT
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_AppUsers_Username ON AppUsers (Username)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_AppUsers_IsActive ON AppUsers (IsActive)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // AuditLogs 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='AuditLogs'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE AuditLogs (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId INTEGER,
+                    Action TEXT NOT NULL DEFAULT '',
+                    Details TEXT NOT NULL DEFAULT '',
+                    IpAddress TEXT NOT NULL DEFAULT '',
+                    Timestamp TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_AuditLogs_Timestamp ON AuditLogs (Timestamp)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_AuditLogs_UserId ON AuditLogs (UserId)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_AuditLogs_Action ON AuditLogs (Action)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         // OrderMode를 AutoOrder(1)로 설정 (기본값이 AlertOnly(0)인 경우)
         cmd.CommandText = "UPDATE UserSettings SET OrderMode = 1 WHERE OrderMode = 0";
         var updated = await cmd.ExecuteNonQueryAsync();
@@ -296,6 +356,11 @@ else
     // and would cause browser issues if the user ever switches to HTTP.
 }
 
+// Security headers (before any response-generating middleware)
+app.UseSecurityHeaders();
+
+app.UseRateLimiter();
+
 app.UseSerilogRequestLogging(options =>
 {
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
@@ -311,7 +376,96 @@ if (app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseAntiforgery();
+
+// ── Auth API ──────────────────────────────────────────────────────────────────
+
+app.MapPost("/api/auth/login", async (HttpContext ctx, IAuthService auth, IAuditService audit) =>
+{
+    string username, password;
+    try
+    {
+        using var body   = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+        username = body.RootElement.GetProperty("username").GetString() ?? "";
+        password = body.RootElement.GetProperty("password").GetString() ?? "";
+    }
+    catch
+    {
+        return Results.BadRequest(new { error = "Invalid JSON body. Provide 'username' and 'password'." });
+    }
+
+    var result = await auth.LoginAsync(username, password);
+    if (!result.Success || result.Principal == null)
+        return Results.Unauthorized();
+
+    await ctx.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        result.Principal,
+        new AuthenticationProperties { IsPersistent = true });
+
+    return Results.Ok(new { message = "로그인 성공", username });
+}).RequireRateLimiting("login");
+
+app.MapPost("/api/auth/logout", async (HttpContext ctx, IAuditService audit) =>
+{
+    var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    if (int.TryParse(userId, out var uid))
+        await audit.LogAsync(uid, "LOGOUT", "User signed out");
+    return Results.Ok(new { message = "로그아웃 완료" });
+});
+
+app.MapPost("/api/auth/register", async (HttpContext ctx, IAuthService auth) =>
+{
+    string username, password;
+    try
+    {
+        using var body = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+        username = body.RootElement.GetProperty("username").GetString() ?? "";
+        password = body.RootElement.GetProperty("password").GetString() ?? "";
+    }
+    catch
+    {
+        return Results.BadRequest(new { error = "Invalid JSON body." });
+    }
+
+    var result = await auth.RegisterAsync(username, password);
+    if (!result.Success)
+        return Results.BadRequest(new { error = result.ErrorMessage });
+
+    return Results.Ok(new { message = "사용자 등록 완료", userId = result.UserId });
+}).RequireRateLimiting("login");
+
+app.MapPost("/api/auth/change-password", async (HttpContext ctx, IAuthService auth) =>
+{
+    if (!ctx.User.Identity?.IsAuthenticated ?? true)
+        return Results.Unauthorized();
+
+    var userIdStr = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (!int.TryParse(userIdStr, out var userId))
+        return Results.Unauthorized();
+
+    string oldPassword, newPassword;
+    try
+    {
+        using var body = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+        oldPassword = body.RootElement.GetProperty("oldPassword").GetString() ?? "";
+        newPassword = body.RootElement.GetProperty("newPassword").GetString() ?? "";
+    }
+    catch
+    {
+        return Results.BadRequest(new { error = "Invalid JSON body." });
+    }
+
+    var (success, error) = await auth.ChangePasswordAsync(userId, oldPassword, newPassword);
+    if (!success)
+        return Results.BadRequest(new { error });
+
+    return Results.Ok(new { message = "비밀번호가 변경되었습니다." });
+}).RequireRateLimiting("api").RequireAuthorization();
 
 // ── Backtest API (CLI에서 수익률 비교용) ──
 app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService svc, CancellationToken ct) =>

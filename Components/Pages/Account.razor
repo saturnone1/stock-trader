@@ -1,0 +1,358 @@
+@page "/account"
+@using System.Net.Http.Json
+@using System.Text.RegularExpressions
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>계정 관리 — 주식 트레이더</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-6" Style="font-weight: 700;">계정 관리</MudText>
+
+<MudGrid>
+
+    @* 계정 정보 카드 *@
+    <MudItem xs="12" md="5">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <CardHeaderAvatar>
+                    <MudAvatar Color="Color.Primary" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" />
+                    </MudAvatar>
+                </CardHeaderAvatar>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">@(_userInfo?.Username ?? "—")</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">관리자</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_isLoadingInfo)
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="80%" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" />
+                }
+                else if (_userInfo != null)
+                {
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Login"
+                                     Size="Size.Small" Color="Color.Secondary" />
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">마지막 로그인</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @(_userInfo.LastLoginAt.HasValue
+                                        ? _userInfo.LastLoginAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                        : "—")
+                                </MudText>
+                            </div>
+                        </MudStack>
+
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Timer"
+                                     Size="Size.Small" Color="Color.Secondary" />
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">세션 만료</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @(_userInfo.SessionExpiresAt.HasValue
+                                        ? _userInfo.SessionExpiresAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                        : "—")
+                                </MudText>
+                            </div>
+                        </MudStack>
+
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarToday"
+                                     Size="Size.Small" Color="Color.Secondary" />
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">계정 생성일</MudText>
+                                <MudText Typo="Typo.body2">
+                                    @(_userInfo.CreatedAt.HasValue
+                                        ? _userInfo.CreatedAt.Value.ToLocalTime().ToString("yyyy-MM-dd")
+                                        : "—")
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">정보를 불러올 수 없습니다.</MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    @* 비밀번호 변경 카드 *@
+    <MudItem xs="12" md="7">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">비밀번호 변경</MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Secondary" />
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="3">
+
+                    @if (!string.IsNullOrEmpty(_pwdError))
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true">@_pwdError</MudAlert>
+                    }
+
+                    @* 현재 비밀번호 *@
+                    <MudTextField @bind-Value="_currentPassword"
+                                  Label="현재 비밀번호"
+                                  Variant="Variant.Outlined"
+                                  InputType="@(_showCurrent ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showCurrent ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                  OnAdornmentClick="@(() => _showCurrent = !_showCurrent)"
+                                  Disabled="@_isSaving"
+                                  autocomplete="current-password" />
+
+                    @* 새 비밀번호 *@
+                    <MudTextField @bind-Value="_newPassword"
+                                  Label="새 비밀번호"
+                                  HelperText="8자 이상, 영문 + 숫자 포함"
+                                  Variant="Variant.Outlined"
+                                  InputType="@(_showNew ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showNew ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                  OnAdornmentClick="@(() => _showNew = !_showNew)"
+                                  Disabled="@_isSaving"
+                                  Immediate="true"
+                                  Error="@(!string.IsNullOrEmpty(_newPasswordError))"
+                                  ErrorText="@_newPasswordError"
+                                  autocomplete="new-password" />
+
+                    @* 비밀번호 강도 *@
+                    @if (!string.IsNullOrEmpty(_newPassword))
+                    {
+                        var strength = GetPasswordStrength(_newPassword);
+                        <MudStack Spacing="1">
+                            <MudProgressLinear Value="@strength.Score"
+                                               Max="100"
+                                               Color="@strength.Color"
+                                               Rounded="true"
+                                               Style="height: 4px;" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                비밀번호 강도:
+                                <span style="color: @strength.TextColor;">@strength.Label</span>
+                            </MudText>
+                        </MudStack>
+                    }
+
+                    @* 새 비밀번호 확인 *@
+                    <MudTextField @bind-Value="_confirmPassword"
+                                  Label="새 비밀번호 확인"
+                                  Variant="Variant.Outlined"
+                                  InputType="InputType.Password"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@(!string.IsNullOrEmpty(_confirmPassword) && _confirmPassword == _newPassword
+                                      ? Icons.Material.Filled.CheckCircle
+                                      : Icons.Material.Filled.Lock)"
+                                  AdornmentColor="@(!string.IsNullOrEmpty(_confirmPassword) && _confirmPassword == _newPassword
+                                      ? Color.Success : Color.Default)"
+                                  Disabled="@_isSaving"
+                                  autocomplete="new-password" />
+
+                </MudStack>
+            </MudCardContent>
+            <MudCardActions Class="px-4 pb-4">
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           OnClick="@ClearForm"
+                           Disabled="@_isSaving"
+                           Class="mr-2">
+                    초기화
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="@ChangePasswordAsync"
+                           Disabled="@(_isSaving || !IsFormValid())"
+                           StartIcon="@Icons.Material.Filled.Save">
+                    @if (_isSaving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>저장 중...</span>
+                    }
+                    else
+                    {
+                        <span>변경 저장</span>
+                    }
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudItem>
+
+    @* 보안 안내 *@
+    <MudItem xs="12">
+        <MudPaper Class="pa-4" Style="background: rgba(21,101,192,0.05); border: 1px solid rgba(21,101,192,0.2);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" Size="Size.Small" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    24시간 자동매매 시스템 접근 계정입니다. 정기적으로 비밀번호를 변경하고 안전하게 관리하세요.
+                    비밀번호 변경 후에는 현재 세션이 유지됩니다.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+</MudGrid>
+
+@code {
+    private UserInfoResponse? _userInfo;
+    private bool _isLoadingInfo = true;
+
+    private string _currentPassword = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _confirmPassword = string.Empty;
+    private bool _showCurrent;
+    private bool _showNew;
+    private bool _isSaving;
+
+    private string _pwdError = string.Empty;
+    private string _newPasswordError = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserInfoAsync();
+    }
+
+    private async Task LoadUserInfoAsync()
+    {
+        _isLoadingInfo = true;
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+            var resp = await client.GetAsync("/api/auth/me");
+            if (resp.IsSuccessStatusCode)
+            {
+                _userInfo = await resp.Content.ReadFromJsonAsync<UserInfoResponse>();
+            }
+            else if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+        }
+        catch
+        {
+            // 정보 로드 실패 — 빈 상태로 표시
+        }
+        finally
+        {
+            _isLoadingInfo = false;
+        }
+    }
+
+    private bool IsFormValid()
+    {
+        return !string.IsNullOrWhiteSpace(_currentPassword)
+               && !string.IsNullOrWhiteSpace(_newPassword)
+               && !string.IsNullOrWhiteSpace(_confirmPassword)
+               && _newPassword == _confirmPassword
+               && _newPassword.Length >= 8
+               && Regex.IsMatch(_newPassword, @"[a-zA-Z]")
+               && Regex.IsMatch(_newPassword, @"[0-9]");
+    }
+
+    private void ValidateNewPassword()
+    {
+        _newPasswordError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_newPassword)) return;
+
+        if (_newPassword.Length < 8)
+            _newPasswordError = "8자 이상이어야 합니다.";
+        else if (!Regex.IsMatch(_newPassword, @"[a-zA-Z]"))
+            _newPasswordError = "영문자를 포함해야 합니다.";
+        else if (!Regex.IsMatch(_newPassword, @"[0-9]"))
+            _newPasswordError = "숫자를 포함해야 합니다.";
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        ValidateNewPassword();
+        if (!IsFormValid()) return;
+
+        _pwdError = string.Empty;
+        _isSaving = true;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+            var response = await client.PostAsJsonAsync("/api/auth/change-password", new
+            {
+                currentPassword = _currentPassword,
+                newPassword = _newPassword
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("비밀번호가 변경되었습니다.", Severity.Success);
+                ClearForm();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                _pwdError = "현재 비밀번호가 올바르지 않습니다.";
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+            else
+            {
+                _pwdError = $"변경 실패 ({(int)response.StatusCode}). 잠시 후 다시 시도하세요.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _pwdError = "서버에 연결할 수 없습니다.";
+        }
+        catch (Exception)
+        {
+            _pwdError = "예상치 못한 오류가 발생했습니다.";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void ClearForm()
+    {
+        _currentPassword = string.Empty;
+        _newPassword = string.Empty;
+        _confirmPassword = string.Empty;
+        _pwdError = string.Empty;
+        _newPasswordError = string.Empty;
+    }
+
+    private (int Score, Color Color, string TextColor, string Label) GetPasswordStrength(string pwd)
+    {
+        int score = 0;
+        if (pwd.Length >= 8) score += 20;
+        if (pwd.Length >= 12) score += 20;
+        if (Regex.IsMatch(pwd, @"[a-z]")) score += 15;
+        if (Regex.IsMatch(pwd, @"[A-Z]")) score += 15;
+        if (Regex.IsMatch(pwd, @"[0-9]")) score += 15;
+        if (Regex.IsMatch(pwd, @"[^a-zA-Z0-9]")) score += 15;
+
+        return score switch
+        {
+            >= 80 => (score, Color.Success, "#4CAF50", "강함"),
+            >= 50 => (score, Color.Warning, "#FF9800", "보통"),
+            _ => (score, Color.Error, "#F44336", "약함")
+        };
+    }
+
+    private sealed class UserInfoResponse
+    {
+        public string? Username { get; set; }
+        public DateTime? LastLoginAt { get; set; }
+        public DateTime? SessionExpiresAt { get; set; }
+        public DateTime? CreatedAt { get; set; }
+    }
+}

@@ -16,6 +16,8 @@ public class AppDbContext : DbContext
     public DbSet<Ticker> Tickers => Set<Ticker>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<TradingAccount> TradingAccounts => Set<TradingAccount>();
+    public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -89,6 +91,19 @@ public class AppDbContext : DbContext
             entity.HasIndex(a => a.BrokerType);
             entity.HasIndex(a => a.IsActive);
             // AccountName을 고유하게 강제하지 않음 — 같은 브로커에 여러 계좌 허용
+        });
+
+        modelBuilder.Entity<AppUser>(entity =>
+        {
+            entity.HasIndex(u => u.Username).IsUnique();
+            entity.HasIndex(u => u.IsActive);
+        });
+
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasIndex(l => l.Timestamp);
+            entity.HasIndex(l => l.UserId);
+            entity.HasIndex(l => l.Action);
         });
     }
 }
