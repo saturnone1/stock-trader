@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -42,10 +43,13 @@ public class MultiAccountRiskServiceTests
         // IServiceScopeFactory mock: CreateScope → ServiceProvider → GetRequiredService
         var scopeFactory = CreateMockScopeFactory();
 
+        var cache = new MemoryCache(new MemoryCacheOptions());
+
         return new MultiAccountRiskService(
             scopeFactory,
             opts,
             _accountManagerMock.Object,
+            cache,
             NullLogger<MultiAccountRiskService>.Instance);
     }
 

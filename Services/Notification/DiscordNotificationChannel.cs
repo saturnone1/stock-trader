@@ -10,6 +10,7 @@ namespace StockTrader.Services.Notification;
 /// Discord Webhook을 통해 Embed 메시지를 발송하는 알림 채널.
 /// 외부 NuGet 패키지 없이 HttpClient만 사용.
 /// API 문서: https://discord.com/developers/docs/resources/webhook#execute-webhook
+/// 설정 우선순위: DB UserSettings > appsettings.json (INotificationSettingsProvider를 통해 병합).
 /// </summary>
 public sealed class DiscordNotificationChannel : INotificationChannel
 {
@@ -20,27 +21,39 @@ public sealed class DiscordNotificationChannel : INotificationChannel
     private const int ColorOrange = 15105570; // #E67E22 경고
 
     private readonly HttpClient _http;
-    private readonly NotificationSettings _settings;
+    private readonly INotificationSettingsProvider _settingsProvider;
+    private readonly NotificationSettings _fallbackSettings;
     private readonly ILogger<DiscordNotificationChannel> _logger;
 
     public string ChannelName => "Discord";
 
+    // IsEnabled는 동기 프로퍼티이므로 fallback(appsettings) 기준으로만 판별.
+    // 실제 발송 시점에 GetEffectiveSettingsAsync()로 재확인한다.
     public bool IsEnabled =>
-        _settings.EnableDiscord &&
-        !string.IsNullOrWhiteSpace(_settings.DiscordWebhookUrl);
+        _fallbackSettings.EnableDiscord &&
+        !string.IsNullOrWhiteSpace(_fallbackSettings.DiscordWebhookUrl);
 
     public DiscordNotificationChannel(
         HttpClient http,
-        IOptions<NotificationSettings> settings,
+        INotificationSettingsProvider settingsProvider,
+        IOptions<NotificationSettings> fallbackSettings,
         ILogger<DiscordNotificationChannel> logger)
     {
-        _http = http;
-        _settings = settings.Value;
-        _logger = logger;
+        _http             = http;
+        _settingsProvider = settingsProvider;
+        _fallbackSettings = fallbackSettings.Value;
+        _logger           = logger;
     }
+
+    private Task<NotificationSettings> GetSettingsAsync(CancellationToken ct) =>
+        _settingsProvider.GetEffectiveSettingsAsync(ct);
 
     public async Task SendSignalAsync(TradeRecommendation recommendation, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableDiscord || string.IsNullOrWhiteSpace(settings.DiscordWebhookUrl))
+            return;
+
         var isLong = recommendation.TargetPrice >= recommendation.EntryPrice;
         var color = isLong ? ColorGreen : ColorRed;
         var directionLabel = isLong ? "매수 (Long)" : "매도 (Short)";
@@ -72,12 +85,16 @@ public sealed class DiscordNotificationChannel : INotificationChannel
             }
         };
 
-        await PostWebhookAsync(payload, ct);
+        await PostWebhookAsync(payload, settings.DiscordWebhookUrl, ct);
         _logger.LogInformation("Discord signal sent for {Symbol}", recommendation.Symbol);
     }
 
     public async Task SendAlertAsync(string message, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableDiscord || string.IsNullOrWhiteSpace(settings.DiscordWebhookUrl))
+            return;
+
         var payload = new
         {
             username = "StockTrader Bot",
@@ -93,11 +110,15 @@ public sealed class DiscordNotificationChannel : INotificationChannel
             }
         };
 
-        await PostWebhookAsync(payload, ct);
+        await PostWebhookAsync(payload, settings.DiscordWebhookUrl, ct);
     }
 
     public async Task SendDailyReportAsync(DailyReportData report, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableDiscord || string.IsNullOrWhiteSpace(settings.DiscordWebhookUrl))
+            return;
+
         var pnlSign = report.DailyPnl >= 0 ? "+" : "";
         var color = report.DailyPnl >= 0 ? ColorGreen : ColorRed;
         var topSignalsText = report.TopSignals.Count > 0
@@ -131,7 +152,7 @@ public sealed class DiscordNotificationChannel : INotificationChannel
             }
         };
 
-        await PostWebhookAsync(payload, ct);
+        await PostWebhookAsync(payload, settings.DiscordWebhookUrl, ct);
         _logger.LogInformation("Discord daily report sent for {Date}", report.ReportDate);
     }
 
@@ -139,12 +160,13 @@ public sealed class DiscordNotificationChannel : INotificationChannel
     {
         try
         {
+            var settings = await GetSettingsAsync(ct);
             var payload = new
             {
                 username = "StockTrader Bot",
                 content = "StockTrader Discord 연결 테스트 성공!"
             };
-            await PostWebhookAsync(payload, ct);
+            await PostWebhookAsync(payload, settings.DiscordWebhookUrl, ct);
             return true;
         }
         catch (Exception ex)
@@ -156,9 +178,9 @@ public sealed class DiscordNotificationChannel : INotificationChannel
 
     // ── Private helpers ───────────────────────────────────────────────
 
-    private async Task PostWebhookAsync(object payload, CancellationToken ct)
+    private async Task PostWebhookAsync(object payload, string webhookUrl, CancellationToken ct)
     {
-        var response = await _http.PostAsJsonAsync(_settings.DiscordWebhookUrl, payload, ct);
+        var response = await _http.PostAsJsonAsync(webhookUrl, payload, ct);
 
         if (!response.IsSuccessStatusCode)
         {

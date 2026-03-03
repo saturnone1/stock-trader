@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
@@ -21,6 +22,7 @@ public class MultiAccountRiskService : IRiskManagementService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TradingSettings _tradingSettings;
     private readonly IAccountManager _accountManager;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<MultiAccountRiskService> _logger;
 
     // 계좌 ID → 독립 RiskState (ConcurrentDictionary: 스레드 안전)
@@ -32,15 +34,21 @@ public class MultiAccountRiskService : IRiskManagementService
     // 활성 계좌가 없는 경우의 기본 상태
     private volatile RiskState _fallbackRiskState = new();
 
+    // 동일 평가 사이클 내 중복 DB 조회 방지 캐시 키
+    private const string OpenPositionsCacheKey = "risk:open_positions";
+    private static readonly TimeSpan OpenPositionsCacheTtl = TimeSpan.FromSeconds(5);
+
     public MultiAccountRiskService(
         IServiceScopeFactory scopeFactory,
         IOptions<TradingSettings> tradingSettings,
         IAccountManager accountManager,
+        IMemoryCache cache,
         ILogger<MultiAccountRiskService> logger)
     {
         _scopeFactory = scopeFactory;
         _tradingSettings = tradingSettings.Value;
         _accountManager = accountManager;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -79,9 +87,14 @@ public class MultiAccountRiskService : IRiskManagementService
         if (riskState.IsTradingHalted)
             return (false, "Trading halted: daily loss limit reached");
 
-        using var scope = _scopeFactory.CreateScope();
-        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
-        var allOpenPositions = await tradeRepo.GetOpenPositionsAsync(ct);
+        // 5초 TTL 캐시: 동일 평가 사이클 내 다수 신호가 연속 호출될 때 DB 왕복을 1회로 축소.
+        var allOpenPositions = await _cache.GetOrCreateAsync(OpenPositionsCacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = OpenPositionsCacheTtl;
+            using var scope = _scopeFactory.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+            return await repo.GetOpenPositionsAsync(ct);
+        }) ?? new List<Models.Position>();
 
         // 이 계좌의 포지션만 필터링.
         // AccountId == 0은 레거시(계좌 미지정) 데이터이므로 활성 계좌 포지션으로 포함한다.
@@ -184,8 +197,9 @@ public class MultiAccountRiskService : IRiskManagementService
             var pnlPercent = accountSize > 0 ? effectivePnL / accountSize : 0;
 
             var sectorCounts = accountPositions
+                .Where(p => !string.IsNullOrEmpty(p.Sector))
                 .GroupBy(p => p.Sector)
-                .ToDictionary(g => g.Key, g => g.Count());
+                .ToDictionary(g => g.Key!, g => g.Count());
 
             var accountRiskState = new RiskState
             {
@@ -212,8 +226,9 @@ public class MultiAccountRiskService : IRiskManagementService
         // 포트폴리오 전체 리스크 집계 (모든 계좌 합산)
         var totalPnLPercent = totalAccountSize > 0 ? totalPnL / totalAccountSize : 0;
         var allSectorCounts = allOpenPositions
+            .Where(p => !string.IsNullOrEmpty(p.Sector))
             .GroupBy(p => p.Sector)
-            .ToDictionary(g => g.Key, g => g.Count());
+            .ToDictionary(g => g.Key!, g => g.Count());
 
         _portfolioRiskState = new RiskState
         {

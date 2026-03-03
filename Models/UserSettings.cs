@@ -38,4 +38,34 @@ public class UserSettings
     /// null이면 appsettings.json 기본값 사용.
     /// </summary>
     public string? LiveParameterOverridesJson { get; set; }
+
+    // ── 외부 알림 채널 설정 ──────────────────────────────────────────────
+    // null이면 appsettings.json Notification 섹션 값 사용 (fallback).
+    // 값이 있으면 appsettings보다 우선 적용 (DB 오버라이드).
+
+    // Telegram
+    public bool? EnableTelegram { get; set; }
+    public string? TelegramBotToken { get; set; }
+    public string? TelegramChatId { get; set; }
+
+    // Discord
+    public bool? EnableDiscord { get; set; }
+    public string? DiscordWebhookUrl { get; set; }
+
+    // Email (SMTP)
+    public bool? EnableEmail { get; set; }
+    public string? SmtpHost { get; set; }
+    public int? SmtpPort { get; set; }
+    public bool? SmtpUseSsl { get; set; }
+    public string? SmtpUsername { get; set; }
+    public string? SmtpPassword { get; set; }
+    public string? EmailFrom { get; set; }
+    public string? EmailTo { get; set; }
+
+    // Daily Report
+    /// <summary>
+    /// 일일 리포트 발송 시간 (HH:mm, KST 기준). 예: "07:30".
+    /// null이면 appsettings.json의 DailyReportTime(ET 기준) 사용.
+    /// </summary>
+    public string? DailyReportTimeKst { get; set; }
 }

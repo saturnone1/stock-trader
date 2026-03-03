@@ -51,10 +51,22 @@ public class AccountManager : IAccountManager
 
     public async Task<TradingAccount?> GetActiveAccountAsync(CancellationToken ct = default)
     {
+        // _activeAccountId가 유효한 값으로 캐시되어 있으면 DB 조회 없이 직접 반환한다.
+        // SetActiveAccountAsync/AddAccountAsync/DeleteAccountAsync가 Interlocked로 이 값을 항상 동기화한다.
+        var cachedId = Volatile.Read(ref _activeAccountId);
+        if (cachedId != NoActiveAccount)
+            return await GetAccountByIdAsync(cachedId, ct);
+
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        return await db.TradingAccounts
+        var account = await db.TradingAccounts
             .Where(a => a.IsActive && a.IsEnabled)
             .FirstOrDefaultAsync(ct);
+
+        // DB 결과를 캐시에 동기화 (최초 로드 또는 앱 재시작 후 복원)
+        if (account != null)
+            Interlocked.CompareExchange(ref _activeAccountId, account.Id, NoActiveAccount);
+
+        return account;
     }
 
     public async Task<TradingAccount?> GetAccountByIdAsync(int accountId, CancellationToken ct = default)

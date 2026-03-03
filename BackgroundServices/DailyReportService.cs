@@ -8,18 +8,22 @@ using TimeZoneConverter;
 namespace StockTrader.BackgroundServices;
 
 /// <summary>
-/// 매 거래일 설정된 시간(기본 16:30 ET)에 일일 요약 리포트를
-/// 활성화된 모든 알림 채널로 발송하는 백그라운드 서비스.
+/// 매 거래일 설정된 시간에 일일 요약 리포트를 활성화된 모든 알림 채널로 발송하는 백그라운드 서비스.
+/// 발송 시간 우선순위:
+///   1. DB UserSettings.DailyReportTimeKst (KST 기준, 예: "07:30") → ET로 변환
+///   2. appsettings.json Notification.DailyReportTime (ET 기준, 예: "16:30")
 /// </summary>
 public sealed class DailyReportService : BackgroundService
 {
     private static readonly TimeZoneInfo EasternTime =
         TZConvert.GetTimeZoneInfo("America/New_York");
+    private static readonly TimeZoneInfo KoreanTime =
+        TZConvert.GetTimeZoneInfo("Asia/Seoul");
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly INotificationDispatcher _dispatcher;
     private readonly IAccountManager _accountManager;
-    private readonly NotificationSettings _notificationSettings;
+    private readonly NotificationSettings _appNotificationSettings;
     private readonly ILogger<DailyReportService> _logger;
 
     public DailyReportService(
@@ -29,24 +33,24 @@ public sealed class DailyReportService : BackgroundService
         IOptions<NotificationSettings> notificationSettings,
         ILogger<DailyReportService> logger)
     {
-        _scopeFactory = scopeFactory;
-        _dispatcher = dispatcher;
-        _accountManager = accountManager;
-        _notificationSettings = notificationSettings.Value;
-        _logger = logger;
+        _scopeFactory             = scopeFactory;
+        _dispatcher               = dispatcher;
+        _accountManager           = accountManager;
+        _appNotificationSettings  = notificationSettings.Value;
+        _logger                   = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "DailyReportService started. Report time: {Time} ET",
-            _notificationSettings.DailyReportTime);
+            "DailyReportService started. Default report time: {Time} ET (DB override via DailyReportTimeKst supported)",
+            _appNotificationSettings.DailyReportTime);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var delay = CalculateDelayToNextReport();
+                var delay = await CalculateDelayToNextReportAsync(stoppingToken);
                 _logger.LogDebug(
                     "Next daily report in {Hours:F1} hours", delay.TotalHours);
 
@@ -69,14 +73,58 @@ public sealed class DailyReportService : BackgroundService
         }
     }
 
-    private TimeSpan CalculateDelayToNextReport()
+    /// <summary>
+    /// DB UserSettings.DailyReportTimeKst (KST) 또는 appsettings DailyReportTime (ET)을
+    /// 기준으로 다음 리포트 발송까지 남은 시간을 계산한다.
+    /// </summary>
+    private async Task<TimeSpan> CalculateDelayToNextReportAsync(CancellationToken ct)
+    {
+        // DB에서 KST 설정 조회 시도
+        TimeSpan? reportTimeEt = null;
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
+            var userSettings = await settingsRepo.GetAsync(ct);
+
+            if (!string.IsNullOrWhiteSpace(userSettings.DailyReportTimeKst)
+                && TimeSpan.TryParse(userSettings.DailyReportTimeKst, out var kstTime))
+            {
+                // KST 시간을 ET로 변환: 오늘 날짜에 KST 시간을 적용한 후 타임존 변환
+                var nowKst = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KoreanTime);
+                var kstDateTime = nowKst.Date + kstTime;
+
+                // KST → UTC → ET
+                var kstDateTimeUtc = TimeZoneInfo.ConvertTimeToUtc(kstDateTime, KoreanTime);
+                var etDateTime = TimeZoneInfo.ConvertTimeFromUtc(kstDateTimeUtc, EasternTime);
+
+                reportTimeEt = etDateTime.TimeOfDay;
+                _logger.LogDebug(
+                    "Using DB DailyReportTimeKst={Kst} → ET={Et}",
+                    userSettings.DailyReportTimeKst, etDateTime.ToString("HH:mm"));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "DB DailyReportTimeKst 조회 실패 — appsettings fallback 사용");
+        }
+
+        // DB 설정이 없으면 appsettings ET 시간 사용
+        if (reportTimeEt == null)
+        {
+            if (!TimeSpan.TryParse(_appNotificationSettings.DailyReportTime, out var parsedEt))
+                parsedEt = TimeSpan.FromHours(16.5); // 최종 기본값 16:30 ET
+            reportTimeEt = parsedEt;
+        }
+
+        return CalculateDelayFromEtTime(reportTimeEt.Value);
+    }
+
+    /// <summary>ET 기준 시간(TimeSpan)으로 다음 영업일 발송까지 남은 Delay를 계산한다.</summary>
+    private static TimeSpan CalculateDelayFromEtTime(TimeSpan reportTimeEt)
     {
         var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTime);
-
-        if (!TimeSpan.TryParse(_notificationSettings.DailyReportTime, out var reportTime))
-            reportTime = TimeSpan.FromHours(16.5); // 기본 16:30
-
-        var todayReport = nowEt.Date + reportTime;
+        var todayReport = nowEt.Date + reportTimeEt;
 
         // 오늘 리포트 시간이 이미 지났으면 다음 영업일 리포트 시간으로 계산
         var nextReport = nowEt < todayReport ? todayReport : todayReport.AddDays(1);

@@ -3,8 +3,8 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
 using StockTrader.Services.Broker;
+using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
-using TimeZoneConverter;
 
 namespace StockTrader.Services.Order;
 
@@ -25,6 +25,7 @@ public class OrderService : IOrderService
     private readonly ITradeRepository _tradeRepo;
     private readonly ISettingsRepository _settingsRepo;
     private readonly INotificationService _notificationService;
+    private readonly IMarketCalendar _marketCalendar;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
@@ -32,12 +33,14 @@ public class OrderService : IOrderService
         ITradeRepository tradeRepo,
         ISettingsRepository settingsRepo,
         INotificationService notificationService,
+        IMarketCalendar marketCalendar,
         ILogger<OrderService> logger)
     {
         _accountManager = accountManager;
         _tradeRepo = tradeRepo;
         _settingsRepo = settingsRepo;
         _notificationService = notificationService;
+        _marketCalendar = marketCalendar;
         _logger = logger;
     }
 
@@ -67,14 +70,8 @@ public class OrderService : IOrderService
         }
 
         // 3. 장외 시간 주문 차단 (Market Order + TimeInForce.Day는 정규장에서만 체결됨)
-        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
-            TZConvert.GetTimeZoneInfo("America/New_York"));
-        var timeOfDay = nowEt.TimeOfDay;
-        var isRegularHours = nowEt.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)
-            && timeOfDay >= new TimeSpan(9, 30, 0)
-            && timeOfDay < new TimeSpan(16, 0, 0);
-
-        if (!isRegularHours)
+        var nowEt = _marketCalendar.GetLocalNow(MarketType.US);
+        if (!_marketCalendar.IsMarketOpen(MarketType.US))
         {
             _logger.LogWarning(
                 "[ORDER BLOCKED] {Pattern} {Symbol}: 장외 시간 주문 차단 (ET {Time:HH:mm}, {DayOfWeek})",
@@ -108,6 +105,7 @@ public class OrderService : IOrderService
         if (success)
         {
             recommendation.WasExecuted = true;
+            await _tradeRepo.UpdateRecommendationAsync(recommendation, ct);
 
             var position = new Position
             {

@@ -171,6 +171,34 @@ public class BacktestService : IBacktestService
             return new BacktestResult { Warnings = warnings };
         }
 
+        return await RunSimulationAsync(
+            symbols, symbolDataMap, detectors, regimeByDate,
+            from, to, initialCapital, slippagePercent, commissionPerTrade,
+            timeFrame, riskParams, exitOverrides, slippageModel,
+            warnings, actualDataFrom, simulator, ct);
+    }
+
+    /// <summary>
+    /// 핵심 시뮬레이션 루프 (Phase 2~3). RunCoreAsync와 RunCoreWithPreloadedDataAsync가 공유.
+    /// symbolDataMap이 이미 구성된 상태에서 호출됩니다.
+    /// </summary>
+    private async Task<BacktestResult> RunSimulationAsync(
+        List<string> symbols,
+        Dictionary<string, SymbolPreparedData> symbolDataMap,
+        List<IPatternDetector> detectors,
+        Dictionary<DateOnly, MarketRegime> regimeByDate,
+        DateTime from, DateTime to,
+        decimal initialCapital,
+        decimal slippagePercent, decimal commissionPerTrade,
+        TimeFrame timeFrame,
+        RiskParams riskParams,
+        PatternParameterOverrides? exitOverrides,
+        SlippageModel slippageModel,
+        List<string> warnings,
+        DateTime? actualDataFrom,
+        TradeSimulator simulator,
+        CancellationToken ct)
+    {
         // ── Phase 2: 날짜순 포트폴리오 시뮬레이션 ──
         var allDates = symbolDataMap.Values
             .SelectMany(d => d.DateToIndex.Keys)
@@ -376,6 +404,92 @@ public class BacktestService : IBacktestService
         };
     }
 
+    /// <summary>
+    /// Walk-Forward 전용 오버로드: 이미 로드된 symbolDataMap에서 날짜 범위를 슬라이싱하여
+    /// API 호출 없이 시뮬레이션을 실행합니다.
+    /// </summary>
+    private async Task<BacktestResult> RunCoreWithPreloadedDataAsync(
+        List<string> symbols,
+        Dictionary<string, SymbolPreparedData> fullDataMap,
+        List<IPatternDetector> detectors,
+        Dictionary<DateOnly, MarketRegime> regimeByDate,
+        DateTime from, DateTime to,
+        decimal initialCapital,
+        decimal slippagePercent, decimal commissionPerTrade,
+        TimeFrame timeFrame,
+        RiskParams riskParams,
+        PatternParameterOverrides? exitOverrides,
+        SlippageModel slippageModel,
+        CancellationToken ct)
+    {
+        var simulator = new TradeSimulator(_indicators, _logger);
+        var warnings = new List<string>();
+        DateTime? actualDataFrom = null;
+
+        // 사전 로드된 데이터에서 날짜 범위 슬라이싱 (API 재호출 없음)
+        var symbolDataMap = new Dictionary<string, SymbolPreparedData>();
+        var toDate = DateOnly.FromDateTime(to);
+
+        // warmupDays만큼 앞의 데이터가 필요하므로 from 이전 데이터도 포함
+        var warmupDays = timeFrame switch
+        {
+            TimeFrame.OneMinute     => 2,
+            TimeFrame.FiveMinute    => 10,
+            TimeFrame.FifteenMinute => 15,
+            _                       => 400
+        };
+        var fetchFrom = DateOnly.FromDateTime(from.AddDays(-warmupDays));
+
+        foreach (var symbol in symbols)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!fullDataMap.TryGetValue(symbol, out var full)) continue;
+
+            // 날짜 범위에 해당하는 bar 인덱스 범위 결정
+            int startIdx = -1, endIdx = -1;
+            for (int i = 0; i < full.Bars.Length; i++)
+            {
+                var d = DateOnly.FromDateTime(full.Bars[i].Timestamp);
+                if (d >= fetchFrom && startIdx == -1) startIdx = i;
+                if (d <= toDate) endIdx = i;
+            }
+
+            if (startIdx == -1 || endIdx < startIdx) continue;
+
+            var barsSlice = full.Bars[startIdx..(endIdx + 1)];
+            var atrSlice  = full.Atr[startIdx..(endIdx + 1)];
+            var closesSlice = full.Closes[startIdx..(endIdx + 1)];
+            var sma200Slice = full.Sma200[startIdx..(endIdx + 1)];
+
+            if (barsSlice.Length < TradeSimulator.MinWarmupBars)
+            {
+                warnings.Add($"{symbol}: 데이터 부족 ({barsSlice.Length}개)");
+                continue;
+            }
+
+            // 슬라이싱된 범위에 맞는 dateToIndex 재구성
+            var dateToIndex = new Dictionary<DateOnly, int>(barsSlice.Length);
+            for (int i = 0; i < barsSlice.Length; i++)
+                dateToIndex[DateOnly.FromDateTime(barsSlice[i].Timestamp)] = i;
+
+            symbolDataMap[symbol] = new SymbolPreparedData(barsSlice, atrSlice, closesSlice, sma200Slice, dateToIndex);
+
+            var firstTs = barsSlice[0].Timestamp;
+            if (!actualDataFrom.HasValue || firstTs < actualDataFrom.Value)
+                actualDataFrom = firstTs;
+        }
+
+        if (symbolDataMap.Count == 0)
+            return new BacktestResult { Warnings = warnings };
+
+        // 이하 RunCoreAsync와 동일한 시뮬레이션 로직 (공통 메서드로 위임)
+        return await RunSimulationAsync(
+            symbols, symbolDataMap, detectors, regimeByDate,
+            from, to, initialCapital, slippagePercent, commissionPerTrade,
+            timeFrame, riskParams, exitOverrides, slippageModel,
+            warnings, actualDataFrom, simulator, ct);
+    }
+
     /// <summary>심볼별 사전 계산 데이터</summary>
     internal sealed record SymbolPreparedData(
         OhlcvBar[] Bars,
@@ -397,6 +511,44 @@ public class BacktestService : IBacktestService
         _logger.LogInformation("Walk-Forward 분석 시작 (IS:{IS}개월, OOS:{OOS}개월)",
             request.WalkForwardInSampleMonths, request.WalkForwardOutOfSampleMonths);
 
+        // ── 전체 기간 데이터 1회 사전 로드 (윈도우마다 API 재호출 방지) ──
+        // 일봉 기준 warmup 400일치를 포함하여 충분히 이전 데이터부터 로드
+        var warmupDays = request.TimeFrame switch
+        {
+            TimeFrame.OneMinute     => 2,
+            TimeFrame.FiveMinute    => 10,
+            TimeFrame.FifteenMinute => 15,
+            _                       => 400
+        };
+        var wfFullDataMap = new Dictionary<string, SymbolPreparedData>();
+        foreach (var symbol in request.Symbols)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var fetchFrom = request.From.AddDays(-warmupDays);
+                var bars = await dataFeed.GetHistoricalBarsAsync(symbol, request.TimeFrame, fetchFrom, request.To, ct);
+                if (bars.Count < TradeSimulator.MinWarmupBars) continue;
+
+                var barsArray = bars.ToArray();
+                var atrArray = _indicators.ATR(barsArray, 14);
+                var closesArray = IndicatorService.ExtractCloses(barsArray);
+                var sma200Array = _indicators.SMA(closesArray, 200);
+
+                var dateToIndex = new Dictionary<DateOnly, int>(barsArray.Length);
+                for (int i = 0; i < barsArray.Length; i++)
+                    dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
+
+                wfFullDataMap[symbol] = new SymbolPreparedData(barsArray, atrArray, closesArray, sma200Array, dateToIndex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Walk-Forward 사전 로드 실패: {Symbol}", symbol);
+            }
+        }
+
+        _logger.LogInformation("Walk-Forward 사전 데이터 로드 완료: {Count}개 심볼", wfFullDataMap.Count);
+
         var windows = new List<WalkForwardWindow>();
         var windowStart = request.From;
         var totalMonths = request.WalkForwardInSampleMonths + request.WalkForwardOutOfSampleMonths;
@@ -411,15 +563,16 @@ public class BacktestService : IBacktestService
             var oosTo = isTo.AddMonths(request.WalkForwardOutOfSampleMonths);
             if (oosTo > request.To) oosTo = request.To;
 
-            var isResult = await RunCoreAsync(
-                request.Symbols, dataFeed, detectors, regimeByDate,
+            // 사전 로드된 데이터에서 슬라이싱 (API 재호출 없음)
+            var isResult = await RunCoreWithPreloadedDataAsync(
+                request.Symbols, wfFullDataMap, detectors, regimeByDate,
                 isFrom, isTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
                 request.TimeFrame, riskParams, request.ParameterOverrides,
                 request.SlippageModel, ct);
 
-            var oosResult = await RunCoreAsync(
-                request.Symbols, dataFeed, detectors, regimeByDate,
+            var oosResult = await RunCoreWithPreloadedDataAsync(
+                request.Symbols, wfFullDataMap, detectors, regimeByDate,
                 oosFrom, oosTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
                 request.TimeFrame, riskParams, request.ParameterOverrides,

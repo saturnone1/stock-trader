@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -6,15 +7,23 @@ namespace StockTrader.Data.Repositories;
 
 public class SettingsRepository : ISettingsRepository
 {
-    private readonly AppDbContext _db;
+    private const string CacheKey = "UserSettings";
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(2);
 
-    public SettingsRepository(AppDbContext db)
+    private readonly AppDbContext _db;
+    private readonly IMemoryCache _cache;
+
+    public SettingsRepository(AppDbContext db, IMemoryCache cache)
     {
         _db = db;
+        _cache = cache;
     }
 
     public async Task<UserSettings> GetAsync(CancellationToken ct = default)
     {
+        if (_cache.TryGetValue(CacheKey, out UserSettings? cached) && cached != null)
+            return cached;
+
         var settings = await _db.UserSettings.FirstOrDefaultAsync(ct);
         if (settings == null)
         {
@@ -36,6 +45,8 @@ public class SettingsRepository : ISettingsRepository
             _db.UserSettings.Add(settings);
             await _db.SaveChangesAsync(ct);
         }
+
+        _cache.Set(CacheKey, settings, CacheTtl);
         return settings;
     }
 
@@ -44,5 +55,8 @@ public class SettingsRepository : ISettingsRepository
         settings.LastModified = DateTime.UtcNow;
         _db.UserSettings.Update(settings);
         await _db.SaveChangesAsync(ct);
+
+        // 저장 후 캐시 무효화 — 다음 GetAsync에서 DB에서 최신 값을 로드한다
+        _cache.Remove(CacheKey);
     }
 }

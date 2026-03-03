@@ -66,7 +66,7 @@ using (var scope = app.Services.CreateScope())
                 existingColumns.Add(reader.GetString(1)); // column name
         }
 
-        // 누락된 리스크 컬럼 추가
+        // 누락된 컬럼 추가 (리스크 관리 + 알림 설정)
         var alterStatements = new Dictionary<string, string>
         {
             ["RiskPerTradePercent"]   = "ALTER TABLE UserSettings ADD COLUMN RiskPerTradePercent REAL NOT NULL DEFAULT 0.01",
@@ -75,6 +75,21 @@ using (var scope = app.Services.CreateScope())
             ["MaxPositionsPerSector"] = "ALTER TABLE UserSettings ADD COLUMN MaxPositionsPerSector INTEGER NOT NULL DEFAULT 2",
             ["MinExpectancy"]         = "ALTER TABLE UserSettings ADD COLUMN MinExpectancy REAL NOT NULL DEFAULT 0.0",
             ["LiveParameterOverridesJson"] = "ALTER TABLE UserSettings ADD COLUMN LiveParameterOverridesJson TEXT",
+            // 알림 채널 설정 (nullable — null이면 appsettings.json fallback)
+            ["EnableTelegram"]     = "ALTER TABLE UserSettings ADD COLUMN EnableTelegram INTEGER",
+            ["TelegramBotToken"]   = "ALTER TABLE UserSettings ADD COLUMN TelegramBotToken TEXT",
+            ["TelegramChatId"]     = "ALTER TABLE UserSettings ADD COLUMN TelegramChatId TEXT",
+            ["EnableDiscord"]      = "ALTER TABLE UserSettings ADD COLUMN EnableDiscord INTEGER",
+            ["DiscordWebhookUrl"]  = "ALTER TABLE UserSettings ADD COLUMN DiscordWebhookUrl TEXT",
+            ["EnableEmail"]        = "ALTER TABLE UserSettings ADD COLUMN EnableEmail INTEGER",
+            ["SmtpHost"]           = "ALTER TABLE UserSettings ADD COLUMN SmtpHost TEXT",
+            ["SmtpPort"]           = "ALTER TABLE UserSettings ADD COLUMN SmtpPort INTEGER",
+            ["SmtpUseSsl"]         = "ALTER TABLE UserSettings ADD COLUMN SmtpUseSsl INTEGER",
+            ["SmtpUsername"]       = "ALTER TABLE UserSettings ADD COLUMN SmtpUsername TEXT",
+            ["SmtpPassword"]       = "ALTER TABLE UserSettings ADD COLUMN SmtpPassword TEXT",
+            ["EmailFrom"]          = "ALTER TABLE UserSettings ADD COLUMN EmailFrom TEXT",
+            ["EmailTo"]            = "ALTER TABLE UserSettings ADD COLUMN EmailTo TEXT",
+            ["DailyReportTimeKst"] = "ALTER TABLE UserSettings ADD COLUMN DailyReportTimeKst TEXT",
         };
 
         foreach (var (col, sql) in alterStatements)

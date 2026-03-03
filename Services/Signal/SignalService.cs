@@ -52,9 +52,14 @@ public class SignalService : ISignalService
             .Where(t => symbols.Contains(t.Symbol))
             .ToDictionaryAsync(t => t.Symbol, t => t.Sector, StringComparer.OrdinalIgnoreCase, ct);
 
+        // 패턴 통계를 루프 진입 전 일괄 로드하여 N+1 DB 왕복 제거.
+        // GetAllStatsAsync는 단일 쿼리로 전체 PatternStats를 반환한다.
+        var allStats = await _statsService.GetAllStatsAsync(ct);
+        var statsCache = (allStats ?? []).ToDictionary(s => s.PatternType);
+
         foreach (var signal in signals)
         {
-            var stats = await _statsService.GetStatsAsync(signal.PatternType, ct: ct);
+            statsCache.TryGetValue(signal.PatternType, out var stats);
 
             // Gap 3 fix: 거래 이력이 충분한 경우에만 Expectancy 필터 적용.
             // 신규 패턴(stats==null 또는 샘플 부족)은 통과시켜서 거래 기회 확보.

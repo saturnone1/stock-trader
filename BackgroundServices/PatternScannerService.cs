@@ -67,7 +67,7 @@ public class PatternScannerService : BackgroundService
             await foreach (var symbol in _symbolChannel.Reader.ReadAllAsync(stoppingToken))
             {
                 // Circuit breaker: cooldown when too many consecutive failures.
-                if (_consecutiveFailures >= MaxConsecutiveFailures)
+                if (Volatile.Read(ref _consecutiveFailures) >= MaxConsecutiveFailures)
                 {
                     _logger.LogWarning(
                         "{Service} entering cooldown after {Failures} consecutive failures. " +
@@ -75,7 +75,7 @@ public class PatternScannerService : BackgroundService
                         nameof(PatternScannerService), _consecutiveFailures, CooldownPeriod);
 
                     await Task.Delay(CooldownPeriod, stoppingToken);
-                    _consecutiveFailures = 0;
+                    Interlocked.Exchange(ref _consecutiveFailures, 0);
                 }
 
                 try
@@ -87,7 +87,7 @@ public class PatternScannerService : BackgroundService
                         maxRetries: 3,
                         ct: stoppingToken);
 
-                    _consecutiveFailures = 0;
+                    Interlocked.Exchange(ref _consecutiveFailures, 0);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -96,10 +96,10 @@ public class PatternScannerService : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _consecutiveFailures++;
+                    Interlocked.Increment(ref _consecutiveFailures);
                     _logger.LogError(ex,
                         "Error scanning patterns for {Symbol} (consecutive failures: {Failures})",
-                        symbol, _consecutiveFailures);
+                        symbol, Volatile.Read(ref _consecutiveFailures));
                 }
             }
         }

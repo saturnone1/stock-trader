@@ -109,6 +109,10 @@ public class MarketDataIngestionService : BackgroundService
         var ingested = 0;
         var errors = 0;
 
+        // Collect all bars first; write to channel per-symbol so scanners get notified promptly.
+        var batchBars = new List<Models.OhlcvBar>(settings.WatchlistSymbols.Count);
+        var successfulSymbols = new List<string>(settings.WatchlistSymbols.Count);
+
         foreach (var symbol in settings.WatchlistSymbols)
         {
             try
@@ -116,8 +120,8 @@ public class MarketDataIngestionService : BackgroundService
                 var bar = await dataFeed.GetLatestBarAsync(symbol, TimeFrame.OneMinute, ct);
                 if (bar != null)
                 {
-                    await ohlcvRepo.AddBarsAsync(new[] { bar }, ct);
-                    await _symbolChannel.Writer.WriteAsync(symbol, ct);
+                    batchBars.Add(bar);
+                    successfulSymbols.Add(symbol);
                     ingested++;
                 }
             }
@@ -126,6 +130,18 @@ public class MarketDataIngestionService : BackgroundService
                 errors++;
                 _logger.LogError(ex, "Error ingesting data for {Symbol}", symbol);
             }
+        }
+
+        // Single batch INSERT — one transaction instead of N individual commits.
+        if (batchBars.Count > 0)
+        {
+            await ohlcvRepo.AddBarsAsync(batchBars, ct);
+        }
+
+        // Notify pattern scanner per-symbol (order preserved).
+        foreach (var symbol in successfulSymbols)
+        {
+            await _symbolChannel.Writer.WriteAsync(symbol, ct);
         }
 
         _logger.LogInformation(

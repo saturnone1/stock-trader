@@ -88,27 +88,45 @@ internal static class PerformanceCalculator
     public static List<SymbolStats> ComputePerSymbolStats(
         List<TradeRecord> trades, decimal initialCapital)
     {
-        return trades
-            .GroupBy(t => t.Symbol)
-            .Select(g =>
+        // 단일 패스로 모든 집계값 계산 (LINQ 다중 순회 제거)
+        var groups = new Dictionary<string, (int count, int wins, decimal pnlSum, decimal pnlPctSum, decimal maxPosSize)>();
+
+        foreach (var t in trades)
+        {
+            var posSize = t.EntryPrice * t.Quantity;
+            if (groups.TryGetValue(t.Symbol, out var g))
             {
-                var all = g.ToList();
-                var wins = all.Count(t => t.IsWin);
-                var totalPnl = all.Sum(t => t.PnL);
-                var maxPosSize = all.Max(t => t.EntryPrice * t.Quantity);
-                return new SymbolStats
-                {
-                    Symbol = g.Key,
-                    TradeCount = all.Count,
-                    WinRate = all.Count > 0 ? (decimal)wins / all.Count : 0,
-                    TotalPnL = totalPnl,
-                    AvgPnLPercent = all.Count > 0 ? all.Average(t => t.PnLPercent) : 0,
-                    MaxPositionSize = maxPosSize,
-                    MaxAllocationPercent = initialCapital > 0 ? maxPosSize / initialCapital : 0
-                };
-            })
-            .OrderByDescending(s => s.TotalPnL)
-            .ToList();
+                groups[t.Symbol] = (
+                    g.count + 1,
+                    g.wins + (t.IsWin ? 1 : 0),
+                    g.pnlSum + t.PnL,
+                    g.pnlPctSum + t.PnLPercent,
+                    Math.Max(g.maxPosSize, posSize)
+                );
+            }
+            else
+            {
+                groups[t.Symbol] = (1, t.IsWin ? 1 : 0, t.PnL, t.PnLPercent, posSize);
+            }
+        }
+
+        var result = new List<SymbolStats>(groups.Count);
+        foreach (var (symbol, g) in groups)
+        {
+            result.Add(new SymbolStats
+            {
+                Symbol = symbol,
+                TradeCount = g.count,
+                WinRate = g.count > 0 ? (decimal)g.wins / g.count : 0,
+                TotalPnL = g.pnlSum,
+                AvgPnLPercent = g.count > 0 ? g.pnlPctSum / g.count : 0,
+                MaxPositionSize = g.maxPosSize,
+                MaxAllocationPercent = initialCapital > 0 ? g.maxPosSize / initialCapital : 0
+            });
+        }
+
+        result.Sort((a, b) => b.TotalPnL.CompareTo(a.TotalPnL));
+        return result;
     }
 
     public static decimal ComputeGroupDrawdown(List<TradeRecord> trades)
