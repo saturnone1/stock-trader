@@ -53,7 +53,8 @@ public sealed class AuthService : IAuthService
         if (!user.IsActive)
         {
             await _audit.LogAsync(user.Id, "LOGIN_FAILED", "Account inactive", ct: ct);
-            return new LoginResult(false, "비활성화된 계정입니다.", null);
+            // Use the same message as "user not found" to prevent user enumeration
+            return new LoginResult(false, "아이디 또는 비밀번호가 올바르지 않습니다.", null);
         }
 
         // Lockout check
@@ -148,14 +149,16 @@ public sealed class AuthService : IAuthService
         if (user == null)
             return (false, "사용자를 찾을 수 없습니다.");
 
+        // Validate new password format BEFORE verifying old password to avoid
+        // revealing whether the old password is correct when the new one is invalid.
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+            return (false, "새 비밀번호는 최소 8자 이상이어야 합니다.");
+
         if (!VerifyPassword(oldPassword, user.PasswordHash, user.Salt))
         {
             await _audit.LogAsync(userId, "PASSWORD_CHANGE_FAILED", "Wrong current password", ct: ct);
             return (false, "현재 비밀번호가 올바르지 않습니다.");
         }
-
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
-            return (false, "새 비밀번호는 최소 8자 이상이어야 합니다.");
 
         var (hash, salt) = HashPassword(newPassword);
         user.PasswordHash = hash;

@@ -2,9 +2,11 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MudBlazor.Services;
 using Serilog;
 using StockTrader.Components;
+using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Extensions;
 using StockTrader.Models;
@@ -399,7 +401,7 @@ app.MapPost("/api/auth/login", async (HttpContext ctx, IAuthService auth, IAudit
 
     var result = await auth.LoginAsync(username, password);
     if (!result.Success || result.Principal == null)
-        return Results.Unauthorized();
+        return Results.Json(new { error = result.ErrorMessage }, statusCode: 401);
 
     await ctx.SignInAsync(
         CookieAuthenticationDefaults.AuthenticationScheme,
@@ -418,7 +420,8 @@ app.MapPost("/api/auth/logout", async (HttpContext ctx, IAuditService audit) =>
     return Results.Ok(new { message = "로그아웃 완료" });
 });
 
-app.MapPost("/api/auth/register", async (HttpContext ctx, IAuthService auth) =>
+app.MapPost("/api/auth/register", async (HttpContext ctx, IAuthService auth,
+    IOptionsMonitor<SecuritySettings> securityOptions) =>
 {
     string username, password;
     try
@@ -432,9 +435,21 @@ app.MapPost("/api/auth/register", async (HttpContext ctx, IAuthService auth) =>
         return Results.BadRequest(new { error = "Invalid JSON body." });
     }
 
+    bool wasFirstUser = !await auth.HasAnyUserAsync();
+
     var result = await auth.RegisterAsync(username, password);
     if (!result.Success)
         return Results.BadRequest(new { error = result.ErrorMessage });
+
+    // Auto-disable registration after the first user is created to prevent
+    // unauthorized accounts from being added to a single-user system.
+    if (wasFirstUser)
+    {
+        securityOptions.CurrentValue.AllowRegistration = false;
+        var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogInformation(
+            "First user '{Username}' registered. AllowRegistration set to false.", username);
+    }
 
     return Results.Ok(new { message = "사용자 등록 완료", userId = result.UserId });
 }).RequireRateLimiting("login");
@@ -452,7 +467,7 @@ app.MapPost("/api/auth/change-password", async (HttpContext ctx, IAuthService au
     try
     {
         using var body = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
-        oldPassword = body.RootElement.GetProperty("oldPassword").GetString() ?? "";
+        oldPassword = body.RootElement.GetProperty("currentPassword").GetString() ?? "";
         newPassword = body.RootElement.GetProperty("newPassword").GetString() ?? "";
     }
     catch

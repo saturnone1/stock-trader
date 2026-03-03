@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<OhlcvBar>(entity =>
         {
             entity.HasIndex(b => new { b.Symbol, b.TimeFrame, b.Timestamp }).IsUnique();
+            // TimeFrame별 전체 쿼리 가속 (예: 모든 Daily 바 일괄 조회)
+            entity.HasIndex(b => new { b.TimeFrame, b.Symbol, b.Timestamp });
             entity.Ignore(b => b.Range);
             entity.Ignore(b => b.IsBullish);
             entity.Ignore(b => b.Body);
