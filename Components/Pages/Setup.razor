@@ -1,0 +1,332 @@
+@page "/setup"
+@layout EmptyLayout
+@using System.Net.Http.Json
+@using System.Text.RegularExpressions
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+
+<PageTitle>초기 설정 — 주식 트레이더</PageTitle>
+
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            background: #121212;">
+    <MudContainer MaxWidth="MaxWidth.ExtraSmall">
+        <MudStack Spacing="4" AlignItems="AlignItems.Center">
+
+            @* 로고 영역 *@
+            <MudStack Row="false" AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.ShowChart"
+                         Style="font-size: 3rem; color: #1565C0;" />
+                <MudText Typo="Typo.h5" Style="font-weight: 700; letter-spacing: 0.02em;">
+                    주식 트레이더
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    최초 계정 등록
+                </MudText>
+            </MudStack>
+
+            @* 등록 카드 *@
+            <MudPaper Elevation="4" Class="pa-8" Style="width: 100%; border-radius: 12px;
+                      background: #1E1E1E; border: 1px solid rgba(255,255,255,0.07);">
+                <MudStack Spacing="4">
+
+                    <div>
+                        <MudText Typo="Typo.h6" Style="font-weight: 600;">관리자 계정 등록</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                            최초 1회만 등록 가능합니다. 안전한 비밀번호를 사용하세요.
+                        </MudText>
+                    </div>
+
+                    @* 로딩 중 *@
+                    @if (_isChecking)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Class="py-4">
+                            <MudProgressCircular Indeterminate="true" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">확인 중...</MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        @* 오류 메시지 *@
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+                        }
+
+                        @* 성공 메시지 *@
+                        @if (_isSuccess)
+                        {
+                            <MudAlert Severity="Severity.Success" Dense="true"
+                                      Icon="@Icons.Material.Filled.CheckCircle">
+                                계정이 생성되었습니다. 로그인 중...
+                            </MudAlert>
+                        }
+
+                        @* 아이디 *@
+                        <MudTextField @bind-Value="_username"
+                                      Label="아이디"
+                                      HelperText="영문, 숫자, 밑줄 사용 (4자 이상)"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Person"
+                                      Disabled="@(_isLoading || _isSuccess)"
+                                      Immediate="true"
+                                      Error="@(!string.IsNullOrEmpty(_usernameError))"
+                                      ErrorText="@_usernameError"
+                                      autocomplete="username" />
+
+                        @* 비밀번호 *@
+                        <MudTextField @bind-Value="_password"
+                                      Label="비밀번호"
+                                      HelperText="8자 이상, 영문 + 숫자 포함"
+                                      Variant="Variant.Outlined"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Adornment="Adornment.End"
+                                      AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                      OnAdornmentClick="@(() => _showPassword = !_showPassword)"
+                                      Disabled="@(_isLoading || _isSuccess)"
+                                      Immediate="true"
+                                      Error="@(!string.IsNullOrEmpty(_passwordError))"
+                                      ErrorText="@_passwordError"
+                                      autocomplete="new-password" />
+
+                        @* 비밀번호 강도 표시 *@
+                        @if (!string.IsNullOrEmpty(_password))
+                        {
+                            var strength = GetPasswordStrength(_password);
+                            <MudStack Spacing="1">
+                                <MudProgressLinear Value="@strength.Score"
+                                                   Max="100"
+                                                   Color="@strength.Color"
+                                                   Rounded="true"
+                                                   Style="height: 4px;" />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    비밀번호 강도: <span style="color: @strength.TextColor;">@strength.Label</span>
+                                </MudText>
+                            </MudStack>
+                        }
+
+                        @* 비밀번호 확인 *@
+                        <MudTextField @bind-Value="_confirmPassword"
+                                      Label="비밀번호 확인"
+                                      Variant="Variant.Outlined"
+                                      InputType="InputType.Password"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@(_confirmPassword == _password && !string.IsNullOrEmpty(_confirmPassword) ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Lock)"
+                                      AdornmentColor="@(_confirmPassword == _password && !string.IsNullOrEmpty(_confirmPassword) ? Color.Success : Color.Default)"
+                                      Disabled="@(_isLoading || _isSuccess)"
+                                      Immediate="true"
+                                      Error="@(!string.IsNullOrEmpty(_confirmError))"
+                                      ErrorText="@_confirmError"
+                                      autocomplete="new-password" />
+
+                        @* 등록 버튼 *@
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   Size="Size.Large"
+                                   OnClick="@RegisterAsync"
+                                   Disabled="@(_isLoading || _isSuccess || !IsFormValid())"
+                                   Style="height: 48px; font-size: 1rem; font-weight: 600;">
+                            @if (_isLoading)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                <span>등록 중...</span>
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Class="mr-2" />
+                                <span>계정 등록</span>
+                            }
+                        </MudButton>
+                    }
+
+                </MudStack>
+            </MudPaper>
+
+        </MudStack>
+    </MudContainer>
+</div>
+
+@code {
+    private string _username = string.Empty;
+    private string _password = string.Empty;
+    private string _confirmPassword = string.Empty;
+    private bool _showPassword;
+    private bool _isLoading;
+    private bool _isChecking = true;
+    private bool _isSuccess;
+
+    private string _errorMessage = string.Empty;
+    private string _usernameError = string.Empty;
+    private string _passwordError = string.Empty;
+    private string _confirmError = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+
+            // 이미 사용자가 존재하면 로그인 페이지로
+            var setupResp = await client.GetAsync("/api/auth/setup-status");
+            if (setupResp.IsSuccessStatusCode)
+            {
+                var status = await setupResp.Content.ReadFromJsonAsync<SetupStatusResponse>();
+                if (status?.IsSetupDone == true)
+                {
+                    Navigation.NavigateTo("/login", forceLoad: true);
+                    return;
+                }
+            }
+
+            // 이미 로그인된 경우 대시보드로
+            var meResp = await client.GetAsync("/api/auth/me");
+            if (meResp.IsSuccessStatusCode)
+            {
+                Navigation.NavigateTo("/", forceLoad: true);
+                return;
+            }
+        }
+        catch
+        {
+            // 확인 실패 시 페이지 표시 유지
+        }
+        finally
+        {
+            _isChecking = false;
+        }
+    }
+
+    private bool IsFormValid()
+    {
+        return !string.IsNullOrWhiteSpace(_username)
+               && !string.IsNullOrWhiteSpace(_password)
+               && !string.IsNullOrWhiteSpace(_confirmPassword)
+               && _password == _confirmPassword
+               && string.IsNullOrEmpty(_usernameError)
+               && string.IsNullOrEmpty(_passwordError);
+    }
+
+    private void ValidateUsername()
+    {
+        _usernameError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_username))
+        {
+            _usernameError = "아이디를 입력하세요.";
+        }
+        else if (_username.Length < 4)
+        {
+            _usernameError = "아이디는 4자 이상이어야 합니다.";
+        }
+        else if (!Regex.IsMatch(_username, @"^[a-zA-Z0-9_]+$"))
+        {
+            _usernameError = "영문, 숫자, 밑줄(_)만 사용 가능합니다.";
+        }
+    }
+
+    private void ValidatePassword()
+    {
+        _passwordError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_password))
+        {
+            _passwordError = "비밀번호를 입력하세요.";
+        }
+        else if (_password.Length < 8)
+        {
+            _passwordError = "비밀번호는 8자 이상이어야 합니다.";
+        }
+        else if (!Regex.IsMatch(_password, @"[a-zA-Z]"))
+        {
+            _passwordError = "영문자를 포함해야 합니다.";
+        }
+        else if (!Regex.IsMatch(_password, @"[0-9]"))
+        {
+            _passwordError = "숫자를 포함해야 합니다.";
+        }
+    }
+
+    private void ValidateConfirm()
+    {
+        _confirmError = string.Empty;
+        if (!string.IsNullOrEmpty(_confirmPassword) && _confirmPassword != _password)
+        {
+            _confirmError = "비밀번호가 일치하지 않습니다.";
+        }
+    }
+
+    private async Task RegisterAsync()
+    {
+        ValidateUsername();
+        ValidatePassword();
+        ValidateConfirm();
+
+        if (!IsFormValid()) return;
+
+        _errorMessage = string.Empty;
+        _isLoading = true;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+            var response = await client.PostAsJsonAsync("/api/auth/register", new
+            {
+                username = _username,
+                password = _password
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                _isSuccess = true;
+                // 자동 로그인 후 대시보드로 이동
+                await Task.Delay(1000);
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                _errorMessage = "이미 계정이 존재합니다. 로그인 페이지로 이동하세요.";
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                _errorMessage = string.IsNullOrWhiteSpace(msg)
+                    ? $"등록 실패 ({(int)response.StatusCode}). 잠시 후 다시 시도하세요."
+                    : msg;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _errorMessage = "서버에 연결할 수 없습니다.";
+        }
+        catch (Exception)
+        {
+            _errorMessage = "예상치 못한 오류가 발생했습니다.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private (int Score, Color Color, string TextColor, string Label) GetPasswordStrength(string pwd)
+    {
+        int score = 0;
+        if (pwd.Length >= 8) score += 20;
+        if (pwd.Length >= 12) score += 20;
+        if (Regex.IsMatch(pwd, @"[a-z]")) score += 15;
+        if (Regex.IsMatch(pwd, @"[A-Z]")) score += 15;
+        if (Regex.IsMatch(pwd, @"[0-9]")) score += 15;
+        if (Regex.IsMatch(pwd, @"[^a-zA-Z0-9]")) score += 15;
+
+        return score switch
+        {
+            >= 80 => (score, Color.Success, "#4CAF50", "강함"),
+            >= 50 => (score, Color.Warning, "#FF9800", "보통"),
+            _ => (score, Color.Error, "#F44336", "약함")
+        };
+    }
+
+    private sealed class SetupStatusResponse
+    {
+        public bool IsSetupDone { get; set; }
+    }
+}

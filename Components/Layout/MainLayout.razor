@@ -2,8 +2,10 @@
 @using StockTrader.Models
 @using StockTrader.Models.Enums
 @using StockTrader.Services.Account
+@using System.Net.Http.Json
 @inject IAccountManager AccountManager
 @inject NavigationManager Navigation
+@inject IHttpClientFactory HttpClientFactory
 @implements IDisposable
 
 <MudThemeProvider Theme="_tradingTheme" IsDarkMode="true" />
@@ -111,8 +113,36 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // 인증 확인 — /login, /setup 페이지는 인증 없이 접근 허용
+        await CheckAuthAsync();
+
         AccountManager.OnAccountsChanged += OnAccountsChanged;
         await LoadAccountsAsync();
+    }
+
+    private async Task CheckAuthAsync()
+    {
+        var uri = Navigation.Uri;
+        var path = new Uri(uri).AbsolutePath.TrimEnd('/').ToLower();
+
+        // 공개 경로는 인증 체크 건너뜀
+        if (path == "/login" || path == "/setup")
+            return;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+            var resp = await client.GetAsync("/api/auth/me");
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+        }
+        catch
+        {
+            // 연결 실패 시 로그인 페이지로 이동 (서버가 실행 중이지 않은 경우 제외)
+            // Blazor Server 자체 API이므로 연결 실패는 비정상 상황
+        }
     }
 
     private async Task LoadAccountsAsync()

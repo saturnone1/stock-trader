@@ -1,0 +1,214 @@
+@page "/login"
+@layout EmptyLayout
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+
+<PageTitle>로그인 — 주식 트레이더</PageTitle>
+
+<MudThemeProvider IsDarkMode="true" />
+
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            background: #121212;">
+    <MudContainer MaxWidth="MaxWidth.ExtraSmall">
+        <MudStack Spacing="4" AlignItems="AlignItems.Center">
+
+            @* 로고 영역 *@
+            <MudStack Row="false" AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.ShowChart"
+                         Style="font-size: 3rem; color: #1565C0;" />
+                <MudText Typo="Typo.h5" Style="font-weight: 700; letter-spacing: 0.02em;">
+                    주식 트레이더
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    자동매매 관리 시스템
+                </MudText>
+            </MudStack>
+
+            @* 로그인 카드 *@
+            <MudPaper Elevation="4" Class="pa-8" Style="width: 100%; border-radius: 12px;
+                      background: #1E1E1E; border: 1px solid rgba(255,255,255,0.07);">
+                <MudStack Spacing="4">
+
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">로그인</MudText>
+
+                    @* 오류 메시지 *@
+                    @if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-0"
+                                  Icon="@Icons.Material.Filled.Lock">
+                            @_errorMessage
+                        </MudAlert>
+                    }
+
+                    @* 잠금 상태 알림 *@
+                    @if (_isLocked && _lockUntil.HasValue)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-0"
+                                  Icon="@Icons.Material.Filled.LockClock">
+                            계정이 잠겼습니다. @(_lockUntil.Value > DateTime.UtcNow
+                                ? $"약 {(int)(_lockUntil.Value - DateTime.UtcNow).TotalMinutes + 1}분 후 재시도 가능합니다."
+                                : "잠시 후 다시 시도하세요.")
+                        </MudAlert>
+                    }
+
+                    @* 아이디 입력 *@
+                    <MudTextField @bind-Value="_username"
+                                  Label="아이디"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Person"
+                                  Disabled="@(_isLoading || _isLocked)"
+                                  Immediate="true"
+                                  OnKeyDown="@OnKeyDown"
+                                  autocomplete="username"
+                                  aria-label="아이디" />
+
+                    @* 비밀번호 입력 *@
+                    <MudTextField @bind-Value="_password"
+                                  Label="비밀번호"
+                                  Variant="Variant.Outlined"
+                                  InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                  OnAdornmentClick="@(() => _showPassword = !_showPassword)"
+                                  Disabled="@(_isLoading || _isLocked)"
+                                  Immediate="true"
+                                  OnKeyDown="@OnKeyDown"
+                                  autocomplete="current-password"
+                                  aria-label="비밀번호" />
+
+                    @* 로그인 버튼 *@
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               Size="Size.Large"
+                               OnClick="@LoginAsync"
+                               Disabled="@(_isLoading || _isLocked || string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))"
+                               Style="height: 48px; font-size: 1rem; font-weight: 600;">
+                        @if (_isLoading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>로그인 중...</span>
+                        }
+                        else
+                        {
+                            <span>로그인</span>
+                        }
+                    </MudButton>
+
+                </MudStack>
+            </MudPaper>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                StockTrader v1.0 &mdash; 24시간 자동매매
+            </MudText>
+
+        </MudStack>
+    </MudContainer>
+</div>
+
+@code {
+    private string _username = string.Empty;
+    private string _password = string.Empty;
+    private bool _showPassword;
+    private bool _isLoading;
+    private bool _isLocked;
+    private DateTime? _lockUntil;
+    private string _errorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 이미 인증된 상태면 대시보드로 이동
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+            var resp = await client.GetAsync("/api/auth/me");
+            if (resp.IsSuccessStatusCode)
+            {
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+        }
+        catch
+        {
+            // 인증 확인 실패 시 로그인 페이지 유지
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_isLoading && !_isLocked
+            && !string.IsNullOrWhiteSpace(_username)
+            && !string.IsNullOrWhiteSpace(_password))
+        {
+            await LoginAsync();
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        _errorMessage = string.Empty;
+        _isLoading = true;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+            var response = await client.PostAsJsonAsync("/api/auth/login", new
+            {
+                username = _username,
+                password = _password
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                Navigation.NavigateTo("/", forceLoad: true);
+                return;
+            }
+
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                _isLocked = true;
+                // 응답 바디에서 잠금 해제 시간 파싱 시도
+                try
+                {
+                    var body = await response.Content.ReadFromJsonAsync<LockResponse>();
+                    if (body?.LockUntil.HasValue == true)
+                        _lockUntil = body.LockUntil.Value;
+                    else
+                        _lockUntil = DateTime.UtcNow.AddMinutes(15);
+                }
+                catch
+                {
+                    _lockUntil = DateTime.UtcNow.AddMinutes(15);
+                }
+                _errorMessage = string.Empty; // 잠금 알림이 별도 표시됨
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _errorMessage = "아이디 또는 비밀번호가 올바르지 않습니다.";
+            }
+            else
+            {
+                _errorMessage = $"로그인 실패 ({(int)response.StatusCode}). 잠시 후 다시 시도하세요.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _errorMessage = "서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.";
+        }
+        catch (Exception)
+        {
+            _errorMessage = "예상치 못한 오류가 발생했습니다.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private sealed class LockResponse
+    {
+        public DateTime? LockUntil { get; set; }
+    }
+}

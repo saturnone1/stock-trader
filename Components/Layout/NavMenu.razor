@@ -1,3 +1,7 @@
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All"
                 Icon="@Icons.Material.Filled.Dashboard">대시보드</MudNavLink>
@@ -24,4 +28,49 @@
     <MudDivider Class="my-2" />
     <MudNavLink Href="guide"
                 Icon="@Icons.Material.Filled.Help">사용 가이드</MudNavLink>
+    <MudDivider Class="my-2" />
+    <MudNavLink Href="account"
+                Icon="@Icons.Material.Filled.ManageAccounts">계정 관리</MudNavLink>
+    <div class="px-2 pb-2">
+        <MudButton FullWidth="true"
+                   Variant="Variant.Text"
+                   Color="Color.Error"
+                   StartIcon="@Icons.Material.Filled.Logout"
+                   OnClick="@LogoutAsync"
+                   Disabled="@_isLoggingOut"
+                   Style="justify-content: flex-start; text-transform: none; font-size: 0.875rem; padding: 6px 16px;">
+            @if (_isLoggingOut)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>로그아웃 중...</span>
+            }
+            else
+            {
+                <span>로그아웃</span>
+            }
+        </MudButton>
+    </div>
 </MudNavMenu>
+
+@code {
+    private bool _isLoggingOut;
+
+    private async Task LogoutAsync()
+    {
+        _isLoggingOut = true;
+        try
+        {
+            var client = HttpClientFactory.CreateClient("Auth");
+            await client.PostAsync("/api/auth/logout", null);
+        }
+        catch
+        {
+            // 로그아웃 API 실패해도 /login으로 이동
+        }
+        finally
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
+    }
+}
+
