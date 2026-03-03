@@ -4,6 +4,12 @@ namespace StockTrader.Services.Analysis;
 
 public interface IStockAnalysisService
 {
+    /// <summary>
+    /// SPY 200MA 기반 시장 레짐을 반환합니다.
+    /// 내부적으로 5분 캐시를 사용하며, DB 우선 조회로 외부 API 호출을 최소화합니다.
+    /// </summary>
+    Task<MarketRegime> GetMarketRegimeAsync(CancellationToken ct = default);
+
     Task<StockAnalysis> AnalyzeAsync(string symbol, CancellationToken ct = default);
 
     /// <summary>

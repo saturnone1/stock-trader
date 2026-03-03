@@ -1,6 +1,5 @@
-@using System.Net.Http.Json
-@inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All"
@@ -60,13 +59,11 @@
         _isLoggingOut = true;
         try
         {
-            var client = HttpClientFactory.CreateClient("Auth");
-            await client.PostAsync("/api/auth/logout", null);
+            var module = await JS.InvokeAsync<IJSObjectReference>(
+                "import", "./js/auth.js");
+            await module.InvokeVoidAsync("authFetch", "/api/auth/logout", "POST", null);
         }
-        catch
-        {
-            // 로그아웃 API 실패해도 /login으로 이동
-        }
+        catch { }
         finally
         {
             Navigation.NavigateTo("/login", forceLoad: true);

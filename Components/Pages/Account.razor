@@ -1,9 +1,15 @@
 @page "/account"
-@using System.Net.Http.Json
+@using System.Security.Claims
+@using System.Text.Json
 @using System.Text.RegularExpressions
-@inject IHttpClientFactory HttpClientFactory
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.EntityFrameworkCore
+@using StockTrader.Data
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IDbContextFactory<AppDbContext> DbFactory
 
 <PageTitle>계정 관리 — 주식 트레이더</PageTitle>
 
@@ -217,6 +223,15 @@
     private string _pwdError = string.Empty;
     private string _newPasswordError = string.Empty;
 
+    private IJSObjectReference? _jsModule;
+
+    private async Task<IJSObjectReference> GetJsModuleAsync()
+    {
+        _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./js/auth.js");
+        return _jsModule;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadUserInfoAsync();
@@ -224,23 +239,47 @@
 
     private async Task LoadUserInfoAsync()
     {
-        _isLoadingInfo = true;
         try
         {
-            var client = HttpClientFactory.CreateClient("Auth");
-            var resp = await client.GetAsync("/api/auth/me");
-            if (resp.IsSuccessStatusCode)
-            {
-                _userInfo = await resp.Content.ReadFromJsonAsync<UserInfoResponse>();
-            }
-            else if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            var httpUser = HttpContextAccessor.HttpContext?.User;
+            if (httpUser?.Identity?.IsAuthenticated != true)
             {
                 Navigation.NavigateTo("/login", forceLoad: true);
+                return;
+            }
+
+            var userIdStr = httpUser.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (int.TryParse(userIdStr, out var userId))
+            {
+                await using var db = await DbFactory.CreateDbContextAsync();
+                var appUser = await db.Set<StockTrader.Models.AppUser>()
+                    .FirstOrDefaultAsync(u => u.Id == userId);
+
+                if (appUser != null)
+                {
+                    // 쿠키 만료 시간 계산
+                    DateTime? sessionExpires = null;
+                    var httpCtx = HttpContextAccessor.HttpContext;
+                    if (httpCtx != null)
+                    {
+                        var authProps = await httpCtx.AuthenticateAsync();
+                        if (authProps.Properties?.ExpiresUtc.HasValue == true)
+                            sessionExpires = authProps.Properties.ExpiresUtc.Value.UtcDateTime;
+                    }
+
+                    _userInfo = new UserInfoResponse
+                    {
+                        Username = appUser.Username,
+                        CreatedAt = appUser.CreatedAt,
+                        LastLoginAt = appUser.LastLoginAt,
+                        SessionExpiresAt = sessionExpires
+                    };
+                }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 정보 로드 실패 — 빈 상태로 표시
+            System.Diagnostics.Debug.WriteLine($"Account info load failed: {ex.Message}");
         }
         finally
         {
@@ -282,38 +321,33 @@
 
         try
         {
-            var client = HttpClientFactory.CreateClient("Auth");
-            var response = await client.PostAsJsonAsync("/api/auth/change-password", new
-            {
-                currentPassword = _currentPassword,
-                newPassword = _newPassword
-            });
+            var module = await GetJsModuleAsync();
+            var result = await module.InvokeAsync<AuthResult>(
+                "authFetch", "/api/auth/change-password", "POST",
+                new { currentPassword = _currentPassword, newPassword = _newPassword });
 
-            if (response.IsSuccessStatusCode)
+            if (result.Ok)
             {
                 Snackbar.Add("비밀번호가 변경되었습니다.", Severity.Success);
                 ClearForm();
             }
-            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            else if (result.Status == 400)
             {
-                _pwdError = "현재 비밀번호가 올바르지 않습니다.";
+                var errorMsg = TryGetErrorMessage(result.Data);
+                _pwdError = errorMsg ?? "현재 비밀번호가 올바르지 않습니다.";
             }
-            else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            else if (result.Status == 401)
             {
                 Navigation.NavigateTo("/login", forceLoad: true);
             }
             else
             {
-                _pwdError = $"변경 실패 ({(int)response.StatusCode}). 잠시 후 다시 시도하세요.";
+                _pwdError = $"변경 실패 ({result.Status}). 잠시 후 다시 시도하세요.";
             }
         }
-        catch (HttpRequestException)
+        catch
         {
             _pwdError = "서버에 연결할 수 없습니다.";
-        }
-        catch (Exception)
-        {
-            _pwdError = "예상치 못한 오류가 발생했습니다.";
         }
         finally
         {
@@ -346,6 +380,21 @@
             >= 50 => (score, Color.Warning, "#FF9800", "보통"),
             _ => (score, Color.Error, "#F44336", "약함")
         };
+    }
+
+    private static string? TryGetErrorMessage(object? data)
+    {
+        if (data is JsonElement el && el.ValueKind == JsonValueKind.Object
+            && el.TryGetProperty("error", out var errProp))
+            return errProp.GetString();
+        return null;
+    }
+
+    private sealed class AuthResult
+    {
+        public bool Ok { get; set; }
+        public int Status { get; set; }
+        public object? Data { get; set; }
     }
 
     private sealed class UserInfoResponse

@@ -130,6 +130,16 @@ public class StockAnalysisService : IStockAnalysisService
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // 시장 레짐 공개 API (IStockAnalysisService 구현)
+    // ═══════════════════════════════════════════════════════════════
+
+    public async Task<MarketRegime> GetMarketRegimeAsync(CancellationToken ct = default)
+    {
+        var dataFeed = await _dataFeedFactory.GetServiceAsync(ct);
+        return await GetCachedRegimeAsync(dataFeed, ct);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // 단일 종목 분석 (공개 API)
     // ═══════════════════════════════════════════════════════════════
 
@@ -601,7 +611,7 @@ public class StockAnalysisService : IStockAnalysisService
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // 마켓 레짐 계산 (SPY 기반)
+    // 마켓 레짐 계산 (SPY 기반) — DB 우선 조회로 외부 API 호출 최소화
     // ═══════════════════════════════════════════════════════════════
     private async Task<MarketRegime> ComputeRegimeAsync(IDataFeedService dataFeed, CancellationToken ct)
     {
@@ -609,16 +619,34 @@ public class StockAnalysisService : IStockAnalysisService
 
         try
         {
-            var spyBars = await dataFeed.GetHistoricalBarsAsync(
+            List<OhlcvBar> spyBars;
+
+            // DB에서 SPY 일봉 데이터 우선 조회 (최근 300일)
+            var dbBars = await _ohlcvRepo.GetBarsAsync(
                 "SPY", TimeFrame.Daily,
                 DateTime.UtcNow.AddDays(-300), DateTime.UtcNow, ct);
 
+            if (dbBars.Count >= 200)
+            {
+                // DB에 충분한 데이터가 있으면 외부 API 호출 생략
+                spyBars = dbBars;
+                _logger.LogDebug("[Analysis] SPY 레짐: DB에서 {Count}개 바 사용 (API 호출 생략)", dbBars.Count);
+            }
+            else
+            {
+                // DB 데이터 부족 시 외부 API에서 fetch
+                _logger.LogDebug("[Analysis] SPY 레짐: DB 데이터 부족({Count}개) — 외부 API 호출", dbBars.Count);
+                spyBars = await dataFeed.GetHistoricalBarsAsync(
+                    "SPY", TimeFrame.Daily,
+                    DateTime.UtcNow.AddDays(-300), DateTime.UtcNow, ct);
+            }
+
             if (spyBars.Count >= 200)
             {
-                var spyCloses    = ExtractCloses(spyBars.ToArray());
-                var sma200       = _indicators.SMA(spyCloses, 200);
-                regime.SpyPrice  = spyCloses[^1];
-                regime.Spy200Ma  = sma200[^1];
+                var spyCloses        = ExtractCloses(spyBars.ToArray());
+                var sma200           = _indicators.SMA(spyCloses, 200);
+                regime.SpyPrice      = spyCloses[^1];
+                regime.Spy200Ma      = sma200[^1];
                 regime.SpyAbove200Ma = regime.SpyPrice > regime.Spy200Ma;
                 regime.RegimeLabel   = regime.SpyAbove200Ma ? "강세" : "약세";
             }

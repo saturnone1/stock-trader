@@ -108,7 +108,17 @@ public sealed class AesCryptoService : ICryptoService
         var plainbytes  = new byte[cipherbytes.Length];
 
         using var aes = new AesGcm(_masterKey, TagSizeBytes);
-        aes.Decrypt(nonce, cipherbytes, tag, plainbytes);
+        try
+        {
+            aes.Decrypt(nonce, cipherbytes, tag, plainbytes);
+        }
+        catch (CryptographicException ex)
+        {
+            _logger.LogError(ex,
+                "AES-GCM decryption failed — data may be tampered or key mismatch");
+            throw new InvalidOperationException(
+                "Failed to decrypt sensitive data. Check master encryption key.", ex);
+        }
 
         return Encoding.UTF8.GetString(plainbytes);
     }
