@@ -717,14 +717,23 @@
         _drawdownCurve = new();
 
         var cumPnl = 0m;
-        var peak = 0m;
+        // 드로다운 기준점: 초기 자본을 0으로 보고, 누적 PnL의 고점에서 현재까지의 낙폭을 추적한다.
+        // 기존 코드의 `peak > 0` 조건은 거래 전부 손실인 경우 peak=0 유지 → 드로다운 항상 0%
+        // 버그를 유발했다. 초기 기준점(0)도 peak의 시작값으로 취급하여 손실 구간을 올바르게 표시한다.
+        // peak 초기값은 0 (초기 자본 기준점)이므로 누적 손실 발생 시 dd > 0이 된다.
+        var peak = 0m; // 초기 기준점 = 0 (손실만 있으면 peak는 0에 머물고 dd는 양수)
         _maxDrawdown = 0;
 
         foreach (var trade in _trades)
         {
             cumPnl += trade.PnL;
             if (cumPnl > peak) peak = cumPnl;
-            var dd = peak > 0 ? (peak - cumPnl) / peak * 100 : 0;
+            // peak == 0이고 cumPnl < 0인 경우(초기 손실 구간)에도 드로다운을 올바르게 계산한다.
+            // 분모가 0이 될 수 없도록: peak != 0이면 % 기준, peak == 0이면 절대 손실 금액을 사용한다.
+            // 단, 차트 y축이 통일된 단위(%/금액 혼용 방지)를 위해 peak=0 구간도 금액 절댓값으로 일관 처리.
+            var dd = peak != 0
+                ? (peak - cumPnl) / Math.Abs(peak) * 100
+                : cumPnl < 0 ? Math.Abs(cumPnl) : 0m;
             if (dd / 100 > _maxDrawdown) _maxDrawdown = dd / 100;
 
             _equityCurve.Add(new EquityDataPoint(trade.ExitTime, cumPnl));

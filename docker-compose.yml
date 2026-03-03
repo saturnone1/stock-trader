@@ -75,6 +75,13 @@ services:
       Notification__EmailFrom: "${EMAIL_FROM:-}"
       Notification__EmailTo: "${EMAIL_TO:-}"
 
+      # ── LS Securities (한국주식) ────────────────────────────────────────
+      LsSecurities__AppKey: "${LS_APP_KEY:-}"
+      LsSecurities__AppSecret: "${LS_APP_SECRET:-}"
+      LsSecurities__AccountNo: "${LS_ACCOUNT_NO:-}"
+      LsSecurities__AccountPassword: "${LS_ACCOUNT_PASSWORD:-}"
+      LsSecurities__IsPaper: "${LS_IS_PAPER:-true}"
+
       # ── Trading parameters ───────────────────────────────────────────────
       Trading__DefaultAccountSize: "${DEFAULT_ACCOUNT_SIZE:-100000}"
       Trading__RiskPerTradePercent: "${RISK_PER_TRADE:-0.01}"

@@ -1,3 +1,4 @@
+using System.Buffers;
 using StockTrader.Models;
 
 namespace StockTrader.Services.Backtest;
@@ -17,23 +18,35 @@ internal static class MonteCarloSimulator
         var finalEquities = new decimal[simulations];
         var maxDrawdowns = new decimal[simulations];
 
+        var n = tradePnls.Length;
         Parallel.For(0, simulations, i =>
         {
-            var shuffled = ShuffleArray(tradePnls, i);
-            var equity = initialCapital;
-            var peak = equity;
-            var maxDd = 0m;
-
-            foreach (var pnl in shuffled)
+            // ArrayPool로 배열 재사용 (Clone() 힙 할당 제거)
+            var rented = ArrayPool<decimal>.Shared.Rent(n);
+            try
             {
-                equity += pnl;
-                if (equity > peak) peak = equity;
-                var dd = peak > 0 ? (peak - equity) / peak : 0;
-                if (dd > maxDd) maxDd = dd;
-            }
+                tradePnls.CopyTo(rented, 0);
+                ShuffleSpan(rented.AsSpan(0, n), i);
 
-            finalEquities[i] = equity;
-            maxDrawdowns[i] = maxDd;
+                var equity = initialCapital;
+                var peak = equity;
+                var maxDd = 0m;
+
+                for (int k = 0; k < n; k++)
+                {
+                    equity += rented[k];
+                    if (equity > peak) peak = equity;
+                    var dd = peak > 0 ? (peak - equity) / peak : 0;
+                    if (dd > maxDd) maxDd = dd;
+                }
+
+                finalEquities[i] = equity;
+                maxDrawdowns[i] = maxDd;
+            }
+            finally
+            {
+                ArrayPool<decimal>.Shared.Return(rented);
+            }
         });
 
         Array.Sort(finalEquities);
@@ -67,16 +80,15 @@ internal static class MonteCarloSimulator
         };
     }
 
-    private static decimal[] ShuffleArray(decimal[] source, int seed)
+    /// <summary>Fisher-Yates 셔플을 Span에 in-place 적용 (별도 배열 할당 없음)</summary>
+    private static void ShuffleSpan(Span<decimal> span, int seed)
     {
         var rng = new Random(seed);
-        var arr = (decimal[])source.Clone();
-        for (int i = arr.Length - 1; i > 0; i--)
+        for (int i = span.Length - 1; i > 0; i--)
         {
             int j = rng.Next(i + 1);
-            (arr[i], arr[j]) = (arr[j], arr[i]);
+            (span[i], span[j]) = (span[j], span[i]);
         }
-        return arr;
     }
 
     private static decimal Percentile(decimal[] sorted, int percentile)

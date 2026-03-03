@@ -10,42 +10,65 @@ namespace StockTrader.Services.Notification;
 /// <summary>
 /// System.Net.Mail.SmtpClient를 사용하는 이메일 알림 채널.
 /// 시그널 즉시 알림과 일일 요약 리포트 모두 지원.
+/// 설정 우선순위: DB UserSettings > appsettings.json (INotificationSettingsProvider를 통해 병합).
 /// </summary>
 public sealed class EmailNotificationChannel : INotificationChannel
 {
-    private readonly NotificationSettings _settings;
+    private readonly INotificationSettingsProvider _settingsProvider;
+    private readonly NotificationSettings _fallbackSettings;
     private readonly ILogger<EmailNotificationChannel> _logger;
 
     public string ChannelName => "Email";
 
+    // IsEnabled는 동기 프로퍼티이므로 fallback(appsettings) 기준으로만 판별.
+    // 실제 발송 시점에 GetEffectiveSettingsAsync()로 재확인한다.
     public bool IsEnabled =>
-        _settings.EnableEmail &&
-        !string.IsNullOrWhiteSpace(_settings.SmtpHost) &&
-        !string.IsNullOrWhiteSpace(_settings.EmailFrom) &&
-        !string.IsNullOrWhiteSpace(_settings.EmailTo);
+        _fallbackSettings.EnableEmail &&
+        !string.IsNullOrWhiteSpace(_fallbackSettings.SmtpHost) &&
+        !string.IsNullOrWhiteSpace(_fallbackSettings.EmailFrom) &&
+        !string.IsNullOrWhiteSpace(_fallbackSettings.EmailTo);
 
     public EmailNotificationChannel(
-        IOptions<NotificationSettings> settings,
+        INotificationSettingsProvider settingsProvider,
+        IOptions<NotificationSettings> fallbackSettings,
         ILogger<EmailNotificationChannel> logger)
     {
-        _settings = settings.Value;
-        _logger = logger;
+        _settingsProvider = settingsProvider;
+        _fallbackSettings = fallbackSettings.Value;
+        _logger           = logger;
     }
+
+    private Task<NotificationSettings> GetSettingsAsync(CancellationToken ct) =>
+        _settingsProvider.GetEffectiveSettingsAsync(ct);
 
     public async Task SendSignalAsync(TradeRecommendation recommendation, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableEmail
+            || string.IsNullOrWhiteSpace(settings.SmtpHost)
+            || string.IsNullOrWhiteSpace(settings.EmailFrom)
+            || string.IsNullOrWhiteSpace(settings.EmailTo))
+            return;
+
         var isLong = recommendation.TargetPrice >= recommendation.EntryPrice;
         var direction = isLong ? "매수 (Long)" : "매도 (Short)";
         var stopPct = (recommendation.StopLossPercent * 100m).ToString("F2");
         var subject = $"[StockTrader] 새 시그널: {recommendation.Symbol} {direction}";
 
         var body = BuildSignalEmailHtml(recommendation, direction, stopPct);
-        await SendEmailAsync(subject, body, isHtml: true, ct);
+        await SendEmailAsync(subject, body, isHtml: true, settings, ct);
         _logger.LogInformation("Email signal sent for {Symbol}", recommendation.Symbol);
     }
 
     public async Task SendAlertAsync(string message, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableEmail
+            || string.IsNullOrWhiteSpace(settings.SmtpHost)
+            || string.IsNullOrWhiteSpace(settings.EmailFrom)
+            || string.IsNullOrWhiteSpace(settings.EmailTo))
+            return;
+
         var subject = "[StockTrader] 리스크 경고";
         var body = $"""
             <html><body style="font-family:Arial,sans-serif;padding:20px;">
@@ -55,14 +78,21 @@ public sealed class EmailNotificationChannel : INotificationChannel
             <p style="color:#999;font-size:12px;">StockTrader &mdash; {DateTime.Now:yyyy-MM-dd HH:mm}</p>
             </body></html>
             """;
-        await SendEmailAsync(subject, body, isHtml: true, ct);
+        await SendEmailAsync(subject, body, isHtml: true, settings, ct);
     }
 
     public async Task SendDailyReportAsync(DailyReportData report, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableEmail
+            || string.IsNullOrWhiteSpace(settings.SmtpHost)
+            || string.IsNullOrWhiteSpace(settings.EmailFrom)
+            || string.IsNullOrWhiteSpace(settings.EmailTo))
+            return;
+
         var subject = $"[StockTrader] 일일 리포트 {report.ReportDate:yyyy-MM-dd}";
         var body = BuildDailyReportHtml(report);
-        await SendEmailAsync(subject, body, isHtml: true, ct);
+        await SendEmailAsync(subject, body, isHtml: true, settings, ct);
         _logger.LogInformation("Email daily report sent for {Date}", report.ReportDate);
     }
 
@@ -70,10 +100,12 @@ public sealed class EmailNotificationChannel : INotificationChannel
     {
         try
         {
+            var settings = await GetSettingsAsync(ct);
             await SendEmailAsync(
                 "[StockTrader] 이메일 연결 테스트",
                 "<p>StockTrader 이메일 알림 연결 테스트 성공!</p>",
                 isHtml: true,
+                settings,
                 ct);
             return true;
         }
@@ -86,13 +118,15 @@ public sealed class EmailNotificationChannel : INotificationChannel
 
     // ── Private helpers ───────────────────────────────────────────────
 
-    private async Task SendEmailAsync(string subject, string body, bool isHtml, CancellationToken ct)
+    private async Task SendEmailAsync(
+        string subject, string body, bool isHtml,
+        NotificationSettings settings, CancellationToken ct)
     {
         // SmtpClient는 IDisposable이므로 using 블록에서 관리
-        using var client = CreateSmtpClient();
+        using var client = CreateSmtpClient(settings);
         using var message = new MailMessage(
-            from: new MailAddress(_settings.EmailFrom),
-            to: new MailAddress(_settings.EmailTo))
+            from: new MailAddress(settings.EmailFrom),
+            to: new MailAddress(settings.EmailTo))
         {
             Subject = subject,
             Body = body,
@@ -106,20 +140,20 @@ public sealed class EmailNotificationChannel : INotificationChannel
         await SendWithCancellationAsync(client, message, ct);
     }
 
-    private SmtpClient CreateSmtpClient()
+    private static SmtpClient CreateSmtpClient(NotificationSettings settings)
     {
-        var client = new SmtpClient(_settings.SmtpHost, _settings.SmtpPort)
+        var client = new SmtpClient(settings.SmtpHost, settings.SmtpPort)
         {
-            EnableSsl = _settings.SmtpUseSsl,
+            EnableSsl = settings.SmtpUseSsl,
             DeliveryMethod = SmtpDeliveryMethod.Network,
             UseDefaultCredentials = false
         };
 
-        if (!string.IsNullOrWhiteSpace(_settings.SmtpUsername))
+        if (!string.IsNullOrWhiteSpace(settings.SmtpUsername))
         {
             client.Credentials = new NetworkCredential(
-                _settings.SmtpUsername,
-                _settings.SmtpPassword);
+                settings.SmtpUsername,
+                settings.SmtpPassword);
         }
 
         return client;

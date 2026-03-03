@@ -35,13 +35,28 @@ public class NotificationDispatcherTests
             RetryDelaySeconds = retryDelaySeconds  // Math.Max(1,0)=1이므로 재시도 시 1s 대기
         };
 
+    /// <summary>
+    /// 단위 테스트용 INotificationSettingsProvider: 항상 예외를 던져 GetActiveChannelsAsync가
+    /// fallback 경로(channel.IsEnabled 그대로 신뢰)를 실행하도록 한다.
+    /// DB 기반 오버라이드 로직은 별도 통합 테스트에서 검증한다.
+    /// </summary>
+    private static INotificationSettingsProvider CreateFallbackProvider()
+    {
+        var mock = new Mock<INotificationSettingsProvider>();
+        mock.Setup(p => p.GetEffectiveSettingsAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Unit test: force fallback to IsEnabled"));
+        return mock.Object;
+    }
+
     private static NotificationDispatcher CreateSut(
         IEnumerable<INotificationChannel> channels,
         NotificationSettings? settings = null)
     {
-        var opts = Options.Create(settings ?? DefaultSettings());
+        var opts     = Options.Create(settings ?? DefaultSettings());
+        var provider = CreateFallbackProvider();
         return new NotificationDispatcher(
             channels,
+            provider,
             opts,
             NullLogger<NotificationDispatcher>.Instance);
     }

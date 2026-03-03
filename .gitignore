@@ -35,6 +35,7 @@ Desktop.ini
 ## Build
 publish/
 out/
+*.slnx
 
 ## NuGet
 *.nupkg
@@ -46,18 +47,18 @@ Logs/
 
 ## Backtest sweep artifacts
 bt_results/
-bt_sweep.ps1
-bt_sweep_runner.py
+scripts/bt_sweep.ps1
+scripts/bt_sweep_runner.py
 
 ## Temp output files
-build_output.txt
-build_check.txt
-build_fix_output.txt
-install_output.txt
-kill_output.txt
-port_check.txt
-publish_output.txt
-publish_result.txt
-run_output.txt
-test_output.txt
-git_status_out.txt
+build*.txt
+test*.txt
+*_output.txt
+*_result.txt
+*_out*.txt
+*_check.txt
+pkg_list.log
+db_result.txt
+serilog_install.txt
+tmp_*.txt
+C:Users*

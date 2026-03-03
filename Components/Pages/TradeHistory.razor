@@ -45,7 +45,9 @@
 }
 
 <MudTabs Elevation="0" Rounded="false" ApplyEffectsToContainer="true" Class="pt-4"
-         @bind-ActivePanelIndex="_activeTab" Color="Color.Primary">
+         ActivePanelIndex="_activeTab"
+         ActivePanelIndexChanged="@((int i) => _activeTab = i)"
+         Color="Color.Primary">
 
     @* ── 탭 1: 전체 추천 내역 ── *@
     <MudTabPanel Text="전체 추천" Icon="@Icons.Material.Filled.Lightbulb"
@@ -503,11 +505,21 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(
-            LoadRecommendationsAsync(),
-            LoadOpenPositionsAsync(),
-            LoadTradesAsync()
-        );
+        _loading = true;
+        _error = null;
+        try
+        {
+            await Task.WhenAll(
+                LoadRecommendationsAsync(),
+                LoadOpenPositionsAsync(),
+                LoadTradesAsync()
+            );
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task SetRecoCount(int count)
@@ -518,7 +530,6 @@
 
     private async Task LoadRecommendationsAsync()
     {
-        _loading = true;
         _error = null;
         try
         {
@@ -527,10 +538,6 @@
         catch (Exception ex)
         {
             _error = $"추천 내역 로드 실패: {ex.Message}";
-        }
-        finally
-        {
-            _loading = false;
         }
     }
 
@@ -548,7 +555,6 @@
 
     private async Task LoadTradesAsync()
     {
-        _loading = true;
         _error = null;
         try
         {
@@ -559,10 +565,6 @@
         catch (Exception ex)
         {
             _error = $"거래 내역 로드 실패: {ex.Message}";
-        }
-        finally
-        {
-            _loading = false;
         }
     }
 }

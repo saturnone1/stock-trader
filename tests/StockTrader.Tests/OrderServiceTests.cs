@@ -6,6 +6,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
 using StockTrader.Services.Broker;
+using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Order;
 
@@ -18,6 +19,7 @@ public class OrderServiceTests
     private readonly Mock<ISettingsRepository> _settingsRepoMock;
     private readonly Mock<INotificationService> _notificationServiceMock;
     private readonly Mock<IBrokerService> _brokerServiceMock;
+    private readonly Mock<IMarketCalendar> _marketCalendarMock;
 
     public OrderServiceTests()
     {
@@ -26,6 +28,7 @@ public class OrderServiceTests
         _settingsRepoMock = new Mock<ISettingsRepository>();
         _notificationServiceMock = new Mock<INotificationService>();
         _brokerServiceMock = new Mock<IBrokerService>();
+        _marketCalendarMock = new Mock<IMarketCalendar>();
     }
 
     // ── SUT 팩토리 ──────────────────────────────────────────────────────────
@@ -35,6 +38,7 @@ public class OrderServiceTests
         _tradeRepoMock.Object,
         _settingsRepoMock.Object,
         _notificationServiceMock.Object,
+        _marketCalendarMock.Object,
         NullLogger<OrderService>.Instance);
 
     // ── 테스트 데이터 헬퍼 ─────────────────────────────────────────────────
@@ -65,6 +69,28 @@ public class OrderServiceTests
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserSettings { OrderMode = mode });
+    }
+
+    /// <summary>장중으로 모킹 (AutoOrder 테스트에서 장외 차단을 우회)</summary>
+    private void SetupMarketOpen()
+    {
+        _marketCalendarMock
+            .Setup(m => m.IsMarketOpen(MarketType.US))
+            .Returns(true);
+        _marketCalendarMock
+            .Setup(m => m.GetLocalNow(MarketType.US))
+            .Returns(new DateTime(2025, 6, 2, 10, 30, 0)); // 월요일 ET 10:30
+    }
+
+    /// <summary>장외로 모킹 (장외 차단 테스트용)</summary>
+    private void SetupMarketClosed()
+    {
+        _marketCalendarMock
+            .Setup(m => m.IsMarketOpen(MarketType.US))
+            .Returns(false);
+        _marketCalendarMock
+            .Setup(m => m.GetLocalNow(MarketType.US))
+            .Returns(new DateTime(2025, 6, 2, 20, 0, 0)); // 월요일 ET 20:00
     }
 
     // ── PlaceOrder: AlertOnly 모드 ─────────────────────────────────────────
@@ -136,13 +162,14 @@ public class OrderServiceTests
     // ── PlaceOrder: AutoOrder 모드 — 수량 검증 ─────────────────────────────
 
     /// <summary>
-    /// AutoOrder 모드에서 ShareQuantity가 0이면 false를 반환해야 한다.
+    /// AutoOrder 모드 + 장중에서 ShareQuantity가 0이면 false를 반환해야 한다.
     /// </summary>
     [Fact]
     public async Task PlaceOrder_AutoOrder_ZeroQuantity_ReturnsFalse()
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         var rec = CreateRecommendation(shareQuantity: 0);
         var sut = CreateSut();
 
@@ -161,6 +188,7 @@ public class OrderServiceTests
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         var rec = CreateRecommendation(shareQuantity: 0);
         var sut = CreateSut();
 
@@ -176,13 +204,14 @@ public class OrderServiceTests
     // ── PlaceOrder: AutoOrder 모드 — 브로커 없음 ───────────────────────────
 
     /// <summary>
-    /// AutoOrder 모드에서 활성 계좌의 브로커 서비스가 없으면 false를 반환해야 한다.
+    /// AutoOrder 모드 + 장중에서 활성 계좌의 브로커 서비스가 없으면 false를 반환해야 한다.
     /// </summary>
     [Fact]
     public async Task PlaceOrder_AutoOrder_NoBroker_ReturnsFalse()
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((IBrokerService?)null);
@@ -205,6 +234,7 @@ public class OrderServiceTests
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((IBrokerService?)null);
@@ -224,13 +254,14 @@ public class OrderServiceTests
     // ── PlaceOrder: AutoOrder 모드 — 브로커 성공 ───────────────────────────
 
     /// <summary>
-    /// AutoOrder 모드에서 브로커 주문이 성공하면 Position을 저장하고 true를 반환해야 한다.
+    /// AutoOrder 모드 + 장중에서 브로커 주문이 성공하면 Position을 저장하고 true를 반환해야 한다.
     /// </summary>
     [Fact]
     public async Task PlaceOrder_AutoOrder_BrokerSuccess_SavesPositionAndReturnsTrue()
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
@@ -249,16 +280,20 @@ public class OrderServiceTests
         _tradeRepoMock.Verify(
             r => r.SavePositionAsync(It.IsAny<Position>(), It.IsAny<CancellationToken>()),
             Times.Once);
+        _tradeRepoMock.Verify(
+            r => r.UpdateRecommendationAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     /// <summary>
-    /// AutoOrder 모드에서 브로커 주문이 성공하면 recommendation.WasExecuted가 true로 설정되어야 한다.
+    /// AutoOrder 모드 + 장중에서 브로커 주문이 성공하면 recommendation.WasExecuted가 true로 설정되어야 한다.
     /// </summary>
     [Fact]
     public async Task PlaceOrder_AutoOrder_BrokerSuccess_SetsWasExecutedTrue()
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
@@ -277,13 +312,14 @@ public class OrderServiceTests
     }
 
     /// <summary>
-    /// AutoOrder 모드에서 브로커 주문이 성공하면 올바른 데이터로 Position이 저장되어야 한다.
+    /// AutoOrder 모드 + 장중에서 브로커 주문이 성공하면 올바른 데이터로 Position이 저장되어야 한다.
     /// </summary>
     [Fact]
     public async Task PlaceOrder_AutoOrder_BrokerSuccess_SavesPositionWithCorrectData()
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
@@ -322,13 +358,14 @@ public class OrderServiceTests
     // ── PlaceOrder: AutoOrder 모드 — 브로커 실패 ───────────────────────────
 
     /// <summary>
-    /// AutoOrder 모드에서 브로커 주문이 실패하면 false를 반환해야 한다.
+    /// AutoOrder 모드 + 장중에서 브로커 주문이 실패하면 false를 반환해야 한다.
     /// </summary>
     [Fact]
     public async Task PlaceOrder_AutoOrder_BrokerFail_ReturnsFalse()
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
@@ -347,13 +384,14 @@ public class OrderServiceTests
     }
 
     /// <summary>
-    /// AutoOrder 모드에서 브로커 주문이 실패하면 Position을 저장하지 않아야 한다.
+    /// AutoOrder 모드 + 장중에서 브로커 주문이 실패하면 Position을 저장하지 않아야 한다.
     /// </summary>
     [Fact]
     public async Task PlaceOrder_AutoOrder_BrokerFail_DoesNotSavePosition()
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
@@ -384,6 +422,7 @@ public class OrderServiceTests
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         const int targetAccountId = 42;
         _accountManagerMock
             .Setup(m => m.GetBrokerServiceForAccountAsync(targetAccountId, It.IsAny<CancellationToken>()))
@@ -412,6 +451,7 @@ public class OrderServiceTests
     {
         // Arrange
         SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
@@ -451,11 +491,9 @@ public class OrderServiceTests
             r => r.AddRecommendationAsync(recAlert, It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // Arrange — AutoOrder (브로커 연결 없음)
+        // Arrange — AutoOrder (장외 시간이므로 브로커 호출 안 됨, 추천은 저장)
         SetupSettingsWithMode(OrderMode.AutoOrder);
-        _accountManagerMock
-            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IBrokerService?)null);
+        SetupMarketClosed();
 
         var recAuto = CreateRecommendation(symbol: "TSLA", shareQuantity: 10);
         await sut.PlaceOrderAsync(recAuto);
@@ -463,6 +501,70 @@ public class OrderServiceTests
         // AutoOrder 저장 확인
         _tradeRepoMock.Verify(
             r => r.AddRecommendationAsync(recAuto, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ── PlaceOrder: 장외 시간 차단 ───────────────────────────────────────
+
+    /// <summary>
+    /// AutoOrder 모드 + 장외 시간에서는 주문이 차단되고 true를 반환해야 한다.
+    /// (추천은 저장됨, 주문만 차단)
+    /// </summary>
+    [Fact]
+    public async Task PlaceOrder_AutoOrder_MarketClosed_ReturnsTrue()
+    {
+        // Arrange
+        SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketClosed();
+        var rec = CreateRecommendation(shareQuantity: 10);
+        var sut = CreateSut();
+
+        // Act
+        var result = await sut.PlaceOrderAsync(rec);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// AutoOrder 모드 + 장외 시간에서는 브로커를 호출하지 않아야 한다.
+    /// </summary>
+    [Fact]
+    public async Task PlaceOrder_AutoOrder_MarketClosed_DoesNotCallBroker()
+    {
+        // Arrange
+        SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketClosed();
+        var rec = CreateRecommendation(shareQuantity: 10);
+        var sut = CreateSut();
+
+        // Act
+        await sut.PlaceOrderAsync(rec);
+
+        // Assert
+        _accountManagerMock.Verify(
+            m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>
+    /// AutoOrder 모드 + 장외 시간에서도 추천 내역은 저장되어야 한다.
+    /// </summary>
+    [Fact]
+    public async Task PlaceOrder_AutoOrder_MarketClosed_StillSavesRecommendation()
+    {
+        // Arrange
+        SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketClosed();
+        var rec = CreateRecommendation(shareQuantity: 10);
+        var sut = CreateSut();
+
+        // Act
+        await sut.PlaceOrderAsync(rec);
+
+        // Assert
+        _tradeRepoMock.Verify(
+            r => r.AddRecommendationAsync(rec, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

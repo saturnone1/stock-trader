@@ -8,26 +8,30 @@ namespace StockTrader.Services.Notification;
 /// 모든 활성 INotificationChannel 구현체에 알림을 병렬로 발송한다.
 /// 채널별 실패는 독립적으로 처리되어 다른 채널에 영향을 주지 않는다.
 /// 재시도 로직: NotificationSettings.MaxRetryAttempts 설정에 따라 지수 백오프로 재시도.
+/// 채널 활성 여부는 DB UserSettings를 우선 확인하고, 없으면 appsettings.json을 fallback으로 사용한다.
 /// </summary>
 public sealed class NotificationDispatcher : INotificationDispatcher
 {
     private readonly IEnumerable<INotificationChannel> _channels;
-    private readonly NotificationSettings _settings;
+    private readonly INotificationSettingsProvider _settingsProvider;
+    private readonly NotificationSettings _appSettings;
     private readonly ILogger<NotificationDispatcher> _logger;
 
     public NotificationDispatcher(
         IEnumerable<INotificationChannel> channels,
-        IOptions<NotificationSettings> settings,
+        INotificationSettingsProvider settingsProvider,
+        IOptions<NotificationSettings> appSettings,
         ILogger<NotificationDispatcher> logger)
     {
-        _channels = channels;
-        _settings = settings.Value;
-        _logger = logger;
+        _channels         = channels;
+        _settingsProvider = settingsProvider;
+        _appSettings      = appSettings.Value;
+        _logger           = logger;
     }
 
     public async Task DispatchSignalAsync(TradeRecommendation recommendation, CancellationToken ct = default)
     {
-        var activeChannels = GetActiveChannels();
+        var activeChannels = await GetActiveChannelsAsync(ct);
         if (activeChannels.Count == 0) return;
 
         _logger.LogInformation(
@@ -46,7 +50,7 @@ public sealed class NotificationDispatcher : INotificationDispatcher
 
     public async Task DispatchAlertAsync(string message, CancellationToken ct = default)
     {
-        var activeChannels = GetActiveChannels();
+        var activeChannels = await GetActiveChannelsAsync(ct);
         if (activeChannels.Count == 0) return;
 
         _logger.LogInformation(
@@ -65,7 +69,7 @@ public sealed class NotificationDispatcher : INotificationDispatcher
 
     public async Task DispatchDailyReportAsync(DailyReportData report, CancellationToken ct = default)
     {
-        var activeChannels = GetActiveChannels();
+        var activeChannels = await GetActiveChannelsAsync(ct);
         if (activeChannels.Count == 0)
         {
             _logger.LogDebug("No active notification channels — skipping daily report dispatch");
@@ -89,10 +93,24 @@ public sealed class NotificationDispatcher : INotificationDispatcher
     public async Task<Dictionary<string, bool>> TestAllChannelsAsync(CancellationToken ct = default)
     {
         var results = new Dictionary<string, bool>();
+        NotificationSettings? effectiveSettings = null;
+
+        try
+        {
+            effectiveSettings = await _settingsProvider.GetEffectiveSettingsAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DB 설정 조회 실패 — appsettings 기준으로 채널 테스트");
+        }
 
         foreach (var channel in _channels)
         {
-            if (!channel.IsEnabled)
+            var isActive = effectiveSettings != null
+                ? IsChannelActive(channel, effectiveSettings)
+                : channel.IsEnabled;
+
+            if (!isActive)
             {
                 results[channel.ChannelName] = false;
                 continue;
@@ -123,7 +141,19 @@ public sealed class NotificationDispatcher : INotificationDispatcher
             return false;
         }
 
-        if (!channel.IsEnabled)
+        // DB 설정 우선으로 채널 활성 여부 확인
+        bool isActive;
+        try
+        {
+            var effectiveSettings = await _settingsProvider.GetEffectiveSettingsAsync(ct);
+            isActive = IsChannelActive(channel, effectiveSettings);
+        }
+        catch
+        {
+            isActive = channel.IsEnabled; // fallback
+        }
+
+        if (!isActive)
         {
             _logger.LogWarning("Channel '{ChannelName}' is disabled — cannot test", channelName);
             return false;
@@ -142,8 +172,42 @@ public sealed class NotificationDispatcher : INotificationDispatcher
 
     // ── Private helpers ───────────────────────────────────────────────
 
-    private List<INotificationChannel> GetActiveChannels() =>
-        _channels.Where(c => c.IsEnabled).ToList();
+    /// <summary>
+    /// DB UserSettings와 appsettings를 병합한 유효 설정을 기반으로
+    /// 활성화된 채널 목록을 반환한다.
+    /// DB에 채널별 활성 여부가 설정되어 있으면 appsettings보다 우선 적용한다.
+    /// </summary>
+    private async Task<List<INotificationChannel>> GetActiveChannelsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var effectiveSettings = await _settingsProvider.GetEffectiveSettingsAsync(ct);
+            return _channels.Where(c => IsChannelActive(c, effectiveSettings)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "DB 설정 조회 실패 — appsettings 기준으로 채널 활성 여부 판단");
+            return _channels.Where(c => c.IsEnabled).ToList();
+        }
+    }
+
+    /// <summary>
+    /// 채널명을 기준으로 병합 설정에서 해당 채널의 활성 여부를 확인한다.
+    /// </summary>
+    private static bool IsChannelActive(INotificationChannel channel, NotificationSettings settings) =>
+        channel.ChannelName switch
+        {
+            "Telegram" => settings.EnableTelegram
+                          && !string.IsNullOrWhiteSpace(settings.TelegramBotToken)
+                          && !string.IsNullOrWhiteSpace(settings.TelegramChatId),
+            "Discord"  => settings.EnableDiscord
+                          && !string.IsNullOrWhiteSpace(settings.DiscordWebhookUrl),
+            "Email"    => settings.EnableEmail
+                          && !string.IsNullOrWhiteSpace(settings.SmtpHost)
+                          && !string.IsNullOrWhiteSpace(settings.EmailFrom)
+                          && !string.IsNullOrWhiteSpace(settings.EmailTo),
+            _          => channel.IsEnabled  // 알 수 없는 채널은 기존 IsEnabled 그대로 사용
+        };
 
     /// <summary>
     /// 지수 백오프(exponential backoff)로 최대 MaxRetryAttempts회 재시도.
@@ -155,8 +219,8 @@ public sealed class NotificationDispatcher : INotificationDispatcher
         string operationName,
         CancellationToken ct)
     {
-        var maxAttempts = Math.Max(1, _settings.MaxRetryAttempts);
-        var baseDelay = TimeSpan.FromSeconds(Math.Max(1, _settings.RetryDelaySeconds));
+        var maxAttempts = Math.Max(1, _appSettings.MaxRetryAttempts);
+        var baseDelay = TimeSpan.FromSeconds(Math.Max(1, _appSettings.RetryDelaySeconds));
 
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {

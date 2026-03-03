@@ -113,6 +113,13 @@ public class TradeRepository : ITradeRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task UpdateRecommendationAsync(TradeRecommendation recommendation,
+        CancellationToken ct = default)
+    {
+        _db.TradeRecommendations.Update(recommendation);
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default)
     {
         return await _db.PatternSignals

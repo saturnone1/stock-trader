@@ -21,6 +21,7 @@ public interface ITradeRepository
     Task<List<TradeRecommendation>> GetRecentRecommendationsAsync(int count = 20,
         CancellationToken ct = default);
     Task AddRecommendationAsync(TradeRecommendation recommendation, CancellationToken ct = default);
+    Task UpdateRecommendationAsync(TradeRecommendation recommendation, CancellationToken ct = default);
     Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default);
     Task AddSignalAsync(PatternSignal signal, CancellationToken ct = default);
     Task AddSignalsBatchAsync(IEnumerable<PatternSignal> signals, CancellationToken ct = default);

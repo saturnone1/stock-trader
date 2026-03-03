@@ -11,10 +11,11 @@ C# .NET 10.0 Blazor Server 주식 자동매매 프로그램. MudBlazor 9.0 다�
 - 자율적으로 판단해서 알아서 진행
 
 ### Windows Bash 주의사항
-- `dotnet`, `curl`, `git` 등의 stdout이 Bash 도구에서 안 보이는 경우 빈번
-- **항상 `> /tmp/out.txt 2>&1` 리다이렉트 후 Read 도구로 확인**
-- 빌드: `dotnet build StockTrader.csproj --no-restore > /tmp/build_out.txt 2>&1`
-- 테스트: `dotnet test trader.sln --no-restore > /tmp/test_out.txt 2>&1`
+- `dotnet` 등 일부 CLI는 stderr로 출력 → Bash 도구에서 stdout만 캡처되어 안 보임
+- **해결: 명령어 끝에 `2>&1` 추가** (stderr를 stdout으로 합침)
+- 빌드: `dotnet build StockTrader.csproj 2>&1`
+- 테스트: `dotnet test trader.sln 2>&1`
+- `/tmp/` 임시파일 리다이렉트 사용 금지 (파일 쓰레기 누적됨)
 - 프로젝트/솔루션 파일 2개 이상 → 반드시 파일명 지정 (StockTrader.csproj 또는 trader.sln)
 
 ### 빌드-테스트-커밋 워크플로우
@@ -96,17 +97,20 @@ MarketData → PatternScanner → SignalService(기대값필터) → RiskCheck �
 ### 에이전트별 담당 영역 (기본값)
 | 에이전트 | 주 담당 영역 | 부 담당 |
 |----------|-------------|---------|
-| senior-backend-engineer | Services/, BackgroundServices/, Extensions/, Configuration/, Models/ | Program.cs, Data/ |
+| senior-backend-engineer | Services/Order/, Services/Signal/, Services/Risk/, Services/Account/, Services/ML/ | Services/Backtest/ |
+| data-infra-engineer (general-purpose) | Data/, BackgroundServices/, Extensions/, Configuration/, Models/ | Program.cs |
+| notification-engineer (general-purpose) | Services/Notification/, BackgroundServices/DailyReportService.cs | — |
 | frontend-ux-improver | Components/Pages/, Components/Shared/, Components/Layout/ | wwwroot/ |
 | qa-bug-hunter | 읽기 전용 (코드 수정 불가, 리포트만 작성) | — |
 | trading-algorithm-researcher | Services/Patterns/, Services/Indicators/ | Models/PatternType.cs |
 | algo-backtest-optimizer | 읽기 전용 (백테스트 API 호출만, 코드 수정 불가) | — |
 | stock-program-architect | 읽기 전용 (설계/기획만, 코드 수정 불가) | — |
+| general-purpose (Docker) | Dockerfile, docker-compose*.yml, .dockerignore, .env.example | .gitignore (Docker 관련만) |
 
 ### 코드 수정 규칙
 1. 수정 전 **반드시 파일 Read** (현재 코드 파악)
 2. **Edit 도구로 최소 변경** (관련 없는 코드 건드리지 말 것)
-3. 수정 후 **빌드 확인**: `dotnet build StockTrader.csproj > /tmp/build_out.txt 2>&1`
+3. 수정 후 **빌드 확인**: `dotnet build StockTrader.csproj 2>&1`
 4. Razor 파일 수정 시 주의:
    - `Position` → `StockTrader.Models.Position` (MudBlazor 충돌)
    - `@변수한글` → `@(변수)한글` (파싱 오류)
@@ -115,14 +119,17 @@ MarketData → PatternScanner → SignalService(기대값필터) → RiskCheck �
 
 ### 빌드-테스트 의무
 - 모든 코드 수정 에이전트는 작업 완료 후 빌드 확인 필수
-- stdout 안 보이면 `/tmp/` 리다이렉트 후 Read로 확인
+- stdout 안 보이면 `2>&1` 추가 (임시파일 사용 금지)
 - 테스트는 오케스트레이터가 최종 병합 후 실행
 
-### 앱 재시작 프로토콜
-- 앱 실행/재시작 시 **반드시 기존 프로세스 먼저 종료**
-- `powershell.exe -Command "Get-NetTCPConnection -LocalPort 5239 | Select -Expand OwningProcess -First 1"` → PID 확인
-- `powershell.exe -Command "Stop-Process -Id {PID} -Force"` → 종료
-- 포트 해제 확인 후 재시작
+### 앱 실행 프로토콜
+- **반드시 `dotnet publish` → publish 폴더에서 exe 실행** (`dotnet build` exe 직접 실행 금지 — wwwroot 누락으로 UI 깨짐)
+- 실행 순서:
+  1. 기존 프로세스 종료: `powershell.exe -Command "Get-NetTCPConnection -LocalPort 5239 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }"`
+  2. 빌드: `dotnet publish StockTrader.csproj -c Release -o ./publish 2>&1`
+  3. 실행: `cd publish && start "" "StockTrader.exe"` (publish 폴더에서 실행해야 content root가 올바름)
+- 접속: http://localhost:5239
+- 종료: 콘솔 창 닫기 또는 Ctrl+C
 
 ## 절대 하지 말 것
 - MeanReversionChannel exit profiles 수정 (30%+ 성능 하락)

@@ -131,6 +131,9 @@ public class PositionExitManagerService : BackgroundService
 
                 if (position.CurrentPrice <= 0) continue;
 
+                var highBefore = position.HighSinceEntry;
+                var stopBefore = position.StopLossPrice;
+
                 var exitResult = await EvaluateExitAsync(position, ohlcvRepo, ct);
 
                 if (exitResult.ShouldExit)
@@ -187,8 +190,14 @@ public class PositionExitManagerService : BackgroundService
                 }
                 else
                 {
-                    // 포지션 상태 업데이트 (HighSinceEntry 등)
-                    await tradeRepo.SavePositionAsync(position, ct);
+                    // HighSinceEntry 또는 StopLossPrice(트레일링/손익분기)가 실제로 변경된
+                    // 경우에만 저장하여 불필요한 UPDATE를 제거한다.
+                    var stateChanged = position.HighSinceEntry != highBefore
+                                   || position.StopLossPrice != stopBefore;
+                    if (stateChanged)
+                    {
+                        await tradeRepo.SavePositionAsync(position, ct);
+                    }
                 }
             }
             catch (Exception ex)

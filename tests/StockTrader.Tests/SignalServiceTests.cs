@@ -80,16 +80,25 @@ public class SignalServiceTests : IDisposable
     private static PatternStats CreateStats(
         decimal winRate = 0.6m,
         decimal avgWinPercent = 0.05m,
-        decimal avgLossPercent = 0.03m)
+        decimal avgLossPercent = 0.03m,
+        PatternType patternType = PatternType.GapUpPullback)
     {
         return new PatternStats
         {
-            PatternType = PatternType.GapUpPullback,
+            PatternType = patternType,
             WinRate = winRate,
             AvgWinPercent = avgWinPercent,
             AvgLossPercent = avgLossPercent,
             SampleSize = 50
         };
+    }
+
+    /// <summary>GetAllStatsAsync mock 설정 헬퍼</summary>
+    private void SetupGetAllStats(params PatternStats[] statsItems)
+    {
+        var list = statsItems.ToList();
+        _statsMock.Setup(s => s.GetAllStatsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(list);
     }
 
     // ────────────────────────────────────────────────────────────
@@ -107,6 +116,7 @@ public class SignalServiceTests : IDisposable
 
         var userSettings = new UserSettings { AccountSize = 100_000m, OrderMode = OrderMode.AlertOnly };
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         // W02 fix: sector는 Ticker DB에서 조회 — DB에 없으면 symbol이 sector로 사용됨
@@ -152,6 +162,7 @@ public class SignalServiceTests : IDisposable
         var stats = CreateStats(winRate: 0.3m, avgWinPercent: 0.02m, avgLossPercent: 0.05m);
         // Expectancy = 0.3*0.02 - 0.7*0.05 = 0.006 - 0.035 = -0.029 < 0
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
@@ -171,6 +182,8 @@ public class SignalServiceTests : IDisposable
         var sut = CreateSut();
         var signal = CreateSignal();
 
+        // GetAllStatsAsync에 해당 패턴 통계 없음 → stats=null로 처리
+        SetupGetAllStats(); // 빈 리스트
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((PatternStats?)null);
         _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -198,6 +211,7 @@ public class SignalServiceTests : IDisposable
         var signal = CreateSignal();
         var stats = CreateStats();
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -226,6 +240,7 @@ public class SignalServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         string? capturedSector = null;
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync("AAPL", It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -251,6 +266,7 @@ public class SignalServiceTests : IDisposable
         var stats = CreateStats();
 
         string? capturedSector = null;
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync("NVDA", It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -283,6 +299,7 @@ public class SignalServiceTests : IDisposable
 
         var userSettings = new UserSettings { AccountSize = 100_000m };
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -311,6 +328,7 @@ public class SignalServiceTests : IDisposable
         var signal = CreateSignal(entryPrice: 100m, stopLossPrice: 95m);
         var stats = CreateStats();
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -334,6 +352,7 @@ public class SignalServiceTests : IDisposable
         var signal = CreateSignal(entryPrice: 0m, stopLossPrice: 0m);
         var stats = CreateStats();
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -371,6 +390,7 @@ public class SignalServiceTests : IDisposable
         // Expectancy = 0.6*0.05 - 0.4*0.02 = 0.022
         var stats = CreateStats(winRate: 0.6m, avgWinPercent: 0.05m, avgLossPercent: 0.02m);
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -397,6 +417,7 @@ public class SignalServiceTests : IDisposable
         var stats = CreateStats();
         var userSettings = new UserSettings { AccountSize = 100_000m };
 
+        SetupGetAllStats(stats);
         _statsMock.Setup(s => s.GetStatsAsync(It.IsAny<PatternType>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(stats);
         _riskMock.Setup(r => r.CanOpenPositionAsync("AAPL", It.IsAny<string>(), It.IsAny<CancellationToken>()))

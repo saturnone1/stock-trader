@@ -11,34 +11,50 @@ namespace StockTrader.Services.Notification;
 /// Telegram Bot API를 직접 호출하는 알림 채널.
 /// 외부 NuGet 패키지 없이 HttpClient만 사용.
 /// API 문서: https://core.telegram.org/bots/api#sendmessage
+/// 설정 우선순위: DB UserSettings > appsettings.json (INotificationSettingsProvider를 통해 병합).
 /// </summary>
 public sealed class TelegramNotificationChannel : INotificationChannel
 {
     private const string ApiBaseUrl = "https://api.telegram.org";
 
     private readonly HttpClient _http;
-    private readonly NotificationSettings _settings;
+    private readonly INotificationSettingsProvider _settingsProvider;
+    private readonly NotificationSettings _fallbackSettings;
     private readonly ILogger<TelegramNotificationChannel> _logger;
 
     public string ChannelName => "Telegram";
 
+    // IsEnabled는 동기 프로퍼티이므로 fallback(appsettings) 기준으로만 판별.
+    // 실제 발송 시점에 GetEffectiveSettingsAsync()로 재확인한다.
     public bool IsEnabled =>
-        _settings.EnableTelegram &&
-        !string.IsNullOrWhiteSpace(_settings.TelegramBotToken) &&
-        !string.IsNullOrWhiteSpace(_settings.TelegramChatId);
+        _fallbackSettings.EnableTelegram &&
+        !string.IsNullOrWhiteSpace(_fallbackSettings.TelegramBotToken) &&
+        !string.IsNullOrWhiteSpace(_fallbackSettings.TelegramChatId);
 
     public TelegramNotificationChannel(
         HttpClient http,
-        IOptions<NotificationSettings> settings,
+        INotificationSettingsProvider settingsProvider,
+        IOptions<NotificationSettings> fallbackSettings,
         ILogger<TelegramNotificationChannel> logger)
     {
-        _http = http;
-        _settings = settings.Value;
-        _logger = logger;
+        _http             = http;
+        _settingsProvider = settingsProvider;
+        _fallbackSettings = fallbackSettings.Value;
+        _logger           = logger;
     }
+
+    // 런타임에 항상 병합된 최신 설정을 조회한다 (DB 우선, fallback은 appsettings).
+    private Task<NotificationSettings> GetSettingsAsync(CancellationToken ct) =>
+        _settingsProvider.GetEffectiveSettingsAsync(ct);
 
     public async Task SendSignalAsync(TradeRecommendation recommendation, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableTelegram
+            || string.IsNullOrWhiteSpace(settings.TelegramBotToken)
+            || string.IsNullOrWhiteSpace(settings.TelegramChatId))
+            return;
+
         var direction = GetDirectionLabel(recommendation);
         var rr = recommendation.RiskRewardRatio.ToString("F2");
         var stopPct = (recommendation.StopLossPercent * 100m).ToString("F2");
@@ -57,20 +73,31 @@ public sealed class TelegramNotificationChannel : INotificationChannel
             <i>{recommendation.GeneratedAt:yyyy-MM-dd HH:mm} ET</i>
             """;
 
-        await SendMessageAsync(text, ct);
+        await SendMessageAsync(text, settings, ct);
         _logger.LogInformation("Telegram signal sent for {Symbol}", recommendation.Symbol);
     }
 
     public async Task SendAlertAsync(string message, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableTelegram
+            || string.IsNullOrWhiteSpace(settings.TelegramBotToken)
+            || string.IsNullOrWhiteSpace(settings.TelegramChatId))
+            return;
+
         var text = $"<b>알림</b>\n\n{EscapeHtml(message)}";
-        await SendMessageAsync(text, ct);
+        await SendMessageAsync(text, settings, ct);
     }
 
     public async Task SendDailyReportAsync(DailyReportData report, CancellationToken ct = default)
     {
+        var settings = await GetSettingsAsync(ct);
+        if (!settings.EnableTelegram
+            || string.IsNullOrWhiteSpace(settings.TelegramBotToken)
+            || string.IsNullOrWhiteSpace(settings.TelegramChatId))
+            return;
+
         var pnlSign = report.DailyPnl >= 0 ? "+" : "";
-        var pnlEmoji = report.DailyPnl >= 0 ? "초록불" : "빨간불";
 
         var topSignalsText = report.TopSignals.Count > 0
             ? string.Join("\n", report.TopSignals.Select(s => $"  • {s}"))
@@ -93,7 +120,7 @@ public sealed class TelegramNotificationChannel : INotificationChannel
             체결 종목: {executedText}
             """;
 
-        await SendMessageAsync(text, ct);
+        await SendMessageAsync(text, settings, ct);
         _logger.LogInformation("Telegram daily report sent for {Date}", report.ReportDate);
     }
 
@@ -101,7 +128,8 @@ public sealed class TelegramNotificationChannel : INotificationChannel
     {
         try
         {
-            await SendMessageAsync("StockTrader 텔레그램 연결 테스트 성공!", ct);
+            var settings = await GetSettingsAsync(ct);
+            await SendMessageAsync("StockTrader 텔레그램 연결 테스트 성공!", settings, ct);
             return true;
         }
         catch (Exception ex)
@@ -113,13 +141,13 @@ public sealed class TelegramNotificationChannel : INotificationChannel
 
     // ── Private helpers ───────────────────────────────────────────────
 
-    private async Task SendMessageAsync(string htmlText, CancellationToken ct)
+    private async Task SendMessageAsync(string htmlText, NotificationSettings settings, CancellationToken ct)
     {
-        var url = $"{ApiBaseUrl}/bot{_settings.TelegramBotToken}/sendMessage";
+        var url = $"{ApiBaseUrl}/bot{settings.TelegramBotToken}/sendMessage";
 
         var payload = new
         {
-            chat_id = _settings.TelegramChatId,
+            chat_id = settings.TelegramChatId,
             text = htmlText,
             parse_mode = "HTML",
             disable_web_page_preview = true

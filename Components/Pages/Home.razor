@@ -325,6 +325,7 @@
         try
         {
             var broker = BrokerFactory.GetDefaultService();
+            if (broker == null) return;
             var riskTask = RiskService.GetCurrentRiskStateAsync();
             var brokerPositionsTask = broker.GetPositionsAsync();
             var accountTask = broker.GetAccountAsync();
