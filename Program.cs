@@ -579,6 +579,49 @@ app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService sv
     });
 });
 
+// ── TQQQ 비중 백테스트 API ────────────────────────────────────────────────────
+// fmkorea "200일 티큐 변형매매법" 포지션-비중 백테스터.
+// TQQQ 200SMA + QQQ MA3/MA161 + SPY MA200 기반으로 매일 비중(0/5/10/80/90/100%)을 결정.
+app.MapPost("/api/backtest/tqqq", async (TqqqBacktestRequest req, TqqqWeightBacktester bt, CancellationToken ct) =>
+{
+    var result = await bt.RunAsync(
+        req.From,
+        req.To,
+        req.InitialCapital,
+        req.DataSource,
+        req.Params,
+        ct);
+
+    return Results.Ok(new
+    {
+        TotalReturn    = result.TotalReturnPercent.ToString("F2") + "%",
+        CAGR           = result.Cagr.ToString("F2") + "%",
+        MaxDrawdown    = result.MaxDrawdownPercent.ToString("F2") + "%",
+        result.SharpeRatio,
+        result.TotalDays,
+        result.InvestedDays,
+        // 처음 30일 + 마지막 30일 기록 (디버깅용)
+        EarlyRecords = result.DailyRecords.Take(30).Select(r => new
+        {
+            Date        = r.Date.ToString("yyyy-MM-dd"),
+            r.Code,
+            Weight      = r.Weight.ToString("P0"),
+            TqqqClose   = r.TqqqClose.ToString("F2"),
+            DailyReturn = r.DailyReturn.ToString("P2"),
+            Equity      = r.Equity.ToString("N2")
+        }),
+        RecentRecords = result.DailyRecords.TakeLast(30).Select(r => new
+        {
+            Date        = r.Date.ToString("yyyy-MM-dd"),
+            r.Code,
+            Weight      = r.Weight.ToString("P0"),
+            TqqqClose   = r.TqqqClose.ToString("F2"),
+            DailyReturn = r.DailyReturn.ToString("P2"),
+            Equity      = r.Equity.ToString("N2")
+        })
+    });
+});
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
