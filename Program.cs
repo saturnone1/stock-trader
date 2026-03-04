@@ -568,7 +568,14 @@ app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService sv
         result.OverallWinRate,
         PerPattern = result.PerPatternStats.ToDictionary(
             kv => kv.Key.ToString(),
-            kv => new { kv.Value.SampleSize, WinRate = kv.Value.WinRate.ToString("P1"), kv.Value.AvgWinPercent, kv.Value.AvgLossPercent })
+            kv => new { kv.Value.SampleSize, WinRate = kv.Value.WinRate.ToString("P1"), kv.Value.AvgWinPercent, kv.Value.AvgLossPercent }),
+        Trades = result.Trades.Select(t => new
+        {
+            t.Symbol, Pattern = t.PatternType.ToString(),
+            EntryTime = t.EntryTime.ToString("yyyy-MM-dd"), ExitTime = t.ExitTime.ToString("yyyy-MM-dd"),
+            t.EntryPrice, t.ExitPrice, ReturnPct = ((t.ExitPrice - t.EntryPrice) / t.EntryPrice).ToString("P2"),
+            t.ExitReason
+        })
     });
 });
 

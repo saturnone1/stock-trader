@@ -110,15 +110,16 @@ public sealed class PatternParamViewModel
     public decimal VolBrk_AtrStopMultiplier { get; set; } = 2.0m;
     public decimal VolBrk_AtrTargetMultiplier { get; set; } = 3.0m;
 
-    // Tqqq200Sma
+    // Tqqq200Sma (fmkorea 변형매매법)
     public int Tqqq_SmaPeriod { get; set; } = 200;
-    public decimal Tqqq_OverheatPercent { get; set; } = 0.05m;
-    public int Tqqq_ConfirmationDays { get; set; } = 2;
-    public int Tqqq_ShortTrendEmaPeriod { get; set; } = 50;
+    public decimal Tqqq_EntryDistancePercent { get; set; } = 1.01m;
+    public decimal Tqqq_FixedStopPercent { get; set; } = 0.059m;
+    public decimal Tqqq_SpyExitDistancePercent { get; set; } = 0.9775m;
+    public decimal Tqqq_MaxVolatility20d { get; set; } = 0.059m;
+    public decimal Tqqq_OverheatStage1 { get; set; } = 1.39m;
+    public decimal Tqqq_OverheatStage2 { get; set; } = 1.46m;
     public int Tqqq_VolumeAvgPeriod { get; set; } = 20;
     public decimal Tqqq_MinVolumeRatio { get; set; } = 1.0m;
-    public decimal Tqqq_AtrStopMultiplier { get; set; } = 3.0m;
-    public decimal Tqqq_AtrTargetMultiplier { get; set; } = 8.0m;
 
     // ── 청산 전략 오버라이드 ──
 
@@ -277,15 +278,16 @@ public sealed class PatternParamViewModel
             VolBrk_VolumeAvgPeriod = ps.VolatilityBreakout.VolumeAvgPeriod,
             VolBrk_AtrStopMultiplier = ps.VolatilityBreakout.AtrStopMultiplier,
             VolBrk_AtrTargetMultiplier = ps.VolatilityBreakout.AtrTargetMultiplier,
-            // Tqqq200Sma
+            // Tqqq200Sma (fmkorea 변형매매법)
             Tqqq_SmaPeriod = ps.Tqqq200Sma.SmaPeriod,
-            Tqqq_OverheatPercent = ps.Tqqq200Sma.OverheatPercent,
-            Tqqq_ConfirmationDays = ps.Tqqq200Sma.ConfirmationDays,
-            Tqqq_ShortTrendEmaPeriod = ps.Tqqq200Sma.ShortTrendEmaPeriod,
+            Tqqq_EntryDistancePercent = ps.Tqqq200Sma.EntryDistancePercent,
+            Tqqq_FixedStopPercent = ps.Tqqq200Sma.FixedStopPercent,
+            Tqqq_SpyExitDistancePercent = ps.Tqqq200Sma.SpyExitDistancePercent,
+            Tqqq_MaxVolatility20d = ps.Tqqq200Sma.MaxVolatility20d,
+            Tqqq_OverheatStage1 = ps.Tqqq200Sma.OverheatStage1,
+            Tqqq_OverheatStage2 = ps.Tqqq200Sma.OverheatStage2,
             Tqqq_VolumeAvgPeriod = ps.Tqqq200Sma.VolumeAvgPeriod,
             Tqqq_MinVolumeRatio = ps.Tqqq200Sma.MinVolumeRatio,
-            Tqqq_AtrStopMultiplier = ps.Tqqq200Sma.AtrStopMultiplier,
-            Tqqq_AtrTargetMultiplier = ps.Tqqq200Sma.AtrTargetMultiplier,
         };
 
         // DB에 저장된 청산 오버라이드가 있으면 적용
@@ -486,14 +488,15 @@ public sealed class PatternParamViewModel
         ],
         [PatternType.Tqqq200Sma] =
         [
-            new("SMA 기간", "Tqqq_SmaPeriod") { HelperText = "장기 추세 SMA 기간" },
-            new("과열 임계값", "Tqqq_OverheatPercent") { Format = "P2", DecStep = 0.005m, HelperText = "SMA 대비 과열 비율" },
-            new("확인 일수", "Tqqq_ConfirmationDays") { HelperText = "SMA 돌파 확인 기간" },
-            new("단기 EMA", "Tqqq_ShortTrendEmaPeriod") { HelperText = "단기 추세 EMA 기간" },
+            new("SMA 기간", "Tqqq_SmaPeriod") { HelperText = "장기 추세 SMA 기간 (200일)" },
+            new("진입 이격도", "Tqqq_EntryDistancePercent") { Format = "F2", DecStep = 0.01m, HelperText = "1.01 = 101% (SMA200 대비)" },
+            new("고정 손절%", "Tqqq_FixedStopPercent") { Format = "P1", DecStep = 0.005m, HelperText = "0.059 = -5.9% 손절" },
+            new("SPY 청산 이격도", "Tqqq_SpyExitDistancePercent") { Format = "F4", DecStep = 0.0025m, HelperText = "0.9775 = SPY 97.75%" },
+            new("변동성 상한(20d)", "Tqqq_MaxVolatility20d") { Format = "P1", DecStep = 0.005m, HelperText = "20일 수익률 표준편차 상한" },
+            new("과열1단계 이격도", "Tqqq_OverheatStage1") { Format = "F2", DecStep = 0.01m, HelperText = "1.39 = 139% (신뢰도 감소)" },
+            new("과열2단계 이격도", "Tqqq_OverheatStage2") { Format = "F2", DecStep = 0.01m, HelperText = "1.46 = 146% (진입 차단)" },
             new("거래량 평균 기간", "Tqqq_VolumeAvgPeriod") { HelperText = "거래량 평균 계산 기간" },
             new("최소 거래량 배수", "Tqqq_MinVolumeRatio") { Format = "F1", DecStep = 0.1m, HelperText = "평균 거래량 대비" },
-            new("ATR 손절 배수", "Tqqq_AtrStopMultiplier") { Format = "F1", DecStep = 0.5m, HelperText = "넓은 손절 → 트레일링 위임" },
-            new("ATR 목표 배수", "Tqqq_AtrTargetMultiplier") { Format = "F1", DecStep = 0.5m, HelperText = "넓은 목표 → 트레일링 위임" },
             new("최대 보유 봉", "Tqqq_ExitMaxHoldingBars", "exit") { HelperText = "999 = 레짐 기반 무제한 보유" },
         ],
     };

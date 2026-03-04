@@ -8,25 +8,23 @@ using static StockTrader.Services.Indicators.IndicatorService;
 namespace StockTrader.Services.Patterns;
 
 /// <summary>
-/// TQQQ 200-SMA Rotation Strategy (아기티큐 전략 개선판).
+/// TQQQ 200-SMA 변형매매법 (fmkorea "200일 티큐 변형매매법" 기반).
 ///
-/// 원본 전략:
-///   - TQQQ 자체 SMA(200) 기준 4구간 판별 (하락/돌파/집중투자/과열)
-///   - 이틀 연속 종가 > SMA200 확인 후 풀매수
-///   - 고정 익절(+10/25/50%), 고정 손절(-5%)
-///   - 백테스트: 승률 30%, 손익비 7.75, 기댓값 +6.5%/거래
+/// 핵심 규칙:
+///   1. 이격도(Close/SMA200) >= 101% -> 풀매수
+///   2. SPY가 200일선 대비 97.75% 이하 -> 진입 차단 (전량 청산 시그널)
+///   3. 20일 수익률 표본표준편차 >= 5.9% -> 진입 차단 (변동성 과다)
+///   4. 과열 감량: 이격도 139%~146% -> 신뢰도 감소, 146% 이상 -> 진입 차단
+///   5. 손절: 진입가 -5.9% 또는 SMA200*0.99 중 높은 쪽
+///   6. 목표가: SMA200*1.50 (넓게 설정, TradeSimulator 동적 스탑에 위임)
 ///
-/// 개선 사항 (자동화 최적화):
-///   1. EMA(50) 골든크로스 필터 → 휩쏘 감소
-///   2. 거래량 확인 → 허위 돌파 필터링
-///   3. ATR 적응형 손절 → 고정 -5% 대신 시장 변동성 반영
-///   4. 고정 익절 제거 → 넓은 목표가 + BacktestService 트레일링 스탑에 위임 (추세 수익 극대화)
-///   5. 과열 구간(SMA200+5%↑) 진입 억제 → 고점 추격 방지
-///   6. SMA200을 지지선으로 활용한 손절 최적화
-///
-/// 진입 시나리오:
-///   A. 정식 진입: SMA200 아래→위 크로스오버 + N일 연속 확인 + 거래량
-///   B. 밴드 진입: 상승추세(EMA50>SMA200) 중 과열→집중투자 구간 되돌림 (눌림목)
+/// 기존 구현 대비 변경점:
+///   - EMA50 골든크로스 필터 제거 (이격도 기반으로 단순화)
+///   - ATR 적응형 손절 -> 고정 -5.9% 손절
+///   - 크로스오버 감지 -> 이격도 >= 101% 어디서든 진입
+///   - 과열 105% 차단 -> 139%까지 홀딩, 146%에서 차단
+///   - SPY 이격도 필터 추가
+///   - 20일 변동성 필터 추가
 /// </summary>
 public class Tqqq200SmaDetector : IPatternDetector
 {
@@ -47,7 +45,7 @@ public class Tqqq200SmaDetector : IPatternDetector
     public async Task<PatternSignal?> DetectAsync(string symbol, OhlcvBar[] bars,
         MarketRegime regime, CancellationToken ct = default)
     {
-        // TQQQ 전용 패턴 — 사용자 DB 설정 우선, 없으면 appsettings.json 기본값
+        // ── 1. 심볼 체크: TQQQ 전용 (사용자 DB 설정 우선, 없으면 appsettings.json 기본값) ──
         var userSettings = await _settingsRepo.GetAsync(ct);
         var allowed = !string.IsNullOrWhiteSpace(userSettings.Tqqq200SmaAllowedSymbols)
             ? userSettings.Tqqq200SmaAllowedSymbols
@@ -58,7 +56,8 @@ public class Tqqq200SmaDetector : IPatternDetector
         if (allowed.Count > 0 && !allowed.Any(s => s.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
             return null;
 
-        var minBars = _config.SmaPeriod + _config.ConfirmationDays + 5;
+        // ── 2. 바 수 체크: SMA200 계산 + 변동성 계산(20일)에 충분한 데이터 필요 ──
+        var minBars = _config.SmaPeriod + 25; // SMA200 + 여유분
         if (bars.Length < minBars)
             return null;
 
@@ -69,82 +68,75 @@ public class Tqqq200SmaDetector : IPatternDetector
         if (curr.Close <= 0 || curr.Open <= 0)
             return null;
 
-        // ── 지표 계산 ──
+        // ── 3. 지표 계산: SMA200, ATR ──
         var sma200 = _indicators.SMA(closes, _config.SmaPeriod);
-        var ema50 = _indicators.EMA(closes, _config.ShortTrendEmaPeriod);
         var atr = _indicators.ATR(bars);
 
-        if (sma200[i] <= 0 || ema50[i] <= 0 || atr[i] <= 0)
+        if (sma200[i] <= 0 || atr[i] <= 0)
             return null;
 
         var smaValue = sma200[i];
-        var overheatLine = smaValue * (1 + _config.OverheatPercent);
+        var currentAtr = atr[i];
 
-        // ── 기본 조건: 현재 종가 > SMA200 (집중투자 구간 이상) ──
-        if (curr.Close <= smaValue)
-            return null;
+        // ── 4. 이격도 계산: distance = Close / SMA200 ──
+        var distance = curr.Close / smaValue;
 
-        // ── 과열 구간 진입 차단 (SMA200 + 5% 초과) ──
-        if (curr.Close > overheatLine)
-            return null;
-
-        // ── 진입 시나리오 판별 ──
-        decimal confidence;
-        string entryType;
-
-        bool isBreakoutEntry = IsBreakoutEntry(closes, sma200, i);
-        bool isBandEntry = IsBandEntry(closes, sma200, ema50, i);
-
-        if (isBreakoutEntry)
+        // ── 5. SPY 필터: SPY 이격도 < 97.75% -> 진입 차단 ──
+        decimal spyDistance = 0m;
+        if (regime != null && regime.Spy200Ma > 0)
         {
-            // 시나리오 A: 정식 진입 (SMA200 크로스오버 + N일 연속 확인)
-            entryType = "정식진입";
-            confidence = 0.70m;
-
-            // 골든크로스(EMA50 > SMA200) 보너스
-            if (ema50[i] > smaValue)
-                confidence += 0.10m;
-        }
-        else if (isBandEntry)
-        {
-            // 시나리오 B: 밴드 진입 (상승추세 중 눌림목)
-            // EMA50 > SMA200 필수 (골든크로스 = 확립된 상승추세)
-            if (ema50[i] <= smaValue)
+            spyDistance = regime.SpyPrice / regime.Spy200Ma;
+            if (spyDistance < _config.SpyExitDistancePercent)
                 return null;
+        }
 
-            entryType = "밴드진입";
-            confidence = 0.55m;
+        // ── 6. 변동성 필터: 20일 일간 수익률 표본표준편차 >= 5.9% -> 진입 차단 ──
+        var volatility = CalculateVolatility20d(bars);
+        if (volatility >= _config.MaxVolatility20d)
+            return null;
 
-            // SMA200에 가까울수록 높은 신뢰도 (더 좋은 진입가)
-            var distFromSma = (curr.Close - smaValue) / smaValue;
-            confidence += Math.Max(0, (0.05m - distFromSma) * 3m);
+        // ── 7. 진입 조건: 이격도 >= 101% (EntryDistancePercent) ──
+        if (distance < _config.EntryDistancePercent)
+            return null;
+
+        // ── 과열 2단계(146%) 이상: 진입 차단 ──
+        if (distance >= _config.OverheatStage2)
+            return null;
+
+        // ── 과열 단계별 신뢰도 조정 ──
+        decimal confidence;
+        if (distance >= _config.OverheatStage1)
+        {
+            // 과열 1단계 (139%~146%): 진입은 허용하되 낮은 신뢰도
+            confidence = 0.45m;
         }
         else
         {
-            return null;
+            // 정상 구간 (101%~139%): 표준 신뢰도
+            confidence = 0.70m;
         }
 
-        // ── 거래량 확인 ──
+        // ── 거래량 확인 (보조 필터) ──
         if (!HasVolumeConfirmation(bars, i))
         {
             confidence -= 0.15m;
-            if (confidence < 0.40m)
+            if (confidence < 0.30m)
                 return null;
         }
 
-        // ── ATR 기반 손절/목표 (적응형) ──
-        var currentAtr = atr[i];
-        var stopLoss = curr.Close - currentAtr * _config.AtrStopMultiplier;
-        var target = curr.Close + currentAtr * _config.AtrTargetMultiplier;
-
-        // SMA200을 지지선으로 활용: 손절이 SMA200보다 크게 아래면 SMA200 바로 아래로 조정
+        // ── 8. 손절가: Max(진입가 * (1 - 5.9%), SMA200 * 0.99) ──
+        var fixedStop = curr.Close * (1m - _config.FixedStopPercent);
         var smaStop = smaValue * 0.99m;
-        if (stopLoss < smaStop)
-            stopLoss = smaStop;
+        var stopLoss = Math.Max(fixedStop, smaStop);
 
-        confidence = Math.Round(Math.Min(1.0m, Math.Max(0.40m, confidence)), 2);
+        // ── 9. 목표가: SMA200 * 1.50 (넓게 설정 — TradeSimulator가 동적 스탑으로 관리) ──
+        var target = smaValue * 1.50m;
 
-        var distAboveSma = (curr.Close - smaValue) / smaValue;
+        // 목표가가 진입가보다 낮으면 보정 (이격도가 이미 높을 때)
+        if (target <= curr.Close)
+            target = curr.Close * 1.10m;
+
+        confidence = Math.Round(Math.Min(1.0m, Math.Max(0.30m, confidence)), 2);
 
         var signal = new PatternSignal
         {
@@ -155,8 +147,8 @@ public class Tqqq200SmaDetector : IPatternDetector
             StopLossPrice = Math.Round(stopLoss, 2),
             TargetPrice = Math.Round(target, 2),
             Confidence = confidence,
-            Details = $"[{entryType}] SMA200=${smaValue:F2}, EMA50=${ema50[i]:F2}, " +
-                      $"SMA위={distAboveSma:P1}, 과열선=${overheatLine:F2}, ATR=${currentAtr:F2}",
+            Details = $"[이격도진입] SMA200=${smaValue:F2}, 이격도={distance:P1}, " +
+                      $"SPY이격도={spyDistance:P1}, 변동성20d={volatility:P2}, ATR=${currentAtr:F2}",
             IsActive = true
         };
 
@@ -164,64 +156,37 @@ public class Tqqq200SmaDetector : IPatternDetector
     }
 
     /// <summary>
-    /// 정식 진입: 최근 N일 이전에는 SMA200 아래였고, 최근 N일 연속 SMA200 위 (크로스오버).
+    /// 20일 일간 수익률의 표본표준편차 계산 (ddof=1).
+    /// fmkorea 전략의 변동성 필터에 사용.
     /// </summary>
-    private bool IsBreakoutEntry(decimal[] closes, decimal[] sma200, int currentIndex)
+    private decimal CalculateVolatility20d(OhlcvBar[] bars)
     {
-        int confirmDays = _config.ConfirmationDays;
+        const int period = 20;
+        if (bars.Length < period + 1)
+            return decimal.MaxValue; // 데이터 부족 시 높은 값 반환 -> 필터에 걸림
 
-        // 최근 N일 연속 종가 > SMA200
-        for (int d = 0; d < confirmDays; d++)
+        var returns = new decimal[period];
+        for (int d = 0; d < period; d++)
         {
-            int idx = currentIndex - d;
-            if (idx < 0 || sma200[idx] <= 0 || closes[idx] <= sma200[idx])
-                return false;
+            int idx = bars.Length - 1 - d;
+            int prev = idx - 1;
+            if (prev >= 0 && bars[prev].Close > 0)
+                returns[d] = (bars[idx].Close - bars[prev].Close) / bars[prev].Close;
+            else
+                returns[d] = 0m;
         }
 
-        // N일 전부터 10일 이내에 SMA200 아래였던 날이 있어야 함 (크로스오버 이벤트)
-        int lookbackStart = confirmDays;
-        int lookbackEnd = Math.Min(confirmDays + 10, currentIndex);
-        for (int d = lookbackStart; d <= lookbackEnd; d++)
-        {
-            int idx = currentIndex - d;
-            if (idx >= 0 && sma200[idx] > 0 && closes[idx] < sma200[idx])
-                return true;
-        }
+        // 표본표준편차 (ddof=1)
+        var mean = returns.Average();
+        var sumSquaredDiff = returns.Select(r => (r - mean) * (r - mean)).Sum();
+        var variance = sumSquaredDiff / (returns.Length - 1);
+        var volatility = (decimal)Math.Sqrt((double)variance);
 
-        return false;
+        return volatility;
     }
 
     /// <summary>
-    /// 밴드 진입: 상승추세 중 과열 구간에서 집중투자 구간으로 되돌아온 눌림목.
-    /// 최근 20일 이내에 과열선 위에 있다가 현재 집중투자 구간으로 내려온 상태.
-    /// </summary>
-    private bool IsBandEntry(decimal[] closes, decimal[] sma200, decimal[] ema50, int currentIndex)
-    {
-        // 현재는 집중투자 구간 (SMA200 < close <= overheatLine) — 이미 상위에서 검증됨
-        // 최근 20일 이내에 과열 구간이었던 날이 있어야 함
-        int lookback = Math.Min(20, currentIndex);
-
-        for (int d = 1; d <= lookback; d++)
-        {
-            int idx = currentIndex - d;
-            if (idx < 0 || sma200[idx] <= 0) break;
-
-            var overheatAtIdx = sma200[idx] * (1 + _config.OverheatPercent);
-
-            // 과열 구간에 있었던 날 발견
-            if (closes[idx] > overheatAtIdx)
-                return true;
-
-            // SMA200 아래로 간 적이 있으면 이건 밴드가 아님 (새 사이클)
-            if (closes[idx] < sma200[idx])
-                return false;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// 거래량이 N일 평균 이상인지 확인.
+    /// 거래량이 N일 평균 이상인지 확인 (보조 필터).
     /// </summary>
     private bool HasVolumeConfirmation(OhlcvBar[] bars, int currentIndex)
     {

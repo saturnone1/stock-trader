@@ -268,6 +268,7 @@ internal sealed class TradeSimulator
         }
 
         // 5. Regime-based dynamic exit (Tqqq200Sma)
+        // SMA200 동적 스탑: 종가 기준으로 별도 체크 (고정 손절과 분리)
         if (openPosition.PatternType == PatternType.Tqqq200Sma && sma200 > 0)
         {
             var dynamicSmaStop = sma200 * 0.99m;
