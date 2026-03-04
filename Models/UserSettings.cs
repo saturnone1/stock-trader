@@ -68,4 +68,8 @@ public class UserSettings
     /// null이면 appsettings.json의 DailyReportTime(ET 기준) 사용.
     /// </summary>
     public string? DailyReportTimeKst { get; set; }
+
+    // ── 패턴별 종목 설정 ──────────────────────────────────────────────
+    /// <summary>TQQQ 200SMA 전략 적용 종목 (쉼표 구분). null이면 appsettings.json 기본값 사용.</summary>
+    public string? Tqqq200SmaAllowedSymbols { get; set; }
 }

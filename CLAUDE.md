@@ -59,8 +59,20 @@ Extensions/       DI 등록 (ServiceCollectionExtensions.cs)
 
 ### 핵심 파이프라인
 ```
-MarketData → PatternScanner → SignalService(기대값필터) → RiskCheck → OrderService(Bracket)
+MarketData → PatternScanner → SignalService(6단계필터) → OrderService(Bracket)
 ```
+
+### 시그널 평가 정책 (SignalService 6단계 필터)
+추천("자동매매 추천") 생성 조건 = **실제 자동매매 실행 가능한 시그널만 추천**
+1. **신뢰도** — `Confidence >= MinConfidence(0.3)` (TradingSettings)
+2. **가격 유효성** — `StopLoss < Entry < Target`
+3. **기대값** — `Expectancy > MinExpectancy` (샘플 10건 미만 시 우회)
+4. **리스크** — `CanOpenPositionAsync` 통과 (포지션 한도, 섹터 한도)
+5. **포지션 사이징** — `1/MaxTotalPositions` 캡 적용
+6. **주문 수량** — `ShareQuantity > 0` (0주면 매수 불가)
+
+**스타트업 소급 적용**: Program.cs에서 기존 DB의 저품질 시그널 비활성화 + 무효 추천 삭제
+**파라미터 변경 시**: `appsettings.json` Trading.MinConfidence 수정 → 스타트업 정리 자동 적용
 
 ### 패턴 분류 (16개, PatternType enum)
 - **일봉 검증됨(7)**: Breakout, TrendPullback, VolatilityExpansion, MomentumReversal, MeanReversionChannel, Rsi2Bollinger, Tqqq200Sma
@@ -95,17 +107,25 @@ MarketData → PatternScanner → SignalService(기대값필터) → RiskCheck �
 - 의존성 있는 파일(예: 인터페이스+구현체)은 같은 에이전트에 배정
 
 ### 에이전트별 담당 영역 (기본값)
+
+**코드 수정 에이전트 (`.claude/agents/`에 정의):**
 | 에이전트 | 주 담당 영역 | 부 담당 |
 |----------|-------------|---------|
 | senior-backend-engineer | Services/Order/, Services/Signal/, Services/Risk/, Services/Account/, Services/ML/ | Services/Backtest/ |
-| data-infra-engineer (general-purpose) | Data/, BackgroundServices/, Extensions/, Configuration/, Models/ | Program.cs |
-| notification-engineer (general-purpose) | Services/Notification/, BackgroundServices/DailyReportService.cs | — |
+| data-infra-engineer | Data/, BackgroundServices/, Extensions/, Configuration/, Models/ | Program.cs |
+| notification-engineer | Services/Notification/, BackgroundServices/DailyReportService.cs | — |
 | frontend-ux-improver | Components/Pages/, Components/Shared/, Components/Layout/ | wwwroot/ |
-| qa-bug-hunter | 읽기 전용 (코드 수정 불가, 리포트만 작성) | — |
 | trading-algorithm-researcher | Services/Patterns/, Services/Indicators/ | Models/PatternType.cs |
-| algo-backtest-optimizer | 읽기 전용 (백테스트 API 호출만, 코드 수정 불가) | — |
-| stock-program-architect | 읽기 전용 (설계/기획만, 코드 수정 불가) | — |
-| general-purpose (Docker) | Dockerfile, docker-compose*.yml, .dockerignore, .env.example | .gitignore (Docker 관련만) |
+| docker-ops | Dockerfile, docker-compose*.yml, .dockerignore, .env.example, .env | .gitignore (Docker 관련만) |
+
+**검증/감사 에이전트 (읽기 전용, 코드 수정 불가):**
+| 에이전트 | 역할 |
+|----------|------|
+| qa-bug-hunter | 코드 정적 분석, 버그 리포트 작성 |
+| runtime-validator | 배포 후 런타임 기능 검증 (로그/데이터흐름/페이지 일관성) |
+| security-auditor | 보안 감사 (인증/암호화/OWASP/자격증명/헤더) |
+| algo-backtest-optimizer | 백테스트 API 호출, 파라미터 최적화 |
+| stock-program-architect | 설계/기획, 아키텍처 리뷰 |
 
 ### 코드 수정 규칙
 1. 수정 전 **반드시 파일 Read** (현재 코드 파악)
@@ -130,6 +150,15 @@ MarketData → PatternScanner → SignalService(기대값필터) → RiskCheck �
   3. 실행: `cd publish && start "" "StockTrader.exe"` (publish 폴더에서 실행해야 content root가 올바름)
 - 접속: http://localhost:5239
 - 종료: 콘솔 창 닫기 또는 Ctrl+C
+
+### Docker 운영 (docker-ops 에이전트 담당)
+- **기본 배포 = Docker 컨테이너** (exe 로컬 실행은 사용자 요청 시에만)
+- 배포: `docker compose down && docker compose build && docker compose up -d`
+- 로그: `docker compose logs --tail 30 2>&1`
+- `.env` 파일: 실제 API 키 포함 (git 미추적), `.env.example`에서 복사
+- **DataProtection 키**: `/data/keys`에 영구 저장 (SecurityServiceExtensions.cs)
+- **build cache 오류**: `docker builder prune -f` → `docker compose build --no-cache`
+- **API 인증 실패**: user-secrets는 Docker 안에서 안 됨 → `.env`에 실제 키 필요
 
 ## 절대 하지 말 것
 - MeanReversionChannel exit profiles 수정 (30%+ 성능 하락)

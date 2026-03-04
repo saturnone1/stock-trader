@@ -624,7 +624,7 @@ public class StockAnalysisService : IStockAnalysisService
             // DB에서 SPY 일봉 데이터 우선 조회 (최근 300일)
             var dbBars = await _ohlcvRepo.GetBarsAsync(
                 "SPY", TimeFrame.Daily,
-                DateTime.UtcNow.AddDays(-300), DateTime.UtcNow, ct);
+                DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
 
             if (dbBars.Count >= 200)
             {
@@ -638,7 +638,7 @@ public class StockAnalysisService : IStockAnalysisService
                 _logger.LogDebug("[Analysis] SPY 레짐: DB 데이터 부족({Count}개) — 외부 API 호출", dbBars.Count);
                 spyBars = await dataFeed.GetHistoricalBarsAsync(
                     "SPY", TimeFrame.Daily,
-                    DateTime.UtcNow.AddDays(-300), DateTime.UtcNow, ct);
+                    DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
             }
 
             if (spyBars.Count >= 200)

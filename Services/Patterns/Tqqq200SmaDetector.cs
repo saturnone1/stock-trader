@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
 using static StockTrader.Services.Indicators.IndicatorService;
@@ -31,28 +32,42 @@ public class Tqqq200SmaDetector : IPatternDetector
 {
     private readonly IIndicatorService _indicators;
     private readonly Tqqq200SmaConfig _config;
+    private readonly ISettingsRepository _settingsRepo;
 
     public PatternType PatternType => PatternType.Tqqq200Sma;
 
-    public Tqqq200SmaDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings)
+    public Tqqq200SmaDetector(IIndicatorService indicators, IOptionsSnapshot<PatternSettings> settings,
+        ISettingsRepository settingsRepo)
     {
         _indicators = indicators;
         _config = settings.Value.Tqqq200Sma;
+        _settingsRepo = settingsRepo;
     }
 
-    public Task<PatternSignal?> DetectAsync(string symbol, OhlcvBar[] bars,
+    public async Task<PatternSignal?> DetectAsync(string symbol, OhlcvBar[] bars,
         MarketRegime regime, CancellationToken ct = default)
     {
+        // TQQQ 전용 패턴 — 사용자 DB 설정 우선, 없으면 appsettings.json 기본값
+        var userSettings = await _settingsRepo.GetAsync(ct);
+        var allowed = !string.IsNullOrWhiteSpace(userSettings.Tqqq200SmaAllowedSymbols)
+            ? userSettings.Tqqq200SmaAllowedSymbols
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList()
+            : _config.AllowedSymbols;
+
+        if (allowed.Count > 0 && !allowed.Any(s => s.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
+            return null;
+
         var minBars = _config.SmaPeriod + _config.ConfirmationDays + 5;
         if (bars.Length < minBars)
-            return Task.FromResult<PatternSignal?>(null);
+            return null;
 
         var closes = ExtractCloses(bars);
         var i = bars.Length - 1;
         var curr = bars[i];
 
         if (curr.Close <= 0 || curr.Open <= 0)
-            return Task.FromResult<PatternSignal?>(null);
+            return null;
 
         // ── 지표 계산 ──
         var sma200 = _indicators.SMA(closes, _config.SmaPeriod);
@@ -60,18 +75,18 @@ public class Tqqq200SmaDetector : IPatternDetector
         var atr = _indicators.ATR(bars);
 
         if (sma200[i] <= 0 || ema50[i] <= 0 || atr[i] <= 0)
-            return Task.FromResult<PatternSignal?>(null);
+            return null;
 
         var smaValue = sma200[i];
         var overheatLine = smaValue * (1 + _config.OverheatPercent);
 
         // ── 기본 조건: 현재 종가 > SMA200 (집중투자 구간 이상) ──
         if (curr.Close <= smaValue)
-            return Task.FromResult<PatternSignal?>(null);
+            return null;
 
         // ── 과열 구간 진입 차단 (SMA200 + 5% 초과) ──
         if (curr.Close > overheatLine)
-            return Task.FromResult<PatternSignal?>(null);
+            return null;
 
         // ── 진입 시나리오 판별 ──
         decimal confidence;
@@ -95,7 +110,7 @@ public class Tqqq200SmaDetector : IPatternDetector
             // 시나리오 B: 밴드 진입 (상승추세 중 눌림목)
             // EMA50 > SMA200 필수 (골든크로스 = 확립된 상승추세)
             if (ema50[i] <= smaValue)
-                return Task.FromResult<PatternSignal?>(null);
+                return null;
 
             entryType = "밴드진입";
             confidence = 0.55m;
@@ -106,7 +121,7 @@ public class Tqqq200SmaDetector : IPatternDetector
         }
         else
         {
-            return Task.FromResult<PatternSignal?>(null);
+            return null;
         }
 
         // ── 거래량 확인 ──
@@ -114,7 +129,7 @@ public class Tqqq200SmaDetector : IPatternDetector
         {
             confidence -= 0.15m;
             if (confidence < 0.40m)
-                return Task.FromResult<PatternSignal?>(null);
+                return null;
         }
 
         // ── ATR 기반 손절/목표 (적응형) ──
@@ -145,7 +160,7 @@ public class Tqqq200SmaDetector : IPatternDetector
             IsActive = true
         };
 
-        return Task.FromResult<PatternSignal?>(signal);
+        return signal;
     }
 
     /// <summary>

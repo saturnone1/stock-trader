@@ -41,27 +41,24 @@ public class AlpacaBrokerService : IBrokerService
             return false;
         }
 
-        try
-        {
-            var order = await _tradingClient.PostOrderAsync(
-                MarketOrder.Buy(recommendation.Symbol, recommendation.ShareQuantity)
-                    .WithDuration(TimeInForce.Day)
-                    .Bracket(
-                        takeProfitLimitPrice: recommendation.TargetPrice,
-                        stopLossStopPrice: recommendation.StopLossPrice), ct);
+        // Alpaca는 소수점 2자리까지만 허용 (sub-penny 거부)
+        var tp = Math.Round(recommendation.TargetPrice, 2);
+        var sl = Math.Round(recommendation.StopLossPrice, 2);
 
-            _logger.LogInformation(
-                "[Alpaca] Order placed — {Side} {Symbol}: Qty={Qty}, OrderId={OrderId}, Status={Status}",
-                order.OrderSide, order.Symbol, order.Quantity,
-                order.OrderId, order.OrderStatus);
+        // 예외는 caller로 전파하여 실제 오류 원인이 사용자에게 노출되도록 한다.
+        var order = await _tradingClient.PostOrderAsync(
+            MarketOrder.Buy(recommendation.Symbol, recommendation.ShareQuantity)
+                .WithDuration(TimeInForce.Day)
+                .Bracket(
+                    takeProfitLimitPrice: tp,
+                    stopLossStopPrice: sl), ct);
 
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[Alpaca] Failed to place order for {Symbol}", recommendation.Symbol);
-            return false;
-        }
+        _logger.LogInformation(
+            "[Alpaca] Order placed — {Side} {Symbol}: Qty={Qty}, OrderId={OrderId}, Status={Status}",
+            order.OrderSide, order.Symbol, order.Quantity,
+            order.OrderId, order.OrderStatus);
+
+        return true;
     }
 
     /// <inheritdoc />
@@ -87,18 +84,12 @@ public class AlpacaBrokerService : IBrokerService
     /// <inheritdoc />
     public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
     {
-        try
-        {
-            // Alpaca의 DeletePositionAsync는 시장가 청산 + 연결된 주문 자동 취소
-            await _tradingClient.DeletePositionAsync(new DeletePositionRequest(symbol), ct);
-            _logger.LogInformation("[Alpaca] Position closed — {Symbol}", symbol);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[Alpaca] Failed to close position for {Symbol}", symbol);
-            return false;
-        }
+        // Alpaca의 DeletePositionAsync는 시장가 청산 + 연결된 주문 자동 취소.
+        // 예외는 caller(Portfolio.razor, PositionExitManagerService)로 전파하여
+        // 실제 오류 원인(시장 마감, 포지션 없음 등)이 사용자에게 노출되도록 한다.
+        await _tradingClient.DeletePositionAsync(new DeletePositionRequest(symbol), ct);
+        _logger.LogInformation("[Alpaca] Position closed — {Symbol}", symbol);
+        return true;
     }
 
     /// <inheritdoc />

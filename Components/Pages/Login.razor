@@ -33,19 +33,18 @@
 
                     <MudText Typo="Typo.h6" Style="font-weight: 600;">로그인</MudText>
 
-                    @if (!string.IsNullOrEmpty(_errorMessage))
-                    {
-                        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-0"
-                                  Icon="@Icons.Material.Filled.Lock">
-                            @_errorMessage
-                        </MudAlert>
-                    }
-
                     @if (_isLocked)
                     {
                         <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-0"
                                   Icon="@Icons.Material.Filled.LockClock">
                             계정이 잠겼습니다. 잠시 후 재시도하세요.
+                        </MudAlert>
+                    }
+                    else if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-0"
+                                  Icon="@Icons.Material.Filled.Lock">
+                            @_errorMessage
                         </MudAlert>
                     }
 

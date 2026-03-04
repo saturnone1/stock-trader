@@ -1,6 +1,8 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -9,6 +11,7 @@ using StockTrader.Services.Broker;
 using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Order;
+using StockTrader.Services.Signal;
 
 namespace StockTrader.Tests;
 
@@ -20,6 +23,7 @@ public class OrderServiceTests
     private readonly Mock<INotificationService> _notificationServiceMock;
     private readonly Mock<IBrokerService> _brokerServiceMock;
     private readonly Mock<IMarketCalendar> _marketCalendarMock;
+    private readonly Mock<ISignalService> _signalServiceMock;
 
     public OrderServiceTests()
     {
@@ -29,6 +33,18 @@ public class OrderServiceTests
         _notificationServiceMock = new Mock<INotificationService>();
         _brokerServiceMock = new Mock<IBrokerService>();
         _marketCalendarMock = new Mock<IMarketCalendar>();
+        _signalServiceMock = new Mock<ISignalService>();
+    }
+
+    /// <summary>
+    /// 각 테스트마다 독립적인 In-Memory SQLite DB 인스턴스를 생성한다.
+    /// </summary>
+    private static AppDbContext CreateInMemoryDb()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        return new AppDbContext(options);
     }
 
     // ── SUT 팩토리 ──────────────────────────────────────────────────────────
@@ -39,6 +55,8 @@ public class OrderServiceTests
         _settingsRepoMock.Object,
         _notificationServiceMock.Object,
         _marketCalendarMock.Object,
+        _signalServiceMock.Object,
+        CreateInMemoryDb(),
         NullLogger<OrderService>.Instance);
 
     // ── 테스트 데이터 헬퍼 ─────────────────────────────────────────────────

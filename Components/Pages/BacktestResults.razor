@@ -652,183 +652,189 @@
     @* Walk-Forward Results *@
     @if (_result.WalkForward != null && _result.WalkForward.Windows.Count > 0)
     {
-        <MudText Typo="Typo.h6" Class="mb-2">Walk-Forward 분석</MudText>
-        <MudGrid Class="mb-3">
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 평균 수익률</MudText>
-                        <MudText Typo="Typo.h6" Color="@(_result.WalkForward.AggregateOosReturnPercent >= 0 ? Color.Success : Color.Error)">
-                            @_result.WalkForward.AggregateOosReturnPercent.ToString("P2")
-                        </MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 최대 낙폭</MudText>
-                        <MudText Typo="Typo.h6" Color="Color.Error">
-                            @_result.WalkForward.AggregateOosMaxDrawdown.ToString("P2")
-                        </MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 승률</MudText>
-                        <MudText Typo="Typo.h6">
-                            @_result.WalkForward.AggregateOosWinRate.ToString("P1")
-                        </MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">WF 효율</MudText>
-                        <MudText Typo="Typo.h6"
-                                 Color="@(_result.WalkForward.WalkForwardEfficiency >= 0.5m ? Color.Success : Color.Warning)">
-                            @_result.WalkForward.WalkForwardEfficiency.ToString("P1")
-                        </MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
+        <MudExpansionPanels Class="mb-3">
+            <MudExpansionPanel Text="워크포워드 분석 결과" Expanded="false">
+                <MudGrid Class="mb-3 mt-1">
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 평균 수익률</MudText>
+                                <MudText Typo="Typo.h6" Color="@(_result.WalkForward.AggregateOosReturnPercent >= 0 ? Color.Success : Color.Error)">
+                                    @_result.WalkForward.AggregateOosReturnPercent.ToString("P2")
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 최대 낙폭</MudText>
+                                <MudText Typo="Typo.h6" Color="Color.Error">
+                                    @_result.WalkForward.AggregateOosMaxDrawdown.ToString("P2")
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">OOS 승률</MudText>
+                                <MudText Typo="Typo.h6">
+                                    @_result.WalkForward.AggregateOosWinRate.ToString("P1")
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">WF 효율</MudText>
+                                <MudText Typo="Typo.h6"
+                                         Color="@(_result.WalkForward.WalkForwardEfficiency >= 0.5m ? Color.Success : Color.Warning)">
+                                    @_result.WalkForward.WalkForwardEfficiency.ToString("P1")
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
 
-        <MudTable Items="@_result.WalkForward.Windows" Dense="true" Hover="true" Striped="true" Class="mb-4">
-            <HeaderContent>
-                <MudTh>#</MudTh>
-                <MudTh>IS 기간</MudTh>
-                <MudTh>IS 거래수</MudTh>
-                <MudTh>IS 수익률</MudTh>
-                <MudTh>OOS 기간</MudTh>
-                <MudTh>OOS 거래수</MudTh>
-                <MudTh>OOS 수익률</MudTh>
-                <MudTh>OOS 낙폭</MudTh>
-                <MudTh>효율</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@(_result.WalkForward.Windows.IndexOf(context) + 1)</MudTd>
-                <MudTd>@context.InSampleFrom.ToString("yy/MM") ~ @context.InSampleTo.ToString("yy/MM")</MudTd>
-                <MudTd>@context.InSampleTrades</MudTd>
-                <MudTd>
-                    <MudText Color="@(context.InSampleReturnPercent >= 0 ? Color.Success : Color.Error)">
-                        @context.InSampleReturnPercent.ToString("P2")
-                    </MudText>
-                </MudTd>
-                <MudTd>@context.OutOfSampleFrom.ToString("yy/MM") ~ @context.OutOfSampleTo.ToString("yy/MM")</MudTd>
-                <MudTd>@context.OutOfSampleTrades</MudTd>
-                <MudTd>
-                    <MudText Color="@(context.OutOfSampleReturnPercent >= 0 ? Color.Success : Color.Error)">
-                        @context.OutOfSampleReturnPercent.ToString("P2")
-                    </MudText>
-                </MudTd>
-                <MudTd>
-                    <MudText Color="Color.Error">@context.OutOfSampleMaxDrawdown.ToString("P2")</MudText>
-                </MudTd>
-                <MudTd>
-                    <MudText Color="@(context.Efficiency >= 0.5m ? Color.Success : Color.Warning)">
-                        @context.Efficiency.ToString("P1")
-                    </MudText>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+                <MudTable Items="@_result.WalkForward.Windows" Dense="true" Hover="true" Striped="true" Class="mb-2">
+                    <HeaderContent>
+                        <MudTh>#</MudTh>
+                        <MudTh>IS 기간</MudTh>
+                        <MudTh>IS 거래수</MudTh>
+                        <MudTh>IS 수익률</MudTh>
+                        <MudTh>OOS 기간</MudTh>
+                        <MudTh>OOS 거래수</MudTh>
+                        <MudTh>OOS 수익률</MudTh>
+                        <MudTh>OOS 낙폭</MudTh>
+                        <MudTh>효율</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@(_result.WalkForward.Windows.IndexOf(context) + 1)</MudTd>
+                        <MudTd>@context.InSampleFrom.ToString("yy/MM") ~ @context.InSampleTo.ToString("yy/MM")</MudTd>
+                        <MudTd>@context.InSampleTrades</MudTd>
+                        <MudTd>
+                            <MudText Color="@(context.InSampleReturnPercent >= 0 ? Color.Success : Color.Error)">
+                                @context.InSampleReturnPercent.ToString("P2")
+                            </MudText>
+                        </MudTd>
+                        <MudTd>@context.OutOfSampleFrom.ToString("yy/MM") ~ @context.OutOfSampleTo.ToString("yy/MM")</MudTd>
+                        <MudTd>@context.OutOfSampleTrades</MudTd>
+                        <MudTd>
+                            <MudText Color="@(context.OutOfSampleReturnPercent >= 0 ? Color.Success : Color.Error)">
+                                @context.OutOfSampleReturnPercent.ToString("P2")
+                            </MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudText Color="Color.Error">@context.OutOfSampleMaxDrawdown.ToString("P2")</MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudText Color="@(context.Efficiency >= 0.5m ? Color.Success : Color.Warning)">
+                                @context.Efficiency.ToString("P1")
+                            </MudText>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
     }
 
     @* Monte Carlo Results *@
     @if (_result.MonteCarlo != null)
     {
-        <MudText Typo="Typo.h6" Class="mb-2">Monte Carlo 시뮬레이션 (@(_result.MonteCarlo.Simulations)회)</MudText>
-        <MudGrid Class="mb-3">
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">중앙값 최종 자산</MudText>
-                        <MudText Typo="Typo.h6">$@_result.MonteCarlo.MedianFinalEquity.ToString("N0")</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">손실 확률</MudText>
-                        <MudText Typo="Typo.h6" Color="@(_result.MonteCarlo.ProbabilityOfLoss > 0.3m ? Color.Error : Color.Success)">
-                            @_result.MonteCarlo.ProbabilityOfLoss.ToString("P1")
-                        </MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">중앙값 최대 낙폭</MudText>
-                        <MudText Typo="Typo.h6" Color="Color.Warning">@_result.MonteCarlo.MedianMaxDrawdown.ToString("P2")</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" md="3">
-                <MudCard>
-                    <MudCardContent Class="text-center">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">최악 낙폭 (95%)</MudText>
-                        <MudText Typo="Typo.h6" Color="Color.Error">@_result.MonteCarlo.WorstCaseMaxDrawdown.ToString("P2")</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
+        <MudExpansionPanels Class="mb-3">
+            <MudExpansionPanel Text="@($"몬테카를로 시뮬레이션 ({_result.MonteCarlo.Simulations}회)")" Expanded="false">
+                <MudGrid Class="mb-3 mt-1">
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">중앙값 최종 자산</MudText>
+                                <MudText Typo="Typo.h6">$@_result.MonteCarlo.MedianFinalEquity.ToString("N0")</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">손실 확률</MudText>
+                                <MudText Typo="Typo.h6" Color="@(_result.MonteCarlo.ProbabilityOfLoss > 0.3m ? Color.Error : Color.Success)">
+                                    @_result.MonteCarlo.ProbabilityOfLoss.ToString("P1")
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">중앙값 최대 낙폭</MudText>
+                                <MudText Typo="Typo.h6" Color="Color.Warning">@_result.MonteCarlo.MedianMaxDrawdown.ToString("P2")</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudCard>
+                            <MudCardContent Class="text-center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">최악 낙폭 (95%)</MudText>
+                                <MudText Typo="Typo.h6" Color="Color.Error">@_result.MonteCarlo.WorstCaseMaxDrawdown.ToString("P2")</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
 
-        <MudCard Class="mb-3">
-            <MudCardContent>
-                <MudText Typo="Typo.subtitle1" Class="mb-2">최종 자산 분포</MudText>
-                <MudSimpleTable Dense="true" Hover="true">
-                    <thead>
-                        <tr>
-                            <th>백분위</th>
-                            <th>최종 자산</th>
-                            <th>수익률</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>5% (최악)</td>
-                            <td>$@_result.MonteCarlo.Percentile5Equity.ToString("N0")</td>
-                            <td class="@(_result.MonteCarlo.Percentile5Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @(SafeReturnPercent(_result.MonteCarlo.Percentile5Equity).ToString("P2"))
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>25%</td>
-                            <td>$@_result.MonteCarlo.Percentile25Equity.ToString("N0")</td>
-                            <td class="@(_result.MonteCarlo.Percentile25Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @(SafeReturnPercent(_result.MonteCarlo.Percentile25Equity).ToString("P2"))
-                            </td>
-                        </tr>
-                        <tr style="font-weight: bold;">
-                            <td>50% (중앙값)</td>
-                            <td>$@_result.MonteCarlo.MedianFinalEquity.ToString("N0")</td>
-                            <td class="@(_result.MonteCarlo.MedianFinalEquity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @(SafeReturnPercent(_result.MonteCarlo.MedianFinalEquity).ToString("P2"))
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>75%</td>
-                            <td>$@_result.MonteCarlo.Percentile75Equity.ToString("N0")</td>
-                            <td class="@(_result.MonteCarlo.Percentile75Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @(SafeReturnPercent(_result.MonteCarlo.Percentile75Equity).ToString("P2"))
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>95% (최선)</td>
-                            <td>$@_result.MonteCarlo.Percentile95Equity.ToString("N0")</td>
-                            <td class="@(_result.MonteCarlo.Percentile95Equity >= _capital ? "mud-success-text" : "mud-error-text")">
-                                @(SafeReturnPercent(_result.MonteCarlo.Percentile95Equity).ToString("P2"))
-                            </td>
-                        </tr>
-                    </tbody>
-                </MudSimpleTable>
-            </MudCardContent>
-        </MudCard>
+                <MudCard Class="mb-2">
+                    <MudCardContent>
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">최종 자산 분포</MudText>
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <thead>
+                                <tr>
+                                    <th>백분위</th>
+                                    <th>최종 자산</th>
+                                    <th>수익률</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>5% (최악)</td>
+                                    <td>$@_result.MonteCarlo.Percentile5Equity.ToString("N0")</td>
+                                    <td class="@(_result.MonteCarlo.Percentile5Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                        @(SafeReturnPercent(_result.MonteCarlo.Percentile5Equity).ToString("P2"))
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>25%</td>
+                                    <td>$@_result.MonteCarlo.Percentile25Equity.ToString("N0")</td>
+                                    <td class="@(_result.MonteCarlo.Percentile25Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                        @(SafeReturnPercent(_result.MonteCarlo.Percentile25Equity).ToString("P2"))
+                                    </td>
+                                </tr>
+                                <tr style="font-weight: bold;">
+                                    <td>50% (중앙값)</td>
+                                    <td>$@_result.MonteCarlo.MedianFinalEquity.ToString("N0")</td>
+                                    <td class="@(_result.MonteCarlo.MedianFinalEquity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                        @(SafeReturnPercent(_result.MonteCarlo.MedianFinalEquity).ToString("P2"))
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>75%</td>
+                                    <td>$@_result.MonteCarlo.Percentile75Equity.ToString("N0")</td>
+                                    <td class="@(_result.MonteCarlo.Percentile75Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                        @(SafeReturnPercent(_result.MonteCarlo.Percentile75Equity).ToString("P2"))
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>95% (최선)</td>
+                                    <td>$@_result.MonteCarlo.Percentile95Equity.ToString("N0")</td>
+                                    <td class="@(_result.MonteCarlo.Percentile95Equity >= _capital ? "mud-success-text" : "mud-error-text")">
+                                        @(SafeReturnPercent(_result.MonteCarlo.Percentile95Equity).ToString("P2"))
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudCardContent>
+                </MudCard>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
     }
 
     @* 거래 0건 안내 *@

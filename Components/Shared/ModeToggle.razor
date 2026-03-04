@@ -4,7 +4,7 @@
 @inject IDialogService DialogService
 
 <MudChip T="string"
-         Color="@(CurrentMode == OrderMode.AutoOrder ? Color.Error : Color.Success)"
+         Color="@(CurrentMode == OrderMode.AutoOrder ? Color.Warning : Color.Success)"
          Variant="Variant.Filled"
          Size="Size.Medium"
          OnClick="ToggleMode">

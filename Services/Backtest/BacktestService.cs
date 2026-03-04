@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -15,6 +16,7 @@ public class BacktestService : IBacktestService
     private readonly IIndicatorService _indicators;
     private readonly TradingSettings _tradingSettings;
     private readonly PatternSettings _basePatternSettings;
+    private readonly ISettingsRepository _settingsRepo;
     private readonly ILogger<BacktestService> _logger;
 
     public BacktestService(
@@ -23,6 +25,7 @@ public class BacktestService : IBacktestService
         IIndicatorService indicators,
         IOptions<TradingSettings> tradingSettings,
         IOptions<PatternSettings> patternSettings,
+        ISettingsRepository settingsRepo,
         ILogger<BacktestService> logger)
     {
         _dataFeedFactory = dataFeedFactory;
@@ -30,6 +33,7 @@ public class BacktestService : IBacktestService
         _indicators = indicators;
         _tradingSettings = tradingSettings.Value;
         _basePatternSettings = patternSettings.Value;
+        _settingsRepo = settingsRepo;
         _logger = logger;
     }
 
@@ -727,7 +731,7 @@ public class BacktestService : IBacktestService
             new MeanReversionChannelDetector(_indicators, opts),
             new Rsi2BollingerDetector(_indicators, opts),
             new VolatilityBreakoutDetector(_indicators, opts),
-            new Tqqq200SmaDetector(_indicators, opts)
+            new Tqqq200SmaDetector(_indicators, opts, _settingsRepo)
         };
         return allDetectors.Where(d => patterns.Contains(d.PatternType)).ToList();
     }

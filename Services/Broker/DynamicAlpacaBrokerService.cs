@@ -46,26 +46,23 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
             return false;
         }
 
-        try
-        {
-            var order = await _tradingClient.PostOrderAsync(
-                MarketOrder.Buy(recommendation.Symbol, recommendation.ShareQuantity)
-                    .WithDuration(TimeInForce.Day)
-                    .Bracket(
-                        takeProfitLimitPrice: recommendation.TargetPrice,
-                        stopLossStopPrice: recommendation.StopLossPrice), ct);
+        // Alpaca는 소수점 2자리까지만 허용 (sub-penny 거부)
+        var tp = Math.Round(recommendation.TargetPrice, 2);
+        var sl = Math.Round(recommendation.StopLossPrice, 2);
 
-            _logger.LogInformation(
-                "[DynAlpaca] Order placed — {Side} {Symbol}: Qty={Qty}, OrderId={OrderId}",
-                order.OrderSide, order.Symbol, order.Quantity, order.OrderId);
+        // 예외는 caller로 전파하여 실제 오류 원인이 사용자에게 노출되도록 한다.
+        var order = await _tradingClient.PostOrderAsync(
+            MarketOrder.Buy(recommendation.Symbol, recommendation.ShareQuantity)
+                .WithDuration(TimeInForce.Day)
+                .Bracket(
+                    takeProfitLimitPrice: tp,
+                    stopLossStopPrice: sl), ct);
 
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[DynAlpaca] Failed to place order for {Symbol}", recommendation.Symbol);
-            return false;
-        }
+        _logger.LogInformation(
+            "[DynAlpaca] Order placed — {Side} {Symbol}: Qty={Qty}, OrderId={OrderId}",
+            order.OrderSide, order.Symbol, order.Quantity, order.OrderId);
+
+        return true;
     }
 
     public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
@@ -89,17 +86,10 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
 
     public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
     {
-        try
-        {
-            await _tradingClient.DeletePositionAsync(new DeletePositionRequest(symbol), ct);
-            _logger.LogInformation("[DynAlpaca] Position closed — {Symbol}", symbol);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[DynAlpaca] Failed to close position for {Symbol}", symbol);
-            return false;
-        }
+        // 예외는 caller로 전파하여 실제 오류 원인이 사용자에게 노출되도록 한다.
+        await _tradingClient.DeletePositionAsync(new DeletePositionRequest(symbol), ct);
+        _logger.LogInformation("[DynAlpaca] Position closed — {Symbol}", symbol);
+        return true;
     }
 
     public async Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)

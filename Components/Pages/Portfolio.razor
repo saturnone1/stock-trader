@@ -3,8 +3,13 @@
 @using StockTrader.Models
 @using StockTrader.Models.Enums
 @using StockTrader.Data.Repositories
+@using StockTrader.Services.Account
 @inject ITradeRepository TradeRepo
 @inject IPatternStatsRepository StatsRepo
+@inject IAccountManager AccountManager
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@implements IDisposable
 
 <PageTitle>포트폴리오 분석 - 주식 트레이더</PageTitle>
 
@@ -155,8 +160,8 @@
         @if (_openPositions.Count > 0)
         {
             @* 포지션 상세 테이블 *@
+            <div class="table-scroll-wrapper mb-3">
             <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true" SortLabel="정렬"
-                      Class="mb-3"
                       RowStyleFunc="@((StockTrader.Models.Position p, int _) => p.UnrealizedPnL >= 0
                           ? "background: rgba(46,125,50,0.06);"
                           : "background: rgba(198,40,40,0.06);")">
@@ -171,6 +176,7 @@
                     <MudTh>손절가</MudTh>
                     <MudTh>목표가</MudTh>
                     <MudTh>보유기간</MudTh>
+                    <MudTh Style="min-width: 90px;">청산</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     @{
@@ -232,8 +238,22 @@
                             @(holdDays < 1 ? "당일" : $"{holdDays:F0}일")
                         </MudText>
                     </MudTd>
+                    <MudTd>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.ExitToApp"
+                                   Disabled="@(_closingSymbol == context.Symbol)"
+                                   OnClick="@(() => ClosePositionAsync(context.Symbol))"
+                                   Style="min-width: 72px;">
+                            @if (_closingSymbol == context.Symbol)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                            }
+                            청산
+                        </MudButton>
+                    </MudTd>
                 </RowTemplate>
             </MudTable>
+            </div>@* /table-scroll-wrapper *@
 
             @* 섹터별 배분 *@
             @if (_openPositions.Any(p => !string.IsNullOrWhiteSpace(p.Sector)))
@@ -426,8 +446,13 @@
             </MudGrid>
 
             @* 수익 곡선 *@
-            <MudText Typo="Typo.h6" Class="mb-2">수익 곡선</MudText>
-            <MudCard Class="mb-4 pa-3">
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">수익 곡선</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent Class="pa-3 pt-0">
                 <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_equityOpts" Height="300">
                     <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
                         Items="_equityCurve"
@@ -436,11 +461,17 @@
                         YAggregate="@(e => e.Last().Value)"
                         Name="누적 손익" />
                 </ApexCharts.ApexChart>
+                </MudCardContent>
             </MudCard>
 
             @* 드로다운 *@
-            <MudText Typo="Typo.h6" Class="mb-2">드로다운</MudText>
-            <MudCard Class="mb-4 pa-3">
+            <MudCard Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">드로다운</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent Class="pa-3 pt-0">
                 <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_drawdownOpts" Height="250">
                     <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
                         Items="_drawdownCurve"
@@ -449,6 +480,7 @@
                         YAggregate="@(e => e.Last().Value)"
                         Name="드로다운 %" />
                 </ApexCharts.ApexChart>
+                </MudCardContent>
             </MudCard>
 
             @* 패턴별 성과 *@
@@ -484,6 +516,7 @@
                     </MudItem>
                 </MudGrid>
 
+                <div class="table-scroll-wrapper">
                 <MudTable Items="_patternPerf" Dense="true" Hover="true" Striped="true" Class="mb-4">
                     <HeaderContent>
                         <MudTh>패턴</MudTh>
@@ -534,13 +567,19 @@
                         </MudTd>
                     </RowTemplate>
                 </MudTable>
+                </div>@* /table-scroll-wrapper *@
             }
 
             @* 월별 손익 + 종목별 손익 *@
             <MudGrid Class="mb-4">
                 <MudItem xs="12" md="6">
-                    <MudText Typo="Typo.h6" Class="mb-2">월별 손익</MudText>
-                    <MudCard Class="pa-3">
+                    <MudCard>
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">월별 손익</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Class="pa-3 pt-0">
                         <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_monthlyOpts" Height="250">
                             <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
                                 Items="_monthlyPnl"
@@ -549,11 +588,17 @@
                                 YAggregate="@(e => e.Sum(x => x.Value))"
                                 Name="월별 손익 ($)" />
                         </ApexCharts.ApexChart>
+                        </MudCardContent>
                     </MudCard>
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudText Typo="Typo.h6" Class="mb-2">종목별 손익 (상위 10)</MudText>
-                    <MudCard Class="pa-3">
+                    <MudCard>
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">종목별 손익 (상위 10)</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Class="pa-3 pt-0">
                         <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_symbolOpts" Height="250">
                             <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
                                 Items="_topSymbols"
@@ -562,6 +607,7 @@
                                 YAggregate="@(s => s.First().TotalPnl)"
                                 Name="손익 ($)" />
                         </ApexCharts.ApexChart>
+                        </MudCardContent>
                     </MudCard>
                 </MudItem>
             </MudGrid>
@@ -572,9 +618,16 @@
 
 @code {
     private bool _showHelp;
+    private System.Threading.Timer? _refreshTimer;
+
+    // 청산 중인 종목 심볼 (로딩 표시 + 중복 클릭 방지)
+    private string? _closingSymbol;
 
     // Open positions (live section)
     private List<StockTrader.Models.Position> _openPositions = new();
+
+    // DB 정리는 첫 로드 시 한 번만 수행 (타이머 갱신 시 반복 방지)
+    private bool _positionsInitialized;
 
     // Closed trades (historical section)
     private List<TradeRecord> _trades = new();
@@ -647,17 +700,168 @@
             LoadOpenPositionsAsync(),
             LoadHistoricalAsync()
         );
+
+        // 30초마다 미실현 손익 자동 갱신
+        _refreshTimer = new System.Threading.Timer(
+            async _ =>
+            {
+                await LoadOpenPositionsAsync();
+                await InvokeAsync(StateHasChanged);
+            },
+            state: null,
+            dueTime: TimeSpan.FromSeconds(30),
+            period: TimeSpan.FromSeconds(30));
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
     }
 
     private async Task LoadOpenPositionsAsync()
     {
         try
         {
+            // 1. 브로커에서 실시간 포지션 가져오기 시도
+            var broker = await AccountManager.GetActiveBrokerServiceAsync();
+            if (broker != null)
+            {
+                var brokerPositions = await broker.GetPositionsAsync();
+
+                if (brokerPositions.Count > 0)
+                {
+                    // DB에서 추가 메타데이터(PatternType, StopLoss, Target 등) 보충
+                    var dbPositions = await TradeRepo.GetOpenPositionsAsync();
+                    foreach (var bp in brokerPositions)
+                    {
+                        var dbMatch = dbPositions.FirstOrDefault(d =>
+                            d.Symbol.Equals(bp.Symbol, StringComparison.OrdinalIgnoreCase));
+                        if (dbMatch != null)
+                        {
+                            bp.PatternType = dbMatch.PatternType;
+                            bp.StopLossPrice = dbMatch.StopLossPrice;
+                            bp.TargetPrice = dbMatch.TargetPrice;
+                            bp.Sector = dbMatch.Sector;
+                            bp.OpenedAt = dbMatch.OpenedAt;
+                        }
+                    }
+                    _openPositions = brokerPositions;
+
+                    // DB 정리: 첫 로드 시에만 수행 (타이머 30초 갱신 시 반복 방지)
+                    if (!_positionsInitialized)
+                    {
+                        _positionsInitialized = true;
+                        var dbPositions2 = await TradeRepo.GetOpenPositionsAsync();
+                        foreach (var dbPos in dbPositions2)
+                        {
+                            if (!brokerPositions.Any(b =>
+                                b.Symbol.Equals(dbPos.Symbol, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                // DB에만 있고 브로커에 없음 → 이미 청산됨
+                                var trackedPos = await TradeRepo.GetPositionAsync(dbPos.Id);
+                                if (trackedPos != null && trackedPos.ClosedAt == null)
+                                {
+                                    trackedPos.ClosedAt = DateTime.UtcNow;
+                                    await TradeRepo.SavePositionAsync(trackedPos);
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // 브로커에 포지션 0개 → 첫 로드 시 DB의 열린 포지션도 모두 정리
+                    if (!_positionsInitialized)
+                    {
+                        _positionsInitialized = true;
+                        var dbPositions = await TradeRepo.GetOpenPositionsAsync();
+                        foreach (var dbPos in dbPositions)
+                        {
+                            var trackedPos = await TradeRepo.GetPositionAsync(dbPos.Id);
+                            if (trackedPos != null && trackedPos.ClosedAt == null)
+                            {
+                                trackedPos.ClosedAt = DateTime.UtcNow;
+                                await TradeRepo.SavePositionAsync(trackedPos);
+                            }
+                        }
+                    }
+                    _openPositions = new List<StockTrader.Models.Position>();
+                }
+                return;
+            }
+
+            // 2. 브로커 없으면 DB 폴백
             _openPositions = await TradeRepo.GetOpenPositionsAsync();
         }
         catch (Exception ex)
         {
+            // 브로커 API 실패 시 DB 폴백
+            try
+            {
+                _openPositions = await TradeRepo.GetOpenPositionsAsync();
+            }
+            catch { }
             _error = $"포지션 로드 실패: {ex.Message}";
+        }
+    }
+
+    private async Task ClosePositionAsync(string symbol)
+    {
+        // 확인 대화상자 — 실수로 청산하는 사고 방지
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "포지션 청산" },
+            { x => x.Message, $"{symbol} 포지션을 전량 청산하시겠습니까?" },
+            { x => x.ConfirmText, "청산" },
+            { x => x.ConfirmColor, Color.Error }
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("포지션 청산", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        _closingSymbol = symbol;
+        StateHasChanged();
+        try
+        {
+            var broker = await AccountManager.GetActiveBrokerServiceAsync();
+            if (broker == null)
+            {
+                Snackbar.Add("활성 계좌가 없습니다. 설정에서 계좌를 추가하세요.", Severity.Warning);
+                return;
+            }
+
+            var success = await broker.ClosePositionAsync(symbol);
+            if (success)
+            {
+                Snackbar.Add($"✓ {symbol} 청산 완료", Severity.Success);
+                // DB 포지션 ClosedAt 마킹 — PositionExitManagerService 재청산 시도 방지
+                var dbPositions = await TradeRepo.GetOpenPositionsAsync();
+                foreach (var dbPos in dbPositions.Where(p =>
+                    p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var tracked = await TradeRepo.GetPositionAsync(dbPos.Id);
+                    if (tracked != null && tracked.ClosedAt == null)
+                    {
+                        tracked.ClosedAt = DateTime.UtcNow;
+                        await TradeRepo.SavePositionAsync(tracked);
+                    }
+                }
+                // 브로커 응답을 기다리지 않고 즉시 UI에서 제거
+                _openPositions.RemoveAll(p => p.Symbol == symbol);
+            }
+            else
+            {
+                Snackbar.Add($"{symbol} 청산 실패: 브로커에서 거부됨", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{symbol} 청산 실패: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _closingSymbol = null;
+            StateHasChanged();
         }
     }
 
@@ -805,11 +1009,12 @@
             var avgReturn = returns.Average();
             var variance = returns.Select(r => Math.Pow(r - avgReturn, 2)).Sum() / (returns.Length - 1);
             var stdDev = Math.Sqrt(variance);
-            var avgHoldingDays = _trades.Average(t => Math.Max(1, (t.ExitTime - t.EntryTime).TotalDays));
-            var tradesPerYear = 252.0 / avgHoldingDays;
-            _sharpeRatio = stdDev > 0
-                ? (decimal)(avgReturn / stdDev * Math.Sqrt(tradesPerYear))
-                : 0;
+            var avgHoldingDays = Math.Max(1.0, _trades.Average(t => (t.ExitTime - t.EntryTime).TotalDays));
+            var tradesPerYear = Math.Min(252.0, 252.0 / avgHoldingDays);
+            var rawSharpe = stdDev > 0
+                ? avgReturn / stdDev * Math.Sqrt(tradesPerYear)
+                : 0.0;
+            _sharpeRatio = (decimal)Math.Clamp(rawSharpe, -10.0, 10.0);
         }
 
         int curWins = 0, curLosses = 0;

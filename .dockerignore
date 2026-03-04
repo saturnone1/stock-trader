@@ -9,6 +9,7 @@
 **/bin/
 **/obj/
 publish/
+publish_test/
 
 # ── IDE / editor metadata ─────────────────────────────────────────────────────
 .vs/

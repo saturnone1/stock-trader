@@ -64,7 +64,8 @@ public class SignalServiceTests : IDisposable
         PatternType patternType = PatternType.GapUpPullback,
         decimal entryPrice = 100m,
         decimal stopLossPrice = 95m,
-        decimal targetPrice = 110m)
+        decimal targetPrice = 110m,
+        decimal confidence = 0.8m)
     {
         return new PatternSignal
         {
@@ -73,6 +74,7 @@ public class SignalServiceTests : IDisposable
             EntryPrice = entryPrice,
             StopLossPrice = stopLossPrice,
             TargetPrice = targetPrice,
+            Confidence = confidence,
             IsActive = true
         };
     }
@@ -345,27 +347,20 @@ public class SignalServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task EvaluateSignalsAsync_ZeroEntryPrice_ShareQuantityIsZero()
+    public async Task EvaluateSignalsAsync_ZeroEntryPrice_FilteredOut()
     {
+        // 진입가=0, 손절=0 → 가격 유효성 위반(SL >= Entry)으로 필터링
         var sut = CreateSut();
 
         var signal = CreateSignal(entryPrice: 0m, stopLossPrice: 0m);
-        var stats = CreateStats();
 
-        SetupGetAllStats(stats);
-        _statsMock.Setup(s => s.GetStatsAsync(signal.PatternType, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(stats);
-        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((true, string.Empty));
-        _riskMock.Setup(r => r.CalculatePositionSize(
-                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
-            .Returns(0m);
+        SetupGetAllStats();
         _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
 
         var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
 
-        result[0].ShareQuantity.Should().Be(0);
+        result.Should().BeEmpty();
     }
 
     [Fact]
@@ -404,6 +399,73 @@ public class SignalServiceTests : IDisposable
         var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
 
         result[0].Expectancy.Should().Be(stats.Expectancy);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // Confidence filter → low confidence signals filtered
+    // ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_LowConfidence_FiltersSignal()
+    {
+        var sut = CreateSut();
+        var signal = CreateSignal(confidence: 0.1m); // MinConfidence=0.3
+
+        SetupGetAllStats();
+        _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+
+        var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
+
+        result.Should().BeEmpty();
+        _riskMock.Verify(r => r.CanOpenPositionAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // Share qty = 0 → filtered (auto-trade cannot execute)
+    // ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_ZeroShareQuantity_FiltersSignal()
+    {
+        // positionSize가 entryPrice보다 작으면 shareQty=0 → 필터링
+        var sut = CreateSut();
+        var signal = CreateSignal(entryPrice: 500m, stopLossPrice: 490m, targetPrice: 520m);
+        var stats = CreateStats();
+
+        SetupGetAllStats(stats);
+        _riskMock.Setup(r => r.CanOpenPositionAsync(signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, string.Empty));
+        _riskMock.Setup(r => r.CalculatePositionSize(
+                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
+            .Returns(100m); // 100 < 500 → floor(100/500) = 0
+        _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+
+        var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
+
+        result.Should().BeEmpty();
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // Invalid prices → filtered (SL >= Entry or Target <= Entry)
+    // ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_InvalidPriceLevels_FiltersSignal()
+    {
+        var sut = CreateSut();
+        // 손절가가 진입가 이상 → 유효하지 않은 시그널
+        var signal = CreateSignal(entryPrice: 100m, stopLossPrice: 105m, targetPrice: 110m);
+
+        SetupGetAllStats();
+        _settingsRepoMock.Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+
+        var result = await sut.EvaluateSignalsAsync(new List<PatternSignal> { signal });
+
+        result.Should().BeEmpty();
     }
 
     [Fact]

@@ -5,13 +5,44 @@
 @inject IMarketRegimeClassifier RegimeClassifier
 @inject ISignalScorer SignalScorer
 @inject ILogger<MLDashboard> Logger
+@implements IDisposable
 
-<PageTitle>ML 분석 대시보드</PageTitle>
+<PageTitle>ML 분석 대시보드 - 주식 트레이더</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-6">ML 분석 대시보드</MudText>
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">ML 분석 대시보드</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+    <MudTooltip Text="새로고침">
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                       Color="Color.Default" OnClick="@(() => RefreshStatus())"
+                       Disabled="@_isLoading" />
+    </MudTooltip>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">머신러닝 모델 상태 및 시장 레짐 분석</MudText>
 
-    <MudGrid Spacing="3">
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">ML 분석 대시보드 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">머신러닝 모델을 학습하고 상태를 확인할 수 있습니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>모델 학습</strong>: 백테스트 거래 내역으로 시그널 스코어러와 레짐 분류기를 학습합니다
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>시장 레짐</strong>: K-Means 클러스터링으로 현재 시장 상태(강세/약세/횡보)를 분류합니다
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>시그널 스코어러</strong>: FastTree로 패턴 시그널의 성공 확률을 예측합니다
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>피처 중요도</strong>: 예측에 가장 영향을 주는 요소를 시각화합니다
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
+
+<MudGrid Spacing="3">
 
         <!-- 모델 학습 카드 -->
         <MudItem xs="12" md="4">
@@ -189,20 +220,26 @@
             </MudCard>
         </MudItem>
 
-        <!-- 피처 중요도 차트 -->
-        @if (_status.IsSignalScorerLoaded && _status.SignalScorerFeatureImportances.Count > 0)
-        {
-            <MudItem xs="12" md="6">
-                <MudCard>
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">피처 중요도</MudText>
-                            <MudText Typo="Typo.body2" Class="mud-text-secondary">
-                                시그널 성공 예측에 가장 영향을 주는 요소
-                            </MudText>
-                        </CardHeaderContent>
-                    </MudCardHeader>
-                    <MudCardContent>
+        <!-- 피처 중요도 차트 (항상 표시, 미학습 시 빈 상태 메시지) -->
+        <MudItem xs="12" md="6">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">피처 중요도</MudText>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            시그널 성공 예측에 가장 영향을 주는 요소
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (!_status.IsSignalScorerLoaded || _status.SignalScorerFeatureImportances.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            모델이 아직 학습되지 않았습니다. 학습 후 피처 중요도가 표시됩니다.
+                        </MudText>
+                    }
+                    else
+                    {
                         @foreach (var feature in _status.SignalScorerFeatureImportances)
                         {
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
@@ -219,13 +256,13 @@
                                 </MudText>
                             </MudStack>
                         }
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        }
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
 
         <!-- ML 개요 / 도움말 -->
-        <MudItem xs="12" md="@(_status.IsSignalScorerLoaded ? 6 : 12)">
+        <MudItem xs="12" md="6">
             <MudCard>
                 <MudCardHeader>
                     <CardHeaderContent>
@@ -278,17 +315,38 @@
         </MudItem>
 
     </MudGrid>
-</MudContainer>
 
 @code {
     private MlModelStatus _status = new();
     private MlTrainingResult? _lastTrainResult;
     private bool _isLoading;
+    private bool _showHelp;
     private string _currentRegimeLabel = "알 수 없음";
+    private System.Threading.Timer? _refreshTimer;
 
     protected override void OnInitialized()
     {
         RefreshStatus();
+
+        // 30초마다 ML 모델 상태 갱신 (백그라운드 재학습 반영)
+        _refreshTimer = new System.Threading.Timer(
+            async _ =>
+            {
+                try
+                {
+                    RefreshStatus();
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (ObjectDisposedException) { }
+            },
+            state: null,
+            dueTime: TimeSpan.FromSeconds(30),
+            period: TimeSpan.FromSeconds(30));
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
     }
 
     private void RefreshStatus()

@@ -8,6 +8,7 @@ public class TradingSettings
     public int MaxPositionsPerSector { get; set; } = 2;
     public int MaxTotalPositions { get; set; } = 7;
     public decimal MinExpectancy { get; set; } = 0m;
+    public decimal MinConfidence { get; set; } = 0.3m;
     public int DataFetchIntervalSeconds { get; set; } = 60;
     public int RiskCheckIntervalSeconds { get; set; } = 30;
     public string MarketOpenET { get; set; } = "09:30:00";

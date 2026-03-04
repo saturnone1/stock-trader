@@ -41,11 +41,19 @@
                             </MudChip>
                         </MudTooltip>
                     }
+                    @if (IsStale)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                                 Icon="@Icons.Material.Filled.AccessTime"
+                                 Style="height:20px; font-size:10px; padding:0 6px; min-width:0;">
+                            오래된 시그널
+                        </MudChip>
+                    }
                     <MudText Typo="Typo.subtitle1"><strong>@Signal.Symbol</strong></MudText>
                 </MudStack>
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                        @Signal.DetectedAt.ToString("MM/dd HH:mm")
+                    <MudText Typo="Typo.caption" Color="@(IsStale ? Color.Warning : Color.Secondary)">
+                        @Signal.DetectedAt.ToString("MM/dd HH:mm") (@GetElapsedText())
                     </MudText>
                     <!-- 예상 보유기간 -->
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
@@ -58,7 +66,7 @@
                     </MudStack>
                 </MudStack>
             </div>
-            <div style="text-align: right; flex-shrink: 0;">
+            <div style="text-align: right; flex-shrink: 0; min-width: 140px;">
                 <MudText>진입: <strong>$@Signal.EntryPrice.ToString("F2")</strong></MudText>
                 <MudText Color="Color.Error">손절: $@Signal.StopLossPrice.ToString("F2")</MudText>
                 <MudText Color="Color.Success">목표: $@Signal.TargetPrice.ToString("F2")</MudText>
@@ -82,10 +90,66 @@
             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">@Signal.Details</MudText>
         }
     </MudCardContent>
+    @if (Recommendation != null)
+    {
+        <MudDivider />
+        <div style="padding: 6px 12px 8px; background: rgba(255,255,255,0.02);">
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                         Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                    자동매매 추천
+                </MudChip>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    수량: <strong style="color: var(--mud-palette-text-primary);">@(Recommendation.ShareQuantity)주</strong>
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    투자금: <strong style="color: var(--mud-palette-text-primary);">$@(Recommendation.PositionSize.ToString("N0"))</strong>
+                </MudText>
+                @if (Recommendation.Expectancy > 0)
+                {
+                    <MudTooltip Text="과거 거래 기반 기대수익률 (높을수록 유리)">
+                        <MudText Typo="Typo.caption" Color="Color.Success" Style="cursor:help;">
+                            기대값: <strong>@(Recommendation.Expectancy.ToString("P2"))</strong>
+                        </MudText>
+                    </MudTooltip>
+                }
+                @{
+                    var modeLabel = Recommendation.Mode switch
+                    {
+                        OrderMode.AlertOnly => "알림전용",
+                        OrderMode.AutoOrder => "자동매매",
+                        _ => Recommendation.Mode.ToString()
+                    };
+                }
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(Recommendation.Mode == OrderMode.AutoOrder ? Color.Success : Color.Default)"
+                         Variant="Variant.Outlined"
+                         Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                    @modeLabel
+                </MudChip>
+            </MudStack>
+        </div>
+    }
+    else
+    {
+        <MudDivider />
+        <div style="padding: 6px 12px 8px; background: rgba(255,255,255,0.02);">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
+                         Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
+                    미추천
+                </MudChip>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    리스크/기대값 기준 미달
+                </MudText>
+            </MudStack>
+        </div>
+    }
 </MudCard>
 
 @code {
     [Parameter, EditorRequired] public PatternSignal Signal { get; set; } = default!;
+    [Parameter] public TradeRecommendation? Recommendation { get; set; }
 
     private string BorderColor => Signal.Confidence > 0.7m
         ? "var(--mud-palette-success)"
@@ -107,5 +171,16 @@
             var reward = Math.Abs(Signal.TargetPrice - Signal.EntryPrice);
             return risk > 0 ? Math.Round(reward / risk, 1) : 0;
         }
+    }
+
+    private bool IsStale => (DateTime.UtcNow - Signal.DetectedAt).TotalHours > 24;
+
+    private string GetElapsedText()
+    {
+        var elapsed = DateTime.UtcNow - Signal.DetectedAt;
+        if (elapsed.TotalMinutes < 5) return "방금";
+        if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}분 전";
+        if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}시간 전";
+        return $"{(int)elapsed.TotalDays}일 전";
     }
 }

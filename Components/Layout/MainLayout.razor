@@ -8,6 +8,7 @@
 @inject NavigationManager Navigation
 @inject IHttpContextAccessor HttpContextAccessor
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 <MudThemeProvider Theme="_tradingTheme" IsDarkMode="true" />
@@ -74,7 +75,7 @@
         }
         else
         {
-            <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.Add" Class="mr-2"
                        OnClick="@(() => Navigation.NavigateTo("/accounts"))">
                 계좌 추가
@@ -105,7 +106,7 @@
 <div id="blazor-error-ui" data-nosnippet>
     처리되지 않은 오류가 발생했습니다.
     <a href="." class="reload">새로고침</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss" aria-label="닫기">🗙</span>
 </div>
 
 @code {
@@ -172,7 +173,10 @@
             await AccountManager.SetActiveAccountAsync(accountId);
             await LoadAccountsAsync();
         }
-        catch { /* 무시 */ }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"계좌 전환 실패: {ex.Message}", Severity.Error);
+        }
     }
 
     public void Dispose()

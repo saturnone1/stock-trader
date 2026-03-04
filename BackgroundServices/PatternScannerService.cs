@@ -138,7 +138,11 @@ public class PatternScannerService : BackgroundService
         var bars = await ohlcvRepo.GetBarsAsync(symbol, TimeFrame.Daily,
             DateTime.UtcNow.AddYears(-1), DateTime.UtcNow, ct);
 
-        if (bars.Count < 20) return;
+        if (bars.Count < 20)
+        {
+            _logger.LogDebug("Skipping {Symbol}: only {Count} daily bars (need >= 20)", symbol, bars.Count);
+            return;
+        }
 
         // 스캔 완료 기록 (데이터 로드 후, 결과와 무관하게)
         _lastScanDate[symbol] = todayEt;
@@ -151,9 +155,18 @@ public class PatternScannerService : BackgroundService
             _regimeCacheDate = todayEt;
         }
         var regime = _cachedRegime;
+        _logger.LogDebug("Scanning {Symbol}: {Count} daily bars, regime={Regime}",
+            symbol, bars.Count, regime?.RegimeLabel ?? "N/A");
         var signals = await patternDetection.ScanSymbolAsync(symbol, bars.ToArray(), regime, ct);
 
-        if (signals.Count == 0) return;
+        if (signals.Count == 0)
+        {
+            _logger.LogDebug("No signals for {Symbol}", symbol);
+            return;
+        }
+
+        _logger.LogInformation("Detected {Count} signal(s) for {Symbol}: {Patterns}",
+            signals.Count, symbol, string.Join(", ", signals.Select(s => s.PatternType)));
 
         // Batch insert: 단일 SaveChangesAsync로 모든 신호를 한 번에 저장
         // 기존: N회 AddSignalAsync (각각 SaveChangesAsync) → 개선: 1회 AddSignalsBatchAsync
@@ -168,10 +181,13 @@ public class PatternScannerService : BackgroundService
     private async Task<MarketRegime> ComputeRegimeAsync(IOhlcvRepository ohlcvRepo,
         CancellationToken ct)
     {
+        // SMA200에는 최소 200개 daily bars 필요 — 영업일 기준 ~280일(공휴일 감안)이므로 400일치 조회
         var spyBars = await ohlcvRepo.GetBarsAsync("SPY", TimeFrame.Daily,
-            DateTime.UtcNow.AddDays(-250), DateTime.UtcNow, ct);
+            DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
 
         var regime = new MarketRegime { AsOf = DateTime.UtcNow };
+
+        _logger.LogDebug("ComputeRegime: SPY daily bars count = {Count}", spyBars.Count);
 
         if (spyBars.Count >= 200)
         {

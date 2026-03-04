@@ -350,6 +350,44 @@
         </MudCardContent>
     </MudCard>
 
+    @* ── TQQQ 200SMA 적용 종목 ──────────────────────────── *@
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.FilterAlt" Size="Size.Small" Color="Color.Warning" />
+                    <MudText Typo="Typo.h6">TQQQ 200SMA 적용 종목</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">
+                        패턴 필터
+                    </MudChip>
+                </MudStack>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                TQQQ 200SMA 전략을 적용할 종목을 설정합니다. 비어있으면 appsettings.json 기본값(TQQQ)을 사용합니다.
+            </MudText>
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-3">
+                @foreach (var symbol in _tqqq200SmaSymbols)
+                {
+                    <MudChip T="string" Color="Color.Warning" Variant="Variant.Filled"
+                             OnClose="@(async () => await RemoveTqqq200SmaSymbol(symbol))">@symbol</MudChip>
+                }
+                @if (_tqqq200SmaSymbols.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Tertiary">
+                        기본값: TQQQ (appsettings.json)
+                    </MudText>
+                }
+            </MudStack>
+            <MudTextField @bind-Value="_newTqqq200SmaSymbol" Label="종목 추가" Placeholder="예: TQQQ, SOXL..."
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 300px;"
+                          OnKeyDown="OnTqqq200SmaSymbolKeyDown"
+                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Add"
+                          OnAdornmentClick="@(async () => await AddTqqq200SmaSymbol())" />
+        </MudCardContent>
+    </MudCard>
+
     @* ── 활성 패턴 + 파라미터 ──────────────────────────── *@
     <MudCard Class="mb-4">
         <MudCardHeader>
@@ -696,6 +734,10 @@
     private string _newSymbol = "";
     private bool _saving;
 
+    // TQQQ 200SMA 적용 종목
+    private List<string> _tqqq200SmaSymbols = new();
+    private string _newTqqq200SmaSymbol = "";
+
     // 알림 채널 관련 상태
     private NotificationSettings _notificationSettings = new();
     private TradingSettings _tradingSettings = new();
@@ -723,6 +765,13 @@
             _tradingSettings = TradingOptions.Value;
             _alpacaSettings = AlpacaOptions.Value;
             _patternSettings = PatternOptions.Value;
+
+            // TQQQ 200SMA 적용 종목 초기화
+            _tqqq200SmaSymbols = !string.IsNullOrWhiteSpace(_settings.Tqqq200SmaAllowedSymbols)
+                ? _settings.Tqqq200SmaAllowedSymbols
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList()
+                : new List<string>();
 
             var exitOverrides = await LiveParameterService.GetLiveOverridesAsync();
             _liveParams = PatternParamViewModel.FromLiveSettings(_patternSettings, exitOverrides);
@@ -759,6 +808,35 @@
     private async Task OnSymbolKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await AddSymbol();
+    }
+
+    // TQQQ 200SMA 적용 종목 추가/삭제
+    private async Task AddTqqq200SmaSymbol()
+    {
+        if (string.IsNullOrWhiteSpace(_newTqqq200SmaSymbol) || _settings == null) return;
+        var symbol = _newTqqq200SmaSymbol.Trim().ToUpper();
+        if (!_tqqq200SmaSymbols.Contains(symbol))
+        {
+            _tqqq200SmaSymbols.Add(symbol);
+            _settings.Tqqq200SmaAllowedSymbols = string.Join(",", _tqqq200SmaSymbols);
+            await SaveSettingsQuietAsync();
+        }
+        _newTqqq200SmaSymbol = "";
+    }
+
+    private async Task RemoveTqqq200SmaSymbol(string symbol)
+    {
+        if (_settings == null) return;
+        _tqqq200SmaSymbols.Remove(symbol);
+        _settings.Tqqq200SmaAllowedSymbols = _tqqq200SmaSymbols.Count > 0
+            ? string.Join(",", _tqqq200SmaSymbols)
+            : null;  // null로 설정하면 appsettings 기본값 사용
+        await SaveSettingsQuietAsync();
+    }
+
+    private async Task OnTqqq200SmaSymbolKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddTqqq200SmaSymbol();
     }
 
     // 관심종목 추가/삭제 시 스낵바 없이 조용히 저장 (UX: 빠른 응답)

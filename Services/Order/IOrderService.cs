@@ -16,4 +16,13 @@ public interface IOrderService
 
     Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default);
     Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 시그널 ID로 수동 주문을 실행한다.
+    /// AlertOnly 모드 여부와 관계없이 항상 실제 주문을 제출한다.
+    /// </summary>
+    /// <param name="signalId">PatternSignal.Id</param>
+    /// <param name="ct">취소 토큰</param>
+    /// <returns>(Success, 결과 메시지)</returns>
+    Task<(bool Success, string Message)> PlaceManualOrderAsync(long signalId, CancellationToken ct = default);
 }

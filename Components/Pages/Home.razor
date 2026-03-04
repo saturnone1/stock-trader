@@ -22,6 +22,11 @@
     <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h5">대시보드</MudText>
         <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+        <MudTooltip Text="새로고침">
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                           Color="Color.Default" OnClick="@LoadDataAsync"
+                           Disabled="@_loading" />
+        </MudTooltip>
     </MudStack>
     <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
         @{
@@ -77,7 +82,7 @@
     var totalPnLPercent = _accountSize > 0 ? totalPnL / _accountSize * 100 : 0;
     <MudGrid Class="mb-2">
         <MudItem xs="6" sm="3">
-            <MudCard Style="min-height: 80px;">
+            <MudCard>
                 <MudCardContent Class="text-center pa-3">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">총 자산</MudText>
                     <MudText Typo="Typo.h5" Class="mt-1">$@_account.TotalEquity.ToString("N0")</MudText>
@@ -89,7 +94,7 @@
             </MudCard>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudCard Style="min-height: 80px;">
+            <MudCard>
                 <MudCardContent Class="text-center pa-3">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">현금</MudText>
                     <MudText Typo="Typo.h5" Class="mt-1">$@_account.Cash.ToString("N0")</MudText>
@@ -97,7 +102,7 @@
             </MudCard>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudCard Style="min-height: 80px;">
+            <MudCard>
                 <MudCardContent Class="text-center pa-3">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">매수 여력</MudText>
                     <MudText Typo="Typo.h5" Class="mt-1">$@_account.BuyingPower.ToString("N0")</MudText>
@@ -105,7 +110,7 @@
             </MudCard>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudCard Style="min-height: 80px;">
+            <MudCard>
                 <MudCardContent Class="text-center pa-3">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">미실현 손익</MudText>
                     <MudText Typo="Typo.h5" Class="mt-1"
@@ -121,7 +126,7 @@
 @* ── 트레이딩 현황 ── *@
 <MudGrid Class="mb-4">
     <MudItem xs="6" sm="3">
-        <MudCard Style="min-height: 96px;">
+        <MudCard>
             <MudCardContent Class="text-center pa-3">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">보유 포지션</MudText>
                 <MudText Typo="Typo.h4" Class="mt-1">@_openPositions.Count</MudText>
@@ -129,7 +134,7 @@
         </MudCard>
     </MudItem>
     <MudItem xs="6" sm="3">
-        <MudCard Style="min-height: 96px;">
+        <MudCard>
             <MudCardContent Class="text-center pa-3">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">활성 시그널</MudText>
                 <MudText Typo="Typo.h4" Class="mt-1">@_activeSignals.Count</MudText>
@@ -137,7 +142,7 @@
         </MudCard>
     </MudItem>
     <MudItem xs="6" sm="3">
-        <MudCard Style="min-height: 96px;">
+        <MudCard>
             <MudCardContent Class="text-center pa-3">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">일일 손익</MudText>
                 <MudText Typo="Typo.h4" Class="mt-1"
@@ -177,9 +182,18 @@
                 }
                 else
                 {
-                    @foreach (var signal in _activeSignals.Take(10))
+                    @foreach (var signal in _activeSignals.Take(5))
                     {
-                        <SignalCard Signal="@signal" />
+                        _recMap.TryGetValue((signal.Symbol, signal.PatternType), out var rec);
+                        <SignalCard Signal="@signal" Recommendation="@rec" />
+                    }
+                    @if (_activeSignals.Count > 5)
+                    {
+                        <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-1">
+                            <MudLink Href="/signals" Typo="Typo.body2" Color="Color.Primary">
+                                더 보기 (@(_activeSignals.Count)개 전체) →
+                            </MudLink>
+                        </MudStack>
                     }
                 }
             </MudCardContent>
@@ -209,26 +223,28 @@
                 }
                 else
                 {
-                    <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true">
-                        <HeaderContent>
-                            <MudTh>종목</MudTh>
-                            <MudTh>수량</MudTh>
-                            <MudTh>진입가</MudTh>
-                            <MudTh>현재가</MudTh>
-                            <MudTh>손익</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd><MudText Typo="Typo.body2"><b>@context.Symbol</b></MudText></MudTd>
-                            <MudTd>@context.Quantity</MudTd>
-                            <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
-                            <MudTd>$@context.CurrentPrice.ToString("F2")</MudTd>
-                            <MudTd>
-                                <MudText Color="@(context.UnrealizedPnL >= 0 ? Color.Success : Color.Error)">
-                                    @(context.UnrealizedPnL >= 0 ? "+" : "")$@context.UnrealizedPnL.ToString("N2")
-                                </MudText>
-                            </MudTd>
-                        </RowTemplate>
-                    </MudTable>
+                    <div class="table-scroll-wrapper">
+                        <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>종목</MudTh>
+                                <MudTh>수량</MudTh>
+                                <MudTh>진입가</MudTh>
+                                <MudTh>현재가</MudTh>
+                                <MudTh>손익</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudText Typo="Typo.body2"><b>@context.Symbol</b></MudText></MudTd>
+                                <MudTd>@context.Quantity</MudTd>
+                                <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+                                <MudTd>$@context.CurrentPrice.ToString("F2")</MudTd>
+                                <MudTd>
+                                    <MudText Color="@(context.UnrealizedPnL >= 0 ? Color.Success : Color.Error)">
+                                        @(context.UnrealizedPnL >= 0 ? "+" : "")$@context.UnrealizedPnL.ToString("N2")
+                                    </MudText>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </div>
                 }
             </MudCardContent>
         </MudCard>
@@ -240,6 +256,7 @@
     private bool _loading;
     private string? _error;
     private List<PatternSignal> _activeSignals = new();
+    private Dictionary<(string Symbol, PatternType Pattern), TradeRecommendation> _recMap = new();
     private List<StockTrader.Models.Position> _openPositions = new();
     private RiskState _riskState = new();
     private MarketRegime? _regime = new() { RegimeLabel = "로딩 중..." };
@@ -282,6 +299,7 @@
         try
         {
             var signalsTask = TradeRepo.GetActiveSignalsAsync();
+            var recsTask = TradeRepo.GetRecentRecommendationsAsync(200);
             var positionsTask = TradeRepo.GetOpenPositionsAsync();
             var riskTask = RiskService.GetCurrentRiskStateAsync();
 
@@ -293,8 +311,11 @@
             if (broker == null)
             {
                 _error = "브로커 서비스를 초기화할 수 없습니다.";
-                await Task.WhenAll(signalsTask, positionsTask, riskTask);
+                await Task.WhenAll(signalsTask, recsTask, positionsTask, riskTask);
                 _activeSignals = signalsTask.Result;
+                _recMap = recsTask.Result
+                    .GroupBy(r => (r.Symbol, r.PatternType))
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.GeneratedAt).First());
                 _openPositions = positionsTask.Result;
                 _riskState = riskTask.Result;
                 return;
@@ -302,10 +323,13 @@
 
             var accountTask = broker.GetAccountAsync();
             var settingsTask = SettingsRepo.GetAsync();
-            await Task.WhenAll(signalsTask, positionsTask, riskTask, accountTask, settingsTask);
+            await Task.WhenAll(signalsTask, recsTask, positionsTask, riskTask, accountTask, settingsTask);
             _accountSize = settingsTask.Result.AccountSize;
 
             _activeSignals = signalsTask.Result;
+            _recMap = recsTask.Result
+                .GroupBy(r => (r.Symbol, r.PatternType))
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.GeneratedAt).First());
             _openPositions = positionsTask.Result;
             _riskState = riskTask.Result;
             _account = accountTask.Result;

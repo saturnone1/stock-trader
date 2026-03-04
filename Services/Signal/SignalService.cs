@@ -59,6 +59,26 @@ public class SignalService : ISignalService
 
         foreach (var signal in signals)
         {
+            // ── 1. 신뢰도 필터: 자동매매 실행 최소 기준 ──
+            if (signal.Confidence < _tradingSettings.MinConfidence)
+            {
+                _logger.LogDebug(
+                    "Signal {Pattern} for {Symbol} filtered: confidence {Actual:F2} < min {Min:F2}",
+                    signal.PatternType, signal.Symbol, signal.Confidence, _tradingSettings.MinConfidence);
+                continue;
+            }
+
+            // ── 2. 가격 유효성: 손절 < 진입 < 목표가 (위반 시 주문 불가) ──
+            if (signal.StopLossPrice >= signal.EntryPrice || signal.TargetPrice <= signal.EntryPrice)
+            {
+                _logger.LogDebug(
+                    "Signal {Pattern} for {Symbol} filtered: invalid prices (SL={SL:F2}, Entry={Entry:F2}, Target={Target:F2})",
+                    signal.PatternType, signal.Symbol,
+                    signal.StopLossPrice, signal.EntryPrice, signal.TargetPrice);
+                continue;
+            }
+
+            // ── 3. 기대값 필터 ──
             statsCache.TryGetValue(signal.PatternType, out var stats);
 
             // Gap 3 fix: 거래 이력이 충분한 경우에만 Expectancy 필터 적용.
@@ -74,6 +94,7 @@ public class SignalService : ISignalService
                 continue;
             }
 
+            // ── 4. 리스크 체크 ──
             // W02 fix: Tickers 테이블에서 섹터 조회; 없으면 심볼 자체를 섹터로 사용하여
             // 동일 종목 중복 포지션을 MaxPositionsPerSector 체크가 잡아낼 수 있도록 함.
             var sector = sectorMap.TryGetValue(signal.Symbol, out var s) && !string.IsNullOrEmpty(s)
@@ -90,6 +111,7 @@ public class SignalService : ISignalService
                 continue;
             }
 
+            // ── 5. 포지션 사이징 ──
             var positionSize = _riskService.CalculatePositionSize(
                 settings.AccountSize,
                 _tradingSettings.RiskPerTradePercent,
@@ -108,6 +130,15 @@ public class SignalService : ISignalService
             var shareQty = signal.EntryPrice > 0
                 ? (int)Math.Floor(positionSize / signal.EntryPrice)
                 : 0;
+
+            // ── 6. 주문 수량 검증: 0주면 자동매매 실행 불가 ──
+            if (shareQty <= 0)
+            {
+                _logger.LogDebug(
+                    "Signal {Pattern} for {Symbol} filtered: calculated share qty = 0 (posSize={PosSize:F2}, entry={Entry:F2})",
+                    signal.PatternType, signal.Symbol, positionSize, signal.EntryPrice);
+                continue;
+            }
 
             var recommendation = new TradeRecommendation
             {

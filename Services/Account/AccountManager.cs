@@ -122,6 +122,19 @@ public class AccountManager : IAccountManager
         // 캐시된 브로커 인스턴스 무효화 (API 키가 변경될 수 있음)
         await InvalidateBrokerCacheAsync(account.Id);
 
+        // 비활성화된 계좌가 현재 활성 캐시와 일치하면 캐시 무효화
+        // 이렇게 하지 않으면 GetActiveAccountAsync가 DB를 건너뛰고 비활성 계좌를 반환한다
+        if (!account.IsEnabled || !account.IsActive)
+        {
+            var cachedId = Volatile.Read(ref _activeAccountId);
+            if (cachedId == account.Id)
+            {
+                Interlocked.CompareExchange(ref _activeAccountId, NoActiveAccount, cachedId);
+                _logger.LogInformation(
+                    "Active account cache invalidated: account [{Id}] is no longer active/enabled", account.Id);
+            }
+        }
+
         _logger.LogInformation("Account updated: [{Id}] {Name}", account.Id, account.AccountName);
         OnAccountsChanged?.Invoke();
         return account;
