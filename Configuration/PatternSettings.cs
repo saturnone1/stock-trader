@@ -190,36 +190,46 @@ public class VolatilityBreakoutConfig
 }
 
 /// <summary>
-/// TQQQ 200-SMA Rotation Strategy (아기티큐 전략 개선판).
-/// 원본: SMA200 크로스오버 추세추종 + 3자산 로테이션.
-/// 개선: 휩쏘 감소(EMA50 필터, 거래량 확인), 적응형 손절(ATR), 고정익절 제거(트레일링 스탑 위임).
-/// 백테스트 기준: 승률 ~30%, 손익비 7.75, 기댓값 +6.5%/거래.
+/// TQQQ 200-SMA 변형매매법 (fmkorea "200일 티큐 변형매매법" 기반).
+///
+/// 핵심 규칙:
+///   1. 이격도(Close/SMA200×100) >= 101% → 풀매수
+///   2. SPY가 200일선 대비 97.75% 이하 → 전량 청산 (진입 차단)
+///   3. 20일 수익률 표준편차 >= 5.9% → 전량 청산 (진입 차단)
+///   4. 과열 감량: 139%→신뢰도 하락, 146%→진입 차단
+///   5. 손절: 진입가 -5.9% 고정 또는 SMA200×0.99 중 높은 쪽
+///   6. 목표가: SMA200×1.50 (넓게 설정, TradeSimulator 동적 스탑에 위임)
+///
+/// 백테스트 기준: 추세추종 장기 홀딩, 조건부 청산 방식.
 /// </summary>
 public class Tqqq200SmaConfig
 {
-    /// <summary>장기 추세 판단 SMA 기간 (원본 200일).</summary>
+    /// <summary>장기 추세 판단 SMA 기간 (200일).</summary>
     public int SmaPeriod { get; set; } = 200;
 
-    /// <summary>과열 구간 판정 임계값. SMA200 × (1 + OverheatPercent) 이상이면 과열.</summary>
-    public decimal OverheatPercent { get; set; } = 0.05m;
+    /// <summary>이격도 진입 임계값. Close/SMA200 >= 이 값이면 진입. 1.01 = 101%.</summary>
+    public decimal EntryDistancePercent { get; set; } = 1.01m;
 
-    /// <summary>돌파 진입 확인에 필요한 연속 종가 > SMA200 일수.</summary>
-    public int ConfirmationDays { get; set; } = 2;
+    /// <summary>고정 손절 비율. 진입가 × (1 - 이 값). 0.059 = -5.9%.</summary>
+    public decimal FixedStopPercent { get; set; } = 0.059m;
 
-    /// <summary>단기 추세 필터 EMA 기간. SMA200과 골든크로스 여부로 휩쏘 감소.</summary>
-    public int ShortTrendEmaPeriod { get; set; } = 50;
+    /// <summary>SPY 청산 이격도 임계값. SPY가 200MA 대비 이 비율 이하면 진입 차단. 0.9775 = 97.75%.</summary>
+    public decimal SpyExitDistancePercent { get; set; } = 0.9775m;
 
-    /// <summary>거래량 평균 기간 (거래량 확인 필터).</summary>
+    /// <summary>20일 일간 수익률 표준편차 상한. 이 값 이상이면 진입 차단. 0.059 = 5.9%.</summary>
+    public decimal MaxVolatility20d { get; set; } = 0.059m;
+
+    /// <summary>과열 1단계 이격도. 이 값 이상이면 신뢰도 감소(0.45). 1.39 = 139%.</summary>
+    public decimal OverheatStage1 { get; set; } = 1.39m;
+
+    /// <summary>과열 2단계 이격도. 이 값 이상이면 진입 차단. 1.46 = 146%.</summary>
+    public decimal OverheatStage2 { get; set; } = 1.46m;
+
+    /// <summary>거래량 평균 기간 (보조 필터).</summary>
     public int VolumeAvgPeriod { get; set; } = 20;
 
     /// <summary>진입 시 최소 거래량 배수 (20일 평균 대비). 1.0 = 평균 이상.</summary>
     public decimal MinVolumeRatio { get; set; } = 1.0m;
-
-    /// <summary>ATR 기반 초기 손절 배수. 진입가 - ATR × N. 적응형으로 고정 -5% 대체.</summary>
-    public decimal AtrStopMultiplier { get; set; } = 3.0m;
-
-    /// <summary>ATR 기반 목표가 배수. 넓게 설정하여 BacktestService 트레일링 스탑에 위임.</summary>
-    public decimal AtrTargetMultiplier { get; set; } = 8.0m;
 
     /// <summary>이 패턴을 적용할 심볼 목록. 비어있으면 TQQQ만 허용.</summary>
     public List<string> AllowedSymbols { get; set; } = new() { "TQQQ" };
