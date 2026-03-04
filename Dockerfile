@@ -14,12 +14,12 @@ RUN dotnet restore StockTrader.csproj --locked-mode 2>/dev/null || dotnet restor
 # Copy the rest of the source tree (respects .dockerignore).
 COPY . .
 
-# Publish a self-contained-optional, framework-dependent, Release build.
-# Output goes to /app/publish inside this stage.
+# Publish a framework-dependent Release build.
+# NOTE: Do NOT use --no-restore here — it skips _framework/blazor.web.js
+# generation on Linux, breaking Blazor interactive mode.
 RUN dotnet publish StockTrader.csproj \
     -c Release \
     -o /app/publish \
-    --no-restore \
     /p:UseAppHost=false
 
 # =============================================================================
@@ -63,6 +63,7 @@ USER stocktrader
 # ASPNETCORE_ENVIRONMENT : default to Production; override with -e flag.
 ENV ASPNETCORE_URLS="http://+:5239" \
     ASPNETCORE_ENVIRONMENT="Production" \
+    DOTNET_RUNNING_IN_CONTAINER="true" \
     TZ="America/New_York"
 
 # ConnectionStrings__DefaultConnection points SQLite to the /data volume.

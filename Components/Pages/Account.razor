@@ -13,7 +13,27 @@
 
 <PageTitle>계정 관리 — 주식 트레이더</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-6" Style="font-weight: 700;">계정 관리</MudText>
+<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">계정 관리</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">비밀번호 변경 및 계정 보안 설정</MudText>
+
+<MudDialog @bind-Visible="_showHelp">
+    <TitleContent><MudText Typo="Typo.h6">계정 관리 도움말</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">계정 정보 확인 및 비밀번호를 변경할 수 있습니다.</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>비밀번호 강도</strong>: 8자 이상, 영문+숫자 포함 시 기본 조건 충족
+            </MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small" IconColor="Color.Primary">
+                <strong>세션 만료</strong>: 표시된 시각 이후 자동 로그아웃됩니다
+            </MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(() => _showHelp = false)">닫기</MudButton></DialogActions>
+</MudDialog>
 
 <MudGrid>
 
@@ -210,6 +230,8 @@
 </MudGrid>
 
 @code {
+    private bool _showHelp;
+
     private UserInfoResponse? _userInfo;
     private bool _isLoadingInfo = true;
 

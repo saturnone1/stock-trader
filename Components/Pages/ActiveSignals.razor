@@ -4,8 +4,11 @@
 @using StockTrader.Models.Enums
 @using StockTrader.Data.Repositories
 @using StockTrader.Services.Notification
+@using StockTrader.Services.Order
 @inject ITradeRepository TradeRepo
 @inject INotificationService NotificationService
+@inject IOrderService OrderService
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 <PageTitle>활성 시그널 - 주식 트레이더</PageTitle>
@@ -13,6 +16,11 @@
 <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
     <MudText Typo="Typo.h5">활성 시그널</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+    <MudTooltip Text="새로고침">
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                       Color="Color.Default" OnClick="@ManualRefreshAsync"
+                       Disabled="@_loading" />
+    </MudTooltip>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">패턴 감지 시스템이 실시간으로 발견한 매매 시그널 목록입니다. 패턴 유형이나 종목명으로 필터링할 수 있습니다.</MudText>
 
@@ -39,7 +47,7 @@
 </MudDialog>
 
 <!-- 필터 영역 -->
-<MudGrid Class="mb-2">
+<MudGrid Spacing="3" Class="mb-2">
     <MudItem xs="12" md="5">
         <!-- 패턴 필터: 한국어이름 (스타일) 형태로 표시 -->
         <MudSelect T="string" Value="_filterPattern" ValueChanged="@(v => { _filterPattern = v; RebuildFilteredSignals(); })" Label="패턴 필터" Variant="Variant.Outlined" Dense="true">
@@ -132,7 +140,37 @@ else
 {
     @foreach (var signal in _filteredSignals)
     {
-        <SignalCard Signal="@signal" />
+        _recMap.TryGetValue((signal.Symbol, signal.PatternType), out var rec);
+        <MudPaper Class="mb-4 pa-0" Elevation="0"
+                  Style="border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; overflow: hidden;">
+            <SignalCard Signal="@signal" Recommendation="@rec" />
+            @{
+                var isStale = (DateTime.UtcNow - signal.DetectedAt).TotalHours > 24;
+            }
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02);">
+                <MudText Typo="Typo.caption">
+                    @if (isStale)
+                    {
+                        <span style="color: var(--mud-palette-warning);">24시간 초과 — 매수 불가</span>
+                    }
+                    else
+                    {
+                        <span style="color: var(--mud-palette-text-secondary);">시장가 주문으로 체결됩니다</span>
+                    }
+                </MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.ShoppingCart"
+                           Disabled="@(_executingSignalId == signal.Id || isStale)"
+                           OnClick="@(() => ExecuteSignalAsync(signal))"
+                           Style="min-width: 72px;">
+                    @if (_executingSignalId == signal.Id)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                    }
+                    매수
+                </MudButton>
+            </div>
+        </MudPaper>
     }
 }
 
@@ -141,6 +179,7 @@ else
     private bool _loading;
     private string? _error;
     private bool _subscribed;
+    private System.Threading.Timer? _refreshTimer;
     private List<PatternSignal> _signals = new();
     // Materialized cache — rebuilt once per filter/data change, not on every render pass.
     private List<PatternSignal> _filteredSignals = new();
@@ -148,6 +187,12 @@ else
     private string _filterSymbol = "";
     private TradingStyle? _filterStyle = null;
     private string _sortBy = "time-desc";
+
+    // 매수 실행 중인 시그널 Id (로딩 표시 + 중복 클릭 방지)
+    private long? _executingSignalId;
+
+    // 자동매매 추천 맵: (Symbol, PatternType) → 가장 최근 추천
+    private Dictionary<(string Symbol, PatternType Pattern), TradeRecommendation> _recMap = new();
 
     private void RebuildFilteredSignals()
     {
@@ -179,7 +224,13 @@ else
         _loading = true;
         try
         {
-            _signals = await TradeRepo.GetActiveSignalsAsync();
+            var signalsTask = TradeRepo.GetActiveSignalsAsync();
+            var recsTask    = TradeRepo.GetRecentRecommendationsAsync(200);
+            await Task.WhenAll(signalsTask, recsTask);
+            _signals = signalsTask.Result;
+            _recMap  = recsTask.Result
+                .GroupBy(r => (r.Symbol, r.PatternType))
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.GeneratedAt).First());
             RebuildFilteredSignals();
         }
         catch (Exception ex)
@@ -196,6 +247,28 @@ else
         {
             NotificationService.OnNewRecommendation += OnNewRecommendation;
             _subscribed = true;
+
+            // 60초마다 갱신 (만료 배지 + 경과시간 + 시그널 목록 + 추천 재로드)
+            _refreshTimer = new System.Threading.Timer(
+                async _ =>
+                {
+                    try
+                    {
+                        var signalsTask = TradeRepo.GetActiveSignalsAsync();
+                        var recsTask    = TradeRepo.GetRecentRecommendationsAsync(200);
+                        await Task.WhenAll(signalsTask, recsTask);
+                        _signals = signalsTask.Result;
+                        _recMap  = recsTask.Result
+                            .GroupBy(r => (r.Symbol, r.PatternType))
+                            .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.GeneratedAt).First());
+                        RebuildFilteredSignals();
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    catch (ObjectDisposedException) { }
+                },
+                state: null,
+                dueTime: TimeSpan.FromSeconds(60),
+                period: TimeSpan.FromSeconds(60));
         }
     }
 
@@ -205,7 +278,13 @@ else
         {
             try
             {
-                _signals = await TradeRepo.GetActiveSignalsAsync();
+                var signalsTask = TradeRepo.GetActiveSignalsAsync();
+                var recsTask    = TradeRepo.GetRecentRecommendationsAsync(200);
+                await Task.WhenAll(signalsTask, recsTask);
+                _signals = signalsTask.Result;
+                _recMap  = recsTask.Result
+                    .GroupBy(r => (r.Symbol, r.PatternType))
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.GeneratedAt).First());
                 RebuildFilteredSignals();
                 StateHasChanged();
             }
@@ -218,14 +297,67 @@ else
         });
     }
 
+    private async Task ManualRefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var signalsTask = TradeRepo.GetActiveSignalsAsync();
+            var recsTask    = TradeRepo.GetRecentRecommendationsAsync(200);
+            await Task.WhenAll(signalsTask, recsTask);
+            _signals = signalsTask.Result;
+            _recMap  = recsTask.Result
+                .GroupBy(r => (r.Symbol, r.PatternType))
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.GeneratedAt).First());
+            RebuildFilteredSignals();
+        }
+        catch (Exception ex)
+        {
+            _error = $"시그널 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
     private void ToggleStyleFilter(TradingStyle style)
     {
         _filterStyle = _filterStyle == style ? null : style;
         RebuildFilteredSignals();
     }
 
+    private async Task ExecuteSignalAsync(PatternSignal signal)
+    {
+        _executingSignalId = signal.Id;
+        try
+        {
+            // 수동 매매 전용 메서드 사용 (리스크 체크 + 수량 자동 계산 + 최소 1주 보장)
+            var (success, message) = await OrderService.PlaceManualOrderAsync(signal.Id);
+            if (success)
+            {
+                Snackbar.Add($"{signal.Symbol} 매수 주문 실행 완료", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add($"{signal.Symbol} 주문 실패: {message}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"주문 오류: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _executingSignalId = null;
+            StateHasChanged();
+        }
+    }
+
     public void Dispose()
     {
+        _refreshTimer?.Dispose();
         NotificationService.OnNewRecommendation -= OnNewRecommendation;
     }
 }

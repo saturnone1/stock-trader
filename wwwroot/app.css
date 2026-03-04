@@ -27,3 +27,35 @@ h1:focus {
     .blazor-error-boundary::after {
         content: "An error has occurred."
     }
+
+/* =====================================================
+   공통 칩 크기 클래스
+   인라인 style 반복 제거용 — chip-xs / chip-sm 사용
+   ===================================================== */
+.chip-xs {
+    height: 18px !important;
+    font-size: 10px !important;
+    padding: 0 6px !important;
+    min-width: 0 !important;
+}
+
+.chip-sm {
+    height: 22px !important;
+    font-size: 11px !important;
+    padding: 0 8px !important;
+    min-width: 0 !important;
+}
+
+/* 테이블 수평 스크롤 wrapper */
+.table-scroll-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* 섹션 라벨 공통 */
+.section-label {
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--mud-palette-text-secondary);
+}

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using StockTrader.Models;
 
 namespace StockTrader.Data.Repositories;
@@ -6,10 +7,18 @@ namespace StockTrader.Data.Repositories;
 public class TradeRepository : ITradeRepository
 {
     private readonly AppDbContext _db;
+    private readonly IMemoryCache _cache;
 
-    public TradeRepository(AppDbContext db)
+    private const string OpenPositionsCacheKey = "TradeRepo:OpenPositions";
+    private const string ActiveSignalsCacheKey = "TradeRepo:ActiveSignals";
+    private const string RecentRecsCacheKey = "TradeRepo:RecentRecs";
+    private static readonly TimeSpan PositionCacheTtl = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan SignalCacheTtl = TimeSpan.FromSeconds(60);
+
+    public TradeRepository(AppDbContext db, IMemoryCache cache)
     {
         _db = db;
+        _cache = cache;
     }
 
     // Default take=1000: prevents unbounded full-table scans on large datasets.
@@ -75,11 +84,17 @@ public class TradeRepository : ITradeRepository
 
     public async Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default)
     {
-        return await _db.Positions
+        if (_cache.TryGetValue(OpenPositionsCacheKey, out List<Position>? cached) && cached != null)
+            return cached;
+
+        var positions = await _db.Positions
             .AsNoTracking()
             .Where(p => p.ClosedAt == null)
             .OrderByDescending(p => p.OpenedAt)
             .ToListAsync(ct);
+
+        _cache.Set(OpenPositionsCacheKey, positions, PositionCacheTtl);
+        return positions;
     }
 
     public async Task<Position?> GetPositionAsync(long id, CancellationToken ct = default)
@@ -94,16 +109,24 @@ public class TradeRepository : ITradeRepository
         else
             _db.Positions.Update(position);
         await _db.SaveChangesAsync(ct);
+        _cache.Remove(OpenPositionsCacheKey);
     }
 
     public async Task<List<TradeRecommendation>> GetRecentRecommendationsAsync(int count = 20,
         CancellationToken ct = default)
     {
-        return await _db.TradeRecommendations
+        var cacheKey = $"{RecentRecsCacheKey}:{count}";
+        if (_cache.TryGetValue(cacheKey, out List<TradeRecommendation>? cached) && cached != null)
+            return cached;
+
+        var recs = await _db.TradeRecommendations
             .AsNoTracking()
             .OrderByDescending(r => r.GeneratedAt)
             .Take(count)
             .ToListAsync(ct);
+
+        _cache.Set(cacheKey, recs, SignalCacheTtl);
+        return recs;
     }
 
     public async Task AddRecommendationAsync(TradeRecommendation recommendation,
@@ -111,6 +134,7 @@ public class TradeRepository : ITradeRepository
     {
         _db.TradeRecommendations.Add(recommendation);
         await _db.SaveChangesAsync(ct);
+        InvalidateRecsCache();
     }
 
     public async Task UpdateRecommendationAsync(TradeRecommendation recommendation,
@@ -118,21 +142,40 @@ public class TradeRepository : ITradeRepository
     {
         _db.TradeRecommendations.Update(recommendation);
         await _db.SaveChangesAsync(ct);
+        InvalidateRecsCache();
+    }
+
+    // count 파라미터가 있는 캐시 키는 정확한 값 제거가 불가능하므로
+    // 공통 프리픽스 기반 무효화 대신 TTL에 의존 (60초 이내 자연 만료)
+    // 단, 가장 많이 사용되는 주요 count 값은 명시적으로 제거한다.
+    private void InvalidateRecsCache()
+    {
+        _cache.Remove($"{RecentRecsCacheKey}:20");
+        _cache.Remove($"{RecentRecsCacheKey}:50");
+        _cache.Remove($"{RecentRecsCacheKey}:100");
+        _cache.Remove($"{RecentRecsCacheKey}:200");
     }
 
     public async Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default)
     {
-        return await _db.PatternSignals
+        if (_cache.TryGetValue(ActiveSignalsCacheKey, out List<PatternSignal>? cached) && cached != null)
+            return cached;
+
+        var signals = await _db.PatternSignals
             .AsNoTracking()
             .Where(s => s.IsActive)
             .OrderByDescending(s => s.DetectedAt)
             .ToListAsync(ct);
+
+        _cache.Set(ActiveSignalsCacheKey, signals, SignalCacheTtl);
+        return signals;
     }
 
     public async Task AddSignalAsync(PatternSignal signal, CancellationToken ct = default)
     {
         _db.PatternSignals.Add(signal);
         await _db.SaveChangesAsync(ct);
+        _cache.Remove(ActiveSignalsCacheKey);
     }
 
     public async Task AddSignalsBatchAsync(IEnumerable<PatternSignal> signals, CancellationToken ct = default)
@@ -140,6 +183,7 @@ public class TradeRepository : ITradeRepository
         // AddRange stages all entities; single SaveChangesAsync writes them in one transaction
         _db.PatternSignals.AddRange(signals);
         await _db.SaveChangesAsync(ct);
+        _cache.Remove(ActiveSignalsCacheKey);
     }
 
     public async Task DeactivateSignalAsync(long signalId, CancellationToken ct = default)
@@ -149,6 +193,7 @@ public class TradeRepository : ITradeRepository
         {
             signal.IsActive = false;
             await _db.SaveChangesAsync(ct);
+            _cache.Remove(ActiveSignalsCacheKey);
         }
     }
 }

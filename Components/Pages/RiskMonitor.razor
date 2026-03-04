@@ -15,6 +15,11 @@
 <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
     <MudText Typo="Typo.h5">리스크 모니터</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+    <MudTooltip Text="새로고침">
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                       Color="Color.Default" OnClick="@LoadDataAsync"
+                       Disabled="@_loading" />
+    </MudTooltip>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">리스크 규칙 준수 현황을 실시간으로 모니터링합니다. 규칙을 초과하면 신규 진입이 자동으로 차단됩니다.</MudText>
 
@@ -101,8 +106,7 @@
 </MudGrid>
 
 @* ── 섹션 2: 리스크 규칙 현황 ── *@
-<MudText Typo="Typo.subtitle2" Class="mb-2"
-         Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color: var(--mud-palette-text-secondary);">
+<MudText Typo="Typo.subtitle2" Class="section-label mb-2">
     리스크 규칙 현황
 </MudText>
 <MudDivider Class="mb-3" />
@@ -266,8 +270,7 @@
 </MudGrid>
 
 @* ── 섹션 3: 섹터별 포지션 ── *@
-<MudText Typo="Typo.subtitle2" Class="mb-2"
-         Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color: var(--mud-palette-text-secondary);">
+<MudText Typo="Typo.subtitle2" Class="section-label mb-2">
     섹터별 포지션
 </MudText>
 <MudDivider Class="mb-3" />
@@ -305,8 +308,7 @@ else
 }
 
 @* ── 섹션 4: 포지션별 리스크 상세 ── *@
-<MudText Typo="Typo.subtitle2" Class="mb-2"
-         Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color: var(--mud-palette-text-secondary);">
+<MudText Typo="Typo.subtitle2" Class="section-label mb-2">
     포지션별 리스크 상세
 </MudText>
 <MudDivider Class="mb-3" />

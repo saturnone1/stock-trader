@@ -13,6 +13,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Auth;
 using StockTrader.Services.Backtest;
+using StockTrader.Services.Order;
 
 // Serilog bootstrap logger — captures startup errors before host is built
 Log.Logger = new LoggerConfiguration()
@@ -107,6 +108,8 @@ using (var scope = app.Services.CreateScope())
             ["EmailFrom"]          = "ALTER TABLE UserSettings ADD COLUMN EmailFrom TEXT",
             ["EmailTo"]            = "ALTER TABLE UserSettings ADD COLUMN EmailTo TEXT",
             ["DailyReportTimeKst"] = "ALTER TABLE UserSettings ADD COLUMN DailyReportTimeKst TEXT",
+            // 패턴별 종목 설정
+            ["Tqqq200SmaAllowedSymbols"] = "ALTER TABLE UserSettings ADD COLUMN Tqqq200SmaAllowedSymbols TEXT",
         };
 
         foreach (var (col, sql) in alterStatements)
@@ -246,13 +249,33 @@ using (var scope = app.Services.CreateScope())
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // OrderMode를 AutoOrder(1)로 설정 (기본값이 AlertOnly(0)인 경우)
-        cmd.CommandText = "UPDATE UserSettings SET OrderMode = 1 WHERE OrderMode = 0";
-        var updated = await cmd.ExecuteNonQueryAsync();
-        if (updated > 0)
+        // TQQQ 200SMA 스테일 시그널 정리: 비-TQQQ 종목의 시그널 비활성화
+        // AllowedSymbols 기본값은 ["TQQQ"]이므로, 이전에 잘못 생성된 비-TQQQ 시그널을 정리
+        cmd.CommandText = "UPDATE PatternSignals SET IsActive = 0 WHERE PatternType = 16 AND Symbol != 'TQQQ' AND IsActive = 1";
+        var deactivated = await cmd.ExecuteNonQueryAsync();
+        if (deactivated > 0)
         {
-            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-            logger.LogInformation("OrderMode를 AutoOrder(1)로 업데이트했습니다 ({Count}건)", updated);
+            var logger2 = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger2.LogInformation("비-TQQQ Tqqq200Sma 시그널 {Count}건 비활성화", deactivated);
+        }
+
+        // ── 저품질 시그널/추천 정리 (SignalService 6단계 필터 소급 적용) ──
+        // MinConfidence=0.3 기준 미달 시그널 비활성화
+        cmd.CommandText = "UPDATE PatternSignals SET IsActive = 0 WHERE Confidence < 0.3 AND IsActive = 1";
+        var lowConf = await cmd.ExecuteNonQueryAsync();
+        // 가격 유효성 위반 시그널 비활성화 (SL >= Entry 또는 Target <= Entry)
+        cmd.CommandText = "UPDATE PatternSignals SET IsActive = 0 WHERE (StopLossPrice >= EntryPrice OR TargetPrice <= EntryPrice) AND IsActive = 1";
+        var badPrice = await cmd.ExecuteNonQueryAsync();
+        // 미체결 추천 전체 제거 — 6단계 필터 소급 적용 위해 전부 삭제 후 재생성
+        // (WasExecuted=1인 실제 체결 추천만 보존)
+        cmd.CommandText = "DELETE FROM TradeRecommendations WHERE WasExecuted = 0";
+        var badRecs = await cmd.ExecuteNonQueryAsync();
+        if (lowConf + badPrice + badRecs > 0)
+        {
+            var logger3 = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger3.LogInformation(
+                "저품질 데이터 정리: 시그널 비활성화 {LowConf}건(저신뢰) + {BadPrice}건(가격위반), 추천 삭제 {BadRecs}건",
+                lowConf, badPrice, badRecs);
         }
 
     }
@@ -370,10 +393,8 @@ app.UseSerilogRequestLogging(options =>
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
-// Only redirect to HTTPS in development where the dev certificate is available.
-// In production (published exe), we typically run on plain HTTP on localhost,
-// so redirecting would cause a connection failure and blank/broken UI.
-if (app.Environment.IsDevelopment())
+// Only redirect to HTTPS in local development (not Docker).
+if (app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
 {
     app.UseHttpsRedirection();
 }
@@ -480,6 +501,58 @@ app.MapPost("/api/auth/change-password", async (HttpContext ctx, IAuthService au
         return Results.BadRequest(new { error });
 
     return Results.Ok(new { message = "비밀번호가 변경되었습니다." });
+}).RequireRateLimiting("api").RequireAuthorization();
+
+// ── Manual Trading API ────────────────────────────────────────────────────────
+
+app.MapPost("/api/orders/execute-signal", async (HttpContext ctx, IOrderService orderService) =>
+{
+    if (!ctx.User.Identity?.IsAuthenticated ?? true)
+        return Results.Unauthorized();
+
+    long signalId;
+    try
+    {
+        using var body = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+        signalId = body.RootElement.GetProperty("signalId").GetInt64();
+    }
+    catch
+    {
+        return Results.BadRequest(new { error = "Invalid JSON body. Provide 'signalId' (integer)." });
+    }
+
+    var (success, message) = await orderService.PlaceManualOrderAsync(signalId, ctx.RequestAborted);
+    return success
+        ? Results.Ok(new { message })
+        : Results.BadRequest(new { error = message });
+}).RequireRateLimiting("api").RequireAuthorization();
+
+app.MapPost("/api/orders/close-position", async (HttpContext ctx, StockTrader.Services.Account.IAccountManager accountManager) =>
+{
+    if (!ctx.User.Identity?.IsAuthenticated ?? true)
+        return Results.Unauthorized();
+
+    string symbol;
+    try
+    {
+        using var body = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+        symbol = body.RootElement.GetProperty("symbol").GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(symbol))
+            return Results.BadRequest(new { error = "'symbol' must not be empty." });
+    }
+    catch
+    {
+        return Results.BadRequest(new { error = "Invalid JSON body. Provide 'symbol' (string)." });
+    }
+
+    var broker = await accountManager.GetActiveBrokerServiceAsync(ctx.RequestAborted);
+    if (broker == null)
+        return Results.BadRequest(new { error = "활성 브로커 계좌가 없습니다. 계좌 관리에서 계좌를 설정하세요." });
+
+    var success = await broker.ClosePositionAsync(symbol, ctx.RequestAborted);
+    return success
+        ? Results.Ok(new { message = $"{symbol} 청산 완료" })
+        : Results.BadRequest(new { error = $"{symbol} 청산 실패. 브로커 연결 상태 또는 보유 포지션을 확인하세요." });
 }).RequireRateLimiting("api").RequireAuthorization();
 
 // ── Backtest API (CLI에서 수익률 비교용) ──

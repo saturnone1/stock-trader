@@ -64,7 +64,9 @@ public class TrendPullbackDetector : IPatternDetector
             EntryPrice = curr.Close,
             StopLossPrice = curr.Close - atr[^1] * _config.AtrStopMultiplier,
             TargetPrice = currentSma + atr[^1] * _config.AtrTargetMultiplier,
-            Confidence = Math.Min(1.0m, pullback / _config.MaxPullbackFromMa),
+            // pullback > 0 = SMA 아래(이상적 진입), < 0 = SMA 위(유효하지만 약한 진입)
+            // 어느 방향이든 SMA에 가까울수록 진입 적합 → 1 - (거리 비율)
+            Confidence = Math.Clamp(1.0m - Math.Abs(pullback) / _config.MaxPullbackFromMa, 0.1m, 1.0m),
             Details = $"20MA Pullback: {pullback:P1}, SMA: {currentSma:F2}",
             IsActive = true
         };

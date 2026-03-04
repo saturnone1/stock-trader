@@ -41,6 +41,9 @@ public class DailyDataSyncService : BackgroundService
     {
         _logger.LogInformation("DailyDataSyncService started");
 
+        // 시작 시 daily bars가 부족하면 즉시 동기화 (패턴 스캐너가 데이터 없이 스킵하는 문제 방지)
+        await RunInitialSyncIfNeededAsync(stoppingToken);
+
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
@@ -108,6 +111,87 @@ public class DailyDataSyncService : BackgroundService
                     "Error during daily data sync (consecutive failures: {Failures})",
                     _consecutiveFailures);
             }
+        }
+    }
+
+    /// <summary>
+    /// 앱 시작 시 daily bars가 부족한 심볼이 있으면 즉시 동기화.
+    /// PatternScanner가 bars.Count &lt; 20으로 스킵하는 문제를 방지한다.
+    /// DailyDataSync는 장 마감 후에만 동작하므로, 장중 시작 시 데이터가 없을 수 있다.
+    /// </summary>
+    private async Task RunInitialSyncIfNeededAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
+            var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
+
+            var settings = await settingsRepo.GetAsync(ct);
+            var symbolsNeedingSync = new List<string>();
+
+            // SPY는 레짐 계산(SMA200)에 최소 200개 daily bars 필요 → 별도 임계값 적용
+            foreach (var symbol in settings.WatchlistSymbols)
+            {
+                var minBars = symbol.Equals("SPY", StringComparison.OrdinalIgnoreCase) ? 200 : 20;
+                var bars = await ohlcvRepo.GetBarsAsync(symbol, TimeFrame.Daily,
+                    DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+                if (bars.Count < minBars)
+                    symbolsNeedingSync.Add(symbol);
+            }
+
+            // SPY가 워치리스트에 없어도 레짐 계산에 필요하므로 확인
+            if (!settings.WatchlistSymbols.Any(s => s.Equals("SPY", StringComparison.OrdinalIgnoreCase)))
+            {
+                var spyBars = await ohlcvRepo.GetBarsAsync("SPY", TimeFrame.Daily,
+                    DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+                if (spyBars.Count < 200)
+                    symbolsNeedingSync.Add("SPY");
+            }
+
+            if (symbolsNeedingSync.Count == 0)
+            {
+                _logger.LogInformation("Initial sync: all {Count} symbols have sufficient daily bars",
+                    settings.WatchlistSymbols.Count);
+                return;
+            }
+
+            _logger.LogInformation(
+                "Initial sync: {NeedSync}/{Total} symbols need daily bars — syncing now: {Symbols}",
+                symbolsNeedingSync.Count, settings.WatchlistSymbols.Count,
+                string.Join(", ", symbolsNeedingSync));
+
+            var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
+            var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
+            var synced = 0;
+
+            foreach (var symbol in symbolsNeedingSync)
+            {
+                try
+                {
+                    var bars = await dataFeed.GetHistoricalBarsAsync(
+                        symbol, TimeFrame.Daily,
+                        DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+
+                    if (bars.Count > 0)
+                    {
+                        await ohlcvRepo.AddBarsAsync(bars, ct);
+                        synced++;
+                        _logger.LogDebug("Initial sync: {Count} daily bars for {Symbol}", bars.Count, symbol);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Initial sync failed for {Symbol} — will retry at regular sync", symbol);
+                }
+            }
+
+            _logger.LogInformation("Initial sync complete: {Synced}/{NeedSync} symbols synced",
+                synced, symbolsNeedingSync.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Initial sync check failed — scanner will use available data");
         }
     }
 

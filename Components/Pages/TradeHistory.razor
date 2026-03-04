@@ -3,7 +3,10 @@
 @using StockTrader.Models
 @using StockTrader.Models.Enums
 @using StockTrader.Data.Repositories
+@using StockTrader.Services.Account
 @inject ITradeRepository TradeRepo
+@inject IAccountManager AccountManager
+@implements IDisposable
 
 <PageTitle>거래 내역 - 주식 트레이더</PageTitle>
 
@@ -119,6 +122,7 @@
 
         @if (_recommendations.Count > 0)
         {
+            <div class="table-scroll-wrapper">
             <MudTable Items="@_recommendations" Dense="true" Hover="true" Striped="true"
                       SortLabel="정렬"
                       RowStyleFunc="@((TradeRecommendation r, int _) => r.WasExecuted ? "" : "opacity:0.75;")">
@@ -144,7 +148,7 @@
                             <MudText Typo="Typo.body2" Style="white-space:nowrap;">@rMeta.KoreanName</MudText>
                             <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
                                      Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
-                                     Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">
+                                     Class="chip-xs">
                                 @rMeta.StyleLabel
                             </MudChip>
                         </MudStack>
@@ -167,14 +171,14 @@
                         @if (context.WasExecuted)
                         {
                             <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
-                                     Style="height:20px; font-size:10px; padding:0 8px; min-width:0;">
+                                     Class="chip-xs">
                                 실행됨
                             </MudChip>
                         }
                         else
                         {
                             <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
-                                     Style="height:20px; font-size:10px; padding:0 8px; min-width:0;">
+                                     Class="chip-xs">
                                 미실행
                             </MudChip>
                         }
@@ -186,6 +190,7 @@
                     </MudTd>
                 </RowTemplate>
             </MudTable>
+            </div>@* /table-scroll-wrapper *@
         }
         else if (!_loading)
         {
@@ -247,6 +252,7 @@
                 </MudItem>
             </MudGrid>
 
+            <div class="table-scroll-wrapper">
             <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true" SortLabel="정렬"
                       RowStyleFunc="@((StockTrader.Models.Position p, int _) => p.UnrealizedPnL >= 0
                           ? "background: rgba(46,125,50,0.08);"
@@ -279,7 +285,7 @@
                             <MudText Typo="Typo.body2" Style="white-space:nowrap;">@oMeta.KoreanName</MudText>
                             <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
                                      Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
-                                     Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">
+                                     Class="chip-xs">
                                 @oMeta.StyleLabel
                             </MudChip>
                         </MudStack>
@@ -323,6 +329,7 @@
                     </MudTd>
                 </RowTemplate>
             </MudTable>
+            </div>@* /table-scroll-wrapper *@
         }
         else if (!_loading)
         {
@@ -420,6 +427,7 @@
                 </MudItem>
             </MudGrid>
 
+            <div class="table-scroll-wrapper">
             <MudTable Items="@_trades" Dense="true" Hover="true" Striped="true"
                       SortLabel="정렬"
                       RowStyleFunc="@((TradeRecord t, int _) => !t.IsWin ? "background: rgba(198,40,40,0.15);" : "")">
@@ -446,7 +454,7 @@
                         <MudChip T="string" Size="Size.Small"
                                  Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
                                  Variant="Variant.Filled"
-                                 Style="height:20px; font-size:10px; padding:0 6px; min-width:0;">
+                                 Class="chip-xs">
                             @meta.KoreanName
                         </MudChip>
                     </MudTd>
@@ -473,6 +481,7 @@
                     <MudTd>@context.ExitTime.ToString("yy/MM/dd")</MudTd>
                 </RowTemplate>
             </MudTable>
+            </div>@* /table-scroll-wrapper *@
         }
         else if (!_loading)
         {
@@ -496,6 +505,7 @@
 
     // Tab 2: Open positions
     private List<StockTrader.Models.Position> _openPositions = new();
+    private System.Threading.Timer? _positionRefreshTimer;
 
     // Tab 3: Closed trades
     private List<TradeRecord> _trades = new();
@@ -520,6 +530,50 @@
             _loading = false;
             await InvokeAsync(StateHasChanged);
         }
+
+        // 30초마다 진행 중 포지션 갱신 (미실현 손익 실시간 반영)
+        _positionRefreshTimer = new System.Threading.Timer(
+            async _ =>
+            {
+                try
+                {
+                    var broker = await AccountManager.GetActiveBrokerServiceAsync();
+                    if (broker != null)
+                    {
+                        var brokerPositions = await broker.GetPositionsAsync();
+                        // DB 포지션에서 메타데이터 보충 (패턴, 손절가, 목표가, 섹터, 진입일)
+                        var dbPositions = await TradeRepo.GetOpenPositionsAsync();
+                        foreach (var bp in brokerPositions)
+                        {
+                            var dbMatch = dbPositions.FirstOrDefault(d =>
+                                d.Symbol.Equals(bp.Symbol, StringComparison.OrdinalIgnoreCase));
+                            if (dbMatch != null)
+                            {
+                                bp.PatternType = dbMatch.PatternType;
+                                bp.StopLossPrice = dbMatch.StopLossPrice;
+                                bp.TargetPrice = dbMatch.TargetPrice;
+                                bp.Sector = dbMatch.Sector;
+                                bp.OpenedAt = dbMatch.OpenedAt;
+                            }
+                        }
+                        _openPositions = brokerPositions;
+                    }
+                    else
+                    {
+                        _openPositions = await TradeRepo.GetOpenPositionsAsync();
+                    }
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (ObjectDisposedException) { }
+            },
+            state: null,
+            dueTime: TimeSpan.FromSeconds(30),
+            period: TimeSpan.FromSeconds(30));
+    }
+
+    public void Dispose()
+    {
+        _positionRefreshTimer?.Dispose();
     }
 
     private async Task SetRecoCount(int count)

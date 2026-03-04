@@ -12,6 +12,11 @@
 <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
     <MudText Typo="Typo.h5">패턴 통계</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+    <MudTooltip Text="새로고침">
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                       Color="Color.Default" OnClick="@ManualRefreshAsync"
+                       Disabled="@_loading" />
+    </MudTooltip>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary">기대값 = 승률 x 평균수익 - (1 - 승률) x 평균손실</MudText>
 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">각 패턴의 과거 성과를 기반으로 한 통계 지표입니다. 기대값이 양수인 패턴이 장기적으로 수익을 낼 가능성이 높습니다.</MudText>
@@ -57,8 +62,9 @@
 </MudText>
 <MudDivider Class="mb-3" />
 
+<div class="table-scroll-wrapper">
 <MudTable Items="@_allPatterns" Dense="true" Hover="true" Striped="true" Class="mb-5"
-          FixedHeader="true">
+          FixedHeader="true" Height="500px">
     <HeaderContent>
         <MudTh>패턴명</MudTh>
         <MudTh>스타일</MudTh>
@@ -114,10 +120,16 @@
             }
         </MudTd>
         <MudTd>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">@meta.Description</MudText>
+            <MudTooltip Text="@meta.Description" Placement="Placement.Left">
+                <MudText Typo="Typo.caption" Color="Color.Secondary"
+                         Style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;">
+                    @meta.Description
+                </MudText>
+            </MudTooltip>
         </MudTd>
     </RowTemplate>
 </MudTable>
+</div>@* /table-scroll-wrapper *@
 
 @* ── 섹션 2: 시그널 활동 현황 ── *@
 <MudText Typo="Typo.subtitle2" Class="mb-2"
@@ -390,6 +402,34 @@ else if (_stats.Count > 0)
             _recentRecs = recsTask.Result;
             _activeSignalCount = activeSignals.Count;
 
+            BuildSignalActivityRows(activeSignals, _recentRecs);
+            BuildStyleGroups();
+            BuildExpectancyItems();
+        }
+        catch (Exception ex)
+        {
+            _error = $"통계 로드 실패: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ManualRefreshAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var statsTask   = StatsService.GetAllStatsAsync();
+            var signalsTask = TradeRepo.GetActiveSignalsAsync();
+            var recsTask    = TradeRepo.GetRecentRecommendationsAsync(200);
+            await Task.WhenAll(statsTask, signalsTask, recsTask);
+            _stats      = statsTask.Result;
+            var activeSignals = signalsTask.Result;
+            _recentRecs = recsTask.Result;
+            _activeSignalCount = activeSignals.Count;
             BuildSignalActivityRows(activeSignals, _recentRecs);
             BuildStyleGroups();
             BuildExpectancyItems();

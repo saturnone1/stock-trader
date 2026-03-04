@@ -4,7 +4,7 @@
 <MudChip T="string"
          Color="@(Regime?.SpyAbove200Ma == true ? Color.Success : Color.Error)"
          Variant="Variant.Filled"
-         Size="Size.Medium">
+         Size="Size.Small">
     @if (Regime != null)
     {
         @($"SPY {Regime.RegimeLabel} ({Regime.SpyPrice:F2})")

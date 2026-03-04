@@ -35,8 +35,15 @@
         : State.IsTradingHalted ? Color.Error : Color.Warning;
 
     // Fix 4: DailyLossLimitPercent가 0 이하이면 0으로 나누기 방지 - 안전한 기본값 5 반환
-    private double BarWidth => DailyLossLimitPercent <= 0
-        ? 5
-        : Math.Min(100, Math.Max(5,
-            Math.Abs((double)State.DailyPnLPercent) / (double)DailyLossLimitPercent * 100));
+    // 이익(양수) 시에는 게이지를 0으로 표시 — 손실 방향만 시각화
+    private double BarWidth
+    {
+        get
+        {
+            if (State.DailyPnLPercent >= 0) return 0;
+            if (DailyLossLimitPercent <= 0) return 5;
+            return Math.Min(100, Math.Max(5,
+                (double)(-State.DailyPnLPercent) / (double)DailyLossLimitPercent * 100));
+        }
+    }
 }

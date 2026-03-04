@@ -220,4 +220,7 @@ public class Tqqq200SmaConfig
 
     /// <summary>ATR 기반 목표가 배수. 넓게 설정하여 BacktestService 트레일링 스탑에 위임.</summary>
     public decimal AtrTargetMultiplier { get; set; } = 8.0m;
+
+    /// <summary>이 패턴을 적용할 심볼 목록. 비어있으면 TQQQ만 허용.</summary>
+    public List<string> AllowedSymbols { get; set; } = new() { "TQQQ" };
 }

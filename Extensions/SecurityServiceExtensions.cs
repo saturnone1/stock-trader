@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using StockTrader.Configuration;
 using StockTrader.Services.Auth;
@@ -21,6 +22,16 @@ public static class SecurityServiceExtensions
 
         // HttpContextAccessor (needed by AuditService to read client IP)
         services.AddHttpContextAccessor();
+
+        // DataProtection: 쿠키 암호화 키를 /data에 영구 저장.
+        // 컨테이너 재시작해도 기존 로그인 세션이 유지된다.
+        var keyPath = configuration["ConnectionStrings:DefaultConnection"] ?? "";
+        var dataDir = keyPath.Contains("/data/")
+            ? "/data/keys"
+            : Path.Combine(AppContext.BaseDirectory, "keys");
+        services.AddDataProtection()
+            .PersistKeysToFileSystem(new DirectoryInfo(dataDir))
+            .SetApplicationName("StockTrader");
 
         // Cookie Authentication
         var sessionMinutes = configuration
