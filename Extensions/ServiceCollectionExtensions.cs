@@ -57,6 +57,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IBacktestService, BacktestService>();
+        services.AddScoped<TqqqWeightBacktester>();
         services.AddScoped<ILiveParameterService, LiveParameterService>();
         services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 
