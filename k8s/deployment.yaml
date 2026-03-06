@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocktrader
+  namespace: stocktrader
+  labels:
+    app: stocktrader
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # SQLite doesn't support concurrent access
+  selector:
+    matchLabels:
+      app: stocktrader
+  template:
+    metadata:
+      labels:
+        app: stocktrader
+    spec:
+      containers:
+        - name: stocktrader
+          image: stocktrader:latest
+          imagePullPolicy: Never  # Local image imported via ctr
+          ports:
+            - containerPort: 5239
+              name: http
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Production"
+            - name: TZ
+              value: "America/New_York"
+            - name: ConnectionStrings__DefaultConnection
+              value: "Data Source=/data/stocktrader.db"
+            - name: ML__ModelDirectory
+              value: "/app/ml_models"
+
+            # Alpaca
+            - name: Alpaca__ApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: ALPACA_API_KEY
+            - name: Alpaca__ApiSecret
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: ALPACA_API_SECRET
+            - name: Alpaca__IsPaper
+              value: "true"
+
+            # LS Securities
+            - name: LsSecurities__AppKey
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: LS_APP_KEY
+            - name: LsSecurities__AppSecret
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: LS_APP_SECRET
+            - name: LsSecurities__AccountNo
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: LS_ACCOUNT_NO
+            - name: LsSecurities__AccountPassword
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: LS_ACCOUNT_PASSWORD
+            - name: LsSecurities__IsPaper
+              value: "true"
+
+            # Notifications
+            - name: Notification__EnableTelegram
+              value: "false"
+            - name: Notification__TelegramBotToken
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: TELEGRAM_BOT_TOKEN
+            - name: Notification__TelegramChatId
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: TELEGRAM_CHAT_ID
+            - name: Notification__EnableDiscord
+              value: "false"
+            - name: Notification__DiscordWebhookUrl
+              valueFrom:
+                secretKeyRef:
+                  name: stocktrader-secrets
+                  key: DISCORD_WEBHOOK_URL
+            - name: Notification__EnableEmail
+              value: "false"
+
+            # Trading
+            - name: Trading__DefaultAccountSize
+              value: "100000"
+            - name: Trading__RiskPerTradePercent
+              value: "0.01"
+            - name: Trading__DailyLossLimitPercent
+              value: "0.03"
+
+          volumeMounts:
+            - name: db-data
+              mountPath: /data
+            - name: ml-models
+              mountPath: /app/ml_models
+            - name: logs
+              mountPath: /app/Logs
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5239
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5239
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      volumes:
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: stocktrader-db
+        - name: ml-models
+          persistentVolumeClaim:
+            claimName: stocktrader-ml-models
+        - name: logs
+          persistentVolumeClaim:
+            claimName: stocktrader-logs

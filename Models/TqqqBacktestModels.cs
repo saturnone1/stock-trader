@@ -10,22 +10,22 @@ public class TqqqStrategyParams
 {
     // ── RSI / 재진입 ─────────────────────────────────────────────────────────
     public int     RsiLen          { get; set; } = 14;
-    public decimal RsiReentryThr   { get; set; } = 43.0m;
+    public decimal RsiReentryThr   { get; set; } = 20.0m;   // 최적화: 43→20 (빠른 재진입, 10~30 무감대)
 
     // ── 변동성 락 ────────────────────────────────────────────────────────────
     public decimal VolThreshold    { get; set; } = 0.059m;
     public int     VolLen          { get; set; } = 20;
 
     // ── TQQQ 200일선 히스테리시스 ────────────────────────────────────────────
-    public decimal Dist200Enter    { get; set; } = 101.00m;   // %
-    public decimal Dist200Exit     { get; set; } = 100.00m;   // %
+    public decimal Dist200Enter    { get; set; } = 98.00m;    // % (최적화: 101→98, 더 빠른 진입)
+    public decimal Dist200Exit     { get; set; } = 99.00m;    // %
 
     // ── 기울기 부스트 ────────────────────────────────────────────────────────
     public bool    UseSlopeBoost   { get; set; } = true;
-    public int     SlopeLen        { get; set; } = 45;
-    public decimal SlopeThr        { get; set; } = 0.1100m;   // %/day (0.11 = 0.11%)
-    public decimal DistCap         { get; set; } = 98.8m;     // 200일선 대비 %
-    public decimal VolCap          { get; set; } = 0.06m;     // vol 상한
+    public int     SlopeLen        { get; set; } = 17;      // 최적화: 45→17 (빠른 기울기 감지)
+    public decimal SlopeThr        { get; set; } = 0.0050m;   // %/day (최적화: 0.11→0.005)
+    public decimal DistCap         { get; set; } = 95.0m;     // 200일선 대비 % (최적화: 98.8→95, 깊은 풀백에서만 부스트)
+    public decimal VolCap          { get; set; } = 0.07m;     // vol 상한 (무감대 0.055~0.10)
 
     // ── 과열 단계 히스테리시스 ───────────────────────────────────────────────
     public bool    UseOverheatSplit { get; set; } = true;
@@ -52,7 +52,7 @@ public class TqqqStrategyParams
     public decimal PrincipalStopPct     { get; set; } = 0.941m;
 
     // ── SPY 필터 ─────────────────────────────────────────────────────────────
-    public bool    UseSpyFilter         { get; set; } = true;
+    public bool    UseSpyFilter         { get; set; } = false;  // 최적화: SPY 필터 끔 (수익률 +86%p, MDD 동일)
     /// <summary>SPY/SPY_MA200 × 100 이상이면 강세 진입</summary>
     public decimal SpyEnter             { get; set; } = 100.25m;
     /// <summary>SPY/SPY_MA200 × 100 이하이면 약세 전환</summary>
@@ -62,7 +62,7 @@ public class TqqqStrategyParams
     public decimal SpyBearCap           { get; set; } = 0.0m;
 
     // ── TP10 사이클 ──────────────────────────────────────────────────────────
-    public bool    UseTp10              { get; set; } = true;
+    public bool    UseTp10              { get; set; } = false;  // 최적화: TP10 끔 (감량 없이 홀딩)
     /// <summary>100% 진입 후 이 수익률 달성 시 95%로 감량</summary>
     public decimal Tp10Trigger          { get; set; } = 0.10m;
     /// <summary>TP10 감량 목표 비중</summary>
