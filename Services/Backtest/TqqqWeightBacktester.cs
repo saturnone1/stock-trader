@@ -330,14 +330,16 @@ public class TqqqWeightBacktester
             }
 
             // ── (9) 원금보호 손절 ─────────────────────────────────────────────
-            // 100% 진입 후 (또는 90%/80%/5%) close가 진입가 × 0.941 이하로 하락 시 전량 청산
+            // 고비중 진입 후 close가 진입가 × PrincipalStopPct 이하로 하락 시 전량 청산
             if (p.UsePrincipalStop)
             {
-                // 풀진입(코드 2 또는 감량된 3/4/5)에서 진입가 기록
-                bool isHighWeight = (assetCode == 2 || assetCode == 3 || assetCode == 4 || assetCode == 5);
-                bool wasLow       = (assetCode == 0 || assetCode == 1);
+                // 비중 기반 판단 (코드 2/3/4/5 + TP10 인코딩(>5) 모두 포함)
+                decimal prevWeight = CodeWeight(assetCode);
+                bool isHighWeight = prevWeight > 0.10m;  // 10% 초과면 고비중
+                bool wasLow       = prevWeight <= 0.10m; // 10% 이하면 저비중
 
-                if (wasLow && (code == 2 || code == 3 || code == 4 || code == 5))
+                decimal curWeight = CodeWeight(code);
+                if (wasLow && curWeight > 0.10m)
                 {
                     // 새로 고비중 진입 → 진입가 기록
                     fullEntryClose  = tq;
@@ -366,7 +368,7 @@ public class TqqqWeightBacktester
             }
 
             // ── (11) TP10 사이클 ──────────────────────────────────────────────
-            // 100%(code==2, 과열 없음) 진입 후 +10% 수익 달성 시 95%로 감량
+            // 100%(code==2, 과열 없음) 진입 후 +10% 수익 달성 시 Tp10Cap으로 감량 유지
             if (p.UseTp10 && code == 2)
             {
                 if (!tp10CycleActive)
@@ -381,10 +383,15 @@ public class TqqqWeightBacktester
                     decimal gain = (tq - tp10EntryClose) / tp10EntryClose;
                     if (gain >= p.Tp10Trigger)
                     {
-                        // +10% 달성 → 95%로 감량 (code를 1000단위로 인코딩)
+                        // +10% 달성 → Tp10Cap으로 감량 (code를 1000단위로 인코딩)
                         code        = EncodeWeight(p.Tp10Cap);
                         tp10Reduced = true;
                     }
+                }
+                else if (tp10Reduced)
+                {
+                    // 이미 감량됨 → 감량 비중 유지 (Python: elif tp10_reduced: code = encode_weight(tp10_cap))
+                    code = EncodeWeight(p.Tp10Cap);
                 }
             }
             else if (code != 2)
@@ -436,6 +443,9 @@ public class TqqqWeightBacktester
         }
 
         // 첫 번째 날은 전일 대비 수익률을 계산할 수 없으므로 i > startIdx 부터
+        // 핵심: 오늘 수익률에는 **어제 결정한 비중**(weights[i-1])을 적용해야 함.
+        // weights[i]는 오늘 종가를 보고 결정한 비중이므로, 오늘 수익률에 적용하면
+        // look-ahead bias (미래 참조 버그) — 특히 손절/리밸런싱 시 하락분을 안 먹는 문제 발생.
         for (int i = startIdx; i < dates.Length; i++)
         {
             decimal dailyReturn = 0m;
@@ -443,7 +453,9 @@ public class TqqqWeightBacktester
             if (i > 0 && tqqqClose[i - 1] > 0)
             {
                 decimal tqqqRet = tqqqClose[i] / tqqqClose[i - 1] - 1m;
-                dailyReturn     = weights[i] * tqqqRet;
+                // 어제의 비중(weights[i-1])으로 오늘 수익률 계산
+                decimal prevWeight = (i - 1 >= 0) ? weights[i - 1] : 0m;
+                dailyReturn     = prevWeight * tqqqRet;
             }
 
             equity *= (1m + dailyReturn);
