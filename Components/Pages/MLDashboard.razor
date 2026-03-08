@@ -18,7 +18,7 @@
                        Disabled="@_isLoading" />
     </MudTooltip>
 </MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">머신러닝 모델 상태 및 시장 레짐 분석</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4 page-description">머신러닝 모델 상태 및 시장 레짐 분석</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">ML 분석 대시보드 도움말</MudText></TitleContent>
@@ -45,7 +45,7 @@
 <MudGrid Spacing="3">
 
         <!-- 모델 학습 카드 -->
-        <MudItem xs="12" md="4">
+        <MudItem xs="12" sm="12" md="4">
             <MudCard Class="h-100">
                 <MudCardHeader>
                     <CardHeaderContent>
@@ -110,7 +110,7 @@
         </MudItem>
 
         <!-- 레짐 분류기 상태 카드 -->
-        <MudItem xs="12" md="4">
+        <MudItem xs="12" sm="6" md="4">
             <MudCard Class="h-100">
                 <MudCardHeader>
                     <CardHeaderContent>
@@ -176,7 +176,7 @@
         </MudItem>
 
         <!-- 시그널 스코어러 상태 카드 -->
-        <MudItem xs="12" md="4">
+        <MudItem xs="12" sm="6" md="4">
             <MudCard Class="h-100">
                 <MudCardHeader>
                     <CardHeaderContent>
@@ -221,7 +221,7 @@
         </MudItem>
 
         <!-- 피처 중요도 차트 (항상 표시, 미학습 시 빈 상태 메시지) -->
-        <MudItem xs="12" md="6">
+        <MudItem xs="12" sm="6" md="6">
             <MudCard>
                 <MudCardHeader>
                     <CardHeaderContent>
@@ -243,7 +243,7 @@
                         @foreach (var feature in _status.SignalScorerFeatureImportances)
                         {
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
-                                <MudText Typo="Typo.body2" Style="width: 130px; min-width: 130px;">
+                                <MudText Typo="Typo.body2" Style="width: 100px; min-width: 80px; flex-shrink: 0; font-size: 0.75rem;">
                                     @feature.FeatureName
                                 </MudText>
                                 <MudProgressLinear Value="@(feature.Importance * 100)"
@@ -262,7 +262,7 @@
         </MudItem>
 
         <!-- ML 개요 / 도움말 -->
-        <MudItem xs="12" md="6">
+        <MudItem xs="12" sm="6" md="6">
             <MudCard>
                 <MudCardHeader>
                     <CardHeaderContent>
@@ -317,6 +317,8 @@
     </MudGrid>
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool IsMobile { get; set; }
+
     private MlModelStatus _status = new();
     private MlTrainingResult? _lastTrainResult;
     private bool _isLoading;

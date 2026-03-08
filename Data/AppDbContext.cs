@@ -18,6 +18,8 @@ public class AppDbContext : DbContext
     public DbSet<TradingAccount> TradingAccounts => Set<TradingAccount>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<SymbolProfile> SymbolProfiles => Set<SymbolProfile>();
+    public DbSet<CustomPatternDefinition> CustomPatterns => Set<CustomPatternDefinition>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -106,6 +108,23 @@ public class AppDbContext : DbContext
             entity.HasIndex(l => l.Timestamp);
             entity.HasIndex(l => l.UserId);
             entity.HasIndex(l => l.Action);
+        });
+
+        modelBuilder.Entity<SymbolProfile>(entity =>
+        {
+            entity.HasIndex(p => new { p.Symbol, p.Name }).IsUnique();
+            entity.HasIndex(p => new { p.Symbol, p.IsActive });
+            entity.Property(p => p.EnabledPatterns)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                    v => JsonSerializer.Deserialize<List<PatternType>>(v, (JsonSerializerOptions?)null)!
+                );
+        });
+
+        modelBuilder.Entity<CustomPatternDefinition>(entity =>
+        {
+            entity.HasIndex(p => p.Name).IsUnique();
+            entity.HasIndex(p => p.IsActive);
         });
     }
 }

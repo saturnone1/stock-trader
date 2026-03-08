@@ -38,7 +38,26 @@ public class TqqqWeightBacktester
     //  Public entry point
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>기존 TQQQ 전용 호출 (하위 호환)</summary>
+    public Task<TqqqBacktestResult> RunAsync(
+        DateTime from,
+        DateTime to,
+        decimal  initialCapital,
+        DataSource? dataSource,
+        TqqqStrategyParams? strategyParams = null,
+        CancellationToken ct = default)
+        => RunAsync("TQQQ", "QQQ", "SPY", from, to, initialCapital, dataSource, strategyParams, ct);
+
+    /// <summary>
+    /// 일반화된 비중 관리 백테스트.
+    /// targetSymbol: 매매 대상 (TQQQ, SOXL, UPRO 등)
+    /// refSymbol: 기준 지수 (QQQ — MA 교차, RSI, 기울기)
+    /// spySymbol: 시장 레짐 필터 (SPY — 200SMA)
+    /// </summary>
     public async Task<TqqqBacktestResult> RunAsync(
+        string targetSymbol,
+        string refSymbol,
+        string spySymbol,
         DateTime from,
         DateTime to,
         decimal  initialCapital,
@@ -49,53 +68,51 @@ public class TqqqWeightBacktester
         var p = strategyParams ?? new TqqqStrategyParams();
 
         _logger.LogInformation(
-            "TQQQ 비중 백테스트 시작: {From:d} ~ {To:d}, 초기자본={Capital:N0}",
-            from, to, initialCapital);
+            "비중 관리 백테스트 시작: {Symbol} (기준={Ref}, SPY={Spy}), {From:d} ~ {To:d}, 초기자본={Capital:N0}",
+            targetSymbol, refSymbol, spySymbol, from, to, initialCapital);
 
         // 1. 데이터 피드 선택
         var feed = dataSource.HasValue
             ? _dataFeedFactory.GetService(dataSource.Value)
             : await _dataFeedFactory.GetServiceAsync(ct);
 
-        // 2. TQQQ, QQQ, SPY 일봉 데이터 동시 조회
-        //    from을 충분히 앞으로 당겨 SMA200 워밍업 구간 확보 (예비 300일)
+        // 2. 대상/기준/SPY 일봉 데이터 동시 조회
         var warmupFrom = from.AddDays(-300);
 
-        var (tqqqBars, qqqBars, spyBars) = await FetchAllBarsAsync(
-            feed, warmupFrom, to, ct);
+        var (targetBars, refBars, spyBars) = await FetchAllBarsAsync(
+            feed, targetSymbol, refSymbol, spySymbol, warmupFrom, to, ct);
 
-        if (tqqqBars.Count < 200 || qqqBars.Count < 200 || spyBars.Count < 200)
+        if (targetBars.Count < 200 || refBars.Count < 200 || spyBars.Count < 200)
         {
             _logger.LogWarning(
-                "데이터 부족: TQQQ={T}, QQQ={Q}, SPY={S} (최소 200일 필요)",
-                tqqqBars.Count, qqqBars.Count, spyBars.Count);
+                "데이터 부족: {Target}={T}, {Ref}={R}, {Spy}={S} (최소 200일 필요)",
+                targetSymbol, targetBars.Count, refSymbol, refBars.Count, spySymbol, spyBars.Count);
             return new TqqqBacktestResult();
         }
 
-        // 3. 날짜 공통 교집합 (세 심볼이 모두 거래된 날만)
-        var (dates, tqqqC, qqqC, spyC) = AlignByDate(tqqqBars, qqqBars, spyBars);
-        int n = dates.Length;
+        // 3. 날짜 공통 교집합
+        var (dates, targetC, refC, spyC) = AlignByDate(targetBars, refBars, spyBars);
 
         // 4. 지표 계산
-        var tqqqMa200 = _indicators.SMA(tqqqC, 200);
-        var qqqMa3    = _indicators.SMA(qqqC,  3);
-        var qqqMa161  = _indicators.SMA(qqqC,  161);
-        var spyMa200  = _indicators.SMA(spyC,  200);
+        var targetMa200 = _indicators.SMA(targetC, 200);
+        var refMa3      = _indicators.SMA(refC,  3);
+        var refMa161    = _indicators.SMA(refC,  161);
+        var spyMa200    = _indicators.SMA(spyC,  200);
 
-        // 5. 보조 지표 (자체 구현 필요한 것들)
-        var qqqRsi    = RsiWilder(qqqC, p.RsiLen);
-        var tqqqVol20 = SampleStdev(DailyReturns(tqqqC), p.VolLen);
-        var qqqSlope  = RollingLinregSlope(qqqMa161, p.SlopeLen);
+        // 5. 보조 지표
+        var refRsi      = RsiWilder(refC, p.RsiLen);
+        var targetVol20 = SampleStdev(DailyReturns(targetC), p.VolLen);
+        var refSlope    = RollingLinregSlope(refMa161, p.SlopeLen);
 
-        // 6. 비중 계산 (Python compute_basic_strategy 번역)
+        // 6. 비중 계산
         var (codes, weights) = ComputeWeights(
-            qqqC, qqqMa3, qqqMa161, qqqRsi,
-            tqqqC, tqqqMa200, tqqqVol20, qqqSlope,
+            refC, refMa3, refMa161, refRsi,
+            targetC, targetMa200, targetVol20, refSlope,
             spyC, spyMa200,
             dates, from, p);
 
-        // 7. 수익률 집계 (백테스트 기간 내 날짜만 대상)
-        return BuildResult(dates, tqqqC, codes, weights, initialCapital, from);
+        // 7. 수익률 집계
+        return BuildResult(dates, targetC, codes, weights, initialCapital, from);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -103,14 +120,15 @@ public class TqqqWeightBacktester
     // ─────────────────────────────────────────────────────────────────────────
 
     private async Task<(List<OhlcvBar>, List<OhlcvBar>, List<OhlcvBar>)> FetchAllBarsAsync(
-        IDataFeedService feed, DateTime from, DateTime to, CancellationToken ct)
+        IDataFeedService feed, string targetSymbol, string refSymbol, string spySymbol,
+        DateTime from, DateTime to, CancellationToken ct)
     {
-        var tqqqTask = feed.GetHistoricalBarsAsync("TQQQ", TimeFrame.Daily, from, to, ct);
-        var qqqTask  = feed.GetHistoricalBarsAsync("QQQ",  TimeFrame.Daily, from, to, ct);
-        var spyTask  = feed.GetHistoricalBarsAsync("SPY",  TimeFrame.Daily, from, to, ct);
+        var targetTask = feed.GetHistoricalBarsAsync(targetSymbol, TimeFrame.Daily, from, to, ct);
+        var refTask    = feed.GetHistoricalBarsAsync(refSymbol,    TimeFrame.Daily, from, to, ct);
+        var spyTask    = feed.GetHistoricalBarsAsync(spySymbol,    TimeFrame.Daily, from, to, ct);
 
-        await Task.WhenAll(tqqqTask, qqqTask, spyTask);
-        return (tqqqTask.Result, qqqTask.Result, spyTask.Result);
+        await Task.WhenAll(targetTask, refTask, spyTask);
+        return (targetTask.Result, refTask.Result, spyTask.Result);
     }
 
     /// <summary>세 심볼의 OHLCV 바를 날짜 기준으로 교집합 정렬.</summary>

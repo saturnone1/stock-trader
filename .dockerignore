@@ -21,6 +21,10 @@ publish_test/
 # ── Claude Code agent files ───────────────────────────────────────────────────
 .claude/
 
+# ── Node.js ──────────────────────────────────────────────────────────────────
+ClientApp/node_modules/
+ClientApp/dist/
+
 # ── Test project ─────────────────────────────────────────────────────────────
 tests/
 test_output.txt

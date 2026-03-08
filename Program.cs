@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MudBlazor.Services;
 using Serilog;
+using StockTrader.Api;
 using StockTrader.Components;
 using StockTrader.Configuration;
 using StockTrader.Data;
@@ -13,6 +14,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Auth;
 using StockTrader.Services.Backtest;
+using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Order;
 
 // Serilog bootstrap logger — captures startup errors before host is built
@@ -44,6 +46,12 @@ builder.Services.AddMudServices();
 
 // In-memory cache (used by StockAnalysisService to avoid redundant API calls)
 builder.Services.AddMemoryCache();
+
+// Minimal API JSON: enum을 문자열 이름으로 직렬화/역직렬화
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
 
 // Add StockTrader services (DI, DB, background services, etc.)
 builder.Services.AddStockTraderServices(builder.Configuration);
@@ -249,6 +257,102 @@ using (var scope = app.Services.CreateScope())
             await cmd.ExecuteNonQueryAsync();
         }
 
+        // SymbolProfiles 테이블 생성 (없는 경우) — 종목별 트레이딩 프로파일
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='SymbolProfiles'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE SymbolProfiles (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Symbol TEXT NOT NULL DEFAULT '',
+                    Name TEXT NOT NULL DEFAULT '기본',
+                    IsActive INTEGER NOT NULL DEFAULT 0,
+                    EnabledPatterns TEXT NOT NULL DEFAULT '[]',
+                    ParameterOverridesJson TEXT,
+                    WeightStrategyJson TEXT,
+                    RiskPerTradePercent REAL NOT NULL DEFAULT 0.01,
+                    MaxTotalPositions INTEGER NOT NULL DEFAULT 7,
+                    BacktestReturnPct REAL,
+                    BacktestWinRate REAL,
+                    BacktestMaxDrawdown REAL,
+                    BacktestSharpe REAL,
+                    BacktestTrades INTEGER,
+                    BacktestFrom TEXT,
+                    BacktestTo TEXT,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_SymbolProfiles_Symbol_Name ON SymbolProfiles (Symbol, Name)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_SymbolProfiles_Symbol_IsActive ON SymbolProfiles (Symbol, IsActive)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // CustomPatterns 테이블
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='CustomPatterns'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE CustomPatterns (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL DEFAULT '',
+                    Description TEXT,
+                    EntryRulesJson TEXT NOT NULL DEFAULT '[]',
+                    EntryLogic TEXT NOT NULL DEFAULT 'AND',
+                    RequireBullRegime INTEGER NOT NULL DEFAULT 0,
+                    AtrStopMultiplier REAL NOT NULL DEFAULT 2.0,
+                    AtrTargetMultiplier REAL NOT NULL DEFAULT 3.0,
+                    MaxHoldingBars INTEGER NOT NULL DEFAULT 10,
+                    TrailingAtr REAL NOT NULL DEFAULT 0,
+                    PartialProfitR REAL NOT NULL DEFAULT 0,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_CustomPatterns_Name ON CustomPatterns (Name)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // CustomPatterns 비중 단계 컬럼 추가 (기존 테이블 마이그레이션)
+        cmd.CommandText = "PRAGMA table_info(CustomPatterns)";
+        var existingCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                existingCols.Add(reader.GetString(1));
+        }
+        if (!existingCols.Contains("UseWeightTiers"))
+        {
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN UseWeightTiers INTEGER NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (!existingCols.Contains("WeightTiersJson"))
+        {
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN WeightTiersJson TEXT NOT NULL DEFAULT '[]'";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (!existingCols.Contains("DefaultAllocationPercent"))
+        {
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN DefaultAllocationPercent REAL NOT NULL DEFAULT 100";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        // 고급 설정 컬럼 추가
+        foreach (var (col, def) in new[] {
+            ("ExitRulesJson", "'[]'"), ("ExitRulesLogic", "'OR'"),
+            ("ScalingRulesJson", "'[]'"), ("TimeFilterJson", "'{}'"),
+            ("CircuitBreakerJson", "'{}'"), ("ReentryJson", "'{}'"), ("PortfolioRulesJson", "'{}'"),
+            ("EntryGroupsJson", "'[]'"), ("EntryGroupsLogic", "'AND'"), ("DynamicExitJson", "'{}'"),
+            ("EntryMode", "'CurrentClose'"), ("SizingMode", "'FixedRisk'") })
+        {
+            if (!existingCols.Contains(col))
+            {
+                cmd.CommandText = $"ALTER TABLE CustomPatterns ADD COLUMN {col} TEXT NOT NULL DEFAULT {def}";
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
         // TQQQ 200SMA 스테일 시그널 정리: 비-TQQQ 종목의 시그널 비활성화
         // AllowedSymbols 기본값은 ["TQQQ"]이므로, 이전에 잘못 생성된 비-TQQQ 시그널을 정리
         cmd.CommandText = "UPDATE PatternSignals SET IsActive = 0 WHERE PatternType = 16 AND Symbol != 'TQQQ' AND IsActive = 1";
@@ -391,7 +495,7 @@ app.UseSerilogRequestLogging(options =>
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
 });
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+// StatusCodePages 제거 — React SPA가 클라이언트 사이드 라우팅으로 404 처리
 
 // Only redirect to HTTPS in local development (not Docker).
 if (app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
@@ -399,10 +503,77 @@ if (app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("DOTNET
     app.UseHttpsRedirection();
 }
 
+// ── React SPA (메인 프론트엔드) ──────────────────────────────────────────────
+// /api, /blazor 이외의 모든 요청은 React SPA로 서빙.
+// UseAuthentication 전에 배치하여 SPA 정적 파일이 인증 없이 서빙되도록 함.
+var reactDistPath = System.IO.Path.Combine(app.Environment.ContentRootPath, "ClientApp", "dist");
+if (System.IO.Directory.Exists(reactDistPath))
+{
+    var reactFileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(reactDistPath);
+
+    // React 정적 파일 (JS, CSS, manifest 등)
+    // assets/ 디렉토리는 파일명에 해시가 포함되므로 장기 캐싱,
+    // 그 외(index.html 등)는 no-cache로 항상 최신 버전 확인
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = reactFileProvider,
+        RequestPath = "",
+        OnPrepareResponse = ctx =>
+        {
+            var path = ctx.File.Name;
+            if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
+            {
+                // 해시된 파일: 1년 캐시 + immutable
+                ctx.Context.Response.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
+            }
+            else
+            {
+                // index.html 등: 절대 캐싱하지 않음
+                ctx.Context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+            }
+        }
+    });
+
+    // SPA fallback: /api가 아닌 모든 경로 → index.html
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value ?? "";
+
+        // API, _blazor, _framework 등은 통과
+        if (path.StartsWith("/api") ||
+            path.StartsWith("/_") ||
+            path.StartsWith("/favicon"))
+        {
+            await next();
+            return;
+        }
+
+        // 정적 파일이면 통과
+        var fileInfo = reactFileProvider.GetFileInfo(path.TrimStart('/'));
+        if (fileInfo.Exists && !fileInfo.IsDirectory)
+        {
+            await next();
+            return;
+        }
+
+        // 나머지는 SPA fallback → index.html (절대 캐싱 금지)
+        context.Response.ContentType = "text/html";
+        context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+        context.Response.Headers["Pragma"] = "no-cache";
+        context.Response.Headers["Expires"] = "0";
+        var indexPath = System.IO.Path.Combine(reactDistPath, "index.html");
+        var html = await System.IO.File.ReadAllTextAsync(indexPath);
+        await context.Response.WriteAsync(html);
+    });
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseAntiforgery();
+// UseAntiforgery 제거 — Blazor Server 전용, React SPA에서는 불필요
+
+// ── StockTrader REST API (Dashboard, Portfolio, Signals, Trades, Risk, Settings, Accounts, ML, Analysis) ──
+app.MapStockTraderApi();
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
 
@@ -555,29 +726,144 @@ app.MapPost("/api/orders/close-position", async (HttpContext ctx, StockTrader.Se
         : Results.BadRequest(new { error = $"{symbol} 청산 실패. 브로커 연결 상태 또는 보유 포지션을 확인하세요." });
 }).RequireRateLimiting("api").RequireAuthorization();
 
-// ── Backtest API (CLI에서 수익률 비교용) ──
-app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService svc, CancellationToken ct) =>
+// ── Backtest API ──
+app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService svc,
+    TqqqWeightBacktester weightBt, CancellationToken ct) =>
 {
+    // 비중 관리 모드: TqqqWeightBacktester 엔진 사용 (일반화)
+    if (string.Equals(request.BacktestMode, "weight", StringComparison.OrdinalIgnoreCase))
+    {
+        var targetSymbol = request.Symbols.FirstOrDefault() ?? "TQQQ";
+        var weightResult = await weightBt.RunAsync(
+            targetSymbol,
+            request.RefSymbol ?? "QQQ",
+            request.SpySymbol ?? "SPY",
+            request.From,
+            request.To,
+            request.InitialCapital,
+            request.DataSource,
+            request.WeightModeParams,
+            ct);
+
+        // 다운샘플 (300포인트)
+        var sampled = weightResult.DailyRecords.Count <= 300
+            ? weightResult.DailyRecords
+            : Enumerable.Range(0, 300)
+                .Select(i => weightResult.DailyRecords[(int)Math.Round((double)i * (weightResult.DailyRecords.Count - 1) / 299)])
+                .ToList();
+
+        return Results.Ok(new
+        {
+            BacktestMode = "weight",
+            weightResult.TotalReturnPercent,
+            weightResult.Cagr,
+            weightResult.MaxDrawdownPercent,
+            weightResult.SharpeRatio,
+            weightResult.TotalDays,
+            weightResult.InvestedDays,
+            TargetSymbol = targetSymbol,
+            RefSymbol = request.RefSymbol ?? "QQQ",
+            SpySymbol = request.SpySymbol ?? "SPY",
+            DailyRecords = sampled.Select(r => new
+            {
+                Date = r.Date.ToString("yyyy-MM-dd"),
+                r.Code, r.Weight, r.TqqqClose, r.DailyReturn, r.Equity
+            }),
+        });
+    }
+
     var result = await svc.RunAsync(request, ct);
+
+    // 에퀴티 커브 다운샘플링 (300포인트 이하)
+    var equityCurve = result.EquityCurve;
+    if (equityCurve.Count > 300)
+    {
+        var sampled = new List<EquityPoint>(300);
+        sampled.Add(equityCurve[0]);
+        var step = (double)(equityCurve.Count - 1) / 299;
+        for (int i = 1; i < 299; i++)
+            sampled.Add(equityCurve[(int)Math.Round(i * step)]);
+        sampled.Add(equityCurve[^1]);
+        equityCurve = sampled;
+    }
+
     return Results.Ok(new
     {
         result.TotalTrades,
-        TotalReturn = result.TotalReturnPercent.ToString("P2"),
+        TotalReturn = result.TotalReturnPercent,
         result.MaxDrawdown,
         result.SharpeRatio,
         result.OverallWinRate,
+        result.TotalSlippageCost,
+        result.TotalCommissionCost,
+        result.ErrorMessage,
+        result.Warnings,
+        result.WeightStrategyApplied,
+        result.WeightReducedTrades,
+        UsedTimeFrame = result.UsedTimeFrame.ToString(),
+        ActualDataFrom = result.ActualDataFrom?.ToString("yyyy-MM-dd"),
         PerPattern = result.PerPatternStats.ToDictionary(
             kv => kv.Key.ToString(),
-            kv => new { kv.Value.SampleSize, WinRate = kv.Value.WinRate.ToString("P1"), kv.Value.AvgWinPercent, kv.Value.AvgLossPercent }),
+            kv => new { kv.Value.SampleSize, kv.Value.WinRate, kv.Value.AvgWinPercent, kv.Value.AvgLossPercent, kv.Value.Expectancy, kv.Value.ProfitFactor }),
+        PerSymbol = result.PerSymbolStats.Select(s => new
+        {
+            s.Symbol, s.TradeCount, s.WinRate, s.TotalPnL, s.AvgPnLPercent
+        }),
+        EquityCurve = equityCurve.Select(e => new { Date = e.Date.ToString("yyyy-MM-dd"), e.Equity }),
         Trades = result.Trades.Select(t => new
         {
             t.Symbol, Pattern = t.PatternType.ToString(),
             EntryTime = t.EntryTime.ToString("yyyy-MM-dd"), ExitTime = t.ExitTime.ToString("yyyy-MM-dd"),
-            t.EntryPrice, t.ExitPrice, ReturnPct = ((t.ExitPrice - t.EntryPrice) / t.EntryPrice).ToString("P2"),
+            t.EntryPrice, t.ExitPrice, ReturnPct = t.EntryPrice > 0 ? (t.ExitPrice - t.EntryPrice) / t.EntryPrice : 0m,
             t.ExitReason
-        })
+        }),
+        WalkForward = result.WalkForward != null ? new
+        {
+            result.WalkForward.AggregateOosReturnPercent,
+            result.WalkForward.AggregateOosMaxDrawdown,
+            result.WalkForward.AggregateOosWinRate,
+            result.WalkForward.AggregateOosSharpe,
+            result.WalkForward.WalkForwardEfficiency,
+            Windows = result.WalkForward.Windows.Select(w => new
+            {
+                IsFrom = w.InSampleFrom.ToString("yyyy-MM-dd"), IsTo = w.InSampleTo.ToString("yyyy-MM-dd"),
+                OosFrom = w.OutOfSampleFrom.ToString("yyyy-MM-dd"), OosTo = w.OutOfSampleTo.ToString("yyyy-MM-dd"),
+                w.InSampleTrades, w.InSampleReturnPercent,
+                w.OutOfSampleTrades, w.OutOfSampleReturnPercent, w.OutOfSampleMaxDrawdown, w.Efficiency
+            })
+        } : null,
+        MonteCarlo = result.MonteCarlo != null ? new
+        {
+            result.MonteCarlo.Simulations,
+            result.MonteCarlo.MedianFinalEquity,
+            result.MonteCarlo.MeanFinalEquity,
+            result.MonteCarlo.Percentile5Equity,
+            result.MonteCarlo.Percentile25Equity,
+            result.MonteCarlo.Percentile75Equity,
+            result.MonteCarlo.Percentile95Equity,
+            result.MonteCarlo.MedianMaxDrawdown,
+            result.MonteCarlo.WorstCaseMaxDrawdown,
+            result.MonteCarlo.ProbabilityOfLoss,
+        } : null,
     });
-});
+}).RequireAuthorization();
+
+// ── 실거래 파라미터 적용 API ──
+app.MapPost("/api/backtest/apply-live", async (
+    ApplyLiveRequest req,
+    ILiveParameterService liveSvc,
+    CancellationToken ct) =>
+{
+    await liveSvc.ApplyToLiveAsync(
+        req.ParameterOverrides ?? new PatternParameterOverrides(),
+        req.EnabledPatterns?.Select(p => Enum.Parse<PatternType>(p)).ToList() ?? new(),
+        req.RiskPerTradePercent ?? 0.01m,
+        req.DailyLossLimitPercent ?? 0.03m,
+        req.MaxTotalPositions ?? 7,
+        req.MaxPositionsPerSector ?? 2,
+        ct);
+    return Results.Ok(new { message = "실거래 파라미터가 적용되었습니다." });
+}).RequireAuthorization();
 
 // ── TQQQ 비중 백테스트 API ────────────────────────────────────────────────────
 // fmkorea "200일 티큐 변형매매법" 포지션-비중 백테스터.
@@ -592,39 +878,36 @@ app.MapPost("/api/backtest/tqqq", async (TqqqBacktestRequest req, TqqqWeightBack
         req.Params,
         ct);
 
+    // 다운샘플: 최대 300포인트 (차트용)
+    var allRecords = result.DailyRecords;
+    var sampled = allRecords.Count <= 300
+        ? allRecords
+        : Enumerable.Range(0, 300)
+            .Select(i => allRecords[(int)Math.Round((double)i * (allRecords.Count - 1) / 299)])
+            .ToList();
+
     return Results.Ok(new
     {
-        TotalReturn    = result.TotalReturnPercent.ToString("F2") + "%",
-        CAGR           = result.Cagr.ToString("F2") + "%",
-        MaxDrawdown    = result.MaxDrawdownPercent.ToString("F2") + "%",
+        result.TotalReturnPercent,
+        result.Cagr,
+        result.MaxDrawdownPercent,
         result.SharpeRatio,
         result.TotalDays,
         result.InvestedDays,
-        // 처음 30일 + 마지막 30일 기록 (디버깅용)
-        EarlyRecords = result.DailyRecords.Take(30).Select(r => new
+        DailyRecords = sampled.Select(r => new
         {
             Date        = r.Date.ToString("yyyy-MM-dd"),
             r.Code,
-            Weight      = r.Weight.ToString("P0"),
-            TqqqClose   = r.TqqqClose.ToString("F2"),
-            DailyReturn = r.DailyReturn.ToString("P2"),
-            Equity      = r.Equity.ToString("N2")
-        }),
-        RecentRecords = result.DailyRecords.TakeLast(30).Select(r => new
-        {
-            Date        = r.Date.ToString("yyyy-MM-dd"),
-            r.Code,
-            Weight      = r.Weight.ToString("P0"),
-            TqqqClose   = r.TqqqClose.ToString("F2"),
-            DailyReturn = r.DailyReturn.ToString("P2"),
-            Equity      = r.Equity.ToString("N2")
+            r.Weight,
+            r.TqqqClose,
+            r.DailyReturn,
+            r.Equity
         })
     });
 });
 
-app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+// Blazor가 React로 교체됨. API 전용 서버.
+// MapStaticAssets/MapRazorComponents 제거 — React SPA가 모든 UI 담당.
 
 app.Run();
 
@@ -637,3 +920,13 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// ── 요청 DTO ──
+public record ApplyLiveRequest(
+    PatternParameterOverrides? ParameterOverrides,
+    List<string>? EnabledPatterns,
+    decimal? RiskPerTradePercent,
+    decimal? DailyLossLimitPercent,
+    int? MaxTotalPositions,
+    int? MaxPositionsPerSector
+);

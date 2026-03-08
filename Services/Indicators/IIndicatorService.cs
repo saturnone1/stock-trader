@@ -15,4 +15,5 @@ public interface IIndicatorService
         decimal[] closes, int fastPeriod = 12, int slowPeriod = 26, int signalPeriod = 9);
     (decimal[] Upper, decimal[] Middle, decimal[] Lower) KeltnerChannel(
         OhlcvBar[] bars, int emaPeriod = 20, int atrPeriod = 10, decimal atrMultiplier = 1.5m);
+    decimal[] OBV(OhlcvBar[] bars);
 }

@@ -2,12 +2,14 @@
 @inject INotificationService NotificationService
 @implements IDisposable
 
-<MudTooltip Text="@_tooltip">
-    <MudIcon Icon="@Icons.Material.Filled.Wifi"
-             Color="@(_isActive ? Color.Success : Color.Error)"
-             Size="Size.Small"
-             Class="ml-2" />
-</MudTooltip>
+<span class="streaming-status">
+    <MudTooltip Text="@_tooltip">
+        <MudIcon Icon="@Icons.Material.Filled.Wifi"
+                 Color="@(_isActive ? Color.Success : Color.Error)"
+                 Size="Size.Small"
+                 Class="ml-2" />
+    </MudTooltip>
+</span>
 
 @code {
     private bool _isActive;

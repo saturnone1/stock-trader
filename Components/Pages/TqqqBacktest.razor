@@ -13,7 +13,7 @@
     <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined"
              Style="height:20px; font-size:11px; padding:0 8px;">200일선 변형매매</MudChip>
 </MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 page-description">
     fmkorea "200일 티큐 변형매매법" 기반. TQQQ/SPY 200일선 대비 비중을 매일 0~100%로 조절하는 포지션 관리 전략입니다.
 </MudText>
 
@@ -28,20 +28,20 @@
         <MudText Typo="Typo.caption" Color="Color.Tertiary" Class="mb-1"
                  Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase;">기본 설정</MudText>
         <MudGrid>
-            <MudItem xs="12" md="3">
+            <MudItem xs="6" md="3">
                 <MudDatePicker @bind-Date="_from" Label="시작일"
                                Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
-            <MudItem xs="12" md="3">
+            <MudItem xs="6" md="3">
                 <MudDatePicker @bind-Date="_to" Label="종료일"
                                Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_capital" Label="초기 자본금"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N0"
                                  HelperText="USD" />
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="6" md="2">
                 <MudSelect T="DataSource?" @bind-Value="_dataSource" Label="데이터 소스"
                            Variant="Variant.Outlined" Margin="Margin.Dense">
                     <MudSelectItem T="DataSource?" Value="@((DataSource?)null)">기본 설정</MudSelectItem>
@@ -246,7 +246,7 @@
         <MudText Typo="Typo.h6" Class="mb-2">매매 타점</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">초록 영역 = 투자 구간, 빈 구간 = 현금</MudText>
         <MudCard Class="mb-4 pa-3">
-            <ApexCharts.ApexChart TItem="TqqqChartPoint" Options="_priceChartOptions" Height="350">
+            <ApexCharts.ApexChart TItem="TqqqChartPoint" Options="_priceChartOptions" Height="@(IsMobile ? 200 : 350)">
                 <ApexCharts.ApexPointSeries TItem="TqqqChartPoint"
                                  Items="_priceChartData"
                                  SeriesType="ApexCharts.SeriesType.Line"
@@ -268,7 +268,7 @@
     {
         <MudText Typo="Typo.h6" Class="mb-2">자산 추이</MudText>
         <MudCard Class="mb-4 pa-3">
-            <ApexCharts.ApexChart TItem="TqqqDailyRecord" Options="_equityChartOptions" Height="300">
+            <ApexCharts.ApexChart TItem="TqqqDailyRecord" Options="_equityChartOptions" Height="@(IsMobile ? 180 : 300)">
                 <ApexCharts.ApexPointSeries TItem="TqqqDailyRecord"
                                  Items="_chartData"
                                  SeriesType="ApexCharts.SeriesType.Area"
@@ -286,30 +286,32 @@
 
         <MudText Typo="Typo.h6" Class="mb-2">최근 거래 기록 (최근 50일)</MudText>
         <MudTable Items="@recentRecords" Dense="true" Hover="true" Striped="true"
-                  FixedHeader="true" Height="400px">
+                  FixedHeader="true" Height="@(IsMobile ? "250px" : "400px")">
             <HeaderContent>
                 <MudTh>날짜</MudTh>
-                <MudTh>비중코드</MudTh>
-                <MudTh>비중(%)</MudTh>
-                <MudTh>TQQQ 종가</MudTh>
+                <MudTh>비중</MudTh>
+                @if (!IsMobile)
+                {
+                    <MudTh>TQQQ 종가</MudTh>
+                }
                 <MudTh>일수익률</MudTh>
                 <MudTh>자산</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="날짜">@context.Date.ToString("yy-MM-dd")</MudTd>
-                <MudTd DataLabel="비중코드">
-                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
-                             Color="@GetCodeColor(context.Code)"
-                             Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
-                        @GetCodeLabel(context.Code)
-                    </MudChip>
+                <MudTd DataLabel="비중">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                 Color="@GetCodeColor(context.Code)"
+                                 Style="height:18px; font-size:10px; padding:0 6px; min-width:0;">
+                            @((context.Weight * 100).ToString("F0"))%
+                        </MudChip>
+                    </MudStack>
                 </MudTd>
-                <MudTd DataLabel="비중(%)">
-                    <MudText Color="@(context.Weight > 0 ? Color.Primary : Color.Secondary)">
-                        @((context.Weight * 100).ToString("F0"))%
-                    </MudText>
-                </MudTd>
-                <MudTd DataLabel="TQQQ 종가">$@context.TqqqClose.ToString("N2")</MudTd>
+                @if (!IsMobile)
+                {
+                    <MudTd DataLabel="TQQQ 종가">$@context.TqqqClose.ToString("N2")</MudTd>
+                }
                 <MudTd DataLabel="일수익률">
                     <span style="color: @(context.DailyReturn >= 0 ? "var(--mud-palette-success)" : "var(--mud-palette-error)")">
                         @(context.DailyReturn >= 0 ? "+" : "")@((context.DailyReturn * 100).ToString("F2"))%
@@ -334,6 +336,8 @@ else if (!_isRunning && string.IsNullOrEmpty(_error))
 }
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] public bool IsMobile { get; set; }
+
     private DateTime? _from = new DateTime(2022, 1, 1);
     private DateTime? _to = DateTime.Today;
     private decimal _capital = 100_000m;

@@ -7,11 +7,11 @@
          Size="Size.Small">
     @if (Regime != null)
     {
-        @($"SPY {Regime.RegimeLabel} ({Regime.SpyPrice:F2})")
+        @($"SPY {Regime.RegimeLabel}")
     }
     else
     {
-        @("SPY 로딩 중...")
+        @("SPY...")
     }
 </MudChip>
 </MudTooltip>
