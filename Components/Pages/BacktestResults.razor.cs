@@ -7,6 +7,9 @@ namespace StockTrader.Components.Pages;
 
 public partial class BacktestResults
 {
+    [Microsoft.AspNetCore.Components.CascadingParameter(Name = "IsMobile")]
+    public bool IsMobile { get; set; }
+
     private bool _isApplying;
     private bool _applySuccess;
     private string? _applyError;

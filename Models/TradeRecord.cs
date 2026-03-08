@@ -22,5 +22,17 @@ public class TradeRecord
     [NotMapped]
     public long EntryVolume { get; set; }
 
+    /// <summary>진입 시점의 포트폴리오 자본</summary>
+    [NotMapped]
+    public decimal EquityAtEntry { get; set; }
+
+    /// <summary>Maximum Adverse Excursion — 진입 후 최대 불리한 움직임 (%)</summary>
+    [NotMapped]
+    public decimal MaePercent { get; set; }
+
+    /// <summary>Maximum Favorable Excursion — 진입 후 최대 유리한 움직임 (%)</summary>
+    [NotMapped]
+    public decimal MfePercent { get; set; }
+
     public bool IsWin => PnL > 0;
 }

@@ -197,6 +197,23 @@ public class IndicatorService : IIndicatorService
         return (upper, middle, lower);
     }
 
+    public decimal[] OBV(OhlcvBar[] bars)
+    {
+        var result = new decimal[bars.Length];
+        if (bars.Length == 0) return result;
+        result[0] = bars[0].Volume;
+        for (int i = 1; i < bars.Length; i++)
+        {
+            if (bars[i].Close > bars[i - 1].Close)
+                result[i] = result[i - 1] + bars[i].Volume;
+            else if (bars[i].Close < bars[i - 1].Close)
+                result[i] = result[i - 1] - bars[i].Volume;
+            else
+                result[i] = result[i - 1];
+        }
+        return result;
+    }
+
     /// <summary>
     /// Extracts the Close prices from an OhlcvBar array into a decimal array.
     /// Avoids repeated LINQ .Select(b => b.Close).ToArray() allocations across callers.

@@ -3,20 +3,25 @@
 # Restore NuGet packages and compile the application in Release mode.
 # Using the full SDK image so we have dotnet-publish available.
 # =============================================================================
+# Stage 0: Build React frontend
+FROM node:22-slim AS frontend
+WORKDIR /app/ClientApp
+COPY ClientApp/package.json ClientApp/package-lock.json ./
+RUN npm ci --include=dev
+COPY ClientApp/ .
+RUN npx vite build --mode production
+
+# Stage 1: Build .NET backend
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Copy only the project file first to leverage Docker layer caching.
-# If .csproj hasn't changed, the restore layer is reused on subsequent builds.
 COPY StockTrader.csproj ./
 RUN dotnet restore StockTrader.csproj --locked-mode 2>/dev/null || dotnet restore StockTrader.csproj
 
-# Copy the rest of the source tree (respects .dockerignore).
 COPY . .
+# Copy React build output into source tree so it's included in publish
+COPY --from=frontend /app/ClientApp/dist ./ClientApp/dist
 
-# Publish a framework-dependent Release build.
-# NOTE: Do NOT use --no-restore here — it skips _framework/blazor.web.js
-# generation on Linux, breaking Blazor interactive mode.
 RUN dotnet publish StockTrader.csproj \
     -c Release \
     -o /app/publish \
@@ -53,6 +58,9 @@ RUN mkdir -p /data /app/ml_models /app/Logs \
 
 # Copy published output from the build stage.
 COPY --from=build --chown=stocktrader:stocktrader /app/publish .
+
+# Copy React SPA build output.
+COPY --from=frontend --chown=stocktrader:stocktrader /app/ClientApp/dist ./ClientApp/dist
 
 # Switch to non-root user.
 USER stocktrader

@@ -10,11 +10,20 @@
         @foreach (var kv in _prices)
         {
             var p = kv.Value;
+            @* 모바일: 심볼 + 등락률만 표시 (가격 생략으로 칩 너비 축소) *@
             <MudChip T="string"
                      Color="@(p.ChangePercent >= 0 ? Color.Success : Color.Error)"
                      Variant="Variant.Outlined"
-                     Size="Size.Small">
-                @p.Symbol $@p.Price.ToString("F2") (@(p.ChangePercent >= 0 ? "+" : "")@p.ChangePercent.ToString("F2")%)
+                     Size="Size.Small"
+                     Style="@(_isMobile ? "height: 24px; font-size: 0.72rem; padding: 0 8px;" : "")">
+                @if (_isMobile)
+                {
+                    @($"{p.Symbol} {(p.ChangePercent >= 0 ? "+" : "")}{p.ChangePercent.ToString("F1")}%")
+                }
+                else
+                {
+                    @($"{p.Symbol} ${p.Price.ToString("F2")} ({(p.ChangePercent >= 0 ? "+" : "")}{p.ChangePercent.ToString("F2")}%)")
+                }
             </MudChip>
         }
     </MudStack>
@@ -26,6 +35,8 @@ else
 }
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool _isMobile { get; set; }
+
     // Fix 5: lock 제거 - ConcurrentDictionary로 thread-safe 업데이트 구현
     // OnPriceUpdate는 백그라운드 스레드에서 호출될 수 있으므로 lock 없이 안전한 컬렉션 사용
     private readonly ConcurrentDictionary<string, PriceUpdate> _prices =

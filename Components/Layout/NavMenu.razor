@@ -1,8 +1,9 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
+@* IsMobile CascadingParameter: 모바일에서 NavGroup을 접어서 Drawer를 짧게 유지 *@
 <MudNavMenu>
-    @* 모니터링 그룹 *@
+    @* 모니터링 그룹 — 모바일에서 기본 펼침 (핵심 메뉴), 데스크톱도 동일 *@
     <MudNavGroup Title="모니터링" Icon="@Icons.Material.Filled.MonitorHeart" Expanded="true">
         <MudNavLink Href="" Match="NavLinkMatch.All"
                     Icon="@Icons.Material.Filled.Dashboard">대시보드</MudNavLink>
@@ -14,8 +15,8 @@
                     Icon="@Icons.Material.Filled.Security">리스크 모니터</MudNavLink>
     </MudNavGroup>
 
-    @* 분석 그룹 *@
-    <MudNavGroup Title="분석" Icon="@Icons.Material.Filled.QueryStats" Expanded="true">
+    @* 분석 그룹 — 모바일에서 기본 접힘 (화면 스크롤 최소화) *@
+    <MudNavGroup Title="분석" Icon="@Icons.Material.Filled.QueryStats" Expanded="@(!_isMobile)">
         <MudNavLink Href="patterns"
                     Icon="@Icons.Material.Filled.BarChart">패턴 통계</MudNavLink>
         <MudNavLink Href="history"
@@ -30,8 +31,8 @@
                     Icon="@Icons.Material.Filled.Psychology">ML 분석</MudNavLink>
     </MudNavGroup>
 
-    @* 관리 그룹 *@
-    <MudNavGroup Title="관리" Icon="@Icons.Material.Filled.ManageAccounts" Expanded="true">
+    @* 관리 그룹 — 모바일에서 기본 접힘 *@
+    <MudNavGroup Title="관리" Icon="@Icons.Material.Filled.ManageAccounts" Expanded="@(!_isMobile)">
         <MudNavLink Href="accounts"
                     Icon="@Icons.Material.Filled.AccountBalance">계좌 관리</MudNavLink>
         <MudNavLink Href="settings"
@@ -66,6 +67,7 @@
 </MudNavMenu>
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool _isMobile { get; set; }
     private bool _isLoggingOut;
 
     private async Task LogoutAsync()

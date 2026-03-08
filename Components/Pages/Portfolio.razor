@@ -13,11 +13,11 @@
 
 <PageTitle>포트폴리오 분석 - 주식 트레이더</PageTitle>
 
-<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+<div class="page-header">
     <MudText Typo="Typo.h5">포트폴리오 분석</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
-</MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">실시간 포트폴리오 현황과 과거 성과를 분석하세요.</MudText>
+</div>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 page-description">실시간 포트폴리오 현황과 과거 성과를 분석하세요.</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">포트폴리오 분석 도움말</MudText></TitleContent>
@@ -453,7 +453,7 @@
                     </CardHeaderContent>
                 </MudCardHeader>
                 <MudCardContent Class="pa-3 pt-0">
-                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_equityOpts" Height="300">
+                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_equityOpts" Height="@(IsMobile ? 180 : 300)">
                     <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
                         Items="_equityCurve"
                         SeriesType="ApexCharts.SeriesType.Area"
@@ -472,7 +472,7 @@
                     </CardHeaderContent>
                 </MudCardHeader>
                 <MudCardContent Class="pa-3 pt-0">
-                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_drawdownOpts" Height="250">
+                <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_drawdownOpts" Height="@(IsMobile ? 160 : 250)">
                     <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
                         Items="_drawdownCurve"
                         SeriesType="ApexCharts.SeriesType.Area"
@@ -491,7 +491,7 @@
                     <MudItem xs="12" md="6">
                         <MudCard Class="pa-3">
                             <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 총 손익</MudText>
-                            <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_barOpts" Height="300">
+                            <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_barOpts" Height="@(IsMobile ? 180 : 300)">
                                 <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
                                     Items="_patternPerf"
                                     SeriesType="ApexCharts.SeriesType.Bar"
@@ -504,7 +504,7 @@
                     <MudItem xs="12" md="6">
                         <MudCard Class="pa-3">
                             <MudText Typo="Typo.subtitle2" Class="mb-2">패턴별 승률</MudText>
-                            <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_winRateOpts" Height="300">
+                            <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_winRateOpts" Height="@(IsMobile ? 180 : 300)">
                                 <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
                                     Items="_patternPerf"
                                     SeriesType="ApexCharts.SeriesType.Bar"
@@ -580,7 +580,7 @@
                             </CardHeaderContent>
                         </MudCardHeader>
                         <MudCardContent Class="pa-3 pt-0">
-                        <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_monthlyOpts" Height="250">
+                        <ApexCharts.ApexChart TItem="EquityDataPoint" Options="_monthlyOpts" Height="@(IsMobile ? 160 : 250)">
                             <ApexCharts.ApexPointSeries TItem="EquityDataPoint"
                                 Items="_monthlyPnl"
                                 SeriesType="ApexCharts.SeriesType.Bar"
@@ -599,7 +599,7 @@
                             </CardHeaderContent>
                         </MudCardHeader>
                         <MudCardContent Class="pa-3 pt-0">
-                        <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_symbolOpts" Height="250">
+                        <ApexCharts.ApexChart TItem="PatternPerfItem" Options="_symbolOpts" Height="@(IsMobile ? 160 : 250)">
                             <ApexCharts.ApexPointSeries TItem="PatternPerfItem"
                                 Items="_topSymbols"
                                 SeriesType="ApexCharts.SeriesType.Bar"
@@ -617,6 +617,8 @@
 </MudCard>
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] public bool IsMobile { get; set; }
+
     private bool _showHelp;
     private System.Threading.Timer? _refreshTimer;
 

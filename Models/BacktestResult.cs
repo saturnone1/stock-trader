@@ -268,6 +268,60 @@ public class BacktestRequest
     /// </summary>
     public DataSource? DataSource { get; set; }
 
+    /// <summary>
+    /// 포트폴리오 레벨 비중 관리 전략. null이면 비중 조절 없이 기존 방식으로 작동.
+    /// 활성화 시 시장 레짐(SPY vs 200SMA)에 따라 포지션 크기를 자동 조절합니다.
+    /// </summary>
+    public WeightStrategy? WeightStrategy { get; set; }
+
+    /// <summary>
+    /// 백테스트 모드. "pattern"=패턴 시그널 기반(기본), "weight"=비중 관리 기반(TQQQ식 11단계).
+    /// weight 모드에서는 Symbols[0]을 대상, RefSymbol을 기준 지수로 사용.
+    /// </summary>
+    public string BacktestMode { get; set; } = "pattern";
+
+    /// <summary>비중 관리 모드에서 기준 지수 (기본 QQQ). MA 교차/RSI/기울기 계산용.</summary>
+    public string RefSymbol { get; set; } = "QQQ";
+
+    /// <summary>비중 관리 모드에서 시장 레짐 판단용 지수 (기본 SPY).</summary>
+    public string SpySymbol { get; set; } = "SPY";
+
+    /// <summary>비중 관리 모드 전략 파라미터 (null이면 기본값 사용).</summary>
+    public TqqqStrategyParams? WeightModeParams { get; set; }
+
+    /// <summary>
+    /// 커스텀 패턴 정의 목록. DB에 저장된 ID 또는 인라인 정의를 전달합니다.
+    /// Patterns에 Custom이 포함되어 있으면 이 목록의 패턴들이 사용됩니다.
+    /// </summary>
+    public List<CustomPatternDefinition>? CustomPatterns { get; set; }
+}
+
+/// <summary>
+/// 포트폴리오 레벨 비중 관리 전략 파라미터.
+/// SPY(또는 지정 지수)의 200일 이동평균 대비 위치에 따라 포지션 크기를 조절합니다.
+/// </summary>
+public class WeightStrategy
+{
+    /// <summary>강세장(지수 > SMA) 비중 배수. 기본 1.0 (100%)</summary>
+    public decimal BullWeight { get; set; } = 1.0m;
+
+    /// <summary>약세장(지수 &lt; SMA) 비중 배수. 기본 0.3 (30%)</summary>
+    public decimal BearWeight { get; set; } = 0.3m;
+
+    /// <summary>과열1단계 비중 배수 (지수가 SMA 대비 OverheatStage1Pct 이상). 기본 0.7</summary>
+    public decimal Overheat1Weight { get; set; } = 0.7m;
+
+    /// <summary>과열2단계 비중 배수 (지수가 SMA 대비 OverheatStage2Pct 이상). 기본 0.4</summary>
+    public decimal Overheat2Weight { get; set; } = 0.4m;
+
+    /// <summary>과열1단계 이격도 임계값. 기본 1.15 (115%)</summary>
+    public decimal OverheatStage1Pct { get; set; } = 1.15m;
+
+    /// <summary>과열2단계 이격도 임계값. 기본 1.25 (125%)</summary>
+    public decimal OverheatStage2Pct { get; set; } = 1.25m;
+
+    /// <summary>레짐 판단 SMA 기간. 기본 200</summary>
+    public int SmaPeriod { get; set; } = 200;
 }
 
 public class BacktestResult
@@ -298,6 +352,12 @@ public class BacktestResult
     // Monte Carlo results
     public MonteCarloResult? MonteCarlo { get; set; }
 
+    /// <summary>비중 전략 적용 여부</summary>
+    public bool WeightStrategyApplied { get; set; }
+
+    /// <summary>비중 전략에 의해 축소된 거래 수</summary>
+    public int WeightReducedTrades { get; set; }
+
     /// <summary>
     /// 치명적 오류 메시지. null이 아니면 백테스트 전체가 실패한 것을 의미합니다.
     /// </summary>
@@ -310,6 +370,38 @@ public class BacktestResult
 
     /// <summary>실제 데이터 조회에 사용된 시작일 (분봉 기간 제한으로 조정된 경우 요청일과 다를 수 있음)</summary>
     public DateTime? ActualDataFrom { get; set; }
+
+    // 성과 지표 확장
+    public decimal SortinoRatio { get; set; }
+    public decimal CalmarRatio { get; set; }
+    public decimal ProfitFactor { get; set; }
+    public decimal AnnualizedReturn { get; set; }
+
+    // Kelly Criterion
+    public decimal KellyFraction { get; set; }
+    public decimal HalfKellyFraction { get; set; }
+
+    // 생존자 편향 경고
+    public string? SurvivorshipBiasWarning { get; set; }
+
+    // 레짐별 성과
+    public Dictionary<string, RegimePerformance>? PerRegimeStats { get; set; }
+
+    // MAE/MFE 통계
+    public decimal AvgMaePercent { get; set; }
+    public decimal AvgMfePercent { get; set; }
+    public decimal MedianMaePercent { get; set; }
+    public decimal MedianMfePercent { get; set; }
+}
+
+public class RegimePerformance
+{
+    public int TradeCount { get; set; }
+    public decimal WinRate { get; set; }
+    public decimal TotalReturn { get; set; }
+    public decimal AvgReturnPercent { get; set; }
+    public decimal SharpeRatio { get; set; }
+    public decimal MaxDrawdown { get; set; }
 }
 
 /// <summary>종목별 백테스트 성과 요약</summary>

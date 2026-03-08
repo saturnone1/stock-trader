@@ -150,6 +150,7 @@ internal sealed class TradeSimulator
                         EntryAtr              = entryAtr,
                         EntryVolume           = currentBar.Volume,
                         HighestHighSinceEntry = currentBar.High,
+                        LowestLowSinceEntry   = currentBar.Low,
                         RiskDistance           = stopDistance
                     };
 
@@ -193,15 +194,22 @@ internal sealed class TradeSimulator
         var currentAtr = currentAtrRaw > 0 ? currentAtrRaw : openPosition.EntryAtr;
         var barsSinceEntry = barIndex - openPosition.EntryBarIndex;
 
-        if (!pepCache.TryGetValue(openPosition.PatternType, out var pep))
+        PatternExitProfile pep;
+        if (openPosition.CustomExitProfile != null)
+        {
+            pep = openPosition.CustomExitProfile;
+        }
+        else if (!pepCache.TryGetValue(openPosition.PatternType, out pep!))
         {
             pep = PatternExitProfile.For(openPosition.PatternType, exitOverrides);
             pepCache[openPosition.PatternType] = pep;
         }
 
-        // 1. Highest high tracking
+        // 1. Highest high / lowest low tracking (MFE/MAE 계산용)
         if (currentBar.High > openPosition.HighestHighSinceEntry)
             openPosition.HighestHighSinceEntry = currentBar.High;
+        if (openPosition.LowestLowSinceEntry == 0 || currentBar.Low < openPosition.LowestLowSinceEntry)
+            openPosition.LowestLowSinceEntry = currentBar.Low;
 
         // 2. Breakeven stop
         if (!openPosition.BreakevenApplied && openPosition.EntryAtr > 0
@@ -237,10 +245,12 @@ internal sealed class TradeSimulator
         {
             var partialProfitTarget = openPosition.EntryPrice
                 + openPosition.RiskDistance * pep.PartialProfitRMultiple;
-            if (currentBar.High >= partialProfitTarget && openPosition.Quantity >= 2)
+            var effectiveQty = openPosition.CurrentQuantity > 0
+                ? openPosition.CurrentQuantity : openPosition.Quantity;
+            if (currentBar.High >= partialProfitTarget && effectiveQty >= 2)
             {
-                var halfQty = openPosition.Quantity / 2;
-                var remainQty = openPosition.Quantity - halfQty;
+                var halfQty = effectiveQty / 2;
+                var remainQty = effectiveQty - halfQty;
 
                 trades.Add(CreateTradeRecord(
                     symbol, openPosition, partialProfitTarget,
@@ -254,15 +264,20 @@ internal sealed class TradeSimulator
                     StopLoss                 = Math.Max(openPosition.StopLoss, openPosition.EntryPrice),
                     Target                   = openPosition.Target,
                     Quantity                 = remainQty,
+                    CurrentQuantity          = remainQty,
+                    TotalCost                = openPosition.TotalCost,
                     EntryTime                = openPosition.EntryTime,
                     EntryBarIndex            = openPosition.EntryBarIndex,
                     EntryAtr                 = openPosition.EntryAtr,
                     EntryVolume              = openPosition.EntryVolume,
                     HighestHighSinceEntry    = openPosition.HighestHighSinceEntry,
+                    LowestLowSinceEntry      = openPosition.LowestLowSinceEntry,
                     TrailingStopActivated    = openPosition.TrailingStopActivated,
                     BreakevenApplied         = true,
                     PartialProfitTaken       = true,
-                    RiskDistance              = openPosition.RiskDistance
+                    RiskDistance              = openPosition.RiskDistance,
+                    CustomExitProfile        = openPosition.CustomExitProfile,
+                    ScaleCounts              = openPosition.ScaleCounts
                 };
             }
         }
@@ -302,8 +317,11 @@ internal sealed class TradeSimulator
 
         if (exitPrice > 0)
         {
+            // 스케일링된 수량 반영 (CurrentQuantity > 0이면 스케일링이 적용된 것)
+            var exitQty = openPosition.CurrentQuantity > 0
+                ? openPosition.CurrentQuantity : openPosition.Quantity;
             trades.Add(CreateTradeRecord(symbol, openPosition, exitPrice,
-                currentBar.Timestamp, exitReason, openPosition.Quantity));
+                currentBar.Timestamp, exitReason, exitQty));
             return null;
         }
 
@@ -319,20 +337,31 @@ internal sealed class TradeSimulator
             ? (exitPrice - pos.EntryPrice) / pos.EntryPrice
             : 0;
 
+        // [B-3] MAE/MFE 계산
+        var maePercent = pos.EntryPrice > 0 && pos.LowestLowSinceEntry > 0
+            ? (pos.LowestLowSinceEntry - pos.EntryPrice) / pos.EntryPrice * 100
+            : 0;
+        var mfePercent = pos.EntryPrice > 0 && pos.HighestHighSinceEntry > 0
+            ? (pos.HighestHighSinceEntry - pos.EntryPrice) / pos.EntryPrice * 100
+            : 0;
+
         return new TradeRecord
         {
-            Symbol = symbol,
-            PatternType = pos.PatternType,
-            EntryPrice = pos.EntryPrice,
-            ExitPrice = exitPrice,
-            Quantity = qty,
-            EntryTime = pos.EntryTime,
-            ExitTime = exitTime,
-            PnL = pnl,
-            PnLPercent = pnlPct,
-            ExitReason = exitReason,
-            EntryAtr = pos.EntryAtr,
-            EntryVolume = pos.EntryVolume
+            Symbol         = symbol,
+            PatternType    = pos.PatternType,
+            EntryPrice     = pos.EntryPrice,
+            ExitPrice      = exitPrice,
+            Quantity       = qty,
+            EntryTime      = pos.EntryTime,
+            ExitTime       = exitTime,
+            PnL            = pnl,
+            PnLPercent     = pnlPct,
+            ExitReason     = exitReason,
+            EntryAtr       = pos.EntryAtr,
+            EntryVolume    = pos.EntryVolume,
+            EquityAtEntry  = pos.EquityAtEntry,
+            MaePercent     = maePercent,
+            MfePercent     = mfePercent
         };
     }
 
@@ -380,10 +409,24 @@ internal sealed class TradeSimulator
 
         public decimal StopLoss { get; set; }
         public decimal HighestHighSinceEntry { get; set; }
+        /// <summary>진입 이후 최저 저가 — MAE 계산에 사용</summary>
+        public decimal LowestLowSinceEntry { get; set; }
         public bool TrailingStopActivated { get; set; }
         public bool BreakevenApplied { get; set; }
         public bool PartialProfitTaken { get; set; }
         public decimal RiskDistance { get; init; }
+        /// <summary>진입 시점의 포트폴리오 자본 — EquityAtEntry 계산에 사용</summary>
+        public decimal EquityAtEntry { get; init; }
+        /// <summary>커스텀 패턴용 청산 프로파일. null이면 PatternType 기반 기본값 사용.</summary>
+        public PatternExitProfile? CustomExitProfile { get; init; }
+
+        // ── 스케일링 추적 ──
+        /// <summary>현재 수량 (스케일인/아웃으로 변동 가능)</summary>
+        public int CurrentQuantity { get; set; }
+        /// <summary>스케일링 규칙별 실행 횟수</summary>
+        public Dictionary<int, int>? ScaleCounts { get; set; }
+        /// <summary>총 투자금 (가중 평균가 계산용)</summary>
+        public decimal TotalCost { get; set; }
     }
 
     /// <summary>

@@ -1,6 +1,8 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -33,12 +35,17 @@ public class PatternDetectionServiceTests
     /// </summary>
     private PatternDetectionService CreateSut(IEnumerable<IPatternDetector>? detectors = null)
     {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")
+            .Options;
+        var db = new AppDbContext(options);
         return new PatternDetectionService(
             detectors ?? Enumerable.Empty<IPatternDetector>(),
             _settingsRepoMock.Object,
             _statsRepoMock.Object,
             _signalScorerMock.Object,
             _regimeClassifierMock.Object,
+            db,
             NullLogger<PatternDetectionService>.Instance);
     }
 
