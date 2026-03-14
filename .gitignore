@@ -11,6 +11,10 @@ appsettings.*.json
 !appsettings.json
 secrets.json
 
+## K8s Secrets (contain real API keys — never commit)
+k8s/secret.yaml
+!k8s/secret.example.yaml
+
 ## Docker environment secrets
 .env
 .env.*
