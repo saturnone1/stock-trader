@@ -23,39 +23,38 @@ public class KoreaInvestmentBrokerService : IBrokerService
     public Task<bool> PlaceOrderAsync(TradeRecommendation recommendation,
         CancellationToken ct = default)
     {
-        _logger.LogWarning("[KIS] KoreaInvestmentBrokerService is not yet implemented");
-        throw new NotImplementedException(
-            "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+        _logger.LogWarning("[KIS] PlaceOrderAsync: 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 주문이 실행되지 않습니다.");
+        return Task.FromResult(false);
     }
 
     public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
     {
-        throw new NotImplementedException(
-            "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+        _logger.LogWarning("[KIS] CancelOrderAsync: 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+        return Task.FromResult(false);
     }
 
     public Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
     {
-        throw new NotImplementedException(
-            "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+        _logger.LogWarning("[KIS] ClosePositionAsync({Symbol}): 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.", symbol);
+        return Task.FromResult(false);
     }
 
     public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
     {
-        throw new NotImplementedException(
-            "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+        _logger.LogWarning("[KIS] GetPositionsAsync: 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 빈 목록을 반환합니다.");
+        return Task.FromResult(new List<Position>());
     }
 
     public Task<BrokerAccount?> GetAccountAsync(CancellationToken ct = default)
     {
-        throw new NotImplementedException(
-            "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+        _logger.LogWarning("[KIS] GetAccountAsync: 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. null을 반환합니다.");
+        return Task.FromResult<BrokerAccount?>(null);
     }
 
     public Task<List<BrokerOrder>> GetOrderHistoryAsync(DateTime from, DateTime to,
         CancellationToken ct = default)
     {
-        throw new NotImplementedException(
-            "한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.");
+        _logger.LogWarning("[KIS] GetOrderHistoryAsync: 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 빈 목록을 반환합니다.");
+        return Task.FromResult(new List<BrokerOrder>());
     }
 }

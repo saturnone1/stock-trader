@@ -155,8 +155,13 @@ public class PatternScannerService : BackgroundService
             _regimeCacheDate = todayEt;
         }
         var regime = _cachedRegime;
+        if (regime is null)
+        {
+            _logger.LogWarning("Regime cache is null for {Symbol}, skipping scan", symbol);
+            return;
+        }
         _logger.LogDebug("Scanning {Symbol}: {Count} daily bars, regime={Regime}",
-            symbol, bars.Count, regime?.RegimeLabel ?? "N/A");
+            symbol, bars.Count, regime.RegimeLabel);
         var signals = await patternDetection.ScanSymbolAsync(symbol, bars.ToArray(), regime, ct);
 
         if (signals.Count == 0)
