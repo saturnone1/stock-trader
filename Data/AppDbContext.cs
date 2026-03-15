@@ -20,6 +20,8 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SymbolProfile> SymbolProfiles => Set<SymbolProfile>();
     public DbSet<CustomPatternDefinition> CustomPatterns => Set<CustomPatternDefinition>();
+    public DbSet<OptimizationJob> OptimizationJobs => Set<OptimizationJob>();
+    public DbSet<OptimizationResult> OptimizationResults => Set<OptimizationResult>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -125,6 +127,22 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(p => p.Name).IsUnique();
             entity.HasIndex(p => p.IsActive);
+        });
+
+        modelBuilder.Entity<OptimizationJob>(entity =>
+        {
+            // (Status, Priority DESC) — 다음 대기 작업 조회 최적화
+            entity.HasIndex(j => new { j.Status, j.Priority });
+        });
+
+        modelBuilder.Entity<OptimizationResult>(entity =>
+        {
+            // (JobId, Rank) — 작업별 상위 결과 조회 최적화
+            entity.HasIndex(r => new { r.JobId, r.Rank });
+            entity.HasOne(r => r.Job)
+                  .WithMany(j => j.Results)
+                  .HasForeignKey(r => r.JobId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

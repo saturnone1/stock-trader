@@ -230,6 +230,8 @@ public class OptimizeResultItem
     public decimal? OosWinRate { get; set; }
     public int? OosTotalTrades { get; set; }
     public decimal? OosProfitFactor { get; set; }
+    public decimal? OosCalmarRatio { get; set; }
+    public decimal? OosAnnualizedReturn { get; set; }
 }
 
 /// <summary>
