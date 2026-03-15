@@ -16,6 +16,7 @@ public static class DataServiceExtensions
         services.AddScoped<IPatternStatsRepository, PatternStatsRepository>();
         services.AddScoped<ITradeRepository, TradeRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
+        services.AddScoped<IOptimizationRepository, OptimizationRepository>();
 
         // Data Feed - Keyed services for multiple providers
         services.AddKeyedScoped<IDataFeedService, AlpacaDataFeedService>(DataSource.Alpaca);

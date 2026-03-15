@@ -353,6 +353,73 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
+        // OptimizationJobs 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='OptimizationJobs'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE OptimizationJobs (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL DEFAULT '',
+                    Status INTEGER NOT NULL DEFAULT 0,
+                    Priority INTEGER NOT NULL DEFAULT 0,
+                    RequestJson TEXT NOT NULL DEFAULT '',
+                    TotalCombinations INTEGER NOT NULL DEFAULT 0,
+                    TestedCombinations INTEGER NOT NULL DEFAULT 0,
+                    CurrentChunkIndex INTEGER NOT NULL DEFAULT 0,
+                    ChunkSize INTEGER NOT NULL DEFAULT 200,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    StartedAt TEXT,
+                    CompletedAt TEXT,
+                    LastProgressAt TEXT,
+                    MaxDurationHours REAL,
+                    MaxTestedCombinations INTEGER,
+                    RankBy TEXT NOT NULL DEFAULT 'sortinoRatio',
+                    TopResultsToKeep INTEGER NOT NULL DEFAULT 50,
+                    ErrorMessage TEXT
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_OptimizationJobs_Status_Priority ON OptimizationJobs (Status, Priority)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // OptimizationResults 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='OptimizationResults'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE OptimizationResults (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    JobId INTEGER NOT NULL,
+                    Rank INTEGER NOT NULL DEFAULT 0,
+                    ParamsJson TEXT NOT NULL DEFAULT '',
+                    TotalReturn REAL NOT NULL DEFAULT 0,
+                    SortinoRatio REAL NOT NULL DEFAULT 0,
+                    SharpeRatio REAL NOT NULL DEFAULT 0,
+                    MaxDrawdown REAL NOT NULL DEFAULT 0,
+                    WinRate REAL NOT NULL DEFAULT 0,
+                    TotalTrades INTEGER NOT NULL DEFAULT 0,
+                    ProfitFactor REAL NOT NULL DEFAULT 0,
+                    CalmarRatio REAL NOT NULL DEFAULT 0,
+                    AnnualizedReturn REAL NOT NULL DEFAULT 0,
+                    OosTotalReturn REAL,
+                    OosSortinoRatio REAL,
+                    OosSharpeRatio REAL,
+                    OosMaxDrawdown REAL,
+                    OosWinRate REAL,
+                    OosTotalTrades INTEGER,
+                    OosProfitFactor REAL,
+                    OosCalmarRatio REAL,
+                    OosAnnualizedReturn REAL,
+                    TestedAtCombination INTEGER NOT NULL DEFAULT 0,
+                    DiscoveredAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    FOREIGN KEY (JobId) REFERENCES OptimizationJobs(Id) ON DELETE CASCADE
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_OptimizationResults_JobId_Rank ON OptimizationResults (JobId, Rank)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         // TQQQ 200SMA 스테일 시그널 정리: 비-TQQQ 종목의 시그널 비활성화
         // AllowedSymbols 기본값은 ["TQQQ"]이므로, 이전에 잘못 생성된 비-TQQQ 시그널을 정리
         cmd.CommandText = "UPDATE PatternSignals SET IsActive = 0 WHERE PatternType = 16 AND Symbol != 'TQQQ' AND IsActive = 1";
@@ -387,6 +454,18 @@ using (var scope = app.Services.CreateScope())
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         logger.LogWarning(ex, "스키마 마이그레이션 중 오류 발생 (무시하고 계속)");
+    }
+
+    // OptimizationJob 스타트업 복구: 비정상 종료로 Running 상태 남은 작업 → Pending 복귀
+    try
+    {
+        var optRepo = scope.ServiceProvider.GetRequiredService<StockTrader.Data.Repositories.IOptimizationRepository>();
+        await optRepo.ResetRunningJobsAsync();
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogWarning(ex, "OptimizationJob 스타트업 복구 중 오류 (무시하고 계속)");
     }
 
     // appsettings.json의 기존 Alpaca 설정으로 기본 계좌 시드 (계좌가 0개일 때만)

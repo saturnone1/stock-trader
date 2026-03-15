@@ -23,6 +23,7 @@ public static class ApiEndpointExtensions
         api.MapSymbolProfileApi();
         api.MapCustomPatternApi();
         api.MapOptimizeApi();
+        api.MapOptimizeJobApi();
 
         return app;
     }

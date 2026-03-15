@@ -38,6 +38,17 @@ public class BacktestService : IBacktestService
         _logger = logger;
     }
 
+    /// <summary>OptimizationJobExecutor가 데이터 로드 시 재사용할 수 있도록 노출</summary>
+    internal IIndicatorService Indicators => _indicators;
+
+    /// <summary>최적화 실행 시 기본 리스크 파라미터 (appsettings 기반)</summary>
+    internal RiskParams DefaultRiskParams => new(
+        RiskPerTradePercent:    _tradingSettings.RiskPerTradePercent,
+        DailyLossLimitPercent:  _tradingSettings.DailyLossLimitPercent,
+        MaxTotalPositions:      _tradingSettings.MaxTotalPositions,
+        MaxPositionsPerSector:  _tradingSettings.MaxPositionsPerSector
+    );
+
     public async Task<BacktestResult> RunAsync(BacktestRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("백테스트 시작: {Symbols} ({From:d} ~ {To:d}) [타임프레임: {TimeFrame}]",
@@ -853,7 +864,7 @@ public class BacktestService : IBacktestService
     /// Walk-Forward 전용 오버로드: 이미 로드된 symbolDataMap에서 날짜 범위를 슬라이싱하여
     /// API 호출 없이 시뮬레이션을 실행합니다.
     /// </summary>
-    private async Task<BacktestResult> RunCoreWithPreloadedDataAsync(
+    internal async Task<BacktestResult> RunCoreWithPreloadedDataAsync(
         List<string> symbols,
         Dictionary<string, SymbolPreparedData> fullDataMap,
         List<IPatternDetector> detectors,
@@ -1201,7 +1212,7 @@ public class BacktestService : IBacktestService
         int MaxPositionsPerSector
     );
 
-    private List<IPatternDetector> BuildDetectors(
+    internal List<IPatternDetector> BuildDetectors(
         List<PatternType> patterns, PatternParameterOverrides? overrides,
         List<CustomPatternDefinition>? customPatterns = null)
     {
@@ -1527,8 +1538,10 @@ public class BacktestService : IBacktestService
                     item.OosSharpeRatio  = oosResult.SharpeRatio;
                     item.OosMaxDrawdown  = oosResult.MaxDrawdown * 100;
                     item.OosWinRate      = oosResult.OverallWinRate * 100;
-                    item.OosTotalTrades  = oosResult.TotalTrades;
-                    item.OosProfitFactor = oosResult.ProfitFactor;
+                    item.OosTotalTrades      = oosResult.TotalTrades;
+                    item.OosProfitFactor     = oosResult.ProfitFactor;
+                    item.OosCalmarRatio      = oosResult.CalmarRatio;
+                    item.OosAnnualizedReturn = oosResult.AnnualizedReturn;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -1558,7 +1571,7 @@ public class BacktestService : IBacktestService
     /// 각 축을 Action&lt;OptimizeParamSnapshot&gt; 목록으로 동적 구성하여
     /// 파라미터 수가 늘어도 중첩 foreach 없이 확장 가능한 구조입니다.
     /// </summary>
-    private static List<Api.OptimizeParamSnapshot> GenerateOptimizeCombinations(Api.OptimizeParams p)
+    internal static List<Api.OptimizeParamSnapshot> GenerateOptimizeCombinations(Api.OptimizeParams p)
     {
         // 각 축: 가능한 setter 액션의 목록
         // 축이 설정되지 않으면 [null setter] 1개 = 해당 파라미터 오버라이드 없음
@@ -1773,7 +1786,7 @@ public class BacktestService : IBacktestService
     /// Stage 2: 상위 결과 주변에서 이웃 조합을 생성합니다.
     /// 각 숫자형 파라미터를 ±step 만큼 변형하여 정밀 탐색합니다.
     /// </summary>
-    private static List<Api.OptimizeParamSnapshot> GenerateNeighborCombinations(
+    internal static List<Api.OptimizeParamSnapshot> GenerateNeighborCombinations(
         List<Api.OptimizeParamSnapshot> topSnapshots,
         Api.OptimizeParams paramDef,
         int budget,
@@ -1870,7 +1883,7 @@ public class BacktestService : IBacktestService
     /// 패턴 정의를 얕은 복사(JSON 필드는 문자열 복사)합니다.
     /// 최적화 루프에서 basePattern을 오염시키지 않기 위해 사용합니다.
     /// </summary>
-    private static CustomPatternDefinition ClonePatternDefinition(CustomPatternDefinition src)
+    internal static CustomPatternDefinition ClonePatternDefinition(CustomPatternDefinition src)
     {
         return new CustomPatternDefinition
         {
@@ -1911,7 +1924,7 @@ public class BacktestService : IBacktestService
     /// null인 필드는 기존 값을 유지합니다.
     /// JSON 필드(CircuitBreaker, Reentry, PortfolioRules)는 파싱 후 필드를 수정하여 재직렬화합니다.
     /// </summary>
-    private static void ApplyOptimizeOverrides(CustomPatternDefinition pattern, Api.OptimizeParamSnapshot snap)
+    internal static void ApplyOptimizeOverrides(CustomPatternDefinition pattern, Api.OptimizeParamSnapshot snap)
     {
         var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
@@ -2033,7 +2046,7 @@ public class BacktestService : IBacktestService
     /// <summary>
     /// 결과 목록을 rankBy 기준으로 정렬하고 상위 maxResults개에 순위를 매깁니다.
     /// </summary>
-    private static List<Api.OptimizeResultItem> RankOptimizeResults(
+    internal static List<Api.OptimizeResultItem> RankOptimizeResults(
         List<Api.OptimizeResultItem> items, string rankBy, int maxResults)
     {
         IEnumerable<Api.OptimizeResultItem> sorted = rankBy.ToLowerInvariant() switch
