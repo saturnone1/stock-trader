@@ -530,7 +530,7 @@ public class BacktestService : IBacktestService
                 {
                     try
                     {
-                        var signal = await detector.DetectAsync(symbol, windowBars, regime, ct);
+                        var signal = await detector.DetectAsync(symbol, windowBars, regime!, ct);
                         if (signal == null) continue;
                         if (signal.EntryPrice <= 0 || signal.StopLossPrice <= 0) continue;
 
