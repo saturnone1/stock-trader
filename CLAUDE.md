@@ -1,9 +1,40 @@
 # StockTrader - Claude Code 프로젝트 가이드
 
 ## 프로젝트 개요
-C# .NET 10.0 주식 자동매매 프로그램. 프론트엔드: React/Vite SPA (`ClientApp/`) + Blazor Server (레거시, 점진적 이관 중). SQLite DB, Alpaca Markets 브로커 연동.
+C# .NET 10.0 주식 자동매매 프로그램. 프론트엔드: SvelteKit 데스크톱 앱 (`desktop-app/`), 백엔드: REST API 서버. SQLite DB, Alpaca Markets 브로커 연동.
 
 ## 핵심 규칙
+
+### Deprecated 상태 (최우선)
+- **`stock-trader` 전체는 deprecated 대상** — 더 이상 메인/본체 프로젝트로 취급하지 말 것
+- **새 기능, 새 전략, 새 템플릿, UI 개선, 리팩터링을 임의로 추가하지 말 것**
+- **`desktop-app/` 포함 프로젝트 전체를 legacy로 간주** — 서브앱이라고 따로 취급하지 말 것
+- 이 프로젝트에서 작업 가능한 경우는 아래로 제한:
+  1. 사용자가 `stock-trader`를 **명시적으로 지정**한 경우
+  2. 치명적 장애 수정, 데이터 복구, 종료/이관 준비 같은 **유지보수성 작업**이 명확한 경우
+- 요청이 모호하면 **다른 활성 프로젝트를 우선 검토**하고, `stock-trader`는 기본 선택지에서 제외
+- 이 프로젝트를 명시적으로 수정한 경우에도 **로컬 수정만 하고 끝내지 말 것** — 사용자에게 보이는 변경이면 문서에 적힌 K3s 배포 절차까지 수행
+- 특히 `desktop-app/`, API, K8s 매니페스트 관련 변경은 **빌드 후 배포/재시작까지 완료**해야 반영된 것으로 간주
+
+### Fleet / Tasks 운용 규칙
+- 이 프로젝트처럼 **백엔드, 패턴 엔진, `desktop-app`, 백테스트, K3s 배포**가 나뉜 구조에서는 단일 직렬 처리 금지
+- **Fleet(병렬 에이전트 탐색)** 는 아래에 사용:
+  1. 패턴/UI 반영 경로 조사
+  2. API/DB 저장 경로 조사
+  3. K3s 배포 경로/이미지 갱신 경로 조사
+  4. 로컬/전역 정책 충돌 확인
+- **Tasks(실행 단위)** 는 아래에 사용:
+  1. `dotnet build StockTrader.csproj 2>&1`
+  2. `dotnet test trader.sln 2>&1`
+  3. `cd desktop-app && npm run build`
+  4. `./scripts/build-k3s.sh`
+  5. `kubectl rollout restart ...`
+  6. `kubectl get pods`, `kubectl logs ...`
+- 기본 순서:
+  1. **Fleet로 원인/영향범위 병렬 파악**
+  2. 필요한 수정 수행
+  3. **Tasks로 빌드/테스트/배포/로그 확인**
+- UI가 안 보이거나 반영 여부가 의심될 때는 **배포 누락 여부를 fleet 조사 항목에 반드시 포함**
 
 ### 사용자 선호
 - **절대 yes/no 확인 묻지 말 것** — 모든 진행은 yes로 간주하고 바로 실행
@@ -50,9 +81,9 @@ C# .NET 10.0 주식 자동매매 프로그램. 프론트엔드: React/Vite SPA (
 ## 아키텍처
 
 ```
-ClientApp/        React/Vite SPA 프론트엔드 (TypeScript)
-  src/pages/      PatternBuilder.tsx 등 주요 페이지
-  src/components/ 공유 컴포넌트
+desktop-app/      SvelteKit 데스크톱 프론트엔드
+  src/pages/      Dashboard, Optimization, PatternBuilder, Backtest
+  src/lib/        공유 컴포넌트
 Api/              REST API 엔드포인트 (Minimal API)
 Configuration/    설정 클래스 (PatternSettings, TradingSettings 등)
 Models/           도메인 모델 + Enums
@@ -107,7 +138,7 @@ MarketData → PatternScanner → SignalService(6단계필터) → OrderService(
 | `Services/Backtest/BacktestService.cs` | 백테스트 엔진 (WalkForward, MonteCarlo, 파라미터 최적화) |
 | `Api/OptimizeEndpoints.cs` | 파라미터 최적화 요청/응답 모델 + 엔드포인트 |
 | `Api/ApiEndpointExtensions.cs` | REST API 라우트 그룹 등록 (/api) |
-| `ClientApp/src/pages/PatternBuilder.tsx` | 패턴 빌더 + 파라미터 최적화 UI (React) |
+| `desktop-app/src/pages/PatternBuilder.svelte` | 패턴 빌더 UI (Svelte) |
 
 ## 에이전트 공통 정책 (Agent Shared Policy)
 
@@ -130,7 +161,7 @@ MarketData → PatternScanner → SignalService(6단계필터) → OrderService(
 | senior-backend-engineer | Services/Order/, Services/Signal/, Services/Risk/, Services/Account/, Services/ML/ | Services/Backtest/ |
 | data-infra-engineer | Data/, BackgroundServices/, Extensions/, Configuration/, Models/ | Program.cs |
 | notification-engineer | Services/Notification/, BackgroundServices/DailyReportService.cs | — |
-| frontend-ux-improver | ClientApp/src/, Components/Pages/, Components/Shared/, Components/Layout/ | wwwroot/ |
+| frontend-ux-improver | desktop-app/src/, Components/Pages/, Components/Shared/, Components/Layout/ | wwwroot/ |
 | trading-algorithm-researcher | Services/Patterns/, Services/Indicators/ | Models/PatternType.cs |
 | docker-ops | Dockerfile, docker-compose*.yml, .dockerignore, .env.example, .env | .gitignore (Docker 관련만) |
 
@@ -169,17 +200,18 @@ MarketData → PatternScanner → SignalService(6단계필터) → OrderService(
 
 ### K3s 배포 (기본 운영 환경)
 - **기본 배포 = K3s (buildah + containerd)**
-- 빌드: `sudo buildah build -t stocktrader:latest .`
-- K3s import: `sudo rm -f /tmp/stocktrader.tar && sudo buildah push stocktrader:latest docker-archive:/tmp/stocktrader.tar && sudo k3s ctr images import /tmp/stocktrader.tar`
-- 배포: `sudo kubectl rollout restart deployment/stocktrader -n stocktrader`
-- 로그: `sudo kubectl logs deployment/stocktrader -n stocktrader --tail=50`
-- Pod 상태: `sudo kubectl get pods -n stocktrader`
+- 이미지 빌드/로드: `./scripts/build-k3s.sh`
+- 배포: `kubectl apply -f k8s/deployment-api.yaml && kubectl apply -f k8s/deployment-desktop.yaml`
+- API 재시작: `kubectl rollout restart deployment/stocktrader-api -n stocktrader`
+- Desktop 재시작: `kubectl rollout restart deployment/stocktrader-desktop -n stocktrader`
+- 로그: `kubectl logs deployment/stocktrader-api -n stocktrader --tail=50`
+- Pod 상태: `kubectl get pods -n stocktrader`
 - `.env` 파일: K8s Secret으로 관리
 - **DataProtection 키**: `/data/keys`에 영구 저장 (SecurityServiceExtensions.cs)
 
 ### 프론트엔드 빌드
-- React SPA: `cd ClientApp && npx vite build 2>&1`
-- Dockerfile 내 자동 빌드됨 (multi-stage: node → dotnet SDK → runtime)
+- Desktop UI: `cd desktop-app && npm run build`
+- 배포 이미지는 `Dockerfile.desktop-prod`에서 빌드됨
 
 ## 절대 하지 말 것
 - MeanReversionChannel exit profiles 수정 (30%+ 성능 하락)

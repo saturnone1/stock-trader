@@ -7,6 +7,7 @@ public interface IIndicatorService
     decimal[] SMA(decimal[] closes, int period);
     decimal[] EMA(decimal[] closes, int period);
     decimal[] RSI(decimal[] closes, int period = 14);
+    decimal[] CumulativeRsi(decimal[] closes, int rsiPeriod, int cumulativePeriod);
     (decimal[] Upper, decimal[] Middle, decimal[] Lower) BollingerBands(
         decimal[] closes, int period = 20, decimal stdDevMultiplier = 2.0m);
     decimal[] VWAP(OhlcvBar[] bars);

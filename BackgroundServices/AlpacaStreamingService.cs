@@ -55,6 +55,12 @@ public class AlpacaStreamingService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!_settings.HasConfiguredCredentials)
+        {
+            _logger.LogWarning("AlpacaStreamingService disabled (credentials not configured)");
+            return;
+        }
+
         if (!_settings.EnableStreaming)
         {
             _logger.LogInformation("AlpacaStreamingService disabled (EnableStreaming=false)");

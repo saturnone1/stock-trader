@@ -66,8 +66,9 @@ internal static class PerformanceCalculator
     /// </summary>
     public static decimal ComputeKellyFraction(decimal winRate, decimal avgWinPct, decimal avgLossPct)
     {
-        if (avgLossPct <= 0) return 0;
+        if (avgWinPct <= 0 || avgLossPct <= 0) return 0;
         var b = avgWinPct / avgLossPct; // 손익비
+        if (b <= 0) return 0;
         var p = winRate;
         var q = 1 - p;
         var kelly = p - q / b;

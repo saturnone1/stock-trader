@@ -1,4 +1,5 @@
 using System.Text.Json;
+using StockTrader.BackgroundServices;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
@@ -40,6 +41,9 @@ public static class OptimizeJobEndpoints
                 MaxTestedCombinations = req.MaxTestedCombinations,
                 TopResultsToKeep      = req.TopResultsToKeep > 0 ? req.TopResultsToKeep : 50,
                 RankBy                = string.IsNullOrWhiteSpace(req.RankBy) ? "sortinoRatio" : req.RankBy,
+                ContinuousMode        = req.ContinuousMode,
+                AutoApplyBestResult   = req.AutoApplyBestResult,
+                AutoApplyMinTrades    = req.AutoApplyMinTrades > 0 ? req.AutoApplyMinTrades : 10,
                 RequestJson           = requestJson,
                 TotalCombinations     = totalCombinations,
                 Status                = OptimizationJobStatus.Pending,
@@ -78,6 +82,51 @@ public static class OptimizeJobEndpoints
                 return Results.NotFound();
 
             return Results.Ok(ToDetail(job));
+        });
+
+        group.MapPost("/{id:int}/settings", async (
+            int id,
+            UpdateOptimizeJobSettingsRequest req,
+            IOptimizationRepository repo,
+            CancellationToken ct) =>
+        {
+            var job = await repo.GetJobAsync(id);
+            if (job is null)
+                return Results.NotFound();
+
+            if (req.AutoApplyBestResult.HasValue)
+                job.AutoApplyBestResult = req.AutoApplyBestResult.Value;
+
+            if (req.AutoApplyMinTrades.HasValue && req.AutoApplyMinTrades.Value > 0)
+                job.AutoApplyMinTrades = req.AutoApplyMinTrades.Value;
+
+            await repo.UpdateJobAsync(job);
+            return Results.Ok(ToSummary(job));
+        });
+
+        group.MapPost("/{id:int}/apply-result", async (
+            int id,
+            ApplyOptimizeJobResultRequest req,
+            OptimizationAutoTuneService autoTuneService,
+            CancellationToken ct) =>
+        {
+            var outcome = await autoTuneService.ApplyResultAsync(id, req.ResultId, isAutoApply: false, ct);
+            if (!outcome.Success)
+                return Results.BadRequest(new ApplyOptimizeJobResultResponse
+                {
+                    Success = false,
+                    Message = outcome.Message,
+                    AppliedResultId = outcome.AppliedResultId,
+                    AppliedResultCount = outcome.AppliedResultCount
+                });
+
+            return Results.Ok(new ApplyOptimizeJobResultResponse
+            {
+                Success = true,
+                Message = outcome.Message,
+                AppliedResultId = outcome.AppliedResultId,
+                AppliedResultCount = outcome.AppliedResultCount
+            });
         });
 
         // ── POST /api/optimize-jobs/{id}/cancel — 취소 ─────────────────────────
@@ -192,6 +241,13 @@ public static class OptimizeJobEndpoints
         ProgressPercent     = CalculateProgress(job),
         CreatedAt           = job.CreatedAt,
         StartedAt           = job.StartedAt,
+        ContinuousMode      = job.ContinuousMode,
+        AutoApplyBestResult = job.AutoApplyBestResult,
+        AutoApplyMinTrades  = job.AutoApplyMinTrades,
+        AppliedResultCount  = job.AppliedResultCount,
+        LastAutoAppliedAt   = job.LastAutoAppliedAt,
+        LastAutoAppliedResultId = job.LastAutoAppliedResultId,
+        LastAutoApplyMessage = job.LastAutoApplyMessage,
     };
 
     private static OptimizeJobDetail ToDetail(OptimizationJob job)
@@ -223,6 +279,13 @@ public static class OptimizeJobEndpoints
             CompletedAt                = job.CompletedAt,
             LastProgressAt             = job.LastProgressAt,
             ErrorMessage               = job.ErrorMessage,
+            ContinuousMode             = job.ContinuousMode,
+            AutoApplyBestResult        = job.AutoApplyBestResult,
+            AutoApplyMinTrades         = job.AutoApplyMinTrades,
+            AppliedResultCount         = job.AppliedResultCount,
+            LastAutoAppliedAt          = job.LastAutoAppliedAt,
+            LastAutoAppliedResultId    = job.LastAutoAppliedResultId,
+            LastAutoApplyMessage       = job.LastAutoApplyMessage,
             TopResults                 = topPreview,
         };
     }

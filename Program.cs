@@ -16,6 +16,7 @@ using StockTrader.Services.Auth;
 using StockTrader.Services.Backtest;
 using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Order;
+using StockTrader.BackgroundServices;
 
 // Serilog bootstrap logger — captures startup errors before host is built
 Log.Logger = new LoggerConfiguration()
@@ -58,6 +59,22 @@ builder.Services.AddStockTraderServices(builder.Configuration);
 
 // Add security services (cookie auth, crypto, rate limiting)
 builder.Services.AddSecurityServices(builder.Configuration);
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("DesktopUi", policy =>
+    {
+        policy.WithOrigins(
+                "http://stock-desktop.taewon",
+                "https://stock-desktop.taewon",
+                "http://localhost:5173",
+                "http://localhost:8000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:8000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
 // Auth HttpClient — Blazor Server 컴포넌트에서 자체 API(/api/auth/*)를 호출할 때 사용
 // Kestrel은 0.0.0.0:5239로 바인딩되므로, 자체 호출에는 localhost 사용
@@ -73,6 +90,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var financialPipeline = scope.ServiceProvider.GetRequiredService<FinancialSnapshotIngestionService>();
     await db.Database.EnsureCreatedAsync();
 
     // UserSettings 테이블에 리스크 관련 컬럼이 없으면 추가 (기존 DB 호환)
@@ -127,6 +145,65 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = sql;
                 await cmd.ExecuteNonQueryAsync();
             }
+        }
+
+        // FinancialSnapshots 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='FinancialSnapshots'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE FinancialSnapshots (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Symbol TEXT NOT NULL DEFAULT '',
+                    AsOfDate TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    Source TEXT NOT NULL DEFAULT 'Manual',
+                    PeRatio REAL,
+                    PbRatio REAL,
+                    RoePercent REAL,
+                    OperatingMarginPercent REAL,
+                    RevenueCurrent REAL,
+                    RevenuePrevious REAL,
+                    OperatingIncomeCurrent REAL,
+                    OperatingIncomePrevious REAL,
+                    NetIncomeCurrent REAL,
+                    NetIncomePrevious REAL,
+                    Notes TEXT,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+                )";
+            await cmd.ExecuteNonQueryAsync();
+
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_FinancialSnapshots_Symbol_AsOfDate ON FinancialSnapshots (Symbol, AsOfDate)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialSnapshots_AsOfDate ON FinancialSnapshots (AsOfDate)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialSnapshots_Symbol ON FinancialSnapshots (Symbol)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='FinancialImportRuns'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE FinancialImportRuns (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    SourceType TEXT NOT NULL DEFAULT '',
+                    FilePath TEXT NOT NULL DEFAULT '',
+                    Fingerprint TEXT NOT NULL DEFAULT '',
+                    Status TEXT NOT NULL DEFAULT 'Pending',
+                    ImportedCount INTEGER NOT NULL DEFAULT 0,
+                    SkippedCount INTEGER NOT NULL DEFAULT 0,
+                    ErrorMessage TEXT,
+                    StartedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    CompletedAt TEXT
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_FinancialImportRuns_FilePath_Fingerprint ON FinancialImportRuns (FilePath, Fingerprint)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialImportRuns_StartedAt ON FinancialImportRuns (StartedAt)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialImportRuns_Status ON FinancialImportRuns (Status)";
+            await cmd.ExecuteNonQueryAsync();
         }
 
         // TradingAccounts 테이블 마이그레이션
@@ -376,11 +453,46 @@ using (var scope = app.Services.CreateScope())
                     MaxTestedCombinations INTEGER,
                     RankBy TEXT NOT NULL DEFAULT 'sortinoRatio',
                     TopResultsToKeep INTEGER NOT NULL DEFAULT 50,
+                    ContinuousMode INTEGER NOT NULL DEFAULT 0,
+                    AutoApplyBestResult INTEGER NOT NULL DEFAULT 0,
+                    AutoApplyMinTrades INTEGER NOT NULL DEFAULT 10,
+                    AppliedResultCount INTEGER NOT NULL DEFAULT 0,
+                    LastAutoAppliedAt TEXT,
+                    LastAutoAppliedResultId INTEGER,
+                    LastAutoApplyMessage TEXT,
                     ErrorMessage TEXT
                 )";
             await cmd.ExecuteNonQueryAsync();
             cmd.CommandText = "CREATE INDEX IX_OptimizationJobs_Status_Priority ON OptimizationJobs (Status, Priority)";
             await cmd.ExecuteNonQueryAsync();
+        }
+
+        cmd.CommandText = "PRAGMA table_info(OptimizationJobs)";
+        var optimizationJobColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var optimizationJobReader = await cmd.ExecuteReaderAsync())
+        {
+            while (await optimizationJobReader.ReadAsync())
+                optimizationJobColumns.Add(optimizationJobReader.GetString(1));
+        }
+
+        var optimizationJobAlterStatements = new Dictionary<string, string>
+        {
+            ["ContinuousMode"] = "ALTER TABLE OptimizationJobs ADD COLUMN ContinuousMode INTEGER NOT NULL DEFAULT 0",
+            ["AutoApplyBestResult"] = "ALTER TABLE OptimizationJobs ADD COLUMN AutoApplyBestResult INTEGER NOT NULL DEFAULT 0",
+            ["AutoApplyMinTrades"] = "ALTER TABLE OptimizationJobs ADD COLUMN AutoApplyMinTrades INTEGER NOT NULL DEFAULT 10",
+            ["AppliedResultCount"] = "ALTER TABLE OptimizationJobs ADD COLUMN AppliedResultCount INTEGER NOT NULL DEFAULT 0",
+            ["LastAutoAppliedAt"] = "ALTER TABLE OptimizationJobs ADD COLUMN LastAutoAppliedAt TEXT",
+            ["LastAutoAppliedResultId"] = "ALTER TABLE OptimizationJobs ADD COLUMN LastAutoAppliedResultId INTEGER",
+            ["LastAutoApplyMessage"] = "ALTER TABLE OptimizationJobs ADD COLUMN LastAutoApplyMessage TEXT"
+        };
+
+        foreach (var (col, sql) in optimizationJobAlterStatements)
+        {
+            if (!optimizationJobColumns.Contains(col))
+            {
+                cmd.CommandText = sql;
+                await cmd.ExecuteNonQueryAsync();
+            }
         }
 
         // OptimizationResults 테이블 생성 (없는 경우)
@@ -508,6 +620,8 @@ using (var scope = app.Services.CreateScope())
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         logger.LogWarning(ex, "기본 계좌 시드 중 오류 발생 (무시하고 계속)");
     }
+
+    Directory.CreateDirectory(financialPipeline.GetResolvedImportDirectory());
 }
 
 // Configure the HTTP request pipeline.
@@ -574,7 +688,9 @@ app.UseSerilogRequestLogging(options =>
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
 });
 
-// StatusCodePages 제거 — React SPA가 클라이언트 사이드 라우팅으로 404 처리
+app.UseCors("DesktopUi");
+
+// StatusCodePages 제거 — API 전용 서버로 404를 그대로 반환
 
 // Only redirect to HTTPS in local development (not Docker).
 if (app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
@@ -582,77 +698,21 @@ if (app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("DOTNET
     app.UseHttpsRedirection();
 }
 
-// ── React SPA (메인 프론트엔드) ──────────────────────────────────────────────
-// /api, /blazor 이외의 모든 요청은 React SPA로 서빙.
-// UseAuthentication 전에 배치하여 SPA 정적 파일이 인증 없이 서빙되도록 함.
-var reactDistPath = System.IO.Path.Combine(app.Environment.ContentRootPath, "ClientApp", "dist");
-if (System.IO.Directory.Exists(reactDistPath))
-{
-    var reactFileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(reactDistPath);
-
-    // React 정적 파일 (JS, CSS, manifest 등)
-    // assets/ 디렉토리는 파일명에 해시가 포함되므로 장기 캐싱,
-    // 그 외(index.html 등)는 no-cache로 항상 최신 버전 확인
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = reactFileProvider,
-        RequestPath = "",
-        OnPrepareResponse = ctx =>
-        {
-            var path = ctx.File.Name;
-            if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
-            {
-                // 해시된 파일: 1년 캐시 + immutable
-                ctx.Context.Response.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
-            }
-            else
-            {
-                // index.html 등: 절대 캐싱하지 않음
-                ctx.Context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-            }
-        }
-    });
-
-    // SPA fallback: /api가 아닌 모든 경로 → index.html
-    app.Use(async (context, next) =>
-    {
-        var path = context.Request.Path.Value ?? "";
-
-        // API, _blazor, _framework 등은 통과
-        if (path.StartsWith("/api") ||
-            path.StartsWith("/_") ||
-            path.StartsWith("/favicon"))
-        {
-            await next();
-            return;
-        }
-
-        // 정적 파일이면 통과
-        var fileInfo = reactFileProvider.GetFileInfo(path.TrimStart('/'));
-        if (fileInfo.Exists && !fileInfo.IsDirectory)
-        {
-            await next();
-            return;
-        }
-
-        // 나머지는 SPA fallback → index.html (절대 캐싱 금지)
-        context.Response.ContentType = "text/html";
-        context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-        context.Response.Headers["Pragma"] = "no-cache";
-        context.Response.Headers["Expires"] = "0";
-        var indexPath = System.IO.Path.Combine(reactDistPath, "index.html");
-        var html = await System.IO.File.ReadAllTextAsync(indexPath);
-        await context.Response.WriteAsync(html);
-    });
-}
-
 app.UseAuthentication();
 app.UseAuthorization();
-
-// UseAntiforgery 제거 — Blazor Server 전용, React SPA에서는 불필요
-
+app.UseAntiforgery();
+ 
 // ── StockTrader REST API (Dashboard, Portfolio, Signals, Trades, Risk, Settings, Accounts, ML, Analysis) ──
 app.MapStockTraderApi();
+
+app.MapGet("/api/health", (IOptions<AlpacaSettings> alpaca) =>
+    Results.Ok(new
+    {
+        status = "ok",
+        service = "stocktrader-api",
+        alpacaConfigured = alpaca.Value.HasConfiguredCredentials,
+        timestamp = DateTimeOffset.UtcNow
+    }));
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
 
@@ -689,6 +749,33 @@ app.MapPost("/api/auth/logout", async (HttpContext ctx, IAuditService audit) =>
     if (int.TryParse(userId, out var uid))
         await audit.LogAsync(uid, "LOGOUT", "User signed out");
     return Results.Ok(new { message = "로그아웃 완료" });
+});
+
+app.MapGet("/api/auth/me", (HttpContext ctx) =>
+{
+    if (!ctx.User.Identity?.IsAuthenticated ?? true)
+        return Results.Unauthorized();
+
+    var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    var username = ctx.User.Identity?.Name ?? ctx.User.FindFirstValue(ClaimTypes.Name) ?? "";
+
+    return Results.Ok(new
+    {
+        userId,
+        username,
+        authenticated = true
+    });
+});
+
+app.MapGet("/api/auth/bootstrap", async (IAuthService auth,
+    IOptionsMonitor<SecuritySettings> securityOptions) =>
+{
+    var hasUsers = await auth.HasAnyUserAsync();
+    return Results.Ok(new
+    {
+        hasUsers,
+        allowRegistration = !hasUsers || securityOptions.CurrentValue.AllowRegistration
+    });
 });
 
 app.MapPost("/api/auth/register", async (HttpContext ctx, IAuthService auth,
@@ -806,49 +893,11 @@ app.MapPost("/api/orders/close-position", async (HttpContext ctx, StockTrader.Se
 }).RequireRateLimiting("api").RequireAuthorization();
 
 // ── Backtest API ──
-app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService svc,
-    TqqqWeightBacktester weightBt, CancellationToken ct) =>
+app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService svc, CancellationToken ct) =>
 {
-    // 비중 관리 모드: TqqqWeightBacktester 엔진 사용 (일반화)
     if (string.Equals(request.BacktestMode, "weight", StringComparison.OrdinalIgnoreCase))
     {
-        var targetSymbol = request.Symbols.FirstOrDefault() ?? "TQQQ";
-        var weightResult = await weightBt.RunAsync(
-            targetSymbol,
-            request.RefSymbol ?? "QQQ",
-            request.SpySymbol ?? "SPY",
-            request.From,
-            request.To,
-            request.InitialCapital,
-            request.DataSource,
-            request.WeightModeParams,
-            ct);
-
-        // 다운샘플 (300포인트)
-        var sampled = weightResult.DailyRecords.Count <= 300
-            ? weightResult.DailyRecords
-            : Enumerable.Range(0, 300)
-                .Select(i => weightResult.DailyRecords[(int)Math.Round((double)i * (weightResult.DailyRecords.Count - 1) / 299)])
-                .ToList();
-
-        return Results.Ok(new
-        {
-            BacktestMode = "weight",
-            weightResult.TotalReturnPercent,
-            weightResult.Cagr,
-            weightResult.MaxDrawdownPercent,
-            weightResult.SharpeRatio,
-            weightResult.TotalDays,
-            weightResult.InvestedDays,
-            TargetSymbol = targetSymbol,
-            RefSymbol = request.RefSymbol ?? "QQQ",
-            SpySymbol = request.SpySymbol ?? "SPY",
-            DailyRecords = sampled.Select(r => new
-            {
-                Date = r.Date.ToString("yyyy-MM-dd"),
-                r.Code, r.Weight, r.TqqqClose, r.DailyReturn, r.Equity
-            }),
-        });
+        return Results.BadRequest(new { error = "weight 백테스트 모드는 제거되었습니다. 패턴 백테스트 또는 패턴 빌더를 사용하세요." });
     }
 
     var result = await svc.RunAsync(request, ct);
@@ -944,49 +993,12 @@ app.MapPost("/api/backtest/apply-live", async (
     return Results.Ok(new { message = "실거래 파라미터가 적용되었습니다." });
 }).RequireAuthorization();
 
-// ── TQQQ 비중 백테스트 API ────────────────────────────────────────────────────
-// fmkorea "200일 티큐 변형매매법" 포지션-비중 백테스터.
-// TQQQ 200SMA + QQQ MA3/MA161 + SPY MA200 기반으로 매일 비중(0/5/10/80/90/100%)을 결정.
-app.MapPost("/api/backtest/tqqq", async (TqqqBacktestRequest req, TqqqWeightBacktester bt, CancellationToken ct) =>
-{
-    var result = await bt.RunAsync(
-        req.From,
-        req.To,
-        req.InitialCapital,
-        req.DataSource,
-        req.Params,
-        ct);
+app.MapStaticAssets();
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
 
-    // 다운샘플: 최대 300포인트 (차트용)
-    var allRecords = result.DailyRecords;
-    var sampled = allRecords.Count <= 300
-        ? allRecords
-        : Enumerable.Range(0, 300)
-            .Select(i => allRecords[(int)Math.Round((double)i * (allRecords.Count - 1) / 299)])
-            .ToList();
-
-    return Results.Ok(new
-    {
-        result.TotalReturnPercent,
-        result.Cagr,
-        result.MaxDrawdownPercent,
-        result.SharpeRatio,
-        result.TotalDays,
-        result.InvestedDays,
-        DailyRecords = sampled.Select(r => new
-        {
-            Date        = r.Date.ToString("yyyy-MM-dd"),
-            r.Code,
-            r.Weight,
-            r.TqqqClose,
-            r.DailyReturn,
-            r.Equity
-        })
-    });
-});
-
-// Blazor가 React로 교체됨. API 전용 서버.
-// MapStaticAssets/MapRazorComponents 제거 — React SPA가 모든 UI 담당.
+// 데스크톱 Svelte UI와 별개로 기존 Blazor 운영 UI도 유지한다.
+// /api/* 는 REST API, 그 외 라우트는 기존 운영 화면으로 제공된다.
 
 app.Run();
 

@@ -7,6 +7,7 @@ using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
 using StockTrader.Services.Backtest;
 using StockTrader.Services.Broker;
+using StockTrader.Services.Indicators;
 using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Notification;
 using TimeZoneConverter;
@@ -31,6 +32,8 @@ public class PositionExitManagerService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IAccountManager _accountManager;
     private readonly INotificationService _notificationService;
+    private readonly IIndicatorService _indicators;
+    private readonly IOptionsMonitor<PatternSettings> _patternSettings;
     private readonly TradingSettings _tradingSettings;
     private readonly ILogger<PositionExitManagerService> _logger;
 
@@ -47,12 +50,16 @@ public class PositionExitManagerService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IAccountManager accountManager,
         INotificationService notificationService,
+        IIndicatorService indicators,
+        IOptionsMonitor<PatternSettings> patternSettings,
         IOptions<TradingSettings> tradingSettings,
         ILogger<PositionExitManagerService> logger)
     {
         _scopeFactory = scopeFactory;
         _accountManager = accountManager;
         _notificationService = notificationService;
+        _indicators = indicators;
+        _patternSettings = patternSettings;
         _tradingSettings = tradingSettings.Value;
         _logger = logger;
     }
@@ -211,19 +218,41 @@ public class PositionExitManagerService : BackgroundService
         Position position, IOhlcvRepository ohlcvRepo, CancellationToken ct)
     {
         var pep = TradeSimulator.PatternExitProfile.For(position.PatternType, _liveExitOverrides);
+        var effectivePatternSettings = _liveExitOverrides == null
+            ? _patternSettings.CurrentValue
+            : PatternOverrideMerger.Merge(_patternSettings.CurrentValue, _liveExitOverrides);
+        var cumulativeRsi2Config = effectivePatternSettings.CumulativeRsi2;
         var state = _exitStates.GetOrAdd(position.Id, _ => new ExitState());
+        List<OhlcvBar>? recentBars = null;
+        decimal currentCumulativeRsi2 = 0;
+        decimal currentCumulativeRsi2TrendMa = 0;
 
         // ATR 계산: DB에 저장된 EntryAtr 우선 사용, 없으면 최근 봉에서 계산.
         // ATR(14)는 15개 봉(TR 14개 + 이전 종가 1개)이 필요하다.
         // 20일 달력 기간으로 조회하면 주말·공휴일 제외 시 실질 영업일이 14개 이하가 되어
         // ATR이 0으로 반환될 위험이 있다. 30일로 확장하면 약 21영업일을 확보할 수 있다.
         var atr = position.EntryAtr;
-        if (atr <= 0)
+        var needsIndicatorBars = position.PatternType == PatternType.CumulativeRsi2 || atr <= 0;
+        if (needsIndicatorBars)
         {
-            var bars = await ohlcvRepo.GetBarsAsync(position.Symbol, TimeFrame.Daily,
-                DateTime.UtcNow.AddDays(-30), DateTime.UtcNow, ct);
-            if (bars.Count >= 15)
-                atr = CalculateSimpleAtr(bars, 14);
+            recentBars = await ohlcvRepo.GetBarsAsync(position.Symbol, TimeFrame.Daily,
+                DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+            if (atr <= 0 && recentBars.Count >= 15)
+                atr = CalculateSimpleAtr(recentBars, 14);
+        }
+
+        if (position.PatternType == PatternType.CumulativeRsi2 && recentBars is { Count: > 0 })
+        {
+            var barsArray = recentBars.ToArray();
+            var closes = IndicatorService.ExtractCloses(barsArray);
+            var cumulativeRsi2 = _indicators.CumulativeRsi(
+                closes, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
+            var trendMa = _indicators.SMA(closes, cumulativeRsi2Config.LongTrendMaPeriod);
+
+            if (cumulativeRsi2.Length > 0)
+                currentCumulativeRsi2 = cumulativeRsi2[^1];
+            if (trendMa.Length > 0)
+                currentCumulativeRsi2TrendMa = trendMa[^1];
         }
 
         var stopDistance = Math.Abs(position.EntryPrice - position.StopLossPrice);
@@ -271,6 +300,19 @@ public class PositionExitManagerService : BackgroundService
             var reason = state.BreakevenApplied || state.TrailingActivated
                 ? "트레일링 손절" : "손절";
             return (true, reason);
+        }
+
+        if (position.PatternType == PatternType.CumulativeRsi2
+            && currentCumulativeRsi2TrendMa > 0
+            && position.CurrentPrice <= currentCumulativeRsi2TrendMa)
+        {
+            return (true, $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
+        }
+
+        if (position.PatternType == PatternType.CumulativeRsi2
+            && currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold)
+        {
+            return (true, $"누적 RSI 청산({currentCumulativeRsi2:F1})");
         }
 
         // 5. 목표가 체크

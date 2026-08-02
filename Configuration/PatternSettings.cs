@@ -27,6 +27,7 @@ public class PatternSettings
     public Rsi2BollingerConfig Rsi2Bollinger { get; set; } = new();
     public VolatilityBreakoutConfig VolatilityBreakout { get; set; } = new();
     public Tqqq200SmaConfig Tqqq200Sma { get; set; } = new();
+    public CumulativeRsi2Config CumulativeRsi2 { get; set; } = new();
 }
 
 public class GapUpPullbackConfig
@@ -162,6 +163,37 @@ public class Rsi2BollingerConfig
 
     /// <summary>ATR multiplier for stop loss placement (entry - ATR * multiplier).</summary>
     public decimal AtrStopMultiplier { get; set; } = 1.5m;
+}
+
+/// <summary>
+/// Connors cumulative RSI(2) mean reversion config.
+/// 최근 N일 RSI(2) 합산값으로 극단 과매도/과열을 판단한다.
+/// </summary>
+public class CumulativeRsi2Config
+{
+    /// <summary>개별 RSI 계산 기간. Connors 기본값은 2.</summary>
+    public int RsiPeriod { get; set; } = 2;
+
+    /// <summary>누적할 RSI 봉 수. 문헌 기본값은 2일 합산.</summary>
+    public int CumulativePeriod { get; set; } = 2;
+
+    /// <summary>진입 누적 RSI 임계값. 이 값 이하에서 매수.</summary>
+    public decimal EntryThreshold { get; set; } = 10m;
+
+    /// <summary>청산 누적 RSI 임계값. 이 값 이상에서 청산.</summary>
+    public decimal ExitThreshold { get; set; } = 65m;
+
+    /// <summary>장기 추세 필터 이동평균 기간. 기본 200일.</summary>
+    public int LongTrendMaPeriod { get; set; } = 200;
+
+    /// <summary>브래킷 목표가 보조 계산용 단기 SMA 기간.</summary>
+    public int ExitSmaPeriod { get; set; } = 5;
+
+    /// <summary>고정 손절 ATR 배수.</summary>
+    public decimal AtrStopMultiplier { get; set; } = 1.5m;
+
+    /// <summary>실거래 브래킷 주문용 보조 목표 ATR 배수. 실제 청산은 누적 RSI/추세 이탈이 우선.</summary>
+    public decimal PlaceholderTargetAtrMultiplier { get; set; } = 8.0m;
 }
 
 /// <summary>

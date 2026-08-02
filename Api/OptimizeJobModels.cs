@@ -29,8 +29,36 @@ public class CreateOptimizeJobRequest
     /// <summary>결과 정렬 기준: totalReturn, sortinoRatio, sharpeRatio, calmarRatio, profitFactor, winRate</summary>
     public string RankBy { get; set; } = "sortinoRatio";
 
+    /// <summary>완료 후 동일 조건으로 다음 최적화 Job을 자동 생성합니다.</summary>
+    public bool ContinuousMode { get; set; }
+
+    /// <summary>완료 후 최고 결과를 저장된 커스텀 패턴에 자동 반영합니다.</summary>
+    public bool AutoApplyBestResult { get; set; }
+
+    /// <summary>자동 반영 시 필요한 최소 거래 수. OOS가 있으면 OOS 거래 수 기준입니다.</summary>
+    public int AutoApplyMinTrades { get; set; } = 10;
+
     /// <summary>최적화 실행 파라미터 (기존 OptimizeRequest와 동일한 구조)</summary>
     public OptimizeRequest OptimizeRequest { get; set; } = new();
+}
+
+public class UpdateOptimizeJobSettingsRequest
+{
+    public bool? AutoApplyBestResult { get; set; }
+    public int? AutoApplyMinTrades { get; set; }
+}
+
+public class ApplyOptimizeJobResultRequest
+{
+    public int? ResultId { get; set; }
+}
+
+public class ApplyOptimizeJobResultResponse
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = "";
+    public int? AppliedResultId { get; set; }
+    public int AppliedResultCount { get; set; }
 }
 
 // ── Job 목록 응답 ─────────────────────────────────────────────────────────────
@@ -49,6 +77,13 @@ public class OptimizeJobSummary
     public decimal ProgressPercent { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }
+    public bool ContinuousMode { get; set; }
+    public bool AutoApplyBestResult { get; set; }
+    public int AutoApplyMinTrades { get; set; }
+    public int AppliedResultCount { get; set; }
+    public DateTime? LastAutoAppliedAt { get; set; }
+    public int? LastAutoAppliedResultId { get; set; }
+    public string? LastAutoApplyMessage { get; set; }
 }
 
 // ── Job 상세 응답 ─────────────────────────────────────────────────────────────
@@ -77,6 +112,13 @@ public class OptimizeJobDetail
     public DateTime? CompletedAt { get; set; }
     public DateTime? LastProgressAt { get; set; }
     public string? ErrorMessage { get; set; }
+    public bool ContinuousMode { get; set; }
+    public bool AutoApplyBestResult { get; set; }
+    public int AutoApplyMinTrades { get; set; }
+    public int AppliedResultCount { get; set; }
+    public DateTime? LastAutoAppliedAt { get; set; }
+    public int? LastAutoAppliedResultId { get; set; }
+    public string? LastAutoApplyMessage { get; set; }
 
     /// <summary>상위 3개 결과 미리보기. 결과가 없으면 null.</summary>
     public List<OptimizeResultItem>? TopResults { get; set; }
