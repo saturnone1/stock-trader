@@ -1,3 +1,4 @@
+using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Indicators;
@@ -64,6 +65,11 @@ internal sealed class TradeSimulator
         var atrArray = _indicators.ATR(barsArray, 14);
         var closesArray = IndicatorService.ExtractCloses(barsArray);
         var sma200Array = _indicators.SMA(closesArray, 200);
+        var cumulativeRsi2Config = new CumulativeRsi2Config();
+        var cumulativeRsi2Array = _indicators.CumulativeRsi(
+            closesArray, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
+        var cumulativeRsi2TrendMaArray = _indicators.SMA(
+            closesArray, cumulativeRsi2Config.LongTrendMaPeriod);
 
         var pepCache = new Dictionary<PatternType, PatternExitProfile>();
         var trades = new List<TradeRecord>();
@@ -87,6 +93,7 @@ internal sealed class TradeSimulator
             {
                 var exitResult = ProcessExitLogic(
                     openPosition, currentBar, i, atrArray[i], sma200Array[i],
+                    cumulativeRsi2Array[i], cumulativeRsi2TrendMaArray[i], cumulativeRsi2Config,
                     pepCache, exitOverrides, symbol, trades);
                 openPosition = exitResult;
             }
@@ -186,6 +193,9 @@ internal sealed class TradeSimulator
         int barIndex,
         decimal currentAtrRaw,
         decimal sma200,
+        decimal currentCumulativeRsi2,
+        decimal currentCumulativeRsi2TrendMa,
+        CumulativeRsi2Config cumulativeRsi2Config,
         Dictionary<PatternType, PatternExitProfile> pepCache,
         PatternParameterOverrides? exitOverrides,
         string symbol,
@@ -303,6 +313,19 @@ internal sealed class TradeSimulator
                 : openPosition.BreakevenApplied || openPosition.TrailingStopActivated
                     ? "트레일링 손절"
                     : "손절";
+        }
+        else if (openPosition.PatternType == PatternType.CumulativeRsi2
+                 && currentCumulativeRsi2TrendMa > 0
+                 && currentBar.Close <= currentCumulativeRsi2TrendMa)
+        {
+            exitPrice = currentBar.Close;
+            exitReason = $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈";
+        }
+        else if (openPosition.PatternType == PatternType.CumulativeRsi2
+                 && currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold)
+        {
+            exitPrice = currentBar.Close;
+            exitReason = $"누적 RSI 청산({currentCumulativeRsi2:F1})";
         }
         else if (pep.EnableTargetExit && currentBar.High >= openPosition.Target)
         {
@@ -464,6 +487,7 @@ internal sealed class TradeSimulator
                 PatternType.MultiTimeframeTrend     => (ov.Mtf_ExitMaxHoldingBars,       ov.Mtf_ExitTrailingAtr,      ov.Mtf_ExitPartialR),
                 PatternType.MeanReversionChannel    => (ov.Chan_ExitMaxHoldingBars,      ov.Chan_ExitTrailingAtr,     ov.Chan_ExitPartialR),
                 PatternType.Rsi2Bollinger           => (ov.Rsi2Bb_ExitMaxHoldingBars,    ov.Rsi2Bb_ExitTrailingAtr,   ov.Rsi2Bb_ExitPartialR),
+                PatternType.CumulativeRsi2          => (ov.CumRsi2_ExitMaxHoldingBars,   ov.CumRsi2_ExitTrailingAtr,  ov.CumRsi2_ExitPartialR),
                 PatternType.VolatilityBreakout      => (ov.VolBrk_ExitMaxHoldingBars,    ov.VolBrk_ExitTrailingAtr,   ov.VolBrk_ExitPartialR),
                 PatternType.Tqqq200Sma              => (ov.Tqqq_ExitMaxHoldingBars,      (decimal?)null,              (decimal?)null),
                 _                                   => ((int?)null, (decimal?)null, (decimal?)null)
@@ -496,6 +520,7 @@ internal sealed class TradeSimulator
             PatternType.VolatilityExpansion     => new( 7, true,  2.0m, 1.5m, true,  2.0m, true,  true),
             PatternType.MeanReversionChannel    => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
             PatternType.Rsi2Bollinger           => new( 5, false, 0m,   0m,   true,  1.5m, true,  true),
+            PatternType.CumulativeRsi2          => new(20, false, 0m,   0m,   false, 0m,   false, false, 0m),
 
             // ── Swing Trading ──
             PatternType.Breakout                => new(15, true,  2.5m, 1.5m, true,  2.5m, true,  true),

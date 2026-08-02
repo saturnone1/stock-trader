@@ -31,6 +31,14 @@ public class OptimizationRepository : IOptimizationRepository
             .FirstOrDefaultAsync(j => j.Id == id);
     }
 
+    public async Task<OptimizationJob?> GetJobSummaryAsync(int id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.OptimizationJobs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == id);
+    }
+
     public async Task<List<OptimizationJob>> GetJobsAsync(OptimizationJobStatus? status = null)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
@@ -38,6 +46,15 @@ public class OptimizationRepository : IOptimizationRepository
         if (status.HasValue)
             query = query.Where(j => j.Status == status.Value);
         return await query.OrderByDescending(j => j.CreatedAt).ToListAsync();
+    }
+
+    public async Task<OptimizationJobStatus?> GetJobStatusAsync(int id)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.OptimizationJobs
+            .Where(j => j.Id == id)
+            .Select(j => (OptimizationJobStatus?)j.Status)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<OptimizationJob?> GetNextPendingJobAsync()
@@ -56,6 +73,50 @@ public class OptimizationRepository : IOptimizationRepository
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         db.OptimizationJobs.Update(job);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task UpdateJobProgressAsync(
+        int id,
+        long testedCombinations,
+        int currentChunkIndex,
+        DateTime? lastProgressAt,
+        long? totalCombinations = null)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var job = await db.OptimizationJobs.FindAsync(id)
+            ?? throw new InvalidOperationException($"OptimizationJob {id}를 찾을 수 없습니다.");
+
+        job.TestedCombinations = testedCombinations;
+        job.CurrentChunkIndex = currentChunkIndex;
+        job.LastProgressAt = lastProgressAt;
+
+        if (totalCombinations.HasValue && totalCombinations.Value > 0)
+            job.TotalCombinations = totalCombinations.Value;
+
+        await db.SaveChangesAsync();
+    }
+
+    public async Task RequeueContinuousJobAsync(int id, string requestJson)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var job = await db.OptimizationJobs
+            .Include(j => j.Results)
+            .FirstOrDefaultAsync(j => j.Id == id)
+            ?? throw new InvalidOperationException($"OptimizationJob {id}를 찾을 수 없습니다.");
+
+        if (job.Results.Count > 0)
+            db.OptimizationResults.RemoveRange(job.Results);
+
+        job.RequestJson = requestJson;
+        job.Status = OptimizationJobStatus.Pending;
+        job.TestedCombinations = 0;
+        job.CurrentChunkIndex = 0;
+        job.StartedAt = null;
+        job.CompletedAt = null;
+        job.LastProgressAt = null;
+        job.ErrorMessage = null;
+
         await db.SaveChangesAsync();
     }
 

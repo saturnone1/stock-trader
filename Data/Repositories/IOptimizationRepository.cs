@@ -7,13 +7,22 @@ public interface IOptimizationRepository
     // Job CRUD
     Task<OptimizationJob> CreateJobAsync(OptimizationJob job);
     Task<OptimizationJob?> GetJobAsync(int id);
+    Task<OptimizationJob?> GetJobSummaryAsync(int id);
     Task<List<OptimizationJob>> GetJobsAsync(OptimizationJobStatus? status = null);
+    Task<OptimizationJobStatus?> GetJobStatusAsync(int id);
 
     /// <summary>
     /// Priority DESC 순으로 다음 Pending 작업을 반환한다.
     /// </summary>
     Task<OptimizationJob?> GetNextPendingJobAsync();
     Task UpdateJobAsync(OptimizationJob job);
+    Task UpdateJobProgressAsync(
+        int id,
+        long testedCombinations,
+        int currentChunkIndex,
+        DateTime? lastProgressAt,
+        long? totalCombinations = null);
+    Task RequeueContinuousJobAsync(int id, string requestJson);
     Task DeleteJobAsync(int id);
 
     // 결과 관리

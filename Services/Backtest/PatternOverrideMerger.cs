@@ -28,6 +28,7 @@ internal static class PatternOverrideMerger
         ("Mtf",      nameof(PatternSettings.MultiTimeframeTrend)),
         ("Chan",     nameof(PatternSettings.MeanReversionChannel)),
         ("Rsi2Bb",   nameof(PatternSettings.Rsi2Bollinger)),
+        ("CumRsi2",  nameof(PatternSettings.CumulativeRsi2)),
         ("VolBrk",   nameof(PatternSettings.VolatilityBreakout)),
         ("Tqqq",     nameof(PatternSettings.Tqqq200Sma)),
     ];

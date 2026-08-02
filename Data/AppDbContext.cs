@@ -19,6 +19,8 @@ public class AppDbContext : DbContext
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SymbolProfile> SymbolProfiles => Set<SymbolProfile>();
+    public DbSet<FinancialSnapshot> FinancialSnapshots => Set<FinancialSnapshot>();
+    public DbSet<FinancialImportRun> FinancialImportRuns => Set<FinancialImportRun>();
     public DbSet<CustomPatternDefinition> CustomPatterns => Set<CustomPatternDefinition>();
     public DbSet<OptimizationJob> OptimizationJobs => Set<OptimizationJob>();
     public DbSet<OptimizationResult> OptimizationResults => Set<OptimizationResult>();
@@ -75,6 +77,20 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(t => t.Symbol);
             entity.HasIndex(t => t.Sector);
+        });
+
+        modelBuilder.Entity<FinancialSnapshot>(entity =>
+        {
+            entity.HasIndex(f => new { f.Symbol, f.AsOfDate }).IsUnique();
+            entity.HasIndex(f => f.AsOfDate);
+            entity.HasIndex(f => f.Symbol);
+        });
+
+        modelBuilder.Entity<FinancialImportRun>(entity =>
+        {
+            entity.HasIndex(r => r.StartedAt);
+            entity.HasIndex(r => r.Status);
+            entity.HasIndex(r => new { r.FilePath, r.Fingerprint }).IsUnique();
         });
 
         modelBuilder.Entity<UserSettings>(entity =>

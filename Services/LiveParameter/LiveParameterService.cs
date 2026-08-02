@@ -122,7 +122,9 @@ public class LiveParameterService : ILiveParameterService
             patternsNode["MultiTimeframeTrend"] = SerializeConfig(merged.MultiTimeframeTrend);
             patternsNode["MeanReversionChannel"] = SerializeConfig(merged.MeanReversionChannel);
             patternsNode["Rsi2Bollinger"] = SerializeConfig(merged.Rsi2Bollinger);
+            patternsNode["CumulativeRsi2"] = SerializeConfig(merged.CumulativeRsi2);
             patternsNode["VolatilityBreakout"] = SerializeConfig(merged.VolatilityBreakout);
+            patternsNode["Tqqq200Sma"] = SerializeConfig(merged.Tqqq200Sma);
 
             doc["Patterns"] = patternsNode;
 

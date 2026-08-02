@@ -14,15 +14,18 @@ public class ContinuousOptimizationService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly OptimizationJobExecutor _executor;
+    private readonly OptimizationAutoTuneService _autoTuneService;
     private readonly ILogger<ContinuousOptimizationService> _logger;
 
     public ContinuousOptimizationService(
         IServiceScopeFactory scopeFactory,
         OptimizationJobExecutor executor,
+        OptimizationAutoTuneService autoTuneService,
         ILogger<ContinuousOptimizationService> logger)
     {
         _scopeFactory = scopeFactory;
         _executor = executor;
+        _autoTuneService = autoTuneService;
         _logger = logger;
     }
 
@@ -77,15 +80,18 @@ public class ContinuousOptimizationService : BackgroundService
 
             try
             {
-                await _executor.ExecuteJobAsync(job, stoppingToken);
+                var disposition = await _executor.ExecuteJobAsync(job, stoppingToken);
+                await PersistExecutionDispositionAsync(job.Id, disposition);
 
-                // 정상 완료
-                job.Status      = OptimizationJobStatus.Completed;
-                job.CompletedAt = DateTime.UtcNow;
+                if (disposition == OptimizationJobExecutionDisposition.Completed)
+                    await _autoTuneService.HandleCompletedJobAsync(job.Id, stoppingToken);
 
-                _logger.LogInformation(
-                    "최적화 작업 완료: Job {Id} ({Name}), 총 {N}건 테스트",
-                    job.Id, job.Name, job.TestedCombinations);
+                if (disposition == OptimizationJobExecutionDisposition.Completed)
+                {
+                    _logger.LogInformation(
+                        "최적화 작업 완료: Job {Id} ({Name})",
+                        job.Id, job.Name);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -94,7 +100,7 @@ public class ContinuousOptimizationService : BackgroundService
                     "최적화 작업 중단 (앱 종료): Job {Id} → Pending으로 복귀 (청크 인덱스={Chunk})",
                     job.Id, job.CurrentChunkIndex);
 
-                job.Status = OptimizationJobStatus.Pending;
+                await PersistJobStateAsync(job.Id, OptimizationJobStatus.Pending);
             }
             catch (Exception ex)
             {
@@ -102,26 +108,72 @@ public class ContinuousOptimizationService : BackgroundService
                     "최적화 작업 실패: Job {Id} ({Name})",
                     job.Id, job.Name);
 
-                job.Status       = OptimizationJobStatus.Failed;
-                job.ErrorMessage = ex.Message;
-                job.CompletedAt  = DateTime.UtcNow;
-            }
-            finally
-            {
-                // 최선을 다해 상태 저장 (실패해도 계속 진행)
-                try
-                {
-                    await using var finalScope = _scopeFactory.CreateAsyncScope();
-                    var finalRepo = finalScope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
-                    await finalRepo.UpdateJobAsync(job);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Job {Id} 최종 상태 저장 실패", job.Id);
-                }
+                await PersistJobStateAsync(
+                    job.Id,
+                    OptimizationJobStatus.Failed,
+                    completedAt: DateTime.UtcNow,
+                    errorMessage: ex.Message);
             }
         }
 
         _logger.LogInformation("ContinuousOptimizationService 종료");
+    }
+
+    private async Task PersistExecutionDispositionAsync(
+        int jobId,
+        OptimizationJobExecutionDisposition disposition)
+    {
+        switch (disposition)
+        {
+            case OptimizationJobExecutionDisposition.Completed:
+                await PersistJobStateAsync(
+                    jobId,
+                    OptimizationJobStatus.Completed,
+                    completedAt: DateTime.UtcNow,
+                    clearErrorMessage: true);
+                break;
+            case OptimizationJobExecutionDisposition.Paused:
+                _logger.LogInformation("최적화 작업 일시정지: Job {Id}", jobId);
+                break;
+            case OptimizationJobExecutionDisposition.Cancelled:
+                await PersistJobStateAsync(
+                    jobId,
+                    OptimizationJobStatus.Cancelled,
+                    completedAt: DateTime.UtcNow,
+                    clearErrorMessage: true);
+                _logger.LogInformation("최적화 작업 취소: Job {Id}", jobId);
+                break;
+        }
+    }
+
+    private async Task PersistJobStateAsync(
+        int jobId,
+        OptimizationJobStatus status,
+        DateTime? completedAt = null,
+        string? errorMessage = null,
+        bool clearErrorMessage = false)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
+            var job = await repo.GetJobSummaryAsync(jobId);
+            if (job == null)
+                return;
+
+            job.Status = status;
+            job.CompletedAt = completedAt;
+
+            if (clearErrorMessage)
+                job.ErrorMessage = null;
+            else
+                job.ErrorMessage = errorMessage;
+
+            await repo.UpdateJobAsync(job);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Job {Id} 상태 저장 실패", jobId);
+        }
     }
 }

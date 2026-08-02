@@ -184,6 +184,7 @@ public sealed class TelegramNotificationChannel : INotificationChannel
         PatternType.MomentumReversal => "모멘텀 반전",
         PatternType.MultiTimeframeTrend => "멀티 타임프레임 트렌드",
         PatternType.MeanReversionChannel => "평균 회귀 채널",
+        PatternType.CumulativeRsi2 => "누적 RSI(2)",
         _ => pattern.ToString()
     };
 

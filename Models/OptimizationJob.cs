@@ -41,6 +41,13 @@ public class OptimizationJob
     // 결과 설정
     public string RankBy { get; set; } = "sortinoRatio";
     public int TopResultsToKeep { get; set; } = 50;
+    public bool ContinuousMode { get; set; }
+    public bool AutoApplyBestResult { get; set; }
+    public int AutoApplyMinTrades { get; set; } = 10;
+    public int AppliedResultCount { get; set; }
+    public DateTime? LastAutoAppliedAt { get; set; }
+    public int? LastAutoAppliedResultId { get; set; }
+    public string? LastAutoApplyMessage { get; set; }
 
     // 오류
     public string? ErrorMessage { get; set; }

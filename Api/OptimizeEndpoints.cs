@@ -45,9 +45,11 @@ public class ParamRange
 /// </summary>
 public class RuleParamRange
 {
+    /// <summary>대상 룰 범위: "Entry"(기본) 또는 "Exit"</summary>
+    public string Scope { get; set; } = "Entry";
     /// <summary>EntryRulesJson 내 룰 인덱스 (0-based)</summary>
     public int RuleIndex { get; set; }
-    /// <summary>오버라이드할 파라미터 키 (EntryRule.Params 딕셔너리의 키)</summary>
+    /// <summary>오버라이드할 파라미터 키 (EntryRule.Params 딕셔너리의 키, 비교지표는 compare.{key} 형식)</summary>
     public string ParamKey { get; set; } = string.Empty;
     /// <summary>후보값 목록</summary>
     public List<decimal> Values { get; set; } = new();
@@ -58,13 +60,15 @@ public class RuleParamRange
 /// </summary>
 public class RuleFieldRange
 {
+    /// <summary>대상 룰 범위: "Entry"(기본) 또는 "Exit"</summary>
+    public string Scope { get; set; } = "Entry";
     /// <summary>EntryRulesJson 내 룰 인덱스 (0-based)</summary>
     public int RuleIndex { get; set; }
-    /// <summary>오버라이드할 필드명: "value", "withinBars", "weight", "consecutiveBars", "operator"</summary>
+    /// <summary>오버라이드할 필드명: "value", "withinBars", "weight", "consecutiveBars", "operator", "compareIndicator"</summary>
     public string FieldName { get; set; } = string.Empty;
     /// <summary>숫자 후보값 목록 (value, withinBars, weight, consecutiveBars 용)</summary>
     public List<decimal>? NumericValues { get; set; }
-    /// <summary>문자열 후보값 목록 (operator 용: "&gt;", "&lt;", "&gt;=", "&lt;=", "crosses_above", "crosses_below")</summary>
+    /// <summary>문자열 후보값 목록 (operator, compareIndicator 용)</summary>
     public List<string>? StringValues { get; set; }
 }
 
@@ -191,6 +195,7 @@ public class OptimizeParamSnapshot
 
 public class RuleOverrideEntry
 {
+    public string Scope { get; set; } = "Entry";
     public int RuleIndex { get; set; }
     public string ParamKey { get; set; } = string.Empty;
     public decimal Value { get; set; }
@@ -199,6 +204,7 @@ public class RuleOverrideEntry
 /// <summary>단일 룰 필드 오버라이드 결과 엔트리</summary>
 public class RuleFieldOverrideEntry
 {
+    public string Scope { get; set; } = "Entry";
     public int RuleIndex { get; set; }
     public string FieldName { get; set; } = string.Empty;
     public decimal? NumericValue { get; set; }

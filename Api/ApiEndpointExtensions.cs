@@ -20,6 +20,8 @@ public static class ApiEndpointExtensions
         api.MapMlApi();
         api.MapAnalysisApi();
         api.MapPatternStatsApi();
+        api.MapUniverseApi();
+        api.MapFinancialFactorApi();
         api.MapSymbolProfileApi();
         api.MapCustomPatternApi();
         api.MapOptimizeApi();

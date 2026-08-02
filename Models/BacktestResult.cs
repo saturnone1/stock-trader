@@ -112,6 +112,16 @@ public class PatternParameterOverrides
     public int? Rsi2Bb_LongTrendMaPeriod { get; set; }
     public decimal? Rsi2Bb_AtrStopMultiplier { get; set; }
 
+    // CumulativeRsi2
+    public int? CumRsi2_RsiPeriod { get; set; }
+    public int? CumRsi2_CumulativePeriod { get; set; }
+    public decimal? CumRsi2_EntryThreshold { get; set; }
+    public decimal? CumRsi2_ExitThreshold { get; set; }
+    public int? CumRsi2_LongTrendMaPeriod { get; set; }
+    public int? CumRsi2_ExitSmaPeriod { get; set; }
+    public decimal? CumRsi2_AtrStopMultiplier { get; set; }
+    public decimal? CumRsi2_PlaceholderTargetAtrMultiplier { get; set; }
+
     // VolatilityBreakout
     public decimal? VolBrk_BreakoutFactor { get; set; }
     public decimal? VolBrk_MinVolumeMultiplier { get; set; }
@@ -204,6 +214,11 @@ public class PatternParameterOverrides
     public decimal? Rsi2Bb_ExitTrailingAtr { get; set; }
     public decimal? Rsi2Bb_ExitPartialR { get; set; }
 
+    // CumulativeRsi2 Exit
+    public int? CumRsi2_ExitMaxHoldingBars { get; set; }
+    public decimal? CumRsi2_ExitTrailingAtr { get; set; }
+    public decimal? CumRsi2_ExitPartialR { get; set; }
+
     // VolatilityBreakout Exit
     public int? VolBrk_ExitMaxHoldingBars { get; set; }
     public decimal? VolBrk_ExitTrailingAtr { get; set; }
@@ -274,20 +289,8 @@ public class BacktestRequest
     /// </summary>
     public WeightStrategy? WeightStrategy { get; set; }
 
-    /// <summary>
-    /// 백테스트 모드. "pattern"=패턴 시그널 기반(기본), "weight"=비중 관리 기반(TQQQ식 11단계).
-    /// weight 모드에서는 Symbols[0]을 대상, RefSymbol을 기준 지수로 사용.
-    /// </summary>
+    /// <summary>백테스트 모드. 현재는 "pattern"만 사용합니다.</summary>
     public string BacktestMode { get; set; } = "pattern";
-
-    /// <summary>비중 관리 모드에서 기준 지수 (기본 QQQ). MA 교차/RSI/기울기 계산용.</summary>
-    public string RefSymbol { get; set; } = "QQQ";
-
-    /// <summary>비중 관리 모드에서 시장 레짐 판단용 지수 (기본 SPY).</summary>
-    public string SpySymbol { get; set; } = "SPY";
-
-    /// <summary>비중 관리 모드 전략 파라미터 (null이면 기본값 사용).</summary>
-    public TqqqStrategyParams? WeightModeParams { get; set; }
 
     /// <summary>
     /// 커스텀 패턴 정의 목록. DB에 저장된 ID 또는 인라인 정의를 전달합니다.

@@ -11,6 +11,7 @@ using StockTrader.Services.Risk;
 using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Signal;
 using StockTrader.Services.Statistics;
+using StockTrader.Services.Financial;
 
 namespace StockTrader.Extensions;
 
@@ -28,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.Configure<NotificationSettings>(configuration.GetSection("Notification"));
         services.Configure<MLSettings>(configuration.GetSection("ML"));
         services.Configure<LsSecuritiesSettings>(configuration.GetSection("LsSecurities"));
+        services.Configure<FinancialDataPipelineSettings>(configuration.GetSection("FinancialDataPipeline"));
 
         // Database
         services.AddDbContextFactory<AppDbContext>(options =>
@@ -56,8 +58,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISignalService, SignalService>();
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IOrderService, OrderService>();
-        services.AddScoped<IBacktestService, BacktestService>();
-        services.AddScoped<TqqqWeightBacktester>();
+        services.AddSingleton<FinancialSnapshotImportService>();
+        services.AddSingleton<FinancialSnapshotFileParser>();
+        services.AddScoped<BacktestService>();
+        services.AddScoped<IBacktestService>(sp => sp.GetRequiredService<BacktestService>());
         services.AddScoped<ILiveParameterService, LiveParameterService>();
         services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 

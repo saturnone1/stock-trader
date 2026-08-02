@@ -33,8 +33,7 @@ public partial class BacktestResults
     {
         PatternType.Breakout, PatternType.TrendPullback,
         PatternType.VolatilityExpansion, PatternType.MomentumReversal,
-        PatternType.MeanReversionChannel, PatternType.Rsi2Bollinger,
-        PatternType.Tqqq200Sma
+        PatternType.MeanReversionChannel, PatternType.Rsi2Bollinger
     };
     private BacktestResult? _result;
     private bool _isRunning;

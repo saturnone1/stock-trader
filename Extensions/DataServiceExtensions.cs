@@ -2,6 +2,7 @@ using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
+using StockTrader.Services.Financial;
 using StockTrader.Services.LsSecurities;
 
 namespace StockTrader.Extensions;
@@ -29,6 +30,15 @@ public static class DataServiceExtensions
                               ?? new YahooFinanceSettings();
             client.BaseAddress = new Uri(yahooConfig.BaseUrl);
             client.DefaultRequestHeaders.Add("User-Agent", yahooConfig.UserAgent);
+        });
+
+        services.AddHttpClient<SecFinancialSnapshotSyncService>(client =>
+        {
+            var pipelineConfig = configuration.GetSection("FinancialDataPipeline").Get<FinancialDataPipelineSettings>()
+                                 ?? new FinancialDataPipelineSettings();
+            client.BaseAddress = new Uri("https://www.sec.gov");
+            client.DefaultRequestHeaders.Add("User-Agent", pipelineConfig.VendorUserAgent);
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
         });
 
         // LS Securities 공통 인증 (Singleton: 토큰을 앱 전체에서 공유)

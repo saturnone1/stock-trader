@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocktrader-desktop
+  namespace: stocktrader
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stocktrader-desktop
+  template:
+    metadata:
+      labels:
+        app: stocktrader-desktop
+    spec:
+      containers:
+      - name: desktop
+        image: localhost/stock-trader/desktop:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        env:
+        - name: VITE_API_URL
+          value: "http://stocktrader-api:3000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stocktrader-desktop
+  namespace: stocktrader
+spec:
+  selector:
+    app: stocktrader-desktop
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stocktrader-desktop
+  namespace: stocktrader
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: "web"
+spec:
+  rules:
+  - host: "stock-desktop.taewon"
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: stocktrader-api
+            port:
+              number: 3000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: stocktrader-desktop
+            port:
+              number: 8000
+  - host: "saturnone1.mooo.com"
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: stocktrader-api
+            port:
+              number: 3000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: stocktrader-desktop
+            port:
+              number: 8000

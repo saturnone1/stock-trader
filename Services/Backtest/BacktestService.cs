@@ -49,6 +49,11 @@ public class BacktestService : IBacktestService
         MaxPositionsPerSector:  _tradingSettings.MaxPositionsPerSector
     );
 
+    private PatternSettings ResolvePatternSettings(PatternParameterOverrides? overrides)
+        => overrides == null
+            ? _basePatternSettings
+            : PatternOverrideMerger.Merge(_basePatternSettings, overrides);
+
     public async Task<BacktestResult> RunAsync(BacktestRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("백테스트 시작: {Symbols} ({From:d} ~ {To:d}) [타임프레임: {TimeFrame}]",
@@ -61,6 +66,7 @@ public class BacktestService : IBacktestService
         var regimeByDate = await BuildRegimeMapAsync(dataFeed, request.From, request.To, regimeSymbol, ct);
         if (regimeByDate == null) return new BacktestResult();
 
+        var effectivePatternSettings = ResolvePatternSettings(request.ParameterOverrides);
         var activeDetectors = BuildDetectors(request.Patterns, request.ParameterOverrides, request.CustomPatterns);
         if (activeDetectors.Count == 0)
         {
@@ -80,7 +86,7 @@ public class BacktestService : IBacktestService
             request.From, request.To, request.InitialCapital,
             request.SlippagePercent, request.CommissionPerTrade,
             request.TimeFrame, riskParams, request.ParameterOverrides,
-            request.SlippageModel, request.WeightStrategy, ct);
+            request.SlippageModel, request.WeightStrategy, effectivePatternSettings, ct);
 
         result.UsedTimeFrame = request.TimeFrame;
 
@@ -120,6 +126,7 @@ public class BacktestService : IBacktestService
         PatternParameterOverrides? exitOverrides = null,
         SlippageModel slippageModel = SlippageModel.Adaptive,
         WeightStrategy? weightStrategy = null,
+        PatternSettings? effectivePatternSettings = null,
         CancellationToken ct = default)
     {
         riskParams ??= new RiskParams(
@@ -132,6 +139,8 @@ public class BacktestService : IBacktestService
         var simulator = new TradeSimulator(_indicators, _logger);
         var warnings = new List<string>();
         DateTime? actualDataFrom = null;
+        effectivePatternSettings ??= ResolvePatternSettings(exitOverrides);
+        var cumulativeRsi2Config = effectivePatternSettings.CumulativeRsi2;
 
         // ── Phase 1: 모든 심볼 데이터 사전 로드 & 지표 계산 ──
         var symbolDataMap = new Dictionary<string, SymbolPreparedData>();
@@ -164,12 +173,18 @@ public class BacktestService : IBacktestService
                 var atrArray = _indicators.ATR(barsArray, 14);
                 var closesArray = IndicatorService.ExtractCloses(barsArray);
                 var sma200Array = _indicators.SMA(closesArray, 200);
+                var cumulativeRsi2Array = _indicators.CumulativeRsi(
+                    closesArray, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
+                var cumulativeRsi2TrendMaArray = _indicators.SMA(
+                    closesArray, cumulativeRsi2Config.LongTrendMaPeriod);
 
                 var dateToIndex = new Dictionary<DateOnly, int>();
                 for (int i = 0; i < barsArray.Length; i++)
                     dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
 
-                symbolDataMap[symbol] = new SymbolPreparedData(barsArray, atrArray, closesArray, sma200Array, dateToIndex);
+                symbolDataMap[symbol] = new SymbolPreparedData(
+                    barsArray, atrArray, closesArray, sma200Array,
+                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, dateToIndex);
 
                 var firstTs = barsArray[0].Timestamp;
                 if (!actualDataFrom.HasValue || firstTs < actualDataFrom.Value)
@@ -192,7 +207,7 @@ public class BacktestService : IBacktestService
             symbols, symbolDataMap, detectors, regimeByDate,
             from, to, initialCapital, slippagePercent, commissionPerTrade,
             timeFrame, riskParams, exitOverrides, slippageModel,
-            warnings, actualDataFrom, simulator, weightStrategy, ct);
+            warnings, actualDataFrom, simulator, weightStrategy, cumulativeRsi2Config, ct);
     }
 
     /// <summary>
@@ -215,6 +230,7 @@ public class BacktestService : IBacktestService
         DateTime? actualDataFrom,
         TradeSimulator simulator,
         WeightStrategy? weightStrategy,
+        CumulativeRsi2Config cumulativeRsi2Config,
         CancellationToken ct)
     {
         // ── Phase 2: 날짜순 포트폴리오 시뮬레이션 ──
@@ -230,9 +246,12 @@ public class BacktestService : IBacktestService
         var pepCache = new Dictionary<PatternType, TradeSimulator.PatternExitProfile>();
         var maxTotalPositions = riskParams.MaxTotalPositions;
         var riskPerTrade = riskParams.RiskPerTradePercent;
+        var dailyLossLimitPercent = riskParams.DailyLossLimitPercent;
         // currentEquity: 실현된 거래 PnL 누적 → 복리 포지션 사이징에 사용
         // 미실현 포지션 가치 제외 (보수적 접근)
         var currentEquity = initialCapital;
+        var dailyStartEquity = initialCapital;
+        var dailyLossDate = DateOnly.MinValue;
         var weightReducedCount = 0;
         // [BUG-PB-08] Kelly 사이징용 (결과 생성부에서 실제 계산, 루프 중에는 0 = FixedRisk)
         decimal kellyFraction = 0, halfKellyFraction = 0;
@@ -286,6 +305,12 @@ public class BacktestService : IBacktestService
         {
             ct.ThrowIfCancellationRequested();
             var regime = TradeSimulator.GetRegimeForDate(date, regimeByDate);
+
+            if (date != dailyLossDate)
+            {
+                dailyLossDate = date;
+                dailyStartEquity = currentEquity;
+            }
 
             // 하루 진입 수 리셋
             if (date != lastEntryDate) dailyEntryCount = 0;
@@ -372,6 +397,7 @@ public class BacktestService : IBacktestService
                 var exitResult = simulator.ProcessExitLogic(
                     pos, sd.Bars[barIdx], barIdx,
                     sd.Atr[barIdx], sd.Sma200[barIdx],
+                    sd.CumulativeRsi2[barIdx], sd.CumulativeRsi2TrendMa[barIdx], cumulativeRsi2Config,
                     pepCache, exitOverrides, symbol, trades);
 
                 if (exitResult == null)
@@ -401,58 +427,70 @@ public class BacktestService : IBacktestService
                     circuitBreakerTripped = true;
             }
 
+            var dailyLossLimitReached =
+                dailyLossLimitPercent > 0 &&
+                dailyStartEquity > 0 &&
+                currentEquity <= dailyStartEquity * (1 - dailyLossLimitPercent);
+
             // ── [A-1] NextOpen 대기 시그널 처리 ──
             // 이전 봉에서 대기 등록된 시그널을 이번 봉의 Open 가격으로 진입
-            foreach (var pendingSymbol in pendingNextOpenSignals.Keys.ToList())
+            if (dailyLossLimitReached)
             {
-                if (openPositions.ContainsKey(pendingSymbol)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-                if (!symbolDataMap.TryGetValue(pendingSymbol, out var pendingSd)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-                if (!pendingSd.DateToIndex.TryGetValue(date, out var pendingBarIdx)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-
-                var pending = pendingNextOpenSignals[pendingSymbol];
-                var nextOpen = pendingSd.Bars[pendingBarIdx].Open;
-                if (nextOpen <= 0) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-
-                // NextOpen 기준으로 StopLoss/Target 재계산
-                var newStopDistance = pending.stopDistance; // ATR 기반 거리 유지
-                var newStop   = nextOpen - newStopDistance;
-                var rMultiple = pending.entryPrice > 0 && pending.stopLoss < pending.entryPrice
-                    ? (pending.target - pending.entryPrice) / (pending.entryPrice - pending.stopLoss)
-                    : 2.0m;
-                var newTarget = nextOpen + newStopDistance * rMultiple;
-
-                var pendingRiskAmount = pending.equityAtEntry * pending.riskPerTradeSnap;
-                var pendingQty = (int)(pendingRiskAmount / newStopDistance);
-                if (pendingQty <= 0) pendingQty = 1;
-                var pendingMaxQty = pending.effectiveMaxPosSnap > 0
-                    ? (int)(pending.equityAtEntry * pending.effectiveMaxPosSnap / nextOpen)
-                    : 0;
-                if (pendingMaxQty > 0) pendingQty = Math.Min(pendingQty, pendingMaxQty);
-
-                openPositions[pendingSymbol] = new TradeSimulator.OpenPosition
+                pendingNextOpenSignals.Clear();
+            }
+            else
+            {
+                foreach (var pendingSymbol in pendingNextOpenSignals.Keys.ToList())
                 {
-                    PatternType           = PatternType.Custom,
-                    EntryPrice            = nextOpen,
-                    OriginalStop          = newStop,
-                    StopLoss              = newStop,
-                    Target                = newTarget,
-                    Quantity              = pendingQty,
-                    CurrentQuantity       = pendingQty,
-                    TotalCost             = nextOpen * pendingQty,
-                    EntryTime             = pendingSd.Bars[pendingBarIdx].Timestamp,
-                    EntryBarIndex         = pendingBarIdx,
-                    EntryAtr              = pending.entryAtr,
-                    EntryVolume           = pending.entryVolume,
-                    HighestHighSinceEntry = pendingSd.Bars[pendingBarIdx].High,
-                    LowestLowSinceEntry   = pendingSd.Bars[pendingBarIdx].Low,
-                    RiskDistance          = newStopDistance,
-                    EquityAtEntry         = pending.equityAtEntry,
-                    CustomExitProfile     = pending.customExit
-                };
+                    if (openPositions.ContainsKey(pendingSymbol)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
+                    if (!symbolDataMap.TryGetValue(pendingSymbol, out var pendingSd)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
+                    if (!pendingSd.DateToIndex.TryGetValue(date, out var pendingBarIdx)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
 
-                pendingNextOpenSignals.Remove(pendingSymbol);
-                dailyEntryCount++;
-                lastEntryDate = date;
+                    var pending = pendingNextOpenSignals[pendingSymbol];
+                    var nextOpen = pendingSd.Bars[pendingBarIdx].Open;
+                    if (nextOpen <= 0) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
+
+                    // NextOpen 기준으로 StopLoss/Target 재계산
+                    var newStopDistance = pending.stopDistance; // ATR 기반 거리 유지
+                    var newStop   = nextOpen - newStopDistance;
+                    var rMultiple = pending.entryPrice > 0 && pending.stopLoss < pending.entryPrice
+                        ? (pending.target - pending.entryPrice) / (pending.entryPrice - pending.stopLoss)
+                        : 2.0m;
+                    var newTarget = nextOpen + newStopDistance * rMultiple;
+
+                    var pendingRiskAmount = pending.equityAtEntry * pending.riskPerTradeSnap;
+                    var pendingQty = (int)(pendingRiskAmount / newStopDistance);
+                    if (pendingQty <= 0) pendingQty = 1;
+                    var pendingMaxQty = pending.effectiveMaxPosSnap > 0
+                        ? (int)(pending.equityAtEntry * pending.effectiveMaxPosSnap / nextOpen)
+                        : 0;
+                    if (pendingMaxQty > 0) pendingQty = Math.Min(pendingQty, pendingMaxQty);
+
+                    openPositions[pendingSymbol] = new TradeSimulator.OpenPosition
+                    {
+                        PatternType           = PatternType.Custom,
+                        EntryPrice            = nextOpen,
+                        OriginalStop          = newStop,
+                        StopLoss              = newStop,
+                        Target                = newTarget,
+                        Quantity              = pendingQty,
+                        CurrentQuantity       = pendingQty,
+                        TotalCost             = nextOpen * pendingQty,
+                        EntryTime             = pendingSd.Bars[pendingBarIdx].Timestamp,
+                        EntryBarIndex         = pendingBarIdx,
+                        EntryAtr              = pending.entryAtr,
+                        EntryVolume           = pending.entryVolume,
+                        HighestHighSinceEntry = pendingSd.Bars[pendingBarIdx].High,
+                        LowestLowSinceEntry   = pendingSd.Bars[pendingBarIdx].Low,
+                        RiskDistance          = newStopDistance,
+                        EquityAtEntry         = pending.equityAtEntry,
+                        CustomExitProfile     = pending.customExit
+                    };
+
+                    pendingNextOpenSignals.Remove(pendingSymbol);
+                    dailyEntryCount++;
+                    lastEntryDate = date;
+                }
             }
 
             // ── 2b. 새 진입 ──
@@ -460,6 +498,7 @@ public class BacktestService : IBacktestService
             if (circuitBreakerTripped) continue;
             if (circuitBreaker != null && circuitBreaker.ConsecutiveLossLimit > 0 && date < circuitBreakerUntilDate)
                 continue;
+            if (dailyLossLimitReached) continue;
 
             // 포트폴리오 규칙: 최대 포지션 수
             var effectiveMaxPos = maxTotalPositions;
@@ -877,11 +916,14 @@ public class BacktestService : IBacktestService
         PatternParameterOverrides? exitOverrides,
         SlippageModel slippageModel,
         WeightStrategy? weightStrategy = null,
+        PatternSettings? effectivePatternSettings = null,
         CancellationToken ct = default)
     {
         var simulator = new TradeSimulator(_indicators, _logger);
         var warnings = new List<string>();
         DateTime? actualDataFrom = null;
+        effectivePatternSettings ??= ResolvePatternSettings(exitOverrides);
+        var cumulativeRsi2Config = effectivePatternSettings.CumulativeRsi2;
 
         // 사전 로드된 데이터에서 날짜 범위 슬라이싱 (API 재호출 없음)
         var symbolDataMap = new Dictionary<string, SymbolPreparedData>();
@@ -917,6 +959,10 @@ public class BacktestService : IBacktestService
             var atrSlice  = full.Atr[startIdx..(endIdx + 1)];
             var closesSlice = full.Closes[startIdx..(endIdx + 1)];
             var sma200Slice = full.Sma200[startIdx..(endIdx + 1)];
+            var cumulativeRsi2Slice = _indicators.CumulativeRsi(
+                closesSlice, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
+            var cumulativeRsi2TrendMaSlice = _indicators.SMA(
+                closesSlice, cumulativeRsi2Config.LongTrendMaPeriod);
 
             if (barsSlice.Length < TradeSimulator.MinWarmupBars)
             {
@@ -929,7 +975,9 @@ public class BacktestService : IBacktestService
             for (int i = 0; i < barsSlice.Length; i++)
                 dateToIndex[DateOnly.FromDateTime(barsSlice[i].Timestamp)] = i;
 
-            symbolDataMap[symbol] = new SymbolPreparedData(barsSlice, atrSlice, closesSlice, sma200Slice, dateToIndex);
+            symbolDataMap[symbol] = new SymbolPreparedData(
+                barsSlice, atrSlice, closesSlice, sma200Slice,
+                cumulativeRsi2Slice, cumulativeRsi2TrendMaSlice, dateToIndex);
 
             var firstTs = barsSlice[0].Timestamp;
             if (!actualDataFrom.HasValue || firstTs < actualDataFrom.Value)
@@ -944,7 +992,7 @@ public class BacktestService : IBacktestService
             symbols, symbolDataMap, detectors, regimeByDate,
             from, to, initialCapital, slippagePercent, commissionPerTrade,
             timeFrame, riskParams, exitOverrides, slippageModel,
-            warnings, actualDataFrom, simulator, weightStrategy, ct);
+            warnings, actualDataFrom, simulator, weightStrategy, cumulativeRsi2Config, ct);
     }
 
     /// <summary>심볼별 사전 계산 데이터</summary>
@@ -953,6 +1001,8 @@ public class BacktestService : IBacktestService
         decimal[] Atr,
         decimal[] Closes,
         decimal[] Sma200,
+        decimal[] CumulativeRsi2,
+        decimal[] CumulativeRsi2TrendMa,
         Dictionary<DateOnly, int> DateToIndex);
 
     #region Walk-Forward Analysis
@@ -967,6 +1017,7 @@ public class BacktestService : IBacktestService
     {
         _logger.LogInformation("Walk-Forward 분석 시작 (IS:{IS}개월, OOS:{OOS}개월)",
             request.WalkForwardInSampleMonths, request.WalkForwardOutOfSampleMonths);
+        var effectivePatternSettings = ResolvePatternSettings(request.ParameterOverrides);
 
         // ── 전체 기간 데이터 1회 사전 로드 (윈도우마다 API 재호출 방지) ──
         // 일봉 기준 warmup 400일치를 포함하여 충분히 이전 데이터부터 로드
@@ -991,12 +1042,19 @@ public class BacktestService : IBacktestService
                 var atrArray = _indicators.ATR(barsArray, 14);
                 var closesArray = IndicatorService.ExtractCloses(barsArray);
                 var sma200Array = _indicators.SMA(closesArray, 200);
+                var cumulativeRsi2Array = _indicators.CumulativeRsi(
+                    closesArray, _basePatternSettings.CumulativeRsi2.RsiPeriod,
+                    _basePatternSettings.CumulativeRsi2.CumulativePeriod);
+                var cumulativeRsi2TrendMaArray = _indicators.SMA(
+                    closesArray, _basePatternSettings.CumulativeRsi2.LongTrendMaPeriod);
 
                 var dateToIndex = new Dictionary<DateOnly, int>(barsArray.Length);
                 for (int i = 0; i < barsArray.Length; i++)
                     dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
 
-                wfFullDataMap[symbol] = new SymbolPreparedData(barsArray, atrArray, closesArray, sma200Array, dateToIndex);
+                wfFullDataMap[symbol] = new SymbolPreparedData(
+                    barsArray, atrArray, closesArray, sma200Array,
+                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, dateToIndex);
             }
             catch (Exception ex)
             {
@@ -1026,14 +1084,14 @@ public class BacktestService : IBacktestService
                 isFrom, isTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
                 request.TimeFrame, riskParams, request.ParameterOverrides,
-                request.SlippageModel, null, ct);
+                request.SlippageModel, null, effectivePatternSettings, ct);
 
             var oosResult = await RunCoreWithPreloadedDataAsync(
                 request.Symbols, wfFullDataMap, detectors, regimeByDate,
                 oosFrom, oosTo, request.InitialCapital,
                 request.SlippagePercent, request.CommissionPerTrade,
                 request.TimeFrame, riskParams, request.ParameterOverrides,
-                request.SlippageModel, null, ct);
+                request.SlippageModel, null, effectivePatternSettings, ct);
 
             // W06 fix: IS가 음수이면 비율이 의미 없음(음수/음수 = 양수 오해 위험).
             // IS 수익률이 양수일 때만 OOS/IS 효율을 계산하고, 그 외는 0으로 처리.
@@ -1242,8 +1300,8 @@ public class BacktestService : IBacktestService
                 new MultiTimeframeTrendDetector(_indicators, opts),
                 new MeanReversionChannelDetector(_indicators, opts),
                 new Rsi2BollingerDetector(_indicators, opts),
-                new VolatilityBreakoutDetector(_indicators, opts),
-                new Tqqq200SmaDetector(_indicators, opts, _settingsRepo)
+                new CumulativeRsi2Detector(_indicators, opts),
+                new VolatilityBreakoutDetector(_indicators, opts)
             };
             result = allDetectors.Where(d => patterns.Contains(d.PatternType)).ToList();
         }
@@ -1368,12 +1426,19 @@ public class BacktestService : IBacktestService
                     var atrArray    = _indicators.ATR(barsArray, 14);
                     var closesArray = IndicatorService.ExtractCloses(barsArray);
                     var sma200Array = _indicators.SMA(closesArray, 200);
+                    var cumulativeRsi2Array = _indicators.CumulativeRsi(
+                        closesArray, _basePatternSettings.CumulativeRsi2.RsiPeriod,
+                        _basePatternSettings.CumulativeRsi2.CumulativePeriod);
+                    var cumulativeRsi2TrendMaArray = _indicators.SMA(
+                        closesArray, _basePatternSettings.CumulativeRsi2.LongTrendMaPeriod);
 
                     var dateToIndex = new Dictionary<DateOnly, int>(barsArray.Length);
                     for (int i = 0; i < barsArray.Length; i++)
                         dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
 
-                    tfDataMap[symbol] = new SymbolPreparedData(barsArray, atrArray, closesArray, sma200Array, dateToIndex);
+                    tfDataMap[symbol] = new SymbolPreparedData(
+                        barsArray, atrArray, closesArray, sma200Array,
+                        cumulativeRsi2Array, cumulativeRsi2TrendMaArray, dateToIndex);
                 }
                 catch (Exception ex)
                 {
@@ -1438,7 +1503,7 @@ public class BacktestService : IBacktestService
                     slippagePercent: 0.05m, commissionPerTrade: 1.00m,
                     comboTf, riskParams,
                     exitOverrides: null, slippageModel: SlippageModel.Adaptive,
-                    weightStrategy: null, ct);
+                    weightStrategy: null, effectivePatternSettings: _basePatternSettings, ct);
 
                 resultItems.Add(new Api.OptimizeResultItem
                 {
@@ -1485,7 +1550,7 @@ public class BacktestService : IBacktestService
                         request.Symbols, comboDataMap, detectors2, regimeByDate,
                         request.From, isTo, request.InitialCapital,
                         0.05m, 1.00m, comboTf, riskParams,
-                        null, SlippageModel.Adaptive, null, ct);
+                        null, SlippageModel.Adaptive, null, _basePatternSettings, ct);
                     resultItems.Add(new Api.OptimizeResultItem
                     {
                         Params           = combo,
@@ -1531,7 +1596,7 @@ public class BacktestService : IBacktestService
                         request.Symbols, comboDataMap, oosDetectors, regimeByDate,
                         oosFrom, oosTo, request.InitialCapital,
                         0.05m, 1.00m, comboTf, riskParams,
-                        null, SlippageModel.Adaptive, null, ct);
+                        null, SlippageModel.Adaptive, null, _basePatternSettings, ct);
 
                     item.OosTotalReturn  = oosResult.TotalReturnPercent * 100;
                     item.OosSortinoRatio = oosResult.SortinoRatio;
@@ -1631,6 +1696,7 @@ public class BacktestService : IBacktestService
             {
                 s.RuleOverrides.Add(new Api.RuleOverrideEntry
                 {
+                    Scope     = dimCopy.Scope,
                     RuleIndex = dimCopy.RuleIndex,
                     ParamKey  = dimCopy.ParamKey,
                     Value     = val
@@ -1653,6 +1719,7 @@ public class BacktestService : IBacktestService
                         s.RuleFieldOverrides ??= new List<Api.RuleFieldOverrideEntry>();
                         s.RuleFieldOverrides.Add(new Api.RuleFieldOverrideEntry
                         {
+                            Scope        = dimCopy.Scope,
                             RuleIndex    = dimCopy.RuleIndex,
                             FieldName    = dimCopy.FieldName,
                             NumericValue = v
@@ -1670,6 +1737,7 @@ public class BacktestService : IBacktestService
                         s.RuleFieldOverrides ??= new List<Api.RuleFieldOverrideEntry>();
                         s.RuleFieldOverrides.Add(new Api.RuleFieldOverrideEntry
                         {
+                            Scope       = dimCopy.Scope,
                             RuleIndex   = dimCopy.RuleIndex,
                             FieldName   = dimCopy.FieldName,
                             StringValue = v
@@ -1849,7 +1917,9 @@ public class BacktestService : IBacktestService
     private static string SnapshotKey(Api.OptimizeParamSnapshot s) =>
         $"{s.AtrStopMultiplier}|{s.AtrTargetMultiplier}|{s.MaxHoldingBars}|{s.TrailingAtr}|{s.PartialProfitR}" +
         $"|{s.EntryLogic}|{s.RequireBullRegime}|{s.EntryMode}|{s.SizingMode}|{s.ExitLogic}|{s.TimeFrame}" +
-        $"|{s.DefaultAllocationPercent}|{s.CircuitBreakerConsecutiveLossLimit}|{s.PortfolioMaxPositions}";
+        $"|{s.DefaultAllocationPercent}|{s.CircuitBreakerConsecutiveLossLimit}|{s.PortfolioMaxPositions}" +
+        $"|{string.Join(';', s.RuleOverrides.Select(r => $"{r.Scope}:{r.RuleIndex}:{r.ParamKey}:{r.Value}"))}" +
+        $"|{string.Join(';', (s.RuleFieldOverrides ?? new List<Api.RuleFieldOverrideEntry>()).Select(r => $"{r.Scope}:{r.RuleIndex}:{r.FieldName}:{r.NumericValue}:{r.StringValue}"))}";
 
     /// <summary>
     /// RuleParamRange 목록에서 카르테시안 곱을 생성합니다.
@@ -1869,7 +1939,7 @@ public class BacktestService : IBacktestService
             {
                 var copy = new List<Api.RuleOverrideEntry>(existing)
                 {
-                    new() { RuleIndex = dim.RuleIndex, ParamKey = dim.ParamKey, Value = val }
+                    new() { Scope = dim.Scope, RuleIndex = dim.RuleIndex, ParamKey = dim.ParamKey, Value = val }
                 };
                 expanded.Add(copy);
             }
@@ -1927,6 +1997,83 @@ public class BacktestService : IBacktestService
     internal static void ApplyOptimizeOverrides(CustomPatternDefinition pattern, Api.OptimizeParamSnapshot snap)
     {
         var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        static string NormalizeRuleScope(string? scope) =>
+            string.Equals(scope, "Exit", StringComparison.OrdinalIgnoreCase) ? "Exit" : "Entry";
+
+        static List<EntryRule>? GetOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts, out bool fromGroups)
+        {
+            try
+            {
+                var groups = JsonSerializer.Deserialize<List<ConditionGroup>>(pattern.EntryGroupsJson, jsonOpts);
+                if (groups is { Count: > 0 })
+                {
+                    fromGroups = true;
+                    return groups.SelectMany(group => group.Rules).ToList();
+                }
+            }
+            catch
+            {
+                // group parsing failed, fall through to flat rules
+            }
+
+            try
+            {
+                fromGroups = false;
+                return JsonSerializer.Deserialize<List<EntryRule>>(pattern.EntryRulesJson, jsonOpts);
+            }
+            catch
+            {
+                fromGroups = false;
+                return null;
+            }
+        }
+
+        static void SaveOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts, bool fromGroups, List<EntryRule> flattenedRules)
+        {
+            if (fromGroups)
+            {
+                try
+                {
+                    var groups = JsonSerializer.Deserialize<List<ConditionGroup>>(pattern.EntryGroupsJson, jsonOpts);
+                    if (groups is { Count: > 0 })
+                    {
+                        var index = 0;
+                        foreach (var group in groups)
+                        {
+                            for (var i = 0; i < group.Rules.Count && index < flattenedRules.Count; i++, index++)
+                                group.Rules[i] = flattenedRules[index];
+                        }
+
+                        pattern.EntryGroupsJson = JsonSerializer.Serialize(groups);
+                    }
+                }
+                catch
+                {
+                    // keep original group JSON on failure
+                }
+
+                return;
+            }
+
+            pattern.EntryRulesJson = JsonSerializer.Serialize(flattenedRules);
+        }
+
+        static List<EntryRule>? GetExitOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts)
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<List<EntryRule>>(pattern.ExitRulesJson, jsonOpts);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static void SaveExitOverrideTargets(CustomPatternDefinition pattern, List<EntryRule> rules)
+        {
+            pattern.ExitRulesJson = JsonSerializer.Serialize(rules);
+        }
 
         // ── 기존 숫자형 파라미터 ──
         if (snap.AtrStopMultiplier.HasValue)   pattern.AtrStopMultiplier   = snap.AtrStopMultiplier.Value;
@@ -1991,55 +2138,119 @@ public class BacktestService : IBacktestService
             catch { /* JSON 파싱 실패 시 기존 값 유지 */ }
         }
 
-        // ── RuleParamOverrides: EntryRulesJson 파싱 → Params 딕셔너리 수정 → 재직렬화 ──
+        // ── RuleParamOverrides / RuleFieldOverrides: 활성 진입/청산 규칙 수정 → 재직렬화 ──
         if (snap.RuleOverrides.Count > 0)
         {
-            try
+            foreach (var scopeGroup in snap.RuleOverrides.GroupBy(entry => NormalizeRuleScope(entry.Scope)))
             {
-                var rules = JsonSerializer.Deserialize<List<EntryRule>>(pattern.EntryRulesJson, jsonOpts);
-                if (rules != null)
+                try
                 {
-                    foreach (var entry in snap.RuleOverrides)
+                    if (scopeGroup.Key == "Exit")
                     {
-                        if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
-                        rules[entry.RuleIndex].Params[entry.ParamKey] = entry.Value;
+                        var rules = GetExitOverrideTargets(pattern, jsonOpts);
+                        if (rules == null) continue;
+                        foreach (var entry in scopeGroup)
+                        {
+                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
+                            var paramKey = entry.ParamKey ?? string.Empty;
+                            if (paramKey.StartsWith("compare.", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var compareKey = paramKey["compare.".Length..];
+                                rules[entry.RuleIndex].CompareParams[compareKey] = entry.Value;
+                            }
+                            else
+                            {
+                                rules[entry.RuleIndex].Params[paramKey] = entry.Value;
+                            }
+                        }
+                        SaveExitOverrideTargets(pattern, rules);
                     }
-                    pattern.EntryRulesJson = JsonSerializer.Serialize(rules);
+                    else
+                    {
+                        var rules = GetOverrideTargets(pattern, jsonOpts, out var fromGroups);
+                        if (rules == null) continue;
+                        foreach (var entry in scopeGroup)
+                        {
+                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
+                            var paramKey = entry.ParamKey ?? string.Empty;
+                            if (paramKey.StartsWith("compare.", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var compareKey = paramKey["compare.".Length..];
+                                rules[entry.RuleIndex].CompareParams[compareKey] = entry.Value;
+                            }
+                            else
+                            {
+                                rules[entry.RuleIndex].Params[paramKey] = entry.Value;
+                            }
+                        }
+                        SaveOverrideTargets(pattern, jsonOpts, fromGroups, rules);
+                    }
                 }
+                catch { /* JSON 파싱 실패 시 룰 오버라이드 없이 진행 */ }
             }
-            catch { /* JSON 파싱 실패 시 룰 오버라이드 없이 진행 */ }
         }
 
-        // ── RuleFieldOverrides: EntryRulesJson 파싱 → 해당 룰의 필드 수정 → 재직렬화 ──
         if (snap.RuleFieldOverrides is { Count: > 0 })
         {
-            try
+            foreach (var scopeGroup in snap.RuleFieldOverrides.GroupBy(entry => NormalizeRuleScope(entry.Scope)))
             {
-                var rules = JsonSerializer.Deserialize<List<EntryRule>>(pattern.EntryRulesJson, jsonOpts);
-                if (rules != null)
+                try
                 {
-                    foreach (var entry in snap.RuleFieldOverrides)
+                    if (scopeGroup.Key == "Exit")
                     {
-                        if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
-                        var rule = rules[entry.RuleIndex];
-                        switch (entry.FieldName.ToLowerInvariant())
+                        var rules = GetExitOverrideTargets(pattern, jsonOpts);
+                        if (rules == null) continue;
+                        foreach (var entry in scopeGroup)
                         {
-                            case "value"          when entry.NumericValue.HasValue:
-                                rule.Value          = entry.NumericValue.Value; break;
-                            case "withinbars"     when entry.NumericValue.HasValue:
-                                rule.WithinBars     = (int)entry.NumericValue.Value; break;
-                            case "weight"         when entry.NumericValue.HasValue:
-                                rule.Weight         = entry.NumericValue.Value; break;
-                            case "consecutivebars" when entry.NumericValue.HasValue:
-                                rule.ConsecutiveBars = (int)entry.NumericValue.Value; break;
-                            case "operator"       when entry.StringValue != null:
-                                rule.Operator       = entry.StringValue; break;
+                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
+                            var rule = rules[entry.RuleIndex];
+                            switch (entry.FieldName.ToLowerInvariant())
+                            {
+                                case "value"           when entry.NumericValue.HasValue:
+                                    rule.Value = entry.NumericValue.Value; break;
+                                case "withinbars"      when entry.NumericValue.HasValue:
+                                    rule.WithinBars = (int)entry.NumericValue.Value; break;
+                                case "weight"          when entry.NumericValue.HasValue:
+                                    rule.Weight = entry.NumericValue.Value; break;
+                                case "consecutivebars" when entry.NumericValue.HasValue:
+                                    rule.ConsecutiveBars = (int)entry.NumericValue.Value; break;
+                                case "operator"        when entry.StringValue != null:
+                                    rule.Operator = entry.StringValue; break;
+                                case "compareindicator" when entry.StringValue != null:
+                                    rule.CompareIndicator = entry.StringValue; break;
+                            }
                         }
+                        SaveExitOverrideTargets(pattern, rules);
                     }
-                    pattern.EntryRulesJson = JsonSerializer.Serialize(rules);
+                    else
+                    {
+                        var rules = GetOverrideTargets(pattern, jsonOpts, out var fromGroups);
+                        if (rules == null) continue;
+                        foreach (var entry in scopeGroup)
+                        {
+                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
+                            var rule = rules[entry.RuleIndex];
+                            switch (entry.FieldName.ToLowerInvariant())
+                            {
+                                case "value"           when entry.NumericValue.HasValue:
+                                    rule.Value = entry.NumericValue.Value; break;
+                                case "withinbars"      when entry.NumericValue.HasValue:
+                                    rule.WithinBars = (int)entry.NumericValue.Value; break;
+                                case "weight"          when entry.NumericValue.HasValue:
+                                    rule.Weight = entry.NumericValue.Value; break;
+                                case "consecutivebars" when entry.NumericValue.HasValue:
+                                    rule.ConsecutiveBars = (int)entry.NumericValue.Value; break;
+                                case "operator"        when entry.StringValue != null:
+                                    rule.Operator = entry.StringValue; break;
+                                case "compareindicator" when entry.StringValue != null:
+                                    rule.CompareIndicator = entry.StringValue; break;
+                            }
+                        }
+                        SaveOverrideTargets(pattern, jsonOpts, fromGroups, rules);
+                    }
                 }
+                catch { /* JSON 파싱 실패 시 필드 오버라이드 없이 진행 */ }
             }
-            catch { /* JSON 파싱 실패 시 필드 오버라이드 없이 진행 */ }
         }
     }
 

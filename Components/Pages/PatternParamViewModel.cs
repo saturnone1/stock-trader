@@ -103,6 +103,16 @@ public sealed class PatternParamViewModel
     public int Rsi2Bb_LongTrendMaPeriod { get; set; } = 200;
     public decimal Rsi2Bb_AtrStopMultiplier { get; set; } = 1.5m;
 
+    // CumulativeRsi2
+    public int CumRsi2_RsiPeriod { get; set; } = 2;
+    public int CumRsi2_CumulativePeriod { get; set; } = 2;
+    public decimal CumRsi2_EntryThreshold { get; set; } = 10m;
+    public decimal CumRsi2_ExitThreshold { get; set; } = 65m;
+    public int CumRsi2_LongTrendMaPeriod { get; set; } = 200;
+    public int CumRsi2_ExitSmaPeriod { get; set; } = 5;
+    public decimal CumRsi2_AtrStopMultiplier { get; set; } = 1.5m;
+    public decimal CumRsi2_PlaceholderTargetAtrMultiplier { get; set; } = 8.0m;
+
     // VolatilityBreakout
     public decimal VolBrk_BreakoutFactor { get; set; } = 0.5m;
     public decimal VolBrk_MinVolumeMultiplier { get; set; } = 1.0m;
@@ -178,6 +188,10 @@ public sealed class PatternParamViewModel
     public int Rsi2Bb_ExitMaxHoldingBars { get; set; } = 5;
     public decimal Rsi2Bb_ExitTrailingAtr { get; set; } = 0m;
     public decimal Rsi2Bb_ExitPartialR { get; set; } = 1.5m;
+
+    public int CumRsi2_ExitMaxHoldingBars { get; set; } = 20;
+    public decimal CumRsi2_ExitTrailingAtr { get; set; } = 0m;
+    public decimal CumRsi2_ExitPartialR { get; set; } = 0m;
 
     public int VolBrk_ExitMaxHoldingBars { get; set; } = 5;
     public decimal VolBrk_ExitTrailingAtr { get; set; } = 2.0m;
@@ -272,6 +286,15 @@ public sealed class PatternParamViewModel
             Rsi2Bb_BollingerStdDev = ps.Rsi2Bollinger.BollingerStdDev,
             Rsi2Bb_LongTrendMaPeriod = ps.Rsi2Bollinger.LongTrendMaPeriod,
             Rsi2Bb_AtrStopMultiplier = ps.Rsi2Bollinger.AtrStopMultiplier,
+            // CumulativeRsi2
+            CumRsi2_RsiPeriod = ps.CumulativeRsi2.RsiPeriod,
+            CumRsi2_CumulativePeriod = ps.CumulativeRsi2.CumulativePeriod,
+            CumRsi2_EntryThreshold = ps.CumulativeRsi2.EntryThreshold,
+            CumRsi2_ExitThreshold = ps.CumulativeRsi2.ExitThreshold,
+            CumRsi2_LongTrendMaPeriod = ps.CumulativeRsi2.LongTrendMaPeriod,
+            CumRsi2_ExitSmaPeriod = ps.CumulativeRsi2.ExitSmaPeriod,
+            CumRsi2_AtrStopMultiplier = ps.CumulativeRsi2.AtrStopMultiplier,
+            CumRsi2_PlaceholderTargetAtrMultiplier = ps.CumulativeRsi2.PlaceholderTargetAtrMultiplier,
             // VolatilityBreakout
             VolBrk_BreakoutFactor = ps.VolatilityBreakout.BreakoutFactor,
             VolBrk_MinVolumeMultiplier = ps.VolatilityBreakout.MinVolumeMultiplier,
@@ -474,6 +497,20 @@ public sealed class PatternParamViewModel
             new("최대 보유 봉", "Rsi2Bb_ExitMaxHoldingBars", "exit") { HelperText = "시간 청산 기한" },
             new("트레일링 ATR", "Rsi2Bb_ExitTrailingAtr", "exit") { Format = "F1", DecStep = 0.5m, HelperText = "0 = 비활성" },
             new("부분익절 R배수", "Rsi2Bb_ExitPartialR", "exit") { Format = "F1", DecStep = 0.5m, HelperText = "0 = 비활성" },
+        ],
+        [PatternType.CumulativeRsi2] =
+        [
+            new("RSI 기간", "CumRsi2_RsiPeriod") { HelperText = "개별 RSI 계산 기간" },
+            new("누적 기간", "CumRsi2_CumulativePeriod") { HelperText = "합산할 RSI 봉 수" },
+            new("진입 누적 RSI", "CumRsi2_EntryThreshold") { Format = "F0", DecStep = 1m, HelperText = "이 값 이하에서 진입" },
+            new("청산 누적 RSI", "CumRsi2_ExitThreshold") { Format = "F0", DecStep = 1m, HelperText = "이 값 이상에서 청산" },
+            new("장기 추세 SMA", "CumRsi2_LongTrendMaPeriod") { HelperText = "추세 필터 이동평균 기간" },
+            new("보조 목표 SMA", "CumRsi2_ExitSmaPeriod") { HelperText = "브래킷 목표가 보조 계산용" },
+            new("ATR 손절 배수", "CumRsi2_AtrStopMultiplier") { Format = "F1", DecStep = 0.5m, HelperText = "진입가 - ATR x N" },
+            new("보조 목표 ATR 배수", "CumRsi2_PlaceholderTargetAtrMultiplier") { Format = "F1", DecStep = 0.5m, HelperText = "실거래 브래킷 목표가 보조값" },
+            new("최대 보유 봉", "CumRsi2_ExitMaxHoldingBars", "exit") { HelperText = "0 또는 큰 값으로 사실상 비활성" },
+            new("트레일링 ATR", "CumRsi2_ExitTrailingAtr", "exit") { Format = "F1", DecStep = 0.5m, HelperText = "기본 0 = 비활성" },
+            new("부분익절 R배수", "CumRsi2_ExitPartialR", "exit") { Format = "F1", DecStep = 0.5m, HelperText = "기본 0 = 비활성" },
         ],
         [PatternType.VolatilityBreakout] =
         [

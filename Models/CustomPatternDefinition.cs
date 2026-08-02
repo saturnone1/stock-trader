@@ -59,7 +59,7 @@ public class CustomPatternDefinition
     /// <summary>포트폴리오 레벨 규칙 (JSON: PortfolioRulesConfig)</summary>
     public string PortfolioRulesJson { get; set; } = "{}";
 
-    /// <summary>진입 조건 그룹 (JSON: List&lt;ConditionGroup&gt;). 비어있으면 EntryRulesJson 사용.</summary>
+    /// <summary>진입 조건 그룹 (JSON: List&lt;ConditionGroup&gt;). 비어있지 않으면 EntryRulesJson보다 우선 적용됩니다.</summary>
     public string EntryGroupsJson { get; set; } = "[]";
 
     /// <summary>그룹 간 결합 방식: "AND" 또는 "OR"</summary>
@@ -68,7 +68,7 @@ public class CustomPatternDefinition
     /// <summary>동적 손절/목표 설정 (JSON: DynamicExitConfig)</summary>
     public string DynamicExitJson { get; set; } = "{}";
 
-    /// <summary>진입 가격 모드: "CurrentClose"(기본), "NextOpen"(차기봉 시가)</summary>
+    /// <summary>진입 가격 모드: "CurrentClose"(기본), "NextOpen"(차기봉 시가 지연 체결; 시가에서 신호를 재평가하지 않음)</summary>
     public string EntryMode { get; set; } = "CurrentClose";
 
     /// <summary>포지션 사이징 모드: "FixedRisk"(기본), "Kelly", "HalfKelly"</summary>
@@ -104,7 +104,7 @@ public class EntryRule
 {
     /// <summary>
     /// 지표 종류. 기본 지표:
-    /// RSI, PRICE_VS_SMA, PRICE_VS_EMA, MACD_HIST, BOLLINGER_POS,
+    /// RSI, CUMULATIVE_RSI, PRICE_VS_SMA, PRICE_VS_EMA, MACD_HIST, BOLLINGER_POS,
     /// VOLUME_RATIO, PRICE_CHANGE, ATR, SMA_SLOPE, CANDLE_BODY
     ///
     /// 가격 구조:

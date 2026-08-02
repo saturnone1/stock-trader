@@ -386,8 +386,11 @@ public class RuleBasedDetector : IPatternDetector
             // consecutiveBars: N봉 연속 조건 충족 필요
             if (rule.ConsecutiveBars > 1)
             {
-                for (int offset = 0; offset < rule.ConsecutiveBars && offset < evalCtx.Bars.Length - 50; offset++)
+                for (int offset = 0; offset < rule.ConsecutiveBars; offset++)
                 {
+                    if (!HasSufficientRuleHistory(rule, evalCtx, offset))
+                        return (false, $"{refPrefix}{rule.Indicator} insufficient history for {rule.ConsecutiveBars} bars");
+
                     var (val, prevVal) = ComputeIndicator(rule.Indicator, rule.Params, evalCtx, offset);
                     var thr = GetThresholds(offset, out var prevThr);
                     if (!Compare(val, prevVal, rule.Operator, thr, prevThr))
@@ -400,15 +403,25 @@ public class RuleBasedDetector : IPatternDetector
             // withinBars: 최근 N봉 중 하나라도 조건 충족하면 통과
             if (rule.WithinBars > 0)
             {
-                for (int offset = 0; offset < rule.WithinBars && offset < evalCtx.Bars.Length - 50; offset++)
+                var checkedBars = 0;
+                for (int offset = 0; offset < rule.WithinBars; offset++)
                 {
+                    if (!HasSufficientRuleHistory(rule, evalCtx, offset))
+                        break;
+
+                    checkedBars++;
                     var (val, prevVal) = ComputeIndicator(rule.Indicator, rule.Params, evalCtx, offset);
                     var thr = GetThresholds(offset, out var prevThr);
                     if (Compare(val, prevVal, rule.Operator, thr, prevThr))
                         return (true, $"{refPrefix}{rule.Indicator}={val:F2} {rule.Operator} {thresholdLabel} (within {rule.WithinBars})");
                 }
+                if (checkedBars == 0)
+                    return (false, $"{refPrefix}{rule.Indicator} insufficient history for within {rule.WithinBars}");
                 return (false, $"{refPrefix}{rule.Indicator} not met within {rule.WithinBars} bars");
             }
+
+            if (!HasSufficientRuleHistory(rule, evalCtx, 0))
+                return (false, $"{refPrefix}{rule.Indicator} insufficient history");
 
             var (currentVal, prev) = ComputeIndicator(rule.Indicator, rule.Params, evalCtx, 0);
             var threshold = GetThresholds(0, out var prevThreshold2);
@@ -431,6 +444,47 @@ public class RuleBasedDetector : IPatternDetector
         "crosses_below" => prev >= prevThreshold && current < threshold,
         _ => false
     };
+
+    private static bool HasSufficientRuleHistory(EntryRule rule, EvalContext ctx, int offset)
+    {
+        var requiredBars = GetRequiredBars(rule.Indicator, rule.Params);
+        if (!string.IsNullOrWhiteSpace(rule.CompareIndicator))
+            requiredBars = Math.Max(requiredBars, GetRequiredBars(rule.CompareIndicator, rule.CompareParams));
+
+        return ctx.Bars.Length - offset >= requiredBars;
+    }
+
+    private static int GetRequiredBars(string? indicator, Dictionary<string, decimal>? prms)
+    {
+        if (string.IsNullOrWhiteSpace(indicator))
+            return 3;
+
+        prms ??= new Dictionary<string, decimal>();
+
+        int GetInt(string key, int def) =>
+            prms.TryGetValue(key, out var v) ? (int)v : def;
+
+        return indicator.ToUpperInvariant() switch
+        {
+            "RSI" or "PRICE_VS_SMA" or "PRICE_VS_EMA" or "BOLLINGER_POS" or "VOLUME_RATIO"
+                or "ATR" or "ATR_PERCENT" or "VOLATILITY_20D" or "PRICE_VS_VWAP"
+                or "CCI" or "ROC" or "WILLIAMS_R" or "CMF"
+                => GetInt("period", 14) + 2,
+
+            "CUMULATIVE_RSI" => GetInt("period", 2) + GetInt("cumulativePeriod", 2) + 2,
+
+            "MACD_HIST" => GetInt("slow", 26) + GetInt("signal", 9) + 2,
+            "PRICE_CHANGE" => GetInt("bars", 1) + 2,
+            "SMA_SLOPE" => GetInt("period", 20) + GetInt("lookback", 5) + 2,
+            "DIST_FROM_HIGH" or "DIST_FROM_LOW" or "BREAKOUT_HIGH" or "BREAKOUT_LOW"
+                => GetInt("period", 20) + 2,
+            "ADX" => GetInt("period", 14) * 2 + 1,
+            "STOCHASTIC_K" => GetInt("period", 14) + 2,
+            "STOCHASTIC_D" => GetInt("period", 14) + GetInt("smooth", 3) + 2,
+            "OBV_SLOPE" => GetInt("lookback", 5) + 2,
+            _ => 3
+        };
+    }
 
     /// <summary>
     /// offset=0 → 현재 봉, offset=1 → 1봉 전, ...
@@ -462,6 +516,14 @@ public class RuleBasedDetector : IPatternDetector
                 var period = GetInt("period", 14);
                 var rsi = ctx.GetRsi(period);
                 return (rsi[ci], rsi[pi]);
+            }
+
+            case "CUMULATIVE_RSI":
+            {
+                var period = GetInt("period", 2);
+                var cumulativePeriod = GetInt("cumulativePeriod", 2);
+                var cumulativeRsi = _indicators.CumulativeRsi(closes, period, cumulativePeriod);
+                return (cumulativeRsi[ci], cumulativeRsi[pi]);
             }
 
             case "PRICE_VS_SMA":
