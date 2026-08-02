@@ -15,7 +15,7 @@
     <MudText Typo="Typo.h5">백테스트</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
 </MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">과거 데이터를 기반으로 패턴 전략의 수익성을 시뮬레이션합니다. 종목, 기간, 자본금을 설정하고 결과를 확인하세요.</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 page-description">과거 데이터를 기반으로 패턴 전략의 수익성을 시뮬레이션합니다. 종목, 기간, 자본금을 설정하고 결과를 확인하세요.</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">백테스트 도움말</MudText></TitleContent>
@@ -53,17 +53,17 @@
                               Placeholder="AAPL,MSFT,GOOGL" Variant="Variant.Outlined" Margin="Margin.Dense"
                               HelperText="최대 20개 종목 권장" />
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="6" md="2">
                 <MudDatePicker @bind-Date="_from" Label="시작일" Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="6" md="2">
                 <MudDatePicker @bind-Date="_to" Label="종료일" Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_capital" Label="초기 자본금"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N0" />
             </MudItem>
-            <MudItem xs="12" md="2" Class="d-flex align-end">
+            <MudItem xs="6" md="2" Class="d-flex align-end">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
                            OnClick="RunBacktestAsync" Disabled="@_isRunning">
                     @if (_isRunning)
@@ -78,7 +78,7 @@
         @* 타임프레임 및 비용 설정 *@
         <MudText Typo="Typo.caption" Color="Color.Tertiary" Class="mt-3 mb-1" Style="font-weight:600; letter-spacing:0.04em; text-transform:uppercase;">타임프레임 및 비용</MudText>
         <MudGrid Class="mt-0">
-            <MudItem xs="12" md="3">
+            <MudItem xs="12" sm="6" md="3">
                 <MudSelect T="TimeFrame" @bind-Value="_timeFrame" Label="타임프레임"
                            Variant="Variant.Outlined" Margin="Margin.Dense"
                            HelperText="@GetTimeFrameHelperText()">
@@ -89,7 +89,7 @@
                     <MudSelectItem T="TimeFrame" Value="TimeFrame.Weekly">주봉 (장기)</MudSelectItem>
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="12" sm="6" md="2">
                 <MudSelect T="DataSource?" @bind-Value="_dataSource" Label="데이터 소스"
                            Variant="Variant.Outlined" Margin="Margin.Dense"
                            HelperText="null=기본설정 사용">
@@ -99,19 +99,19 @@
                     <MudSelectItem T="DataSource?" Value="DataSource.LsSecurities">LS증권 (국내)</MudSelectItem>
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="12" sm="6" md="2">
                 <MudSelect @bind-Value="_slippageModel" Label="슬리피지 모델" T="SlippageModel"
                            Variant="Variant.Outlined" Margin="Margin.Dense">
                     <MudSelectItem T="SlippageModel" Value="SlippageModel.Adaptive">적응형 (ATR+거래량)</MudSelectItem>
                     <MudSelectItem T="SlippageModel" Value="SlippageModel.Fixed">고정 비율</MudSelectItem>
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="6" sm="3" md="2">
                 <MudNumericField @bind-Value="_slippagePercent" Label="@(_slippageModel == SlippageModel.Fixed ? "슬리피지 (%)" : "기본 슬리피지 (%)")"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="F3"
                                  Step="0.01m" Min="0m" Max="1m" />
             </MudItem>
-            <MudItem xs="12" md="2">
+            <MudItem xs="6" sm="3" md="2">
                 <MudNumericField @bind-Value="_commissionPerTrade" Label="수수료 ($/거래)"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="F2"
                                  Step="0.5m" Min="0m" />
@@ -638,7 +638,7 @@
     {
         <MudText Typo="Typo.h6" Class="mb-2">자산 곡선</MudText>
         <MudCard Class="mb-3 pa-3">
-            <ApexCharts.ApexChart TItem="EquityPoint" Options="_equityChartOptions" Height="300">
+            <ApexCharts.ApexChart TItem="EquityPoint" Options="_equityChartOptions" Height="@(IsMobile ? 180 : 300)">
                 <ApexCharts.ApexPointSeries TItem="EquityPoint"
                                  Items="_chartData"
                                  SeriesType="ApexCharts.SeriesType.Area"
@@ -903,8 +903,9 @@
     @if (_result.Trades.Count > 0)
     {
         <MudText Typo="Typo.h6" Class="mt-4 mb-2">거래 내역 (@(_result.Trades.Count)건)</MudText>
+        <div class="table-scroll-wrapper">
         <MudTable @ref="_tradeTable" Items="@_result.Trades" Dense="true" Hover="true" Striped="true"
-                  FixedHeader="true" Height="500px" RowsPerPage="50"
+                  FixedHeader="true" Height="@(IsMobile ? "300px" : "500px")" RowsPerPage="50"
                   CurrentPage="0">
             <HeaderContent>
                 <MudTh>#</MudTh>
@@ -956,6 +957,7 @@
                 <MudTablePager PageSizeOptions="new int[] { 50, 100 }" />
             </PagerContent>
         </MudTable>
+        </div>@* /table-scroll-wrapper *@
     }
 }
 else if (!string.IsNullOrEmpty(_errorMessage))

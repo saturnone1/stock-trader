@@ -12,7 +12,7 @@
 
 <PageTitle>리스크 모니터 - 주식 트레이더</PageTitle>
 
-<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+<div class="page-header">
     <MudText Typo="Typo.h5">리스크 모니터</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
     <MudTooltip Text="새로고침">
@@ -20,8 +20,8 @@
                        Color="Color.Default" OnClick="@LoadDataAsync"
                        Disabled="@_loading" />
     </MudTooltip>
-</MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">리스크 규칙 준수 현황을 실시간으로 모니터링합니다. 규칙을 초과하면 신규 진입이 자동으로 차단됩니다.</MudText>
+</div>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 page-description">리스크 규칙 준수 현황을 실시간으로 모니터링합니다. 규칙을 초과하면 신규 진입이 자동으로 차단됩니다.</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">리스크 모니터 도움말</MudText></TitleContent>
@@ -319,17 +319,18 @@ else
 }
 else
 {
+    <div class="table-scroll-wrapper">
     <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true"
               RowStyleFunc="@((StockTrader.Models.Position p, int _) => p.UnrealizedPnL < 0 && p.StopLossPrice > 0 && p.CurrentPrice <= p.StopLossPrice * 1.02m ? "background: rgba(244,67,54,0.06);" : "")">
         <HeaderContent>
             <MudTh>종목</MudTh>
-            <MudTh>섹터</MudTh>
-            <MudTh>패턴</MudTh>
-            <MudTh Style="text-align:right">보유일</MudTh>
+            <MudTh Class="col-hide-sm">섹터</MudTh>
+            <MudTh Class="col-hide-sm">패턴</MudTh>
+            <MudTh Style="text-align:right" Class="col-hide-md">보유일</MudTh>
             <MudTh Style="text-align:right">손익</MudTh>
-            <MudTh Style="text-align:right">달러 리스크</MudTh>
+            <MudTh Style="text-align:right" Class="col-hide-sm">달러 리스크</MudTh>
             <MudTh Style="text-align:right">R배수</MudTh>
-            <MudTh Style="text-align:right">손절 거리</MudTh>
+            <MudTh Style="text-align:right" Class="col-hide-md">손절 거리</MudTh>
         </HeaderContent>
         <RowTemplate>
             @{
@@ -383,10 +384,10 @@ else
             <MudTd>
                 <MudText Typo="Typo.body2" Style="font-weight:700;">@context.Symbol</MudText>
             </MudTd>
-            <MudTd>
+            <MudTd Class="col-hide-sm">
                 <MudText Typo="Typo.body2" Color="Color.Secondary">@context.Sector</MudText>
             </MudTd>
-            <MudTd>
+            <MudTd Class="col-hide-sm">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                     <MudText Typo="Typo.caption" Style="white-space:nowrap;">
                         @PatternMetadataMap.GetKoreanName(context.PatternType)
@@ -398,7 +399,7 @@ else
                     </MudChip>
                 </MudStack>
             </MudTd>
-            <MudTd Style="text-align:right">
+            <MudTd Style="text-align:right" Class="col-hide-md">
                 <MudText Typo="Typo.body2" Color="@(daysHeld > 10.0 ? Color.Warning : Color.Default)">
                     @daysHeldStr
                 </MudText>
@@ -410,7 +411,7 @@ else
                     @(context.UnrealizedPnL >= 0 ? "+" : "")$@context.UnrealizedPnL.ToString("N2")
                 </MudText>
             </MudTd>
-            <MudTd Style="text-align:right">
+            <MudTd Style="text-align:right" Class="col-hide-sm">
                 <MudText Typo="Typo.body2" Color="@(dollarRisk > maxRiskDollar ? Color.Warning : Color.Default)">
                     $@dollarRisk.ToString("N0")
                 </MudText>
@@ -420,14 +421,17 @@ else
                     @rMultStr
                 </MudText>
             </MudTd>
-            <MudTd Style="text-align:right">
+            <MudTd Style="text-align:right" Class="col-hide-md">
                 <MudText Typo="Typo.body2">@stopDistText</MudText>
             </MudTd>
         </RowTemplate>
     </MudTable>
+    </div>@* /table-scroll-wrapper *@
 }
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool IsMobile { get; set; }
+
     private bool _showHelp;
     private bool _loading;
     private string? _error;

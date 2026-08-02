@@ -1,15 +1,16 @@
 @using StockTrader.Models
 
+@* 모바일: Dense 카드 (패딩 최소화), 데스크톱: 기본 *@
 <MudCard>
-    <MudCardContent>
+    <MudCardContent Class="@(_isMobile ? "pa-2" : "")">
         <MudTooltip Text="@($"오늘 하루 손익. 계좌의 -{DailyLossLimitPercent * 100:F0}% 도달 시 거래 자동 중단, 다음 거래일 재개")">
-            <MudText Typo="Typo.subtitle2" Style="cursor:help">일일 손익 ⓘ</MudText>
+            <MudText Typo="@(_isMobile ? Typo.caption : Typo.subtitle2)" Style="cursor:help">일일 손익 ⓘ</MudText>
         </MudTooltip>
         <MudProgressLinear Color="@BarColor"
                            Value="@BarWidth"
-                           Size="Size.Large"
+                           Size="@(_isMobile ? Size.Medium : Size.Large)"
                            Rounded="true"
-                           Class="my-2" />
+                           Class="my-1" />
         <MudStack Row="true" Justify="Justify.SpaceBetween">
             <MudText Typo="Typo.caption" Color="Color.Error">한도: -@((DailyLossLimitPercent * 100m).ToString("F2"))%</MudText>
             <MudText Typo="Typo.caption"
@@ -19,7 +20,7 @@
         </MudStack>
         @if (State.IsTradingHalted)
         {
-            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-1">
                 <strong>거래 중단</strong>
             </MudAlert>
         }
@@ -29,6 +30,7 @@
 @code {
     [Parameter] public RiskState State { get; set; } = new();
     [Parameter] public decimal DailyLossLimitPercent { get; set; } = 0.03m;
+    [CascadingParameter(Name = "IsMobile")] private bool _isMobile { get; set; }
 
     private Color BarColor => State.DailyPnLPercent >= 0
         ? Color.Success

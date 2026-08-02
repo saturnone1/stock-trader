@@ -6,7 +6,7 @@
 <MudChip T="string"
          Color="@(CurrentMode == OrderMode.AutoOrder ? Color.Warning : Color.Success)"
          Variant="Variant.Filled"
-         Size="Size.Medium"
+         Size="Size.Small"
          OnClick="ToggleMode">
     @(CurrentMode == OrderMode.AutoOrder ? "자동 주문" : "알림 전용")
 </MudChip>

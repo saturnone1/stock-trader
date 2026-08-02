@@ -13,7 +13,7 @@
 
 <PageTitle>활성 시그널 - 주식 트레이더</PageTitle>
 
-<MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+<div class="page-header">
     <MudText Typo="Typo.h5">활성 시그널</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
     <MudTooltip Text="새로고침">
@@ -21,8 +21,8 @@
                        Color="Color.Default" OnClick="@ManualRefreshAsync"
                        Disabled="@_loading" />
     </MudTooltip>
-</MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">패턴 감지 시스템이 실시간으로 발견한 매매 시그널 목록입니다. 패턴 유형이나 종목명으로 필터링할 수 있습니다.</MudText>
+</div>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 page-description">패턴 감지 시스템이 실시간으로 발견한 매매 시그널 목록입니다. 패턴 유형이나 종목명으로 필터링할 수 있습니다.</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">활성 시그널 도움말</MudText></TitleContent>
@@ -47,34 +47,80 @@
 </MudDialog>
 
 <!-- 필터 영역 -->
-<MudGrid Spacing="3" Class="mb-2">
-    <MudItem xs="12" md="5">
-        <!-- 패턴 필터: 한국어이름 (스타일) 형태로 표시 -->
-        <MudSelect T="string" Value="_filterPattern" ValueChanged="@(v => { _filterPattern = v; RebuildFilteredSignals(); })" Label="패턴 필터" Variant="Variant.Outlined" Dense="true">
-            <MudSelectItem T="string" Value="@("")">전체 패턴</MudSelectItem>
-            @foreach (var pattern in Enum.GetValues<PatternType>())
-            {
-                var meta = PatternMetadataMap.Get(pattern);
-                <MudSelectItem T="string" Value="@pattern.ToString()">
-                    @meta.KoreanName (@meta.StyleLabel)@(meta.Status != PatternStatus.Verified ? $" ⚠ {PatternMetadataMap.GetStatusLabel(meta.Status)}" : "")
-                </MudSelectItem>
-            }
-        </MudSelect>
-    </MudItem>
-    <MudItem xs="12" md="4">
-        <MudTextField Value="_filterSymbol" ValueChanged="@((string v) => { _filterSymbol = v; RebuildFilteredSignals(); })" Label="종목 검색" Placeholder="종목 검색..."
-                      Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
-                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
-    </MudItem>
-    <MudItem xs="12" md="3">
-        <MudSelect T="string" Value="_sortBy" ValueChanged="@(v => { _sortBy = v; RebuildFilteredSignals(); })" Label="정렬" Variant="Variant.Outlined" Dense="true">
-            <MudSelectItem T="string" Value="@("time-desc")">최신순</MudSelectItem>
-            <MudSelectItem T="string" Value="@("time-asc")">오래된순</MudSelectItem>
-            <MudSelectItem T="string" Value="@("confidence-desc")">신뢰도 높은순</MudSelectItem>
-            <MudSelectItem T="string" Value="@("rr-desc")">R:R 높은순</MudSelectItem>
-        </MudSelect>
-    </MudItem>
-</MudGrid>
+@if (IsMobile)
+{
+    @* 모바일: 한 줄 검색 + 필터 토글 버튼 *@
+    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField Value="_filterSymbol" ValueChanged="@((string v) => { _filterSymbol = v; RebuildFilteredSignals(); })"
+                      Placeholder="종목 검색..." Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Style="flex:1;" />
+        <MudIconButton Icon="@(_showMobileFilter ? Icons.Material.Filled.FilterListOff : Icons.Material.Filled.FilterList)"
+                       Color="@(_showMobileFilter || _filterPattern != "" || _filterStyle != null ? Color.Primary : Color.Default)"
+                       Variant="Variant.Outlined" Size="Size.Medium"
+                       OnClick="@(() => _showMobileFilter = !_showMobileFilter)"
+                       title="필터 열기/닫기"
+                       Style="flex-shrink:0; border-radius:4px; border:1px solid rgba(255,255,255,0.23); padding:6px;" />
+    </MudStack>
+    @if (_showMobileFilter)
+    {
+        <MudGrid Spacing="2" Class="mb-2">
+            <MudItem xs="12">
+                <MudSelect T="string" Value="_filterPattern" ValueChanged="@(v => { _filterPattern = v; RebuildFilteredSignals(); })"
+                           Label="패턴 필터" Variant="Variant.Outlined" Dense="true">
+                    <MudSelectItem T="string" Value="@("")">전체 패턴</MudSelectItem>
+                    @foreach (var pattern in Enum.GetValues<PatternType>())
+                    {
+                        var meta = PatternMetadataMap.Get(pattern);
+                        <MudSelectItem T="string" Value="@pattern.ToString()">
+                            @meta.KoreanName (@meta.StyleLabel)@(meta.Status != PatternStatus.Verified ? $" ⚠ {PatternMetadataMap.GetStatusLabel(meta.Status)}" : "")
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect T="string" Value="_sortBy" ValueChanged="@(v => { _sortBy = v; RebuildFilteredSignals(); })"
+                           Label="정렬" Variant="Variant.Outlined" Dense="true">
+                    <MudSelectItem T="string" Value="@("time-desc")">최신순</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("time-asc")">오래된순</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("confidence-desc")">신뢰도 높은순</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("rr-desc")">R:R 높은순</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    }
+}
+else
+{
+    @* 데스크톱: 기존 3열 필터 *@
+    <MudGrid Spacing="3" Class="mb-2">
+        <MudItem xs="12" md="5">
+            <MudSelect T="string" Value="_filterPattern" ValueChanged="@(v => { _filterPattern = v; RebuildFilteredSignals(); })" Label="패턴 필터" Variant="Variant.Outlined" Dense="true">
+                <MudSelectItem T="string" Value="@("")">전체 패턴</MudSelectItem>
+                @foreach (var pattern in Enum.GetValues<PatternType>())
+                {
+                    var meta = PatternMetadataMap.Get(pattern);
+                    <MudSelectItem T="string" Value="@pattern.ToString()">
+                        @meta.KoreanName (@meta.StyleLabel)@(meta.Status != PatternStatus.Verified ? $" ⚠ {PatternMetadataMap.GetStatusLabel(meta.Status)}" : "")
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField Value="_filterSymbol" ValueChanged="@((string v) => { _filterSymbol = v; RebuildFilteredSignals(); })" Label="종목 검색" Placeholder="종목 검색..."
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudSelect T="string" Value="_sortBy" ValueChanged="@(v => { _sortBy = v; RebuildFilteredSignals(); })" Label="정렬" Variant="Variant.Outlined" Dense="true">
+                <MudSelectItem T="string" Value="@("time-desc")">최신순</MudSelectItem>
+                <MudSelectItem T="string" Value="@("time-asc")">오래된순</MudSelectItem>
+                <MudSelectItem T="string" Value="@("confidence-desc")">신뢰도 높은순</MudSelectItem>
+                <MudSelectItem T="string" Value="@("rr-desc")">R:R 높은순</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+}
 
 <!-- 트레이딩 스타일 빠른 필터 -->
 <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-3">
@@ -141,28 +187,20 @@ else
     @foreach (var signal in _filteredSignals)
     {
         _recMap.TryGetValue((signal.Symbol, signal.PatternType), out var rec);
-        <MudPaper Class="mb-4 pa-0" Elevation="0"
-                  Style="border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; overflow: hidden;">
+        <div class="mb-4">
             <SignalCard Signal="@signal" Recommendation="@rec" />
             @{
                 var isStale = (DateTime.UtcNow - signal.DetectedAt).TotalHours > 24;
             }
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02);">
-                <MudText Typo="Typo.caption">
-                    @if (isStale)
-                    {
-                        <span style="color: var(--mud-palette-warning);">24시간 초과 — 매수 불가</span>
-                    }
-                    else
-                    {
-                        <span style="color: var(--mud-palette-text-secondary);">시장가 주문으로 체결됩니다</span>
-                    }
-                </MudText>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.12); border-top: none; border-radius: 0 0 6px 6px; background: rgba(255,255,255,0.02);">
+                <span style="font-size: 0.72rem; min-width: 0; color: var(--mud-palette-@(isStale ? "warning" : "text-secondary"));">
+                    @(isStale ? "24시간 초과" : "시장가 주문")
+                </span>
                 <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
                            StartIcon="@Icons.Material.Filled.ShoppingCart"
                            Disabled="@(_executingSignalId == signal.Id || isStale)"
                            OnClick="@(() => ExecuteSignalAsync(signal))"
-                           Style="min-width: 72px;">
+                           Style="min-width: 56px; flex-shrink: 0;">
                     @if (_executingSignalId == signal.Id)
                     {
                         <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
@@ -170,12 +208,15 @@ else
                     매수
                 </MudButton>
             </div>
-        </MudPaper>
+        </div>
     }
 }
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool IsMobile { get; set; }
+
     private bool _showHelp;
+    private bool _showMobileFilter;
     private bool _loading;
     private string? _error;
     private bool _subscribed;

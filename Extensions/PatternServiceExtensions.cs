@@ -20,8 +20,8 @@ public static class PatternServiceExtensions
         services.AddScoped<IPatternDetector, MultiTimeframeTrendDetector>();
         services.AddScoped<IPatternDetector, MeanReversionChannelDetector>();
         services.AddScoped<IPatternDetector, Rsi2BollingerDetector>();
+        services.AddScoped<IPatternDetector, CumulativeRsi2Detector>();
         services.AddScoped<IPatternDetector, VolatilityBreakoutDetector>();
-        services.AddScoped<IPatternDetector, Tqqq200SmaDetector>();
         services.AddScoped<PatternDetectionService>();
 
         return services;

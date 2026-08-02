@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MudBlazor.Services;
 using Serilog;
+using StockTrader.Api;
 using StockTrader.Components;
 using StockTrader.Configuration;
 using StockTrader.Data;
@@ -13,7 +14,9 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Auth;
 using StockTrader.Services.Backtest;
+using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Order;
+using StockTrader.BackgroundServices;
 
 // Serilog bootstrap logger — captures startup errors before host is built
 Log.Logger = new LoggerConfiguration()
@@ -45,11 +48,33 @@ builder.Services.AddMudServices();
 // In-memory cache (used by StockAnalysisService to avoid redundant API calls)
 builder.Services.AddMemoryCache();
 
+// Minimal API JSON: enum을 문자열 이름으로 직렬화/역직렬화
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
+
 // Add StockTrader services (DI, DB, background services, etc.)
 builder.Services.AddStockTraderServices(builder.Configuration);
 
 // Add security services (cookie auth, crypto, rate limiting)
 builder.Services.AddSecurityServices(builder.Configuration);
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("DesktopUi", policy =>
+    {
+        policy.WithOrigins(
+                "http://stock-desktop.taewon",
+                "https://stock-desktop.taewon",
+                "http://localhost:5173",
+                "http://localhost:8000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:8000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
 // Auth HttpClient — Blazor Server 컴포넌트에서 자체 API(/api/auth/*)를 호출할 때 사용
 // Kestrel은 0.0.0.0:5239로 바인딩되므로, 자체 호출에는 localhost 사용
@@ -65,6 +90,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var financialPipeline = scope.ServiceProvider.GetRequiredService<FinancialSnapshotIngestionService>();
     await db.Database.EnsureCreatedAsync();
 
     // UserSettings 테이블에 리스크 관련 컬럼이 없으면 추가 (기존 DB 호환)
@@ -119,6 +145,65 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = sql;
                 await cmd.ExecuteNonQueryAsync();
             }
+        }
+
+        // FinancialSnapshots 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='FinancialSnapshots'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE FinancialSnapshots (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Symbol TEXT NOT NULL DEFAULT '',
+                    AsOfDate TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    Source TEXT NOT NULL DEFAULT 'Manual',
+                    PeRatio REAL,
+                    PbRatio REAL,
+                    RoePercent REAL,
+                    OperatingMarginPercent REAL,
+                    RevenueCurrent REAL,
+                    RevenuePrevious REAL,
+                    OperatingIncomeCurrent REAL,
+                    OperatingIncomePrevious REAL,
+                    NetIncomeCurrent REAL,
+                    NetIncomePrevious REAL,
+                    Notes TEXT,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+                )";
+            await cmd.ExecuteNonQueryAsync();
+
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_FinancialSnapshots_Symbol_AsOfDate ON FinancialSnapshots (Symbol, AsOfDate)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialSnapshots_AsOfDate ON FinancialSnapshots (AsOfDate)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialSnapshots_Symbol ON FinancialSnapshots (Symbol)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='FinancialImportRuns'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE FinancialImportRuns (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    SourceType TEXT NOT NULL DEFAULT '',
+                    FilePath TEXT NOT NULL DEFAULT '',
+                    Fingerprint TEXT NOT NULL DEFAULT '',
+                    Status TEXT NOT NULL DEFAULT 'Pending',
+                    ImportedCount INTEGER NOT NULL DEFAULT 0,
+                    SkippedCount INTEGER NOT NULL DEFAULT 0,
+                    ErrorMessage TEXT,
+                    StartedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    CompletedAt TEXT
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_FinancialImportRuns_FilePath_Fingerprint ON FinancialImportRuns (FilePath, Fingerprint)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialImportRuns_StartedAt ON FinancialImportRuns (StartedAt)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_FinancialImportRuns_Status ON FinancialImportRuns (Status)";
+            await cmd.ExecuteNonQueryAsync();
         }
 
         // TradingAccounts 테이블 마이그레이션
@@ -249,6 +334,204 @@ using (var scope = app.Services.CreateScope())
             await cmd.ExecuteNonQueryAsync();
         }
 
+        // SymbolProfiles 테이블 생성 (없는 경우) — 종목별 트레이딩 프로파일
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='SymbolProfiles'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE SymbolProfiles (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Symbol TEXT NOT NULL DEFAULT '',
+                    Name TEXT NOT NULL DEFAULT '기본',
+                    IsActive INTEGER NOT NULL DEFAULT 0,
+                    EnabledPatterns TEXT NOT NULL DEFAULT '[]',
+                    ParameterOverridesJson TEXT,
+                    WeightStrategyJson TEXT,
+                    RiskPerTradePercent REAL NOT NULL DEFAULT 0.01,
+                    MaxTotalPositions INTEGER NOT NULL DEFAULT 7,
+                    BacktestReturnPct REAL,
+                    BacktestWinRate REAL,
+                    BacktestMaxDrawdown REAL,
+                    BacktestSharpe REAL,
+                    BacktestTrades INTEGER,
+                    BacktestFrom TEXT,
+                    BacktestTo TEXT,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_SymbolProfiles_Symbol_Name ON SymbolProfiles (Symbol, Name)";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_SymbolProfiles_Symbol_IsActive ON SymbolProfiles (Symbol, IsActive)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // CustomPatterns 테이블
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='CustomPatterns'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE CustomPatterns (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL DEFAULT '',
+                    Description TEXT,
+                    EntryRulesJson TEXT NOT NULL DEFAULT '[]',
+                    EntryLogic TEXT NOT NULL DEFAULT 'AND',
+                    RequireBullRegime INTEGER NOT NULL DEFAULT 0,
+                    AtrStopMultiplier REAL NOT NULL DEFAULT 2.0,
+                    AtrTargetMultiplier REAL NOT NULL DEFAULT 3.0,
+                    MaxHoldingBars INTEGER NOT NULL DEFAULT 10,
+                    TrailingAtr REAL NOT NULL DEFAULT 0,
+                    PartialProfitR REAL NOT NULL DEFAULT 0,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE UNIQUE INDEX IX_CustomPatterns_Name ON CustomPatterns (Name)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // CustomPatterns 비중 단계 컬럼 추가 (기존 테이블 마이그레이션)
+        cmd.CommandText = "PRAGMA table_info(CustomPatterns)";
+        var existingCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                existingCols.Add(reader.GetString(1));
+        }
+        if (!existingCols.Contains("UseWeightTiers"))
+        {
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN UseWeightTiers INTEGER NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (!existingCols.Contains("WeightTiersJson"))
+        {
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN WeightTiersJson TEXT NOT NULL DEFAULT '[]'";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (!existingCols.Contains("DefaultAllocationPercent"))
+        {
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN DefaultAllocationPercent REAL NOT NULL DEFAULT 100";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        // 고급 설정 컬럼 추가
+        foreach (var (col, def) in new[] {
+            ("ExitRulesJson", "'[]'"), ("ExitRulesLogic", "'OR'"),
+            ("ScalingRulesJson", "'[]'"), ("TimeFilterJson", "'{}'"),
+            ("CircuitBreakerJson", "'{}'"), ("ReentryJson", "'{}'"), ("PortfolioRulesJson", "'{}'"),
+            ("EntryGroupsJson", "'[]'"), ("EntryGroupsLogic", "'AND'"), ("DynamicExitJson", "'{}'"),
+            ("EntryMode", "'CurrentClose'"), ("SizingMode", "'FixedRisk'") })
+        {
+            if (!existingCols.Contains(col))
+            {
+                cmd.CommandText = $"ALTER TABLE CustomPatterns ADD COLUMN {col} TEXT NOT NULL DEFAULT {def}";
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        // OptimizationJobs 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='OptimizationJobs'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE OptimizationJobs (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL DEFAULT '',
+                    Status INTEGER NOT NULL DEFAULT 0,
+                    Priority INTEGER NOT NULL DEFAULT 0,
+                    RequestJson TEXT NOT NULL DEFAULT '',
+                    TotalCombinations INTEGER NOT NULL DEFAULT 0,
+                    TestedCombinations INTEGER NOT NULL DEFAULT 0,
+                    CurrentChunkIndex INTEGER NOT NULL DEFAULT 0,
+                    ChunkSize INTEGER NOT NULL DEFAULT 200,
+                    CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    StartedAt TEXT,
+                    CompletedAt TEXT,
+                    LastProgressAt TEXT,
+                    MaxDurationHours REAL,
+                    MaxTestedCombinations INTEGER,
+                    RankBy TEXT NOT NULL DEFAULT 'sortinoRatio',
+                    TopResultsToKeep INTEGER NOT NULL DEFAULT 50,
+                    ContinuousMode INTEGER NOT NULL DEFAULT 0,
+                    AutoApplyBestResult INTEGER NOT NULL DEFAULT 0,
+                    AutoApplyMinTrades INTEGER NOT NULL DEFAULT 10,
+                    AppliedResultCount INTEGER NOT NULL DEFAULT 0,
+                    LastAutoAppliedAt TEXT,
+                    LastAutoAppliedResultId INTEGER,
+                    LastAutoApplyMessage TEXT,
+                    ErrorMessage TEXT
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_OptimizationJobs_Status_Priority ON OptimizationJobs (Status, Priority)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        cmd.CommandText = "PRAGMA table_info(OptimizationJobs)";
+        var optimizationJobColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var optimizationJobReader = await cmd.ExecuteReaderAsync())
+        {
+            while (await optimizationJobReader.ReadAsync())
+                optimizationJobColumns.Add(optimizationJobReader.GetString(1));
+        }
+
+        var optimizationJobAlterStatements = new Dictionary<string, string>
+        {
+            ["ContinuousMode"] = "ALTER TABLE OptimizationJobs ADD COLUMN ContinuousMode INTEGER NOT NULL DEFAULT 0",
+            ["AutoApplyBestResult"] = "ALTER TABLE OptimizationJobs ADD COLUMN AutoApplyBestResult INTEGER NOT NULL DEFAULT 0",
+            ["AutoApplyMinTrades"] = "ALTER TABLE OptimizationJobs ADD COLUMN AutoApplyMinTrades INTEGER NOT NULL DEFAULT 10",
+            ["AppliedResultCount"] = "ALTER TABLE OptimizationJobs ADD COLUMN AppliedResultCount INTEGER NOT NULL DEFAULT 0",
+            ["LastAutoAppliedAt"] = "ALTER TABLE OptimizationJobs ADD COLUMN LastAutoAppliedAt TEXT",
+            ["LastAutoAppliedResultId"] = "ALTER TABLE OptimizationJobs ADD COLUMN LastAutoAppliedResultId INTEGER",
+            ["LastAutoApplyMessage"] = "ALTER TABLE OptimizationJobs ADD COLUMN LastAutoApplyMessage TEXT"
+        };
+
+        foreach (var (col, sql) in optimizationJobAlterStatements)
+        {
+            if (!optimizationJobColumns.Contains(col))
+            {
+                cmd.CommandText = sql;
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        // OptimizationResults 테이블 생성 (없는 경우)
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='OptimizationResults'";
+        if (await cmd.ExecuteScalarAsync() == null)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE OptimizationResults (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    JobId INTEGER NOT NULL,
+                    Rank INTEGER NOT NULL DEFAULT 0,
+                    ParamsJson TEXT NOT NULL DEFAULT '',
+                    TotalReturn REAL NOT NULL DEFAULT 0,
+                    SortinoRatio REAL NOT NULL DEFAULT 0,
+                    SharpeRatio REAL NOT NULL DEFAULT 0,
+                    MaxDrawdown REAL NOT NULL DEFAULT 0,
+                    WinRate REAL NOT NULL DEFAULT 0,
+                    TotalTrades INTEGER NOT NULL DEFAULT 0,
+                    ProfitFactor REAL NOT NULL DEFAULT 0,
+                    CalmarRatio REAL NOT NULL DEFAULT 0,
+                    AnnualizedReturn REAL NOT NULL DEFAULT 0,
+                    OosTotalReturn REAL,
+                    OosSortinoRatio REAL,
+                    OosSharpeRatio REAL,
+                    OosMaxDrawdown REAL,
+                    OosWinRate REAL,
+                    OosTotalTrades INTEGER,
+                    OosProfitFactor REAL,
+                    OosCalmarRatio REAL,
+                    OosAnnualizedReturn REAL,
+                    TestedAtCombination INTEGER NOT NULL DEFAULT 0,
+                    DiscoveredAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                    FOREIGN KEY (JobId) REFERENCES OptimizationJobs(Id) ON DELETE CASCADE
+                )";
+            await cmd.ExecuteNonQueryAsync();
+            cmd.CommandText = "CREATE INDEX IX_OptimizationResults_JobId_Rank ON OptimizationResults (JobId, Rank)";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         // TQQQ 200SMA 스테일 시그널 정리: 비-TQQQ 종목의 시그널 비활성화
         // AllowedSymbols 기본값은 ["TQQQ"]이므로, 이전에 잘못 생성된 비-TQQQ 시그널을 정리
         cmd.CommandText = "UPDATE PatternSignals SET IsActive = 0 WHERE PatternType = 16 AND Symbol != 'TQQQ' AND IsActive = 1";
@@ -283,6 +566,18 @@ using (var scope = app.Services.CreateScope())
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         logger.LogWarning(ex, "스키마 마이그레이션 중 오류 발생 (무시하고 계속)");
+    }
+
+    // OptimizationJob 스타트업 복구: 비정상 종료로 Running 상태 남은 작업 → Pending 복귀
+    try
+    {
+        var optRepo = scope.ServiceProvider.GetRequiredService<StockTrader.Data.Repositories.IOptimizationRepository>();
+        await optRepo.ResetRunningJobsAsync();
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogWarning(ex, "OptimizationJob 스타트업 복구 중 오류 (무시하고 계속)");
     }
 
     // appsettings.json의 기존 Alpaca 설정으로 기본 계좌 시드 (계좌가 0개일 때만)
@@ -325,6 +620,8 @@ using (var scope = app.Services.CreateScope())
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         logger.LogWarning(ex, "기본 계좌 시드 중 오류 발생 (무시하고 계속)");
     }
+
+    Directory.CreateDirectory(financialPipeline.GetResolvedImportDirectory());
 }
 
 // Configure the HTTP request pipeline.
@@ -391,7 +688,9 @@ app.UseSerilogRequestLogging(options =>
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
 });
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseCors("DesktopUi");
+
+// StatusCodePages 제거 — API 전용 서버로 404를 그대로 반환
 
 // Only redirect to HTTPS in local development (not Docker).
 if (app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
@@ -401,8 +700,19 @@ if (app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("DOTNET
 
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.UseAntiforgery();
+ 
+// ── StockTrader REST API (Dashboard, Portfolio, Signals, Trades, Risk, Settings, Accounts, ML, Analysis) ──
+app.MapStockTraderApi();
+
+app.MapGet("/api/health", (IOptions<AlpacaSettings> alpaca) =>
+    Results.Ok(new
+    {
+        status = "ok",
+        service = "stocktrader-api",
+        alpacaConfigured = alpaca.Value.HasConfiguredCredentials,
+        timestamp = DateTimeOffset.UtcNow
+    }));
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
 
@@ -439,6 +749,33 @@ app.MapPost("/api/auth/logout", async (HttpContext ctx, IAuditService audit) =>
     if (int.TryParse(userId, out var uid))
         await audit.LogAsync(uid, "LOGOUT", "User signed out");
     return Results.Ok(new { message = "로그아웃 완료" });
+});
+
+app.MapGet("/api/auth/me", (HttpContext ctx) =>
+{
+    if (!ctx.User.Identity?.IsAuthenticated ?? true)
+        return Results.Unauthorized();
+
+    var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    var username = ctx.User.Identity?.Name ?? ctx.User.FindFirstValue(ClaimTypes.Name) ?? "";
+
+    return Results.Ok(new
+    {
+        userId,
+        username,
+        authenticated = true
+    });
+});
+
+app.MapGet("/api/auth/bootstrap", async (IAuthService auth,
+    IOptionsMonitor<SecuritySettings> securityOptions) =>
+{
+    var hasUsers = await auth.HasAnyUserAsync();
+    return Results.Ok(new
+    {
+        hasUsers,
+        allowRegistration = !hasUsers || securityOptions.CurrentValue.AllowRegistration
+    });
 });
 
 app.MapPost("/api/auth/register", async (HttpContext ctx, IAuthService auth,
@@ -555,76 +892,113 @@ app.MapPost("/api/orders/close-position", async (HttpContext ctx, StockTrader.Se
         : Results.BadRequest(new { error = $"{symbol} 청산 실패. 브로커 연결 상태 또는 보유 포지션을 확인하세요." });
 }).RequireRateLimiting("api").RequireAuthorization();
 
-// ── Backtest API (CLI에서 수익률 비교용) ──
+// ── Backtest API ──
 app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService svc, CancellationToken ct) =>
 {
+    if (string.Equals(request.BacktestMode, "weight", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "weight 백테스트 모드는 제거되었습니다. 패턴 백테스트 또는 패턴 빌더를 사용하세요." });
+    }
+
     var result = await svc.RunAsync(request, ct);
+
+    // 에퀴티 커브 다운샘플링 (300포인트 이하)
+    var equityCurve = result.EquityCurve;
+    if (equityCurve.Count > 300)
+    {
+        var sampled = new List<EquityPoint>(300);
+        sampled.Add(equityCurve[0]);
+        var step = (double)(equityCurve.Count - 1) / 299;
+        for (int i = 1; i < 299; i++)
+            sampled.Add(equityCurve[(int)Math.Round(i * step)]);
+        sampled.Add(equityCurve[^1]);
+        equityCurve = sampled;
+    }
+
     return Results.Ok(new
     {
         result.TotalTrades,
-        TotalReturn = result.TotalReturnPercent.ToString("P2"),
+        TotalReturn = result.TotalReturnPercent,
         result.MaxDrawdown,
         result.SharpeRatio,
         result.OverallWinRate,
+        result.TotalSlippageCost,
+        result.TotalCommissionCost,
+        result.ErrorMessage,
+        result.Warnings,
+        result.WeightStrategyApplied,
+        result.WeightReducedTrades,
+        UsedTimeFrame = result.UsedTimeFrame.ToString(),
+        ActualDataFrom = result.ActualDataFrom?.ToString("yyyy-MM-dd"),
         PerPattern = result.PerPatternStats.ToDictionary(
             kv => kv.Key.ToString(),
-            kv => new { kv.Value.SampleSize, WinRate = kv.Value.WinRate.ToString("P1"), kv.Value.AvgWinPercent, kv.Value.AvgLossPercent }),
+            kv => new { kv.Value.SampleSize, kv.Value.WinRate, kv.Value.AvgWinPercent, kv.Value.AvgLossPercent, kv.Value.Expectancy, kv.Value.ProfitFactor }),
+        PerSymbol = result.PerSymbolStats.Select(s => new
+        {
+            s.Symbol, s.TradeCount, s.WinRate, s.TotalPnL, s.AvgPnLPercent
+        }),
+        EquityCurve = equityCurve.Select(e => new { Date = e.Date.ToString("yyyy-MM-dd"), e.Equity }),
         Trades = result.Trades.Select(t => new
         {
             t.Symbol, Pattern = t.PatternType.ToString(),
             EntryTime = t.EntryTime.ToString("yyyy-MM-dd"), ExitTime = t.ExitTime.ToString("yyyy-MM-dd"),
-            t.EntryPrice, t.ExitPrice, ReturnPct = ((t.ExitPrice - t.EntryPrice) / t.EntryPrice).ToString("P2"),
+            t.EntryPrice, t.ExitPrice, ReturnPct = t.EntryPrice > 0 ? (t.ExitPrice - t.EntryPrice) / t.EntryPrice : 0m,
             t.ExitReason
-        })
-    });
-});
-
-// ── TQQQ 비중 백테스트 API ────────────────────────────────────────────────────
-// fmkorea "200일 티큐 변형매매법" 포지션-비중 백테스터.
-// TQQQ 200SMA + QQQ MA3/MA161 + SPY MA200 기반으로 매일 비중(0/5/10/80/90/100%)을 결정.
-app.MapPost("/api/backtest/tqqq", async (TqqqBacktestRequest req, TqqqWeightBacktester bt, CancellationToken ct) =>
-{
-    var result = await bt.RunAsync(
-        req.From,
-        req.To,
-        req.InitialCapital,
-        req.DataSource,
-        req.Params,
-        ct);
-
-    return Results.Ok(new
-    {
-        TotalReturn    = result.TotalReturnPercent.ToString("F2") + "%",
-        CAGR           = result.Cagr.ToString("F2") + "%",
-        MaxDrawdown    = result.MaxDrawdownPercent.ToString("F2") + "%",
-        result.SharpeRatio,
-        result.TotalDays,
-        result.InvestedDays,
-        // 처음 30일 + 마지막 30일 기록 (디버깅용)
-        EarlyRecords = result.DailyRecords.Take(30).Select(r => new
-        {
-            Date        = r.Date.ToString("yyyy-MM-dd"),
-            r.Code,
-            Weight      = r.Weight.ToString("P0"),
-            TqqqClose   = r.TqqqClose.ToString("F2"),
-            DailyReturn = r.DailyReturn.ToString("P2"),
-            Equity      = r.Equity.ToString("N2")
         }),
-        RecentRecords = result.DailyRecords.TakeLast(30).Select(r => new
+        WalkForward = result.WalkForward != null ? new
         {
-            Date        = r.Date.ToString("yyyy-MM-dd"),
-            r.Code,
-            Weight      = r.Weight.ToString("P0"),
-            TqqqClose   = r.TqqqClose.ToString("F2"),
-            DailyReturn = r.DailyReturn.ToString("P2"),
-            Equity      = r.Equity.ToString("N2")
-        })
+            result.WalkForward.AggregateOosReturnPercent,
+            result.WalkForward.AggregateOosMaxDrawdown,
+            result.WalkForward.AggregateOosWinRate,
+            result.WalkForward.AggregateOosSharpe,
+            result.WalkForward.WalkForwardEfficiency,
+            Windows = result.WalkForward.Windows.Select(w => new
+            {
+                IsFrom = w.InSampleFrom.ToString("yyyy-MM-dd"), IsTo = w.InSampleTo.ToString("yyyy-MM-dd"),
+                OosFrom = w.OutOfSampleFrom.ToString("yyyy-MM-dd"), OosTo = w.OutOfSampleTo.ToString("yyyy-MM-dd"),
+                w.InSampleTrades, w.InSampleReturnPercent,
+                w.OutOfSampleTrades, w.OutOfSampleReturnPercent, w.OutOfSampleMaxDrawdown, w.Efficiency
+            })
+        } : null,
+        MonteCarlo = result.MonteCarlo != null ? new
+        {
+            result.MonteCarlo.Simulations,
+            result.MonteCarlo.MedianFinalEquity,
+            result.MonteCarlo.MeanFinalEquity,
+            result.MonteCarlo.Percentile5Equity,
+            result.MonteCarlo.Percentile25Equity,
+            result.MonteCarlo.Percentile75Equity,
+            result.MonteCarlo.Percentile95Equity,
+            result.MonteCarlo.MedianMaxDrawdown,
+            result.MonteCarlo.WorstCaseMaxDrawdown,
+            result.MonteCarlo.ProbabilityOfLoss,
+        } : null,
     });
-});
+}).RequireAuthorization();
+
+// ── 실거래 파라미터 적용 API ──
+app.MapPost("/api/backtest/apply-live", async (
+    ApplyLiveRequest req,
+    ILiveParameterService liveSvc,
+    CancellationToken ct) =>
+{
+    await liveSvc.ApplyToLiveAsync(
+        req.ParameterOverrides ?? new PatternParameterOverrides(),
+        req.EnabledPatterns?.Select(p => Enum.Parse<PatternType>(p)).ToList() ?? new(),
+        req.RiskPerTradePercent ?? 0.01m,
+        req.DailyLossLimitPercent ?? 0.03m,
+        req.MaxTotalPositions ?? 7,
+        req.MaxPositionsPerSector ?? 2,
+        ct);
+    return Results.Ok(new { message = "실거래 파라미터가 적용되었습니다." });
+}).RequireAuthorization();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// 데스크톱 Svelte UI와 별개로 기존 Blazor 운영 UI도 유지한다.
+// /api/* 는 REST API, 그 외 라우트는 기존 운영 화면으로 제공된다.
 
 app.Run();
 
@@ -637,3 +1011,13 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// ── 요청 DTO ──
+public record ApplyLiveRequest(
+    PatternParameterOverrides? ParameterOverrides,
+    List<string>? EnabledPatterns,
+    decimal? RiskPerTradePercent,
+    decimal? DailyLossLimitPercent,
+    int? MaxTotalPositions,
+    int? MaxPositionsPerSector
+);

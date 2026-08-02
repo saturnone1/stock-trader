@@ -51,6 +51,21 @@ public static class SecurityServiceExtensions
                 opts.Cookie.SameSite  = SameSiteMode.Strict;
                 opts.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
                 opts.Cookie.Name      = "StockTrader.Auth";
+
+                // API 요청에는 302 리다이렉트 대신 401 반환
+                opts.Events = new CookieAuthenticationEvents
+                {
+                    OnRedirectToLogin = context =>
+                    {
+                        if (context.Request.Path.StartsWithSegments("/api"))
+                        {
+                            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            return Task.CompletedTask;
+                        }
+                        context.Response.Redirect(context.RedirectUri);
+                        return Task.CompletedTask;
+                    }
+                };
             });
 
         services.AddAuthorization();

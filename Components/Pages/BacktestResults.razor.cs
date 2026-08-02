@@ -7,6 +7,9 @@ namespace StockTrader.Components.Pages;
 
 public partial class BacktestResults
 {
+    [Microsoft.AspNetCore.Components.CascadingParameter(Name = "IsMobile")]
+    public bool IsMobile { get; set; }
+
     private bool _isApplying;
     private bool _applySuccess;
     private string? _applyError;
@@ -30,8 +33,7 @@ public partial class BacktestResults
     {
         PatternType.Breakout, PatternType.TrendPullback,
         PatternType.VolatilityExpansion, PatternType.MomentumReversal,
-        PatternType.MeanReversionChannel, PatternType.Rsi2Bollinger,
-        PatternType.Tqqq200Sma
+        PatternType.MeanReversionChannel, PatternType.Rsi2Bollinger
     };
     private BacktestResult? _result;
     private bool _isRunning;

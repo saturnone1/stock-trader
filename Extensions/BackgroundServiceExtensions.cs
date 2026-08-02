@@ -21,6 +21,14 @@ public static class BackgroundServiceExtensions
         services.AddHostedService<DailyReportService>();
         services.AddHostedService<MLRetrainingService>();
 
+        // Continuous Parameter Optimization
+        services.AddSingleton<OptimizationJobExecutor>();
+        services.AddSingleton<OptimizationAutoTuneService>();
+        services.AddHostedService<ContinuousOptimizationService>();
+
+        services.AddSingleton<FinancialSnapshotIngestionService>();
+        services.AddHostedService(sp => sp.GetRequiredService<FinancialSnapshotIngestionService>());
+
         return services;
     }
 }

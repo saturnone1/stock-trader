@@ -1,5 +1,6 @@
 @using StockTrader.Models
 
+<div class="table-scroll-wrapper">
 <MudTable Items="@Stats"
           Dense="true"
           Striped="true"
@@ -7,15 +8,16 @@
           RowStyleFunc="@RowStyle">
     <HeaderContent>
         <MudTh>패턴</MudTh>
-        <MudTh>스타일</MudTh>
-        <MudTh>보유기간</MudTh>
-        <MudTh>표본 수</MudTh>
+        @* 모바일에서 스타일/보유기간/표본수/평균수익손실/낙폭/수익팩터 숨김 — 핵심 지표(승률·기대값)만 표시 *@
+        <MudTh Class="@(_isMobile ? "d-none" : "")">스타일</MudTh>
+        <MudTh Class="@(_isMobile ? "d-none" : "")">보유기간</MudTh>
+        <MudTh Class="@(_isMobile ? "d-none" : "")">표본 수</MudTh>
         <MudTh>승률</MudTh>
-        <MudTh>평균 수익</MudTh>
-        <MudTh>평균 손실</MudTh>
+        <MudTh Class="@(_isMobile ? "d-none" : "")" Style="color: var(--mud-palette-success);">평균 수익</MudTh>
+        <MudTh Class="@(_isMobile ? "d-none" : "")" Style="color: var(--mud-palette-error);">평균 손실</MudTh>
         <MudTh><MudTooltip Text="거래 1회당 기대 수익률. 양수여야 수익 가능">기대값 ⓘ</MudTooltip></MudTh>
-        <MudTh><MudTooltip Text="최고점 대비 최대 하락폭. -20% 이내면 양호">최대 낙폭 ⓘ</MudTooltip></MudTh>
-        <MudTh><MudTooltip Text="총 수익 / 총 손실. 1.5 이상이면 양호">수익 팩터 ⓘ</MudTooltip></MudTh>
+        <MudTh Class="@(_isMobile ? "d-none" : "")"><MudTooltip Text="최고점 대비 최대 하락폭. -20% 이내면 양호">최대 낙폭 ⓘ</MudTooltip></MudTh>
+        <MudTh Class="@(_isMobile ? "d-none" : "")"><MudTooltip Text="총 수익 / 총 손실. 1.5 이상이면 양호">수익 팩터 ⓘ</MudTooltip></MudTh>
     </HeaderContent>
     <RowTemplate>
         @{
@@ -24,7 +26,7 @@
         <MudTd>
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                 <MudTooltip Text="@meta.Description">
-                    <strong>@meta.KoreanName</strong>
+                    <strong style="@(_isMobile ? "font-size: 0.8rem;" : "")">@meta.KoreanName</strong>
                 </MudTooltip>
                 @if (meta.Status != PatternStatus.Verified)
                 {
@@ -35,13 +37,16 @@
                                  Size="Size.Small"
                                  Icon="@PatternMetadataMap.GetStatusIcon(meta.Status)"
                                  Style="height: 20px; font-size: 10px;">
-                            @PatternMetadataMap.GetStatusLabel(meta.Status)
+                            @if (!_isMobile)
+                            {
+                                @PatternMetadataMap.GetStatusLabel(meta.Status)
+                            }
                         </MudChip>
                     </MudTooltip>
                 }
             </MudStack>
         </MudTd>
-        <MudTd>
+        <MudTd Class="@(_isMobile ? "d-none" : "")">
             <MudChip T="string"
                      Color="@PatternMetadataMap.GetMudColor(context.PatternType)"
                      Size="Size.Small"
@@ -49,25 +54,27 @@
                 @meta.StyleLabel
             </MudChip>
         </MudTd>
-        <MudTd>
+        <MudTd Class="@(_isMobile ? "d-none" : "")">
             <MudText Typo="Typo.caption" Color="Color.Secondary">@meta.HoldingPeriod</MudText>
         </MudTd>
-        <MudTd>@context.SampleSize</MudTd>
+        <MudTd Class="@(_isMobile ? "d-none" : "")">@context.SampleSize</MudTd>
         <MudTd>@context.WinRate.ToString("P1")</MudTd>
-        <MudTd Style="color: var(--mud-palette-success);">@context.AvgWinPercent.ToString("P2")</MudTd>
-        <MudTd Style="color: var(--mud-palette-error);">@context.AvgLossPercent.ToString("P2")</MudTd>
+        <MudTd Class="@(_isMobile ? "d-none" : "")" Style="color: var(--mud-palette-success);">@context.AvgWinPercent.ToString("P2")</MudTd>
+        <MudTd Class="@(_isMobile ? "d-none" : "")" Style="color: var(--mud-palette-error);">@context.AvgLossPercent.ToString("P2")</MudTd>
         <MudTd Style="@(context.Expectancy > 0
                         ? "color: var(--mud-palette-success); font-weight: bold;"
                         : "color: var(--mud-palette-error); font-weight: bold;")">
             @context.Expectancy.ToString("P3")
         </MudTd>
-        <MudTd>@context.MaxDrawdownPercent.ToString("P2")</MudTd>
-        <MudTd>@context.ProfitFactor.ToString("F2")</MudTd>
+        <MudTd Class="@(_isMobile ? "d-none" : "")">@context.MaxDrawdownPercent.ToString("P2")</MudTd>
+        <MudTd Class="@(_isMobile ? "d-none" : "")">@context.ProfitFactor.ToString("F2")</MudTd>
     </RowTemplate>
 </MudTable>
+</div>@* /table-scroll-wrapper *@
 
 @code {
     [Parameter] public List<PatternStats> Stats { get; set; } = new();
+    [CascadingParameter(Name = "IsMobile")] private bool _isMobile { get; set; }
 
     private string RowStyle(PatternStats stat, int index)
         => stat.Expectancy <= 0 ? "background-color: rgba(198, 40, 40, 0.15);" : string.Empty;

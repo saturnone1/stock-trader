@@ -17,5 +17,7 @@ public enum PatternType
     MeanReversionChannel = 13,
     Rsi2Bollinger = 14,
     VolatilityBreakout = 15,
-    Tqqq200Sma = 16
+    Tqqq200Sma = 16,
+    CumulativeRsi2 = 17,
+    Custom = 100
 }

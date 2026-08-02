@@ -18,29 +18,24 @@
 
 <PageTitle>대시보드 - 주식 트레이더</PageTitle>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
-    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-        <MudText Typo="Typo.h5">대시보드</MudText>
-        <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
-        <MudTooltip Text="새로고침">
-            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
-                           Color="Color.Default" OnClick="@LoadDataAsync"
-                           Disabled="@_loading" />
-        </MudTooltip>
-    </MudStack>
-    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-        @{
-            var (statusLabel, statusColor, statusIcon) = GetMarketStatus();
-        }
-        <MudChip T="string" Color="@statusColor" Variant="Variant.Filled" Size="Size.Small"
-                 Icon="@statusIcon">
-            @statusLabel
-        </MudChip>
-        <MarketRegimeBadge Regime="@_regime" />
-        <ModeToggle OnModeChanged="OnModeChanged" />
-    </MudStack>
-</MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">실시간 시장 현황과 포트폴리오 요약을 한눈에 확인하세요.</MudText>
+<div class="page-header">
+    <MudText Typo="Typo.h5">대시보드</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                   Color="Color.Default" OnClick="@LoadDataAsync"
+                   Disabled="@_loading" />
+    <div style="flex: 1;"></div>
+    @{
+        var (statusLabel, statusColor, statusIcon) = GetMarketStatus();
+    }
+    <MudChip T="string" Color="@statusColor" Variant="Variant.Filled" Size="Size.Small"
+             Icon="@statusIcon">
+        @statusLabel
+    </MudChip>
+    <MarketRegimeBadge Regime="@_regime" />
+    <ModeToggle OnModeChanged="OnModeChanged" />
+</div>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3 page-description">실시간 시장 현황과 포트폴리오 요약을 한눈에 확인하세요.</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">대시보드 도움말</MudText></TitleContent>
@@ -75,87 +70,52 @@
 
 <PriceTicker />
 
-@* ── 계좌 요약 ── *@
+@* ── 계좌 요약 (CSS Grid 자동 반응형) ── *@
 @if (_account != null)
 {
     var totalPnL = _account.TotalEquity - _accountSize;
     var totalPnLPercent = _accountSize > 0 ? totalPnL / _accountSize * 100 : 0;
-    <MudGrid Class="mb-2">
-        <MudItem xs="6" sm="3">
-            <MudCard>
-                <MudCardContent Class="text-center pa-3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 자산</MudText>
-                    <MudText Typo="Typo.h5" Class="mt-1">$@_account.TotalEquity.ToString("N0")</MudText>
-                    <MudText Typo="Typo.caption"
-                             Color="@(totalPnL >= 0 ? Color.Success : Color.Error)">
-                        원금 $@_accountSize.ToString("N0") 대비 @(totalPnL >= 0 ? "+" : "")@totalPnL.ToString("N0") (@(totalPnL >= 0 ? "+" : "")@totalPnLPercent.ToString("F2")%)
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudCard>
-                <MudCardContent Class="text-center pa-3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">현금</MudText>
-                    <MudText Typo="Typo.h5" Class="mt-1">$@_account.Cash.ToString("N0")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudCard>
-                <MudCardContent Class="text-center pa-3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">매수 여력</MudText>
-                    <MudText Typo="Typo.h5" Class="mt-1">$@_account.BuyingPower.ToString("N0")</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudCard>
-                <MudCardContent Class="text-center pa-3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">미실현 손익</MudText>
-                    <MudText Typo="Typo.h5" Class="mt-1"
-                             Color="@(_account.UnrealizedPnL >= 0 ? Color.Success : Color.Error)">
-                        @(_account.UnrealizedPnL >= 0 ? "+" : "")$@_account.UnrealizedPnL.ToString("N2")
-                    </MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
+    <div class="summary-grid">
+        <div class="summary-card">
+            <div class="summary-card-label">총 자산</div>
+            <div class="summary-card-value">$@_account.TotalEquity.ToString("N0")</div>
+            <div class="summary-card-sub" style="color: var(--mud-palette-@(totalPnL >= 0 ? "success" : "error"));">
+                @(totalPnL >= 0 ? "+" : "")@totalPnLPercent.ToString("F1")%
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-card-label">현금</div>
+            <div class="summary-card-value">$@_account.Cash.ToString("N0")</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-card-label">매수 여력</div>
+            <div class="summary-card-value">$@_account.BuyingPower.ToString("N0")</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-card-label">미실현 손익</div>
+            <div class="summary-card-value" style="color: var(--mud-palette-@(_account.UnrealizedPnL >= 0 ? "success" : "error"));">
+                @(_account.UnrealizedPnL >= 0 ? "+" : "")$@_account.UnrealizedPnL.ToString("N0")
+            </div>
+        </div>
+    </div>
 }
-
-@* ── 트레이딩 현황 ── *@
-<MudGrid Class="mb-4">
-    <MudItem xs="6" sm="3">
-        <MudCard>
-            <MudCardContent Class="text-center pa-3">
-                <MudText Typo="Typo.caption" Color="Color.Secondary">보유 포지션</MudText>
-                <MudText Typo="Typo.h4" Class="mt-1">@_openPositions.Count</MudText>
-            </MudCardContent>
-        </MudCard>
-    </MudItem>
-    <MudItem xs="6" sm="3">
-        <MudCard>
-            <MudCardContent Class="text-center pa-3">
-                <MudText Typo="Typo.caption" Color="Color.Secondary">활성 시그널</MudText>
-                <MudText Typo="Typo.h4" Class="mt-1">@_activeSignals.Count</MudText>
-            </MudCardContent>
-        </MudCard>
-    </MudItem>
-    <MudItem xs="6" sm="3">
-        <MudCard>
-            <MudCardContent Class="text-center pa-3">
-                <MudText Typo="Typo.caption" Color="Color.Secondary">일일 손익</MudText>
-                <MudText Typo="Typo.h4" Class="mt-1"
-                         Color="@(_riskState.DailyPnL >= 0 ? Color.Success : Color.Error)">
-                    @(_riskState.DailyPnL >= 0 ? "+" : "")$@_riskState.DailyPnL.ToString("N2")
-                </MudText>
-            </MudCardContent>
-        </MudCard>
-    </MudItem>
-    <MudItem xs="6" sm="3">
-        <RiskGauge State="@_riskState" />
-    </MudItem>
-</MudGrid>
+<div class="summary-grid" style="margin-bottom: 16px;">
+    <div class="summary-card">
+        <div class="summary-card-label">보유 포지션</div>
+        <div class="summary-card-value">@_openPositions.Count</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-card-label">활성 시그널</div>
+        <div class="summary-card-value">@_activeSignals.Count</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-card-label">일일 손익</div>
+        <div class="summary-card-value" style="color: var(--mud-palette-@(_riskState.DailyPnL >= 0 ? "success" : "error"));">
+            @(_riskState.DailyPnL >= 0 ? "+" : "")$@_riskState.DailyPnL.ToString("N0")
+        </div>
+    </div>
+    <RiskGauge State="@_riskState" />
+</div>
 
 <MudGrid>
     <MudItem xs="12" md="6">
@@ -223,28 +183,23 @@
                 }
                 else
                 {
-                    <div class="table-scroll-wrapper">
-                        <MudTable Items="@_openPositions" Dense="true" Hover="true" Striped="true">
-                            <HeaderContent>
-                                <MudTh>종목</MudTh>
-                                <MudTh>수량</MudTh>
-                                <MudTh>진입가</MudTh>
-                                <MudTh>현재가</MudTh>
-                                <MudTh>손익</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd><MudText Typo="Typo.body2"><b>@context.Symbol</b></MudText></MudTd>
-                                <MudTd>@context.Quantity</MudTd>
-                                <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
-                                <MudTd>$@context.CurrentPrice.ToString("F2")</MudTd>
-                                <MudTd>
-                                    <MudText Color="@(context.UnrealizedPnL >= 0 ? Color.Success : Color.Error)">
-                                        @(context.UnrealizedPnL >= 0 ? "+" : "")$@context.UnrealizedPnL.ToString("N2")
-                                    </MudText>
-                                </MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                    </div>
+                    @foreach (var pos in _openPositions)
+                    {
+                        var pnlPct = pos.EntryPrice > 0 ? (pos.CurrentPrice - pos.EntryPrice) / pos.EntryPrice * 100 : 0m;
+                        var isProfit = pos.UnrealizedPnL >= 0;
+                        <div class="position-card" style="border-left: 3px solid var(--mud-palette-@(isProfit ? "success" : "error"));">
+                            <div class="position-card-row">
+                                <div class="position-card-left">
+                                    <div style="font-size: 0.85rem;"><b>@pos.Symbol</b> <span style="opacity:0.6; font-size: 0.75rem;">x@(pos.Quantity)</span></div>
+                                    <div style="font-size: 0.72rem; color: var(--mud-palette-text-secondary);">$@pos.EntryPrice.ToString("F2") → $@pos.CurrentPrice.ToString("F2")</div>
+                                </div>
+                                <div class="position-card-right">
+                                    <div style="font-size: 0.85rem; color: var(--mud-palette-@(isProfit ? "success" : "error")); font-weight: 600;">@(isProfit ? "+" : "")$@pos.UnrealizedPnL.ToString("F0")</div>
+                                    <div style="font-size: 0.72rem; color: var(--mud-palette-@(isProfit ? "success" : "error"));">@(pnlPct >= 0 ? "+" : "")@pnlPct.ToString("F1")%</div>
+                                </div>
+                            </div>
+                        </div>
+                    }
                 }
             </MudCardContent>
         </MudCard>
@@ -252,6 +207,8 @@
 </MudGrid>
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool IsMobile { get; set; }
+
     private bool _showHelp;
     private bool _loading;
     private string? _error;

@@ -9,6 +9,7 @@
 @inject IHttpContextAccessor HttpContextAccessor
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject IBrowserViewportService BrowserViewport
 @implements IDisposable
 
 <MudThemeProvider Theme="_tradingTheme" IsDarkMode="true" />
@@ -22,7 +23,11 @@
                        Color="Color.Inherit"
                        Edge="Edge.Start"
                        OnClick="@ToggleDrawer" />
-        <MudText Typo="Typo.h6" Class="ml-3">주식 트레이더</MudText>
+        @* 모바일에서 앱 타이틀 숨김 — 공간 확보 *@
+        @if (!_isMobile)
+        {
+            <MudText Typo="Typo.h6" Class="ml-3">주식 트레이더</MudText>
+        }
         <MudSpacer />
 
         @* 활성 계좌 드롭다운 *@
@@ -30,12 +35,23 @@
         {
             <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                 <ActivatorContent>
-                    <MudButton Variant="Variant.Text" Color="Color.Inherit" Size="Size.Small"
-                               EndIcon="@Icons.Material.Filled.ArrowDropDown"
-                               StartIcon="@Icons.Material.Filled.AccountBalance"
-                               Class="mr-1">
-                        @(_activeAccount?.AccountName ?? "계좌 없음")
-                    </MudButton>
+                    @* 모바일: 아이콘 + 화살표만, 데스크톱: 계좌 이름 텍스트 포함 *@
+                    @if (_isMobile)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.AccountBalance"
+                                       Color="Color.Inherit"
+                                       Size="Size.Small"
+                                       title="@(_activeAccount?.AccountName ?? "계좌 없음")" />
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Inherit" Size="Size.Small"
+                                   EndIcon="@Icons.Material.Filled.ArrowDropDown"
+                                   StartIcon="@Icons.Material.Filled.AccountBalance"
+                                   Class="mr-1">
+                            @(_activeAccount?.AccountName ?? "계좌 없음")
+                        </MudButton>
+                    }
                 </ActivatorContent>
                 <ChildContent>
                     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1">계좌 전환</MudText>
@@ -75,18 +91,34 @@
         }
         else
         {
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
-                       StartIcon="@Icons.Material.Filled.Add" Class="mr-2"
-                       OnClick="@(() => Navigation.NavigateTo("/accounts"))">
-                계좌 추가
-            </MudButton>
+            @* 모바일: 아이콘 버튼, 데스크톱: 텍스트 버튼 *@
+            @if (_isMobile)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.AddCard"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               title="계좌 추가"
+                               OnClick="@(() => Navigation.NavigateTo("/accounts"))" />
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" Class="mr-2"
+                           OnClick="@(() => Navigation.NavigateTo("/accounts"))">
+                    계좌 추가
+                </MudButton>
+            }
         }
 
         <StreamingStatus />
-        <MudIconButton Icon="@Icons.Material.Filled.HelpOutline"
-                       Color="Color.Inherit"
-                       Href="guide"
-                       title="사용 가이드" />
+        @* 모바일에서 도움말 버튼 숨김 — AppBar 공간 절약 *@
+        @if (!_isMobile)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.HelpOutline"
+                           Color="Color.Inherit"
+                           Href="guide"
+                           title="사용 가이드" />
+        }
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen"
@@ -97,8 +129,10 @@
     </MudDrawer>
 
     <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
-            @Body
+        <MudContainer MaxWidth="MaxWidth.False" Class="@(_isMobile ? "pa-2" : "pa-4")">
+            <CascadingValue Value="_isMobile" Name="IsMobile">
+                @Body
+            </CascadingValue>
         </MudContainer>
     </MudMainContent>
 </MudLayout>
@@ -111,16 +145,48 @@
 
 @code {
     private bool _drawerOpen = true;
+    private bool _isMobile;
     private List<TradingAccount> _accounts = new();
     private TradingAccount? _activeAccount;
+    private BrowserViewportObserver? _viewportObserver;
 
     protected override async Task OnInitializedAsync()
     {
-        // 인증 확인 — /login, /setup 페이지는 인증 없이 접근 허용
         await CheckAuthAsync();
 
         AccountManager.OnAccountsChanged += OnAccountsChanged;
         await LoadAccountsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _viewportObserver = new BrowserViewportObserver(this);
+            await BrowserViewport.SubscribeAsync(_viewportObserver, fireImmediately: true);
+        }
+    }
+
+    private class BrowserViewportObserver : IBrowserViewportObserver
+    {
+        private readonly MainLayout _layout;
+        public BrowserViewportObserver(MainLayout layout) => _layout = layout;
+        public Guid Id { get; } = Guid.NewGuid();
+
+        public async Task NotifyBrowserViewportChangeAsync(BrowserViewportEventArgs args)
+        {
+            var wasMobile = _layout._isMobile;
+            _layout._isMobile = args.Breakpoint <= Breakpoint.Sm;
+            if (wasMobile != _layout._isMobile)
+            {
+                if (_layout._isMobile)
+                    _layout._drawerOpen = false;
+                await _layout.InvokeAsync(_layout.StateHasChanged);
+            }
+        }
+
+        public Task NotifyBrowserViewportChangeAsync(object sender, BrowserViewportEventArgs e)
+            => NotifyBrowserViewportChangeAsync(e);
     }
 
     private async Task CheckAuthAsync()
@@ -182,6 +248,8 @@
     public void Dispose()
     {
         AccountManager.OnAccountsChanged -= OnAccountsChanged;
+        if (_viewportObserver != null)
+            _ = BrowserViewport.UnsubscribeAsync(_viewportObserver);
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;

@@ -1,0 +1,22 @@
+# API Server Only (No Blazor UI)
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+
+WORKDIR /src
+
+COPY ["StockTrader.csproj", "./"]
+RUN dotnet restore "StockTrader.csproj"
+
+COPY . .
+RUN dotnet publish "StockTrader.csproj" -c Release -o /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+
+COPY --from=build /app/publish .
+
+ENV ASPNETCORE_URLS=http://+:3000
+ENV ASPNETCORE_ENVIRONMENT=Production
+
+EXPOSE 3000
+
+ENTRYPOINT ["dotnet", "StockTrader.dll"]

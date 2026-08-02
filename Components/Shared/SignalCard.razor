@@ -1,155 +1,68 @@
 @using StockTrader.Models
 @using StockTrader.Models.Enums
 
-<MudCard Outlined="true"
-         Style="@($"border-color: {BorderColor};")"
-         Class="mb-2">
-    <MudCardContent Class="pa-3">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
-            <div>
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
-                    <!-- 패턴 한국어 이름 칩 + 스타일 배지 -->
-                    <MudTooltip Text="@PatternMetadataMap.GetDescription(Signal.PatternType)"
-                                Placement="Placement.Bottom" Arrow="true">
-                        <MudChip T="string"
-                                 Color="@PatternMetadataMap.GetMudColor(Signal.PatternType)"
-                                 Variant="Variant.Filled"
-                                 Size="Size.Small"
-                                 Icon="@Icons.Material.Filled.Info">
-                            @PatternMetadataMap.GetKoreanName(Signal.PatternType)
-                        </MudChip>
-                    </MudTooltip>
-                    <!-- 트레이딩 스타일 배지 -->
-                    <MudChip T="string"
-                             Color="@PatternMetadataMap.GetMudColor(Signal.PatternType)"
-                             Variant="Variant.Outlined"
-                             Size="Size.Small">
+@* 모바일: 컴팩트 뷰 (패딩 축소, 가격 인라인 배치), 데스크톱: 기본 뷰 *@
+<div class="signal-card" style="border-left: 3px solid @BorderColor; @(_isMobile ? "padding: 6px 8px;" : "")">
+
+    @* 1행: 종목 + 패턴칩 + 가격 *@
+    <div class="signal-card-row">
+        <div class="signal-card-left">
+            <div class="signal-card-tags">
+                <strong style="font-size: @(_isMobile ? "0.85rem" : "0.9rem"); white-space: nowrap;">@Signal.Symbol</strong>
+                <MudChip T="string" Color="@PatternMetadataMap.GetMudColor(Signal.PatternType)"
+                         Variant="Variant.Filled" Size="Size.Small" Class="chip-xs">
+                    @* 모바일: 스타일 레이블(단타/스윙 등) 만 표시, 데스크톱: 전체 패턴명 *@
+                    @if (_isMobile)
+                    {
                         @PatternMetadataMap.GetStyleLabel(Signal.PatternType)
-                    </MudChip>
-                    @{
-                        var signalMeta = PatternMetadataMap.Get(Signal.PatternType);
                     }
-                    @if (signalMeta.Status != PatternStatus.Verified)
+                    else
                     {
-                        <MudTooltip Text="@signalMeta.StatusNote">
-                            <MudChip T="string"
-                                     Color="@PatternMetadataMap.GetStatusColor(signalMeta.Status)"
-                                     Variant="Variant.Outlined"
-                                     Size="Size.Small"
-                                     Icon="@PatternMetadataMap.GetStatusIcon(signalMeta.Status)">
-                                @PatternMetadataMap.GetStatusLabel(signalMeta.Status)
-                            </MudChip>
-                        </MudTooltip>
+                        @PatternMetadataMap.GetKoreanName(Signal.PatternType)
                     }
-                    @if (IsStale)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
-                                 Icon="@Icons.Material.Filled.AccessTime"
-                                 Style="height:20px; font-size:10px; padding:0 6px; min-width:0;">
-                            오래된 시그널
-                        </MudChip>
-                    }
-                    <MudText Typo="Typo.subtitle1"><strong>@Signal.Symbol</strong></MudText>
-                </MudStack>
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudText Typo="Typo.caption" Color="@(IsStale ? Color.Warning : Color.Secondary)">
-                        @Signal.DetectedAt.ToString("MM/dd HH:mm") (@GetElapsedText())
-                    </MudText>
-                    <!-- 예상 보유기간 -->
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
-                        <MudIcon Icon="@Icons.Material.Filled.Schedule"
-                                 Size="Size.Small"
-                                 Style="font-size: 12px; color: var(--mud-palette-text-secondary); margin-right: 2px;" />
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @PatternMetadataMap.Get(Signal.PatternType).HoldingPeriod
-                        </MudText>
-                    </MudStack>
-                </MudStack>
+                </MudChip>
+                @if (IsStale)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning"
+                             Variant="Variant.Outlined" Class="chip-xs">만료</MudChip>
+                }
             </div>
-            <div style="text-align: right; flex-shrink: 0; min-width: 140px;">
-                <MudText>진입: <strong>$@Signal.EntryPrice.ToString("F2")</strong></MudText>
-                <MudText Color="Color.Error">손절: $@Signal.StopLossPrice.ToString("F2")</MudText>
-                <MudText Color="Color.Success">목표: $@Signal.TargetPrice.ToString("F2")</MudText>
-                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-1">
-                    <MudTooltip Text="리스크 대비 리워드 비율. 2:1 이상이면 양호">
-                        <MudChip T="string" Size="Size.Small"
-                                 Color="@(RiskRewardRatio >= 2m ? Color.Success : RiskRewardRatio >= 1m ? Color.Warning : Color.Error)"
-                                 Variant="Variant.Outlined"
-                                 Style="height:20px; font-size:11px; padding:0 6px; min-width:0; cursor:help;">
-                            R:R @RiskRewardRatio.ToString("F1")
-                        </MudChip>
-                    </MudTooltip>
-                    <MudText Typo="Typo.caption" Style="@($"color: {ConfidenceColor};")">
-                        신뢰도 @((Signal.Confidence * 100).ToString("F0"))%
-                    </MudText>
-                </MudStack>
-            </div>
-        </MudStack>
-        @if (!string.IsNullOrEmpty(Signal.Details))
-        {
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">@Signal.Details</MudText>
-        }
-    </MudCardContent>
+        </div>
+        <div class="signal-card-prices" style="@(_isMobile ? "font-size: 0.8rem;" : "")">
+            <div><b>$@Signal.EntryPrice.ToString("F2")</b></div>
+            <div style="color: var(--mud-palette-error);">$@Signal.StopLossPrice.ToString("F2")</div>
+            <div style="color: var(--mud-palette-success);">$@Signal.TargetPrice.ToString("F2")</div>
+        </div>
+    </div>
+
+    @* 2행: 메타 정보 — 모바일에서 스타일/보유기간 생략(1행 칩에 스타일 표시) *@
+    <div class="signal-card-meta" style="@(_isMobile ? "font-size: 0.75rem; gap: 6px;" : "")">
+        <span style="color: @(IsStale ? "var(--mud-palette-warning)" : "inherit");">@GetElapsedText()</span>
+        <span>R:R <span style="color: @(RiskRewardRatio >= 2m ? "var(--mud-palette-success)" : RiskRewardRatio >= 1m ? "var(--mud-palette-warning)" : "var(--mud-palette-error)");">@RiskRewardRatio.ToString("F1")</span></span>
+        <span>신뢰도 <span style="color: @ConfidenceColor;">@((Signal.Confidence * 100).ToString("F0"))%</span></span>
+        @* 모바일: 스타일·보유기간 숨김 (1행 칩으로 충분) *@
+        <span class="hide-mobile-sm">@PatternMetadataMap.GetStyleLabel(Signal.PatternType)</span>
+        <span class="hide-mobile-sm">@PatternMetadataMap.Get(Signal.PatternType).HoldingPeriod</span>
+    </div>
+
+    @* 3행: 추천 정보 (있을 때만) *@
     @if (Recommendation != null)
     {
-        <MudDivider />
-        <div style="padding: 6px 12px 8px; background: rgba(255,255,255,0.02);">
-            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
-                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
-                         Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
-                    자동매매 추천
-                </MudChip>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    수량: <strong style="color: var(--mud-palette-text-primary);">@(Recommendation.ShareQuantity)주</strong>
-                </MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    투자금: <strong style="color: var(--mud-palette-text-primary);">$@(Recommendation.PositionSize.ToString("N0"))</strong>
-                </MudText>
-                @if (Recommendation.Expectancy > 0)
-                {
-                    <MudTooltip Text="과거 거래 기반 기대수익률 (높을수록 유리)">
-                        <MudText Typo="Typo.caption" Color="Color.Success" Style="cursor:help;">
-                            기대값: <strong>@(Recommendation.Expectancy.ToString("P2"))</strong>
-                        </MudText>
-                    </MudTooltip>
-                }
-                @{
-                    var modeLabel = Recommendation.Mode switch
-                    {
-                        OrderMode.AlertOnly => "알림전용",
-                        OrderMode.AutoOrder => "자동매매",
-                        _ => Recommendation.Mode.ToString()
-                    };
-                }
-                <MudChip T="string" Size="Size.Small"
-                         Color="@(Recommendation.Mode == OrderMode.AutoOrder ? Color.Success : Color.Default)"
-                         Variant="Variant.Outlined"
-                         Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
-                    @modeLabel
-                </MudChip>
-            </MudStack>
+        <div class="signal-card-meta" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); @(_isMobile ? "font-size: 0.75rem;" : "")">
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" Class="chip-xs">추천</MudChip>
+            <span>@(Recommendation.ShareQuantity)주 · $@(Recommendation.PositionSize.ToString("N0"))</span>
+            @if (Recommendation.Expectancy > 0)
+            {
+                <span style="color: var(--mud-palette-success);">기대값 @(Recommendation.Expectancy.ToString("P2"))</span>
+            }
         </div>
     }
-    else
-    {
-        <MudDivider />
-        <div style="padding: 6px 12px 8px; background: rgba(255,255,255,0.02);">
-            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
-                         Style="height:20px; font-size:11px; padding:0 8px; min-width:0;">
-                    미추천
-                </MudChip>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    리스크/기대값 기준 미달
-                </MudText>
-            </MudStack>
-        </div>
-    }
-</MudCard>
+</div>
 
 @code {
     [Parameter, EditorRequired] public PatternSignal Signal { get; set; } = default!;
     [Parameter] public TradeRecommendation? Recommendation { get; set; }
+    [CascadingParameter(Name = "IsMobile")] private bool _isMobile { get; set; }
 
     private string BorderColor => Signal.Confidence > 0.7m
         ? "var(--mud-palette-success)"
