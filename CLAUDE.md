@@ -1,14 +1,46 @@
 # StockTrader - Claude Code 프로젝트 가이드
 
 ## 프로젝트 개요
-C# .NET 10.0 Blazor Server 주식 자동매매 프로그램. MudBlazor 9.0 다크 테마 UI, SQLite DB, Alpaca Markets 브로커 연동.
+C# .NET 10.0 주식 자동매매 프로그램. 프론트엔드: SvelteKit 데스크톱 앱 (`desktop-app/`), 백엔드: REST API 서버. SQLite DB, Alpaca Markets 브로커 연동.
 
 ## 핵심 규칙
+
+### Deprecated 상태 (최우선)
+- **`stock-trader` 전체는 deprecated 대상** — 더 이상 메인/본체 프로젝트로 취급하지 말 것
+- **새 기능, 새 전략, 새 템플릿, UI 개선, 리팩터링을 임의로 추가하지 말 것**
+- **`desktop-app/` 포함 프로젝트 전체를 legacy로 간주** — 서브앱이라고 따로 취급하지 말 것
+- 이 프로젝트에서 작업 가능한 경우는 아래로 제한:
+  1. 사용자가 `stock-trader`를 **명시적으로 지정**한 경우
+  2. 치명적 장애 수정, 데이터 복구, 종료/이관 준비 같은 **유지보수성 작업**이 명확한 경우
+- 요청이 모호하면 **다른 활성 프로젝트를 우선 검토**하고, `stock-trader`는 기본 선택지에서 제외
+- 이 프로젝트를 명시적으로 수정한 경우에도 **로컬 수정만 하고 끝내지 말 것** — 사용자에게 보이는 변경이면 문서에 적힌 K3s 배포 절차까지 수행
+- 특히 `desktop-app/`, API, K8s 매니페스트 관련 변경은 **빌드 후 배포/재시작까지 완료**해야 반영된 것으로 간주
+
+### Fleet / Tasks 운용 규칙
+- 이 프로젝트처럼 **백엔드, 패턴 엔진, `desktop-app`, 백테스트, K3s 배포**가 나뉜 구조에서는 단일 직렬 처리 금지
+- **Fleet(병렬 에이전트 탐색)** 는 아래에 사용:
+  1. 패턴/UI 반영 경로 조사
+  2. API/DB 저장 경로 조사
+  3. K3s 배포 경로/이미지 갱신 경로 조사
+  4. 로컬/전역 정책 충돌 확인
+- **Tasks(실행 단위)** 는 아래에 사용:
+  1. `dotnet build StockTrader.csproj 2>&1`
+  2. `dotnet test trader.sln 2>&1`
+  3. `cd desktop-app && npm run build`
+  4. `./scripts/build-k3s.sh`
+  5. `kubectl rollout restart ...`
+  6. `kubectl get pods`, `kubectl logs ...`
+- 기본 순서:
+  1. **Fleet로 원인/영향범위 병렬 파악**
+  2. 필요한 수정 수행
+  3. **Tasks로 빌드/테스트/배포/로그 확인**
+- UI가 안 보이거나 반영 여부가 의심될 때는 **배포 누락 여부를 fleet 조사 항목에 반드시 포함**
 
 ### 사용자 선호
 - **절대 yes/no 확인 묻지 말 것** — 모든 진행은 yes로 간주하고 바로 실행
 - **플랜모드 사용 금지** — 승인 요구하지 말고 바로 구현
 - 자율적으로 판단해서 알아서 진행
+- **단, 기능 추가/제거/수정은 사용자에게 먼저 물어볼 것** — 코드 구현은 자율적으로, 기능 결정은 사용자 확인 필수
 
 ### Windows Bash 주의사항
 - `dotnet` 등 일부 CLI는 stderr로 출력 → Bash 도구에서 stdout만 캡처되어 안 보임
@@ -33,24 +65,36 @@ C# .NET 10.0 Blazor Server 주식 자동매매 프로그램. MudBlazor 9.0 다�
 
 ### 백테스트 API
 - Endpoint: `POST http://localhost:5239/api/backtest`
+- 최적화 Endpoint: `POST http://localhost:5239/api/backtest/optimize`
 - 포트: 5239 (appsettings.json Kestrel)
 - Symbols/Patterns는 반드시 JSON 배열 (문자열 아님)
 - DataSource: null=기본설정, 0=Alpaca, 2=Yahoo
 - **Alpaca 데이터 기준으로 최적화** (Yahoo와 결과 완전히 다름)
 
+### 파라미터 최적화 엔진 (`BacktestService.RunOptimizationAsync`)
+- **2단계 전략**: Stage 1 (60% 예산 랜덤 샘플링) → Stage 2 (40% 이웃 탐색)
+- **IS/OOS 분할**: 기본 75% In-Sample / 25% Out-of-Sample (과적합 방지)
+- **메모리 보호**: 조합 5만개 초과 시 랜덤 인덱스 샘플링 (전체 카르테시안 곱 생성 안 함)
+- 최적화 가능 파라미터: 숫자형 14개 + 카테고리형 6개 + 룰 파라미터/필드 오버라이드
+- 관련 파일: `Api/OptimizeEndpoints.cs` (모델/엔드포인트), `Services/Backtest/BacktestService.cs` (엔진)
+
 ## 아키텍처
 
 ```
+desktop-app/      SvelteKit 데스크톱 프론트엔드
+  src/pages/      Dashboard, Optimization, PatternBuilder, Backtest
+  src/lib/        공유 컴포넌트
+Api/              REST API 엔드포인트 (Minimal API)
 Configuration/    설정 클래스 (PatternSettings, TradingSettings 등)
 Models/           도메인 모델 + Enums
 Data/             Repositories (EF Core + SQLite)
 Services/         비즈니스 로직
   Patterns/       13개 패턴 디텍터 (IPatternDetector)
-  Backtest/       백테스트 엔진
+  Backtest/       백테스트 엔진 + 파라미터 최적화
   Indicators/     기술적 지표 서비스
   ML/             머신러닝 (K-Means, FastTree)
 BackgroundServices/  7개 백그라운드 서비스
-Components/
+Components/       Blazor 페이지 (레거시, 점진적 이관 중)
   Pages/          11개 페이지 (.razor)
   Shared/         8개 공유 컴포넌트
   Layout/         NavMenu, MainLayout
@@ -91,7 +135,10 @@ MarketData → PatternScanner → SignalService(6단계필터) → OrderService(
 | `appsettings.json` | Alpaca, Trading, Patterns 설정 |
 | `Configuration/PatternSettings.cs` | 패턴별 Config 클래스 |
 | `Models/PatternMetadata.cs` | 패턴 메타데이터 + 상태 + UI 헬퍼 |
-| `Services/Backtest/BacktestService.cs` | 백테스트 엔진 (WalkForward, MonteCarlo) |
+| `Services/Backtest/BacktestService.cs` | 백테스트 엔진 (WalkForward, MonteCarlo, 파라미터 최적화) |
+| `Api/OptimizeEndpoints.cs` | 파라미터 최적화 요청/응답 모델 + 엔드포인트 |
+| `Api/ApiEndpointExtensions.cs` | REST API 라우트 그룹 등록 (/api) |
+| `desktop-app/src/pages/PatternBuilder.svelte` | 패턴 빌더 UI (Svelte) |
 
 ## 에이전트 공통 정책 (Agent Shared Policy)
 
@@ -114,7 +161,7 @@ MarketData → PatternScanner → SignalService(6단계필터) → OrderService(
 | senior-backend-engineer | Services/Order/, Services/Signal/, Services/Risk/, Services/Account/, Services/ML/ | Services/Backtest/ |
 | data-infra-engineer | Data/, BackgroundServices/, Extensions/, Configuration/, Models/ | Program.cs |
 | notification-engineer | Services/Notification/, BackgroundServices/DailyReportService.cs | — |
-| frontend-ux-improver | Components/Pages/, Components/Shared/, Components/Layout/ | wwwroot/ |
+| frontend-ux-improver | desktop-app/src/, Components/Pages/, Components/Shared/, Components/Layout/ | wwwroot/ |
 | trading-algorithm-researcher | Services/Patterns/, Services/Indicators/ | Models/PatternType.cs |
 | docker-ops | Dockerfile, docker-compose*.yml, .dockerignore, .env.example, .env | .gitignore (Docker 관련만) |
 
@@ -151,14 +198,20 @@ MarketData → PatternScanner → SignalService(6단계필터) → OrderService(
 - 접속: http://localhost:5239
 - 종료: 콘솔 창 닫기 또는 Ctrl+C
 
-### Docker 운영 (docker-ops 에이전트 담당)
-- **기본 배포 = Docker 컨테이너** (exe 로컬 실행은 사용자 요청 시에만)
-- 배포: `docker compose down && docker compose build && docker compose up -d`
-- 로그: `docker compose logs --tail 30 2>&1`
-- `.env` 파일: 실제 API 키 포함 (git 미추적), `.env.example`에서 복사
+### K3s 배포 (기본 운영 환경)
+- **기본 배포 = K3s (buildah + containerd)**
+- 이미지 빌드/로드: `./scripts/build-k3s.sh`
+- 배포: `kubectl apply -f k8s/deployment-api.yaml && kubectl apply -f k8s/deployment-desktop.yaml`
+- API 재시작: `kubectl rollout restart deployment/stocktrader-api -n stocktrader`
+- Desktop 재시작: `kubectl rollout restart deployment/stocktrader-desktop -n stocktrader`
+- 로그: `kubectl logs deployment/stocktrader-api -n stocktrader --tail=50`
+- Pod 상태: `kubectl get pods -n stocktrader`
+- `.env` 파일: K8s Secret으로 관리
 - **DataProtection 키**: `/data/keys`에 영구 저장 (SecurityServiceExtensions.cs)
-- **build cache 오류**: `docker builder prune -f` → `docker compose build --no-cache`
-- **API 인증 실패**: user-secrets는 Docker 안에서 안 됨 → `.env`에 실제 키 필요
+
+### 프론트엔드 빌드
+- Desktop UI: `cd desktop-app && npm run build`
+- 배포 이미지는 `Dockerfile.desktop-prod`에서 빌드됨
 
 ## 절대 하지 말 것
 - MeanReversionChannel exit profiles 수정 (30%+ 성능 하락)

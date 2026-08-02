@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -12,6 +14,7 @@ public class PatternDetectionService
     private readonly IPatternStatsRepository _statsRepo;
     private readonly ISignalScorer _signalScorer;
     private readonly IMarketRegimeClassifier _regimeClassifier;
+    private readonly AppDbContext _db;
     private readonly ILogger<PatternDetectionService> _logger;
 
     public PatternDetectionService(
@@ -20,6 +23,7 @@ public class PatternDetectionService
         IPatternStatsRepository statsRepo,
         ISignalScorer signalScorer,
         IMarketRegimeClassifier regimeClassifier,
+        AppDbContext db,
         ILogger<PatternDetectionService> logger)
     {
         _detectors = detectors;
@@ -27,6 +31,7 @@ public class PatternDetectionService
         _statsRepo = statsRepo;
         _signalScorer = signalScorer;
         _regimeClassifier = regimeClassifier;
+        _db = db;
         _logger = logger;
     }
 
@@ -34,6 +39,19 @@ public class PatternDetectionService
         string symbol, OhlcvBar[] bars, MarketRegime regime, CancellationToken ct = default)
     {
         var settings = await _settingsRepo.GetAsync(ct);
+
+        // 종목별 활성 프로파일이 있으면 해당 프로파일의 패턴 목록 사용
+        var profile = await _db.SymbolProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Symbol == symbol && p.IsActive, ct);
+
+        var enabledPatterns = profile?.EnabledPatterns ?? settings.EnabledPatterns;
+
+        if (profile != null)
+        {
+            _logger.LogDebug("종목 {Symbol}: 프로파일 '{Name}' 적용 (패턴 {Count}개)",
+                symbol, profile.Name, enabledPatterns.Count);
+        }
 
         // BUG-M04: MarketRegimeClassifier는 일봉 데이터(SPY 일봉)로 학습됨.
         // 분봉 bars를 그대로 넘기면 5/10/20일 수익률·변동성 피처가 왜곡(분 단위 변동)되어
@@ -49,7 +67,7 @@ public class PatternDetectionService
         var signals = new List<PatternSignal>();
 
         foreach (var detector in _detectors
-            .Where(d => settings.EnabledPatterns.Contains(d.PatternType)))
+            .Where(d => enabledPatterns.Contains(d.PatternType)))
         {
             try
             {

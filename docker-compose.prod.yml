@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: stocktrader-api
+    ports:
+      - "3000:3000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:3000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  desktop-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.desktop-prod
+    container_name: stocktrader-desktop
+    ports:
+      - "8000:8000"
+    environment:
+      - VITE_API_URL=http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocktrader-api
+  namespace: stocktrader
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stocktrader-api
+  template:
+    metadata:
+      labels:
+        app: stocktrader-api
+    spec:
+      containers:
+      - name: api
+        image: localhost/stock-trader/api:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5239
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:3000"
+        - name: ConnectionStrings__DefaultConnection
+          value: "Data Source=/data/stocktrader.db"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: stocktrader-data
+          mountPath: /data
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5239
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5239
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: stocktrader-data
+        hostPath:
+          path: /home/stocktrader/k3s-data/stocktrader
+          type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stocktrader-api
+  namespace: stocktrader
+spec:
+  selector:
+    app: stocktrader-api
+  ports:
+  - protocol: TCP
+    port: 3000
+    targetPort: 5239
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stocktrader-api
+  namespace: stocktrader
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: "web"
+spec:
+  rules:
+  - host: "stock.taewon"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: stocktrader-api
+            port:
+              number: 3000

@@ -7,7 +7,7 @@ using StockTrader.Models.Enums;
 
 namespace StockTrader.Services.DataFeed;
 
-public class YahooFinanceDataFeedService : IDataFeedService
+public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly YahooFinanceSettings _settings;
@@ -15,6 +15,7 @@ public class YahooFinanceDataFeedService : IDataFeedService
     // Yahoo Finance는 동시 3개 요청까지 안정적으로 처리 가능.
     // 병렬 분석(StockAnalysisService.MaxParallelAnalyses=3)과 일치시킴.
     private readonly SemaphoreSlim _rateLimiter = new(3, 3);
+    private bool _disposed;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -242,6 +243,13 @@ public class YahooFinanceDataFeedService : IDataFeedService
 
     private static long GetVolume(List<long?>? list, int index)
         => list != null && index < list.Count ? list[index] ?? 0L : 0L;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _rateLimiter.Dispose();
+        _disposed = true;
+    }
 
     private static string ToYahooInterval(TimeFrame timeFrame) => timeFrame switch
     {

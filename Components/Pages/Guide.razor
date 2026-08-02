@@ -3,13 +3,17 @@
 
 <PageTitle>사용 가이드</PageTitle>
 
+@code {
+    [CascadingParameter(Name = "IsMobile")] private bool IsMobile { get; set; }
+}
+
 <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
     <MudText Typo="Typo.h5">사용 가이드</MudText>
 </MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">앱 기능 설명 및 시작 방법을 안내합니다.</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4 page-description">앱 기능 설명 및 시작 방법을 안내합니다.</MudText>
 
 @* ──────── 앱 소개 ──────── *@
-<MudPaper Class="pa-4 mb-6" Elevation="1">
+<MudPaper Class="pa-3 mb-4" Elevation="1">
     <MudText Typo="Typo.h5" Class="mb-2">주식 트레이더란?</MudText>
     <MudText Typo="Typo.body1">
         미국 주식 시장의 기술적 패턴을 자동으로 감지하고, 매매 시그널을 생성하며,
@@ -19,8 +23,8 @@
 </MudPaper>
 
 @* ──────── 시작하기 ──────── *@
-<MudText Typo="Typo.h5" Class="mb-4">시작하기</MudText>
-<MudPaper Class="pa-4 mb-6" Elevation="1">
+<MudText Typo="Typo.h5" Class="mb-3">시작하기</MudText>
+<MudPaper Class="pa-3 mb-4" Elevation="1">
     <MudTimeline TimelinePosition="TimelinePosition.Start">
         <MudTimelineItem Color="Color.Primary" Variant="Variant.Filled">
             <ItemContent>
@@ -408,6 +412,32 @@
                         <tr><td><strong>적합 환경</strong></td><td>강세장에서 일시적 급락 시 (공포 매도 구간)</td></tr>
                         <tr><td><strong>주의</strong></td><td>약세장에서는 사용 금지. 200SMA 필터가 자동 차단</td></tr>
                         <tr><td><strong>권장 타임프레임</strong></td><td>일봉 (RSI(2)는 일봉 전용)</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+
+            @* 누적 RSI(2) *@
+            <MudPaper Class="pa-3 mb-3" Elevation="0" Style="border-left: 3px solid #9C27B0;">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">누적 RSI(2)</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Style="height:18px;font-size:10px;">스윙</MudChip>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">2~7일 보유</MudText>
+                </MudStack>
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2" NoIcon="true">
+                    Connors 누적 RSI 아이디어 기반. 수익률보다 <strong>Sharpe / 낙폭 개선</strong> 쪽에 강점이 있는 평균회귀 변형입니다.
+                </MudAlert>
+                <MudText Typo="Typo.body2" Class="mb-2">
+                    최근 2일의 RSI(2)를 합산한 누적 RSI가 10 이하일 때 진입합니다.
+                    청산은 누적 RSI가 65 이상이 되거나, 종가가 장기 추세선 아래로 내려갈 때 수행합니다.
+                </MudText>
+                <MudSimpleTable Dense="true" Bordered="true" Style="max-width: 560px;">
+                    <tbody>
+                        <tr><td style="width:120px"><strong>진입 조건</strong></td><td>누적 RSI(2, 2일) &lt;= 10 + 종가 > 200SMA</td></tr>
+                        <tr><td><strong>청산 조건</strong></td><td>누적 RSI(2, 2일) &gt;= 65 또는 종가 &lt; 200SMA</td></tr>
+                        <tr><td><strong>손절</strong></td><td>진입가 - ATR × 1.5</td></tr>
+                        <tr><td><strong>핵심 지표</strong></td><td>Cumulative RSI(2), SMA(200), SMA(5), ATR</td></tr>
+                        <tr><td><strong>적합 환경</strong></td><td>장기 상승 추세 내 단기 급락 반등</td></tr>
+                        <tr><td><strong>주의</strong></td><td>낙폭은 줄어들 수 있지만 평균회귀 특성상 약세장 장기 보유는 피해야 합니다.</td></tr>
                     </tbody>
                 </MudSimpleTable>
             </MudPaper>

@@ -14,4 +14,10 @@ public class AlpacaSettings
     public int MaxReconnectAttempts { get; set; } = 10;
     public int InitialReconnectDelaySeconds { get; set; } = 2;
     public int MaxReconnectDelaySeconds { get; set; } = 300;
+
+    public bool HasConfiguredCredentials =>
+        !string.IsNullOrWhiteSpace(ApiKey) &&
+        !string.IsNullOrWhiteSpace(ApiSecret) &&
+        !ApiKey.Contains("YOUR_", StringComparison.OrdinalIgnoreCase) &&
+        !ApiSecret.Contains("YOUR_", StringComparison.OrdinalIgnoreCase);
 }

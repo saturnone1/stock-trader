@@ -166,6 +166,16 @@ public static class PatternMetadataMap
             "RSI(2), BB(20,2σ), SMA(200), ATR",
             "#E91E63" // Pink
         ),
+        [PatternType.CumulativeRsi2] = new(
+            PatternType.CumulativeRsi2,
+            "누적 RSI(2)", "Cumulative RSI(2)",
+            TradingStyle.Swing, "스윙",
+            "2~7일",
+            "Connors 누적 RSI 전략. 2일 누적 RSI(2) 10 이하에서 진입하고, 65 이상 또는 장기 추세선 이탈 시 청산.",
+            "Cumulative RSI(2), SMA(200), SMA(5), ATR",
+            "#9C27B0",
+            PatternStatus.Untuned, "문헌 기반 기본값만 반영, 프로젝트 내 미튜닝"
+        ),
         [PatternType.VolatilityBreakout] = new(
             PatternType.VolatilityBreakout,
             "변동성 돌파", "Volatility Breakout",

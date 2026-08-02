@@ -17,7 +17,7 @@
     <MudText Typo="Typo.h5">계정 관리</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Default" OnClick="@(() => _showHelp = true)" title="도움말" />
 </MudStack>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">비밀번호 변경 및 계정 보안 설정</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4 page-description">비밀번호 변경 및 계정 보안 설정</MudText>
 
 <MudDialog @bind-Visible="_showHelp">
     <TitleContent><MudText Typo="Typo.h6">계정 관리 도움말</MudText></TitleContent>
@@ -230,6 +230,8 @@
 </MudGrid>
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool IsMobile { get; set; }
+
     private bool _showHelp;
 
     private UserInfoResponse? _userInfo;

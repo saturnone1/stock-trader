@@ -65,31 +65,31 @@
 @if (_accounts.Count > 0)
 {
     <MudGrid Class="mb-4">
-        <MudItem xs="12" sm="4">
+        <MudItem xs="4" sm="4">
             <MudCard>
-                <MudCardContent Class="text-center pa-3">
+                <MudCardContent Class="text-center pa-2">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">등록 계좌</MudText>
-                    <MudText Typo="Typo.h5">@_accounts.Count</MudText>
+                    <MudText Typo="@(IsMobile ? Typo.h6 : Typo.h5)">@_accounts.Count</MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
-        <MudItem xs="12" sm="4">
+        <MudItem xs="4" sm="4">
             <MudCard>
-                <MudCardContent Class="text-center pa-3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">총 자산 (연결된 계좌)</MudText>
-                    <MudText Typo="Typo.h5">
+                <MudCardContent Class="text-center pa-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@(IsMobile ? "총 자산" : "총 자산 (연결된 계좌)")</MudText>
+                    <MudText Typo="@(IsMobile ? Typo.body1 : Typo.h5)" Style="font-weight:600;">
                         $@_connectionStatuses.Where(s => s.IsConnected).Sum(s => s.TotalEquity).ToString("N0")
                     </MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
-        <MudItem xs="12" sm="4">
+        <MudItem xs="4" sm="4">
             <MudCard>
-                <MudCardContent Class="text-center pa-3">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">연결 상태</MudText>
-                    <MudText Typo="Typo.h5"
+                <MudCardContent Class="text-center pa-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">연결</MudText>
+                    <MudText Typo="@(IsMobile ? Typo.h6 : Typo.h5)"
                              Color="@(_connectionStatuses.Any(s => s.IsConnected) ? Color.Success : Color.Error)">
-                        @_connectionStatuses.Count(s => s.IsConnected) / @_connectionStatuses.Count 연결됨
+                        @_connectionStatuses.Count(s => s.IsConnected)/@_connectionStatuses.Count
                     </MudText>
                 </MudCardContent>
             </MudCard>
@@ -110,7 +110,7 @@
         var isActive = account.IsActive;
         var isConnected = status?.IsConnected ?? false;
 
-        <MudItem xs="12" md="6" lg="4">
+        <MudItem xs="12" sm="6" lg="4">
             <MudCard Outlined="@(!isActive)"
                      Style="@(isActive ? "border: 2px solid var(--mud-palette-primary); box-shadow: 0 0 12px rgba(21,101,192,0.3);" : "")">
                 <MudCardHeader>
@@ -338,6 +338,8 @@
 </MudDialog>
 
 @code {
+    [CascadingParameter(Name = "IsMobile")] private bool IsMobile { get; set; }
+
     private bool _showHelp;
     private bool _loading = true;
     private List<TradingAccount> _accounts = new();

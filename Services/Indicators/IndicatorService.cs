@@ -70,6 +70,29 @@ public class IndicatorService : IIndicatorService
         return result;
     }
 
+    public decimal[] CumulativeRsi(decimal[] closes, int rsiPeriod, int cumulativePeriod)
+    {
+        var result = new decimal[closes.Length];
+        if (closes.Length == 0 || rsiPeriod <= 0 || cumulativePeriod <= 0)
+            return result;
+
+        var rsi = RSI(closes, rsiPeriod);
+        var firstValidIndex = rsiPeriod + cumulativePeriod - 1;
+        decimal windowSum = 0;
+
+        for (int i = 0; i < rsi.Length; i++)
+        {
+            windowSum += rsi[i];
+            if (i >= cumulativePeriod)
+                windowSum -= rsi[i - cumulativePeriod];
+
+            if (i >= firstValidIndex)
+                result[i] = windowSum;
+        }
+
+        return result;
+    }
+
     public (decimal[] Upper, decimal[] Middle, decimal[] Lower) BollingerBands(
         decimal[] closes, int period = 20, decimal stdDevMultiplier = 2.0m)
     {
@@ -195,6 +218,23 @@ public class IndicatorService : IIndicatorService
         }
 
         return (upper, middle, lower);
+    }
+
+    public decimal[] OBV(OhlcvBar[] bars)
+    {
+        var result = new decimal[bars.Length];
+        if (bars.Length == 0) return result;
+        result[0] = bars[0].Volume;
+        for (int i = 1; i < bars.Length; i++)
+        {
+            if (bars[i].Close > bars[i - 1].Close)
+                result[i] = result[i - 1] + bars[i].Volume;
+            else if (bars[i].Close < bars[i - 1].Close)
+                result[i] = result[i - 1] - bars[i].Volume;
+            else
+                result[i] = result[i - 1];
+        }
+        return result;
     }
 
     /// <summary>
