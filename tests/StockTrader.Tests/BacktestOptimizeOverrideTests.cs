@@ -1,8 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
-using StockTrader.Api;
+using StockTrader.Application.Optimization;
 using StockTrader.Models;
-using StockTrader.Services.Backtest;
 
 namespace StockTrader.Tests;
 
@@ -46,7 +45,7 @@ public class BacktestOptimizeOverrideTests
             }
         };
 
-        BacktestService.ApplyOptimizeOverrides(pattern, snapshot);
+        StrategyVariantFactory.ApplyOptimizeOverrides(pattern, snapshot);
 
         var rules = JsonSerializer.Deserialize<List<EntryRule>>(pattern.EntryRulesJson);
         rules.Should().NotBeNull();

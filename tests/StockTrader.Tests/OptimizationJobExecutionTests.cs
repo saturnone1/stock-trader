@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Api;
+using StockTrader.Application.Optimization;
 using StockTrader.BackgroundServices;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;

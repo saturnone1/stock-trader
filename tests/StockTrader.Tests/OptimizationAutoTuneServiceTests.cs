@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Api;
+using StockTrader.Application.Optimization;
 using StockTrader.BackgroundServices;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
@@ -79,7 +80,7 @@ public class OptimizationAutoTuneServiceTests
 
         var request = new OptimizeRequest
         {
-            BasePattern = BacktestService.ClonePatternDefinition(pattern),
+            BasePattern = StrategyVariantFactory.ClonePatternDefinition(pattern),
             Symbols = ["TQQQ"],
             From = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             To = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -194,7 +195,7 @@ public class OptimizationAutoTuneServiceTests
 
         var request = new OptimizeRequest
         {
-            BasePattern = BacktestService.ClonePatternDefinition(pattern),
+            BasePattern = StrategyVariantFactory.ClonePatternDefinition(pattern),
             Symbols = ["QQQ"],
             From = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             To = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),

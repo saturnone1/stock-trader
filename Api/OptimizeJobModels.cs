@@ -1,3 +1,5 @@
+using StockTrader.Application.Optimization;
+
 namespace StockTrader.Api;
 
 // ── Job 생성 요청 ──────────────────────────────────────────────────────────────

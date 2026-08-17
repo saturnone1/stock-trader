@@ -1,4 +1,5 @@
 using System.Text.Json;
+using StockTrader.Application.Optimization;
 using StockTrader.BackgroundServices;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Api;
+using StockTrader.Application.Optimization;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -78,7 +79,7 @@ public class OptimizationAutoTuneService
         DateTime utcNow)
     {
         var next = CloneOptimizeRequest(currentRequest);
-        next.BasePattern = BacktestService.ClonePatternDefinition(basePattern);
+        next.BasePattern = StrategyVariantFactory.ClonePatternDefinition(basePattern);
 
         var span = currentRequest.To - currentRequest.From;
         if (span <= TimeSpan.Zero)
@@ -150,8 +151,8 @@ public class OptimizationAutoTuneService
             return new ApplyResultOutcome(false, message, null, job.AppliedResultCount);
         }
 
-        var promoted = BacktestService.ClonePatternDefinition(targetPattern);
-        BacktestService.ApplyOptimizeOverrides(promoted, snapshot);
+        var promoted = StrategyVariantFactory.ClonePatternDefinition(targetPattern);
+        StrategyVariantFactory.ApplyOptimizeOverrides(promoted, snapshot);
 
         CopyPatternValues(promoted, targetPattern);
         targetPattern.UpdatedAt = DateTime.UtcNow;

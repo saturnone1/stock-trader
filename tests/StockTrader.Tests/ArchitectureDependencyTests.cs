@@ -63,6 +63,20 @@ public class ArchitectureDependencyTests
         source.Should().NotContain("EnsureCreatedAsync");
     }
 
+    [Fact]
+    public void BacktestServiceDelegatesOptimizationShapeAndVariantLogic()
+    {
+        var repository = FindRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestService.cs"));
+
+        source.Should().NotContain("using StockTrader.Api");
+        source.Should().NotContain("private static CustomPatternDefinition ClonePatternDefinition(");
+        source.Should().NotContain("private static void ApplyOptimizeOverrides(");
+        source.Should().NotContain("private static List<OptimizeParamSnapshot> GenerateOptimizeCombinations(");
+        source.Should().Contain("StrategyVariantFactory.ClonePatternDefinition(");
+        source.Should().Contain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Optimization;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
@@ -1496,18 +1497,18 @@ public class BacktestService : IBacktestService
     /// basePattern의 AtrStopMultiplier, AtrTargetMultiplier, MaxHoldingBars 등의 파라미터 조합을
     /// 순차적으로 백테스트하고 rankBy 기준으로 정렬된 상위 결과를 반환합니다.
     /// </summary>
-    public async Task<Api.OptimizeResponse> RunOptimizationAsync(
-        Api.OptimizeRequest request, CancellationToken ct = default)
+    public async Task<OptimizeResponse> RunOptimizationAsync(
+        OptimizeRequest request, CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // ── 파라미터 조합 생성 (2단계 전략) ──
-        var allCombinations = GenerateOptimizeCombinations(request.OptimizeParams);
+        var allCombinations = StrategyOptimizationSpace.GenerateOptimizeCombinations(request.OptimizeParams);
         var totalCombinations = allCombinations.Count;
 
         // 2단계 전략: Coarse(60%) → Fine(40%)
         // 전체 조합이 maxCombinations 이하면 전부 실행 (1단계만)
-        List<Api.OptimizeParamSnapshot> combinations;
+        List<OptimizeParamSnapshot> combinations;
         int stage2Budget = 0;
         if (allCombinations.Count <= request.MaxCombinations)
         {
@@ -1515,13 +1516,10 @@ public class BacktestService : IBacktestService
         }
         else
         {
-            // Stage 1: 60% 예산으로 랜덤 샘플링
+            // Stage 1: 같은 요청에서 같은 후보가 선택되는 재현 가능한 균등 표본
             var stage1Budget = (int)(request.MaxCombinations * 0.6);
             stage2Budget = request.MaxCombinations - stage1Budget;
-            combinations = allCombinations
-                .OrderBy(_ => Random.Shared.Next())
-                .Take(stage1Budget)
-                .ToList();
+            combinations = StrategyOptimizationSpace.SelectDeterministicSample(allCombinations, stage1Budget);
         }
 
         _logger.LogInformation(
@@ -1547,7 +1545,7 @@ public class BacktestService : IBacktestService
         var regimeByDate = await BuildRegimeMapAsync(dataFeed, request.From, request.To, regimeSymbol, ct);
         if (regimeByDate == null)
         {
-            return new Api.OptimizeResponse
+            return new OptimizeResponse
             {
                 TotalCombinations = totalCombinations,
                 TestedCombinations = 0,
@@ -1611,7 +1609,7 @@ public class BacktestService : IBacktestService
         if (dataByTimeFrame.Count == 0)
         {
             _logger.LogWarning("최적화: 유효한 심볼 데이터 없음");
-            return new Api.OptimizeResponse
+            return new OptimizeResponse
             {
                 TotalCombinations = totalCombinations,
                 TestedCombinations = 0,
@@ -1633,15 +1631,15 @@ public class BacktestService : IBacktestService
         );
 
         // ── 조합별 백테스트 순차 실행 ──
-        var resultItems = new List<Api.OptimizeResultItem>(combinations.Count);
+        var resultItems = new List<OptimizeResultItem>(combinations.Count);
 
         foreach (var combo in combinations)
         {
             ct.ThrowIfCancellationRequested();
 
             // 패턴 복사 + 파라미터 오버라이드 적용
-            var patternCopy = ClonePatternDefinition(request.BasePattern);
-            ApplyOptimizeOverrides(patternCopy, combo);
+            var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+            StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, combo);
 
             var detectors = new List<IPatternDetector>
             {
@@ -1664,7 +1662,7 @@ public class BacktestService : IBacktestService
                     exitOverrides: null, slippageModel: SlippageModel.Adaptive,
                     weightStrategy: null, effectivePatternSettings: _basePatternSettings, ct);
 
-                resultItems.Add(new Api.OptimizeResultItem
+                resultItems.Add(new OptimizeResultItem
                 {
                     Params           = combo,
                     TotalReturn      = btResult.TotalReturnPercent * 100,
@@ -1687,8 +1685,8 @@ public class BacktestService : IBacktestService
         // ── Stage 2: 상위 결과 주변 정밀 탐색 ──
         if (stage2Budget > 0 && resultItems.Count >= 3)
         {
-            var stage1Top = RankOptimizeResults(resultItems, request.RankBy, 5);
-            var neighbors = GenerateNeighborCombinations(stage1Top.Select(r => r.Params).ToList(),
+            var stage1Top = OptimizationResultRanker.RankOptimizeResults(resultItems, request.RankBy, 5);
+            var neighbors = StrategyOptimizationSpace.GenerateNeighborCombinations(stage1Top.Select(r => r.Params).ToList(),
                 request.OptimizeParams, stage2Budget, allCombinations);
 
             _logger.LogInformation("Stage 2 정밀 탐색: {Count}개 이웃 조합 테스트", neighbors.Count);
@@ -1696,8 +1694,8 @@ public class BacktestService : IBacktestService
             foreach (var combo in neighbors)
             {
                 ct.ThrowIfCancellationRequested();
-                var patternCopy = ClonePatternDefinition(request.BasePattern);
-                ApplyOptimizeOverrides(patternCopy, combo);
+                var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+                StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, combo);
                 var detectors2 = new List<IPatternDetector> { new RuleBasedDetector(_indicators, patternCopy) };
                 try
                 {
@@ -1710,7 +1708,7 @@ public class BacktestService : IBacktestService
                         request.From, isTo, request.InitialCapital,
                         0.05m, 1.00m, comboTf, riskParams,
                         null, SlippageModel.Adaptive, null, _basePatternSettings, ct);
-                    resultItems.Add(new Api.OptimizeResultItem
+                    resultItems.Add(new OptimizeResultItem
                     {
                         Params           = combo,
                         TotalReturn      = btResult.TotalReturnPercent * 100,
@@ -1732,7 +1730,7 @@ public class BacktestService : IBacktestService
         }
 
         // ── rankBy 기준 정렬 ──
-        var ranked = RankOptimizeResults(resultItems, request.RankBy, request.MaxResults);
+        var ranked = OptimizationResultRanker.RankOptimizeResults(resultItems, request.RankBy, request.MaxResults);
 
         // ── OOS 검증: 상위 N개에 대해 OOS 기간 재백테스트 ──
         if (hasOos)
@@ -1740,8 +1738,8 @@ public class BacktestService : IBacktestService
             foreach (var item in ranked)
             {
                 ct.ThrowIfCancellationRequested();
-                var patternCopy = ClonePatternDefinition(request.BasePattern);
-                ApplyOptimizeOverrides(patternCopy, item.Params);
+                var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+                StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, item.Params);
                 var oosDetectors = new List<IPatternDetector> { new RuleBasedDetector(_indicators, patternCopy) };
 
                 var comboTf = item.Params.TimeFrame.HasValue
@@ -1777,7 +1775,7 @@ public class BacktestService : IBacktestService
         sw.Stop();
         _logger.LogInformation("파라미터 최적화 완료: {Tested}개 테스트, {ElapsedMs}ms", resultItems.Count, sw.ElapsedMilliseconds);
 
-        return new Api.OptimizeResponse
+        return new OptimizeResponse
         {
             TotalCombinations  = totalCombinations,
             TestedCombinations = resultItems.Count,
@@ -1790,655 +1788,6 @@ public class BacktestService : IBacktestService
         };
     }
 
-    /// <summary>
-    /// OptimizeParams로부터 모든 파라미터 조합(카르테시안 곱)을 생성합니다.
-    /// 각 축을 Action&lt;OptimizeParamSnapshot&gt; 목록으로 동적 구성하여
-    /// 파라미터 수가 늘어도 중첩 foreach 없이 확장 가능한 구조입니다.
-    /// </summary>
-    internal static List<Api.OptimizeParamSnapshot> GenerateOptimizeCombinations(Api.OptimizeParams p)
-    {
-        // 각 축: 가능한 setter 액션의 목록
-        // 축이 설정되지 않으면 [null setter] 1개 = 해당 파라미터 오버라이드 없음
-        var axes = new List<List<Action<Api.OptimizeParamSnapshot>>>();
-
-        // ── 숫자형 단순 축 헬퍼 ──
-        void AddNumericAxis(Api.ParamRange? range, Action<Api.OptimizeParamSnapshot, decimal?> setter)
-        {
-            var vals = range?.Enumerate().ToList();
-            if (vals is { Count: > 0 })
-                axes.Add(vals.Select(v => (Action<Api.OptimizeParamSnapshot>)(s => setter(s, v))).ToList());
-            else
-                axes.Add(new List<Action<Api.OptimizeParamSnapshot>> { _ => { } });
-        }
-
-        // ── 기존 5개 숫자형 축 ──
-        AddNumericAxis(p.AtrStopMultiplier,   (s, v) => s.AtrStopMultiplier   = v);
-        AddNumericAxis(p.AtrTargetMultiplier, (s, v) => s.AtrTargetMultiplier = v);
-        AddNumericAxis(p.MaxHoldingBars,      (s, v) => s.MaxHoldingBars      = v.HasValue ? (int)v.Value : (int?)null);
-        AddNumericAxis(p.TrailingAtr,         (s, v) => s.TrailingAtr         = v);
-        AddNumericAxis(p.PartialProfitR,      (s, v) => s.PartialProfitR      = v);
-
-        // ── 추가 숫자형 축 ──
-        AddNumericAxis(p.DefaultAllocationPercent,          (s, v) => s.DefaultAllocationPercent          = v);
-        AddNumericAxis(p.CircuitBreakerConsecutiveLossLimit,(s, v) => s.CircuitBreakerConsecutiveLossLimit = v.HasValue ? (int)v.Value : (int?)null);
-        AddNumericAxis(p.CircuitBreakerCooldownBars,        (s, v) => s.CircuitBreakerCooldownBars        = v.HasValue ? (int)v.Value : (int?)null);
-        AddNumericAxis(p.CircuitBreakerMaxDrawdownPercent,  (s, v) => s.CircuitBreakerMaxDrawdownPercent  = v);
-        AddNumericAxis(p.ReentryCooldownAfterLoss,          (s, v) => s.ReentryCooldownAfterLoss          = v.HasValue ? (int)v.Value : (int?)null);
-        AddNumericAxis(p.ReentryCooldownAfterWin,           (s, v) => s.ReentryCooldownAfterWin           = v.HasValue ? (int)v.Value : (int?)null);
-        AddNumericAxis(p.PortfolioMaxPositions,             (s, v) => s.PortfolioMaxPositions             = v.HasValue ? (int)v.Value : (int?)null);
-        AddNumericAxis(p.PortfolioMaxSinglePercent,         (s, v) => s.PortfolioMaxSinglePercent         = v);
-        AddNumericAxis(p.PortfolioMaxEntriesPerDay,         (s, v) => s.PortfolioMaxEntriesPerDay         = v.HasValue ? (int)v.Value : (int?)null);
-
-        // ── 카테고리형 축 ──
-        void AddCategoryAxis<T>(List<T>? options, Action<Api.OptimizeParamSnapshot, T> setter)
-        {
-            if (options is { Count: > 0 })
-                axes.Add(options.Select(v => (Action<Api.OptimizeParamSnapshot>)(s => setter(s, v))).ToList());
-            else
-                axes.Add(new List<Action<Api.OptimizeParamSnapshot>> { _ => { } });
-        }
-
-        AddCategoryAxis(p.EntryLogicOptions,        (s, v) => s.EntryLogic         = v);
-        AddCategoryAxis(p.RequireBullRegimeOptions, (s, v) => s.RequireBullRegime  = v);
-        AddCategoryAxis(p.EntryModeOptions,         (s, v) => s.EntryMode          = v);
-        AddCategoryAxis(p.SizingModeOptions,        (s, v) => s.SizingMode         = v);
-        AddCategoryAxis(p.ExitLogicOptions,         (s, v) => s.ExitLogic          = v);
-        AddCategoryAxis(p.TimeFrameOptions,         (s, v) => s.TimeFrame          = v);
-
-        // ── 룰 파라미터 오버라이드 축 (RuleParamOverrides) ──
-        // 각 RuleParamRange를 독립 축으로 처리
-        foreach (var dim in p.RuleParamOverrides ?? new List<Api.RuleParamRange>())
-        {
-            if (dim.Values.Count == 0) continue;
-            var dimCopy = dim;
-            axes.Add(dimCopy.Values.Select(val => (Action<Api.OptimizeParamSnapshot>)(s =>
-            {
-                s.RuleOverrides.Add(new Api.RuleOverrideEntry
-                {
-                    Scope     = dimCopy.Scope,
-                    RuleIndex = dimCopy.RuleIndex,
-                    ParamKey  = dimCopy.ParamKey,
-                    Value     = val
-                });
-            })).ToList());
-        }
-
-        // ── 룰 필드 오버라이드 축 (RuleFieldOverrides) ──
-        foreach (var dim in p.RuleFieldOverrides ?? new List<Api.RuleFieldRange>())
-        {
-            var dimCopy = dim;
-            var setters = new List<Action<Api.OptimizeParamSnapshot>>();
-            if (dimCopy.NumericValues is { Count: > 0 })
-            {
-                foreach (var val in dimCopy.NumericValues)
-                {
-                    var v = val;
-                    setters.Add(s =>
-                    {
-                        s.RuleFieldOverrides ??= new List<Api.RuleFieldOverrideEntry>();
-                        s.RuleFieldOverrides.Add(new Api.RuleFieldOverrideEntry
-                        {
-                            Scope        = dimCopy.Scope,
-                            RuleIndex    = dimCopy.RuleIndex,
-                            FieldName    = dimCopy.FieldName,
-                            NumericValue = v
-                        });
-                    });
-                }
-            }
-            if (dimCopy.StringValues is { Count: > 0 })
-            {
-                foreach (var val in dimCopy.StringValues)
-                {
-                    var v = val;
-                    setters.Add(s =>
-                    {
-                        s.RuleFieldOverrides ??= new List<Api.RuleFieldOverrideEntry>();
-                        s.RuleFieldOverrides.Add(new Api.RuleFieldOverrideEntry
-                        {
-                            Scope       = dimCopy.Scope,
-                            RuleIndex   = dimCopy.RuleIndex,
-                            FieldName   = dimCopy.FieldName,
-                            StringValue = v
-                        });
-                    });
-                }
-            }
-            if (setters.Count > 0)
-                axes.Add(setters);
-        }
-
-        // ── 총 조합 수 계산 (오버플로우 방지) ──
-        long totalCount = 1;
-        foreach (var axis in axes)
-        {
-            totalCount *= axis.Count;
-            if (totalCount > 1_000_000) // 100만 초과 시 조기 중단
-            {
-                totalCount = long.MaxValue;
-                break;
-            }
-        }
-
-        // ── 조합 수가 적으면 전체 카르테시안 곱 생성, 많으면 랜덤 샘플링 ──
-        const int MaxFullGeneration = 50_000;
-
-        if (totalCount <= MaxFullGeneration)
-        {
-            // 전체 생성 (기존 방식)
-            var result = new List<Api.OptimizeParamSnapshot> { new() };
-            foreach (var axis in axes)
-            {
-                var expanded = new List<Api.OptimizeParamSnapshot>(result.Count * axis.Count);
-                foreach (var existing in result)
-                {
-                    foreach (var setter in axis)
-                    {
-                        var copy = CloneParamSnapshot(existing);
-                        setter(copy);
-                        expanded.Add(copy);
-                    }
-                }
-                result = expanded;
-            }
-            return result;
-        }
-        else
-        {
-            // 랜덤 인덱스 샘플링: 메모리에 전체 조합을 올리지 않고 인덱스로 접근
-            var axisSizes = axes.Select(a => a.Count).ToArray();
-            var sampleCount = Math.Min(MaxFullGeneration, (int)Math.Min(totalCount, int.MaxValue));
-            var sampled = new HashSet<string>();
-            var result = new List<Api.OptimizeParamSnapshot>();
-
-            // 실제 총 조합 수 (BigInteger 대신 double 근사)
-            double realTotal = 1;
-            foreach (var sz in axisSizes) realTotal *= sz;
-
-            while (result.Count < sampleCount && sampled.Count < sampleCount * 3) // 무한루프 방지
-            {
-                // 랜덤 다차원 인덱스 생성
-                var indices = new int[axisSizes.Length];
-                for (int i = 0; i < axisSizes.Length; i++)
-                    indices[i] = Random.Shared.Next(axisSizes[i]);
-
-                var key = string.Join(",", indices);
-                if (!sampled.Add(key)) continue; // 중복 스킵
-
-                // 스냅샷 생성
-                var snap = new Api.OptimizeParamSnapshot();
-                for (int i = 0; i < axes.Count; i++)
-                    axes[i][indices[i]](snap);
-
-                result.Add(snap);
-            }
-            return result;
-        }
-    }
-
-    /// <summary>
-    /// OptimizeParamSnapshot을 깊은 복사합니다 (카르테시안 곱 생성 시 사용).
-    /// </summary>
-    private static Api.OptimizeParamSnapshot CloneParamSnapshot(Api.OptimizeParamSnapshot src)
-    {
-        return new Api.OptimizeParamSnapshot
-        {
-            AtrStopMultiplier                  = src.AtrStopMultiplier,
-            AtrTargetMultiplier                = src.AtrTargetMultiplier,
-            MaxHoldingBars                     = src.MaxHoldingBars,
-            TrailingAtr                        = src.TrailingAtr,
-            PartialProfitR                     = src.PartialProfitR,
-            RuleOverrides                      = new List<Api.RuleOverrideEntry>(src.RuleOverrides),
-            EntryLogic                         = src.EntryLogic,
-            RequireBullRegime                  = src.RequireBullRegime,
-            EntryMode                          = src.EntryMode,
-            SizingMode                         = src.SizingMode,
-            ExitLogic                          = src.ExitLogic,
-            DefaultAllocationPercent           = src.DefaultAllocationPercent,
-            CircuitBreakerConsecutiveLossLimit = src.CircuitBreakerConsecutiveLossLimit,
-            CircuitBreakerCooldownBars         = src.CircuitBreakerCooldownBars,
-            CircuitBreakerMaxDrawdownPercent   = src.CircuitBreakerMaxDrawdownPercent,
-            ReentryCooldownAfterLoss           = src.ReentryCooldownAfterLoss,
-            ReentryCooldownAfterWin            = src.ReentryCooldownAfterWin,
-            PortfolioMaxPositions              = src.PortfolioMaxPositions,
-            PortfolioMaxSinglePercent          = src.PortfolioMaxSinglePercent,
-            PortfolioMaxEntriesPerDay          = src.PortfolioMaxEntriesPerDay,
-            RuleFieldOverrides                 = src.RuleFieldOverrides != null
-                ? new List<Api.RuleFieldOverrideEntry>(src.RuleFieldOverrides)
-                : null,
-        };
-    }
-
-    /// <summary>
-    /// Stage 2: 상위 결과 주변에서 이웃 조합을 생성합니다.
-    /// 각 숫자형 파라미터를 ±step 만큼 변형하여 정밀 탐색합니다.
-    /// </summary>
-    internal static List<Api.OptimizeParamSnapshot> GenerateNeighborCombinations(
-        List<Api.OptimizeParamSnapshot> topSnapshots,
-        Api.OptimizeParams paramDef,
-        int budget,
-        List<Api.OptimizeParamSnapshot> alreadyTested)
-    {
-        // 이미 테스트된 조합의 해시 (중복 방지)
-        var testedKeys = new HashSet<string>(alreadyTested.Select(SnapshotKey));
-
-        var neighbors = new List<Api.OptimizeParamSnapshot>();
-
-        // 각 숫자형 파라미터의 step 값 수집
-        var perturbations = new List<(Action<Api.OptimizeParamSnapshot, decimal> apply, Func<Api.OptimizeParamSnapshot, decimal?> get, decimal step)>();
-
-        void AddPerturbation(Api.ParamRange? range, Func<Api.OptimizeParamSnapshot, decimal?> getter, Action<Api.OptimizeParamSnapshot, decimal> setter)
-        {
-            if (range == null) return;
-            var step = range.Step ?? 1m;
-            if (step <= 0) step = 1m;
-            perturbations.Add((setter, getter, step));
-        }
-
-        AddPerturbation(paramDef.AtrStopMultiplier,   s => s.AtrStopMultiplier,   (s, v) => s.AtrStopMultiplier = v);
-        AddPerturbation(paramDef.AtrTargetMultiplier,  s => s.AtrTargetMultiplier,  (s, v) => s.AtrTargetMultiplier = v);
-        AddPerturbation(paramDef.MaxHoldingBars,       s => s.MaxHoldingBars,       (s, v) => s.MaxHoldingBars = (int)v);
-        AddPerturbation(paramDef.TrailingAtr,          s => s.TrailingAtr,          (s, v) => s.TrailingAtr = v);
-        AddPerturbation(paramDef.PartialProfitR,       s => s.PartialProfitR,       (s, v) => s.PartialProfitR = v);
-
-        foreach (var snap in topSnapshots)
-        {
-            // 각 파라미터를 ±step 변형
-            foreach (var (apply, get, step) in perturbations)
-            {
-                var currentVal = get(snap);
-                if (currentVal == null) continue;
-
-                foreach (var delta in new[] { -step, step, -step * 0.5m, step * 0.5m })
-                {
-                    var newVal = currentVal.Value + delta;
-                    if (newVal < 0) continue;
-
-                    var neighbor = CloneParamSnapshot(snap);
-                    apply(neighbor, newVal);
-
-                    var key = SnapshotKey(neighbor);
-                    if (testedKeys.Contains(key)) continue;
-                    testedKeys.Add(key);
-                    neighbors.Add(neighbor);
-                }
-            }
-        }
-
-        // 예산 초과 시 랜덤 샘플링
-        if (neighbors.Count > budget)
-            neighbors = neighbors.OrderBy(_ => Random.Shared.Next()).Take(budget).ToList();
-
-        return neighbors;
-    }
-
-    /// <summary>스냅샷의 간단한 해시키 (중복 검출용)</summary>
-    private static string SnapshotKey(Api.OptimizeParamSnapshot s) =>
-        $"{s.AtrStopMultiplier}|{s.AtrTargetMultiplier}|{s.MaxHoldingBars}|{s.TrailingAtr}|{s.PartialProfitR}" +
-        $"|{s.EntryLogic}|{s.RequireBullRegime}|{s.EntryMode}|{s.SizingMode}|{s.ExitLogic}|{s.TimeFrame}" +
-        $"|{s.DefaultAllocationPercent}|{s.CircuitBreakerConsecutiveLossLimit}|{s.PortfolioMaxPositions}" +
-        $"|{string.Join(';', s.RuleOverrides.Select(r => $"{r.Scope}:{r.RuleIndex}:{r.ParamKey}:{r.Value}"))}" +
-        $"|{string.Join(';', (s.RuleFieldOverrides ?? new List<Api.RuleFieldOverrideEntry>()).Select(r => $"{r.Scope}:{r.RuleIndex}:{r.FieldName}:{r.NumericValue}:{r.StringValue}"))}";
-
-    /// <summary>
-    /// RuleParamRange 목록에서 카르테시안 곱을 생성합니다.
-    /// 빈 목록이면 빈 오버라이드 세트 하나를 반환합니다.
-    /// </summary>
-    private static List<List<Api.RuleOverrideEntry>> BuildRuleCombinations(
-        List<Api.RuleParamRange> dims)
-    {
-        var result = new List<List<Api.RuleOverrideEntry>> { new() };
-
-        foreach (var dim in dims)
-        {
-            if (dim.Values.Count == 0) continue;
-            var expanded = new List<List<Api.RuleOverrideEntry>>();
-            foreach (var existing in result)
-            foreach (var val in dim.Values)
-            {
-                var copy = new List<Api.RuleOverrideEntry>(existing)
-                {
-                    new() { Scope = dim.Scope, RuleIndex = dim.RuleIndex, ParamKey = dim.ParamKey, Value = val }
-                };
-                expanded.Add(copy);
-            }
-            result = expanded;
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// 패턴 정의를 얕은 복사(JSON 필드는 문자열 복사)합니다.
-    /// 최적화 루프에서 basePattern을 오염시키지 않기 위해 사용합니다.
-    /// </summary>
-    internal static CustomPatternDefinition ClonePatternDefinition(CustomPatternDefinition src)
-    {
-        return new CustomPatternDefinition
-        {
-            Id                   = src.Id,
-            Name                 = src.Name,
-            Description          = src.Description,
-            EntryRulesJson       = src.EntryRulesJson,
-            EntryLogic           = src.EntryLogic,
-            RequireBullRegime    = src.RequireBullRegime,
-            AtrStopMultiplier    = src.AtrStopMultiplier,
-            AtrTargetMultiplier  = src.AtrTargetMultiplier,
-            MaxHoldingBars       = src.MaxHoldingBars,
-            TrailingAtr          = src.TrailingAtr,
-            PartialProfitR       = src.PartialProfitR,
-            UseWeightTiers       = src.UseWeightTiers,
-            WeightTiersJson      = src.WeightTiersJson,
-            DefaultAllocationPercent = src.DefaultAllocationPercent,
-            ExitRulesJson        = src.ExitRulesJson,
-            ExitRulesLogic       = src.ExitRulesLogic,
-            ExitGroupsJson       = src.ExitGroupsJson,
-            ExitGroupsLogic      = src.ExitGroupsLogic,
-            ScalingRulesJson     = src.ScalingRulesJson,
-            TimeFilterJson       = src.TimeFilterJson,
-            CircuitBreakerJson   = src.CircuitBreakerJson,
-            ReentryJson          = src.ReentryJson,
-            PortfolioRulesJson   = src.PortfolioRulesJson,
-            EntryGroupsJson      = src.EntryGroupsJson,
-            EntryGroupsLogic     = src.EntryGroupsLogic,
-            DynamicExitJson      = src.DynamicExitJson,
-            EntryMode            = src.EntryMode,
-            SizingMode           = src.SizingMode,
-            IsActive             = src.IsActive,
-            CreatedAt            = src.CreatedAt,
-            UpdatedAt            = src.UpdatedAt,
-        };
-    }
-
-    /// <summary>
-    /// 파라미터 스냅샷을 패턴 정의에 적용합니다.
-    /// null인 필드는 기존 값을 유지합니다.
-    /// JSON 필드(CircuitBreaker, Reentry, PortfolioRules)는 파싱 후 필드를 수정하여 재직렬화합니다.
-    /// </summary>
-    internal static void ApplyOptimizeOverrides(CustomPatternDefinition pattern, Api.OptimizeParamSnapshot snap)
-    {
-        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        static string NormalizeRuleScope(string? scope) =>
-            string.Equals(scope, "Exit", StringComparison.OrdinalIgnoreCase) ? "Exit" : "Entry";
-
-        static List<EntryRule>? GetOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts, out bool fromGroups)
-        {
-            try
-            {
-                var groups = JsonSerializer.Deserialize<List<ConditionGroup>>(pattern.EntryGroupsJson, jsonOpts);
-                if (groups is { Count: > 0 })
-                {
-                    fromGroups = true;
-                    return groups.SelectMany(group => group.Rules).ToList();
-                }
-            }
-            catch
-            {
-                // group parsing failed, fall through to flat rules
-            }
-
-            try
-            {
-                fromGroups = false;
-                return JsonSerializer.Deserialize<List<EntryRule>>(pattern.EntryRulesJson, jsonOpts);
-            }
-            catch
-            {
-                fromGroups = false;
-                return null;
-            }
-        }
-
-        static void SaveOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts, bool fromGroups, List<EntryRule> flattenedRules)
-        {
-            if (fromGroups)
-            {
-                try
-                {
-                    var groups = JsonSerializer.Deserialize<List<ConditionGroup>>(pattern.EntryGroupsJson, jsonOpts);
-                    if (groups is { Count: > 0 })
-                    {
-                        var index = 0;
-                        foreach (var group in groups)
-                        {
-                            for (var i = 0; i < group.Rules.Count && index < flattenedRules.Count; i++, index++)
-                                group.Rules[i] = flattenedRules[index];
-                        }
-
-                        pattern.EntryGroupsJson = JsonSerializer.Serialize(groups);
-                    }
-                }
-                catch
-                {
-                    // keep original group JSON on failure
-                }
-
-                return;
-            }
-
-            pattern.EntryRulesJson = JsonSerializer.Serialize(flattenedRules);
-        }
-
-        static List<EntryRule>? GetExitOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts)
-        {
-            try
-            {
-                return JsonSerializer.Deserialize<List<EntryRule>>(pattern.ExitRulesJson, jsonOpts);
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        static void SaveExitOverrideTargets(CustomPatternDefinition pattern, List<EntryRule> rules)
-        {
-            pattern.ExitRulesJson = JsonSerializer.Serialize(rules);
-        }
-
-        // ── 기존 숫자형 파라미터 ──
-        if (snap.AtrStopMultiplier.HasValue)   pattern.AtrStopMultiplier   = snap.AtrStopMultiplier.Value;
-        if (snap.AtrTargetMultiplier.HasValue) pattern.AtrTargetMultiplier = snap.AtrTargetMultiplier.Value;
-        if (snap.MaxHoldingBars.HasValue)      pattern.MaxHoldingBars      = snap.MaxHoldingBars.Value;
-        if (snap.TrailingAtr.HasValue)         pattern.TrailingAtr         = snap.TrailingAtr.Value;
-        if (snap.PartialProfitR.HasValue)      pattern.PartialProfitR      = snap.PartialProfitR.Value;
-
-        // ── 카테고리형 파라미터 ──
-        if (snap.EntryLogic        != null) pattern.EntryLogic       = snap.EntryLogic;
-        if (snap.RequireBullRegime.HasValue) pattern.RequireBullRegime = snap.RequireBullRegime.Value;
-        if (snap.EntryMode         != null) pattern.EntryMode        = snap.EntryMode;
-        if (snap.SizingMode        != null) pattern.SizingMode       = snap.SizingMode;
-        if (snap.ExitLogic         != null) pattern.ExitRulesLogic   = snap.ExitLogic;
-
-        // ── 기본 비중 ──
-        if (snap.DefaultAllocationPercent.HasValue)
-            pattern.DefaultAllocationPercent = snap.DefaultAllocationPercent.Value;
-
-        // ── CircuitBreakerJson 파싱 → 수정 → 재직렬화 ──
-        if (snap.CircuitBreakerConsecutiveLossLimit.HasValue
-            || snap.CircuitBreakerCooldownBars.HasValue
-            || snap.CircuitBreakerMaxDrawdownPercent.HasValue)
-        {
-            try
-            {
-                var cb = JsonSerializer.Deserialize<CircuitBreakerConfig>(pattern.CircuitBreakerJson, jsonOpts) ?? new();
-                if (snap.CircuitBreakerConsecutiveLossLimit.HasValue) cb.ConsecutiveLossLimit = snap.CircuitBreakerConsecutiveLossLimit.Value;
-                if (snap.CircuitBreakerCooldownBars.HasValue)         cb.CooldownBars         = snap.CircuitBreakerCooldownBars.Value;
-                if (snap.CircuitBreakerMaxDrawdownPercent.HasValue)   cb.MaxDrawdownPercent   = snap.CircuitBreakerMaxDrawdownPercent.Value;
-                pattern.CircuitBreakerJson = JsonSerializer.Serialize(cb);
-            }
-            catch { /* JSON 파싱 실패 시 기존 값 유지 */ }
-        }
-
-        // ── ReentryJson 파싱 → 수정 → 재직렬화 ──
-        if (snap.ReentryCooldownAfterLoss.HasValue || snap.ReentryCooldownAfterWin.HasValue)
-        {
-            try
-            {
-                var rc = JsonSerializer.Deserialize<ReentryConfig>(pattern.ReentryJson, jsonOpts) ?? new();
-                if (snap.ReentryCooldownAfterLoss.HasValue) rc.CooldownBarsAfterLoss = snap.ReentryCooldownAfterLoss.Value;
-                if (snap.ReentryCooldownAfterWin.HasValue)  rc.CooldownBarsAfterWin  = snap.ReentryCooldownAfterWin.Value;
-                pattern.ReentryJson = JsonSerializer.Serialize(rc);
-            }
-            catch { /* JSON 파싱 실패 시 기존 값 유지 */ }
-        }
-
-        // ── PortfolioRulesJson 파싱 → 수정 → 재직렬화 ──
-        if (snap.PortfolioMaxPositions.HasValue
-            || snap.PortfolioMaxSinglePercent.HasValue
-            || snap.PortfolioMaxEntriesPerDay.HasValue)
-        {
-            try
-            {
-                var pr = JsonSerializer.Deserialize<PortfolioRulesConfig>(pattern.PortfolioRulesJson, jsonOpts) ?? new();
-                if (snap.PortfolioMaxPositions.HasValue)    pr.MaxTotalPositions       = snap.PortfolioMaxPositions.Value;
-                if (snap.PortfolioMaxSinglePercent.HasValue) pr.MaxSinglePositionPercent = snap.PortfolioMaxSinglePercent.Value;
-                if (snap.PortfolioMaxEntriesPerDay.HasValue) pr.MaxEntriesPerDay         = snap.PortfolioMaxEntriesPerDay.Value;
-                pattern.PortfolioRulesJson = JsonSerializer.Serialize(pr);
-            }
-            catch { /* JSON 파싱 실패 시 기존 값 유지 */ }
-        }
-
-        // ── RuleParamOverrides / RuleFieldOverrides: 활성 진입/청산 규칙 수정 → 재직렬화 ──
-        if (snap.RuleOverrides.Count > 0)
-        {
-            foreach (var scopeGroup in snap.RuleOverrides.GroupBy(entry => NormalizeRuleScope(entry.Scope)))
-            {
-                try
-                {
-                    if (scopeGroup.Key == "Exit")
-                    {
-                        var rules = GetExitOverrideTargets(pattern, jsonOpts);
-                        if (rules == null) continue;
-                        foreach (var entry in scopeGroup)
-                        {
-                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
-                            var paramKey = entry.ParamKey ?? string.Empty;
-                            if (paramKey.StartsWith("compare.", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var compareKey = paramKey["compare.".Length..];
-                                rules[entry.RuleIndex].CompareParams[compareKey] = entry.Value;
-                            }
-                            else
-                            {
-                                rules[entry.RuleIndex].Params[paramKey] = entry.Value;
-                            }
-                        }
-                        SaveExitOverrideTargets(pattern, rules);
-                    }
-                    else
-                    {
-                        var rules = GetOverrideTargets(pattern, jsonOpts, out var fromGroups);
-                        if (rules == null) continue;
-                        foreach (var entry in scopeGroup)
-                        {
-                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
-                            var paramKey = entry.ParamKey ?? string.Empty;
-                            if (paramKey.StartsWith("compare.", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var compareKey = paramKey["compare.".Length..];
-                                rules[entry.RuleIndex].CompareParams[compareKey] = entry.Value;
-                            }
-                            else
-                            {
-                                rules[entry.RuleIndex].Params[paramKey] = entry.Value;
-                            }
-                        }
-                        SaveOverrideTargets(pattern, jsonOpts, fromGroups, rules);
-                    }
-                }
-                catch { /* JSON 파싱 실패 시 룰 오버라이드 없이 진행 */ }
-            }
-        }
-
-        if (snap.RuleFieldOverrides is { Count: > 0 })
-        {
-            foreach (var scopeGroup in snap.RuleFieldOverrides.GroupBy(entry => NormalizeRuleScope(entry.Scope)))
-            {
-                try
-                {
-                    if (scopeGroup.Key == "Exit")
-                    {
-                        var rules = GetExitOverrideTargets(pattern, jsonOpts);
-                        if (rules == null) continue;
-                        foreach (var entry in scopeGroup)
-                        {
-                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
-                            var rule = rules[entry.RuleIndex];
-                            switch (entry.FieldName.ToLowerInvariant())
-                            {
-                                case "value"           when entry.NumericValue.HasValue:
-                                    rule.Value = entry.NumericValue.Value; break;
-                                case "withinbars"      when entry.NumericValue.HasValue:
-                                    rule.WithinBars = (int)entry.NumericValue.Value; break;
-                                case "weight"          when entry.NumericValue.HasValue:
-                                    rule.Weight = entry.NumericValue.Value; break;
-                                case "consecutivebars" when entry.NumericValue.HasValue:
-                                    rule.ConsecutiveBars = (int)entry.NumericValue.Value; break;
-                                case "operator"        when entry.StringValue != null:
-                                    rule.Operator = entry.StringValue; break;
-                                case "compareindicator" when entry.StringValue != null:
-                                    rule.CompareIndicator = entry.StringValue; break;
-                            }
-                        }
-                        SaveExitOverrideTargets(pattern, rules);
-                    }
-                    else
-                    {
-                        var rules = GetOverrideTargets(pattern, jsonOpts, out var fromGroups);
-                        if (rules == null) continue;
-                        foreach (var entry in scopeGroup)
-                        {
-                            if (entry.RuleIndex < 0 || entry.RuleIndex >= rules.Count) continue;
-                            var rule = rules[entry.RuleIndex];
-                            switch (entry.FieldName.ToLowerInvariant())
-                            {
-                                case "value"           when entry.NumericValue.HasValue:
-                                    rule.Value = entry.NumericValue.Value; break;
-                                case "withinbars"      when entry.NumericValue.HasValue:
-                                    rule.WithinBars = (int)entry.NumericValue.Value; break;
-                                case "weight"          when entry.NumericValue.HasValue:
-                                    rule.Weight = entry.NumericValue.Value; break;
-                                case "consecutivebars" when entry.NumericValue.HasValue:
-                                    rule.ConsecutiveBars = (int)entry.NumericValue.Value; break;
-                                case "operator"        when entry.StringValue != null:
-                                    rule.Operator = entry.StringValue; break;
-                                case "compareindicator" when entry.StringValue != null:
-                                    rule.CompareIndicator = entry.StringValue; break;
-                            }
-                        }
-                        SaveOverrideTargets(pattern, jsonOpts, fromGroups, rules);
-                    }
-                }
-                catch { /* JSON 파싱 실패 시 필드 오버라이드 없이 진행 */ }
-            }
-        }
-    }
-
-    /// <summary>
-    /// 결과 목록을 rankBy 기준으로 정렬하고 상위 maxResults개에 순위를 매깁니다.
-    /// </summary>
-    internal static List<Api.OptimizeResultItem> RankOptimizeResults(
-        List<Api.OptimizeResultItem> items, string rankBy, int maxResults)
-    {
-        IEnumerable<Api.OptimizeResultItem> sorted = rankBy.ToLowerInvariant() switch
-        {
-            "totalreturn"      => items.OrderByDescending(r => r.TotalReturn),
-            "sharperation" or
-            "sharperatio"      => items.OrderByDescending(r => r.SharpeRatio),
-            "calmarratio"      => items.OrderByDescending(r => r.CalmarRatio),
-            "profitfactor"     => items.OrderByDescending(r => r.ProfitFactor),
-            "winrate"          => items.OrderByDescending(r => r.WinRate),
-            "annualizedreturn" => items.OrderByDescending(r => r.AnnualizedReturn),
-            _                  => items.OrderByDescending(r => r.SortinoRatio) // 기본: sortinoRatio
-        };
-
-        var ranked = sorted.Take(maxResults).ToList();
-        for (int i = 0; i < ranked.Count; i++)
-            ranked[i].Rank = i + 1;
-
-        return ranked;
-    }
 
     #endregion
 }

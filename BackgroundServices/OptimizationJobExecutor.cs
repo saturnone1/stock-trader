@@ -1,5 +1,6 @@
 using System.Text.Json;
 using StockTrader.Api;
+using StockTrader.Application.Optimization;
 using StockTrader.Configuration;
 using StockTrader.Application.Backtesting;
 using StockTrader.Data.Repositories;
@@ -154,7 +155,7 @@ public class OptimizationJobExecutor
             : dataByTimeFrame.Values.First();
 
         // ── 5. 전체 조합 생성 / TotalCombinations 업데이트 ──
-        var allCombinations = BacktestService.GenerateOptimizeCombinations(request.OptimizeParams);
+        var allCombinations = StrategyOptimizationSpace.GenerateOptimizeCombinations(request.OptimizeParams);
         if (job.TotalCombinations == 0)
         {
             job.TotalCombinations = allCombinations.Count;
@@ -346,8 +347,8 @@ public class OptimizationJobExecutor
                 }
                 catch { continue; }
 
-                var patternCopy = BacktestService.ClonePatternDefinition(request.BasePattern);
-                BacktestService.ApplyOptimizeOverrides(patternCopy, snap);
+                var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+                StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, snap);
                 var oosDetectors = new List<IPatternDetector>
                 {
                     new RuleBasedDetector(indicators, patternCopy)
@@ -413,8 +414,8 @@ public class OptimizationJobExecutor
         {
             ct.ThrowIfCancellationRequested();
 
-            var patternCopy = BacktestService.ClonePatternDefinition(request.BasePattern);
-            BacktestService.ApplyOptimizeOverrides(patternCopy, combo);
+            var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+            StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, combo);
 
             var detectors = new List<IPatternDetector>
             {
@@ -574,7 +575,7 @@ public class OptimizationJobExecutor
         List<OptimizeParamSnapshot> seeds;
         if (stage1Results.Count >= 3)
         {
-            seeds = BacktestService.RankOptimizeResults(stage1Results, job.RankBy, 5)
+            seeds = OptimizationResultRanker.RankOptimizeResults(stage1Results, job.RankBy, 5)
                 .Select(r => r.Params)
                 .ToList();
         }
@@ -589,7 +590,7 @@ public class OptimizationJobExecutor
         }
 
         var neighbors = seeds.Count >= 3
-            ? BacktestService.GenerateNeighborCombinations(
+            ? StrategyOptimizationSpace.GenerateNeighborCombinations(
                 seeds,
                 request.OptimizeParams,
                 stage2Budget,
