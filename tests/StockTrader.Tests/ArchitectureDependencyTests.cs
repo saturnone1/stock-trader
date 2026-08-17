@@ -30,8 +30,14 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/BacktestTradeHistory.svelte"));
         var factorRanking = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/BacktestFactorRanking.svelte"));
+        var factorLabPanel = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestFactorLabPanel.svelte"));
+        var factorEditor = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestFactorExperimentEditor.svelte"));
+        var factorCandidates = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestFactorCandidates.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_665);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_500);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
@@ -39,12 +45,15 @@ public class ArchitectureDependencyTests
         page.Should().Contain("<BacktestValidationResults");
         page.Should().Contain("<BacktestTradeHistory");
         page.Should().Contain("<BacktestFactorRanking");
+        page.Should().Contain("<BacktestFactorLabPanel");
         page.Should().NotContain("백테스트 실패:");
         page.Should().NotContain("타이밍 리포트");
         page.Should().NotContain("종목별 성과");
         page.Should().NotContain(">워크포워드 결과</div>");
         page.Should().NotContain(">최근 거래</div>");
         page.Should().NotContain(">팩터 실험실 랭킹</div>");
+        page.Should().NotContain(">커스텀 팩터 조합</div>");
+        page.Should().NotContain(">실행 가능한 프리셋</div>");
         page.Should().NotContain("function getWhipsawStats(");
         page.Should().NotContain("const factorExperimentPresets = [");
         research.Should().Contain("export function getWhipsawStats(");
@@ -59,6 +68,10 @@ public class ArchitectureDependencyTests
         validationResults.Should().Contain("몬테카를로 결과");
         tradeHistory.Should().Contain("최근 거래");
         factorRanking.Should().Contain("팩터 실험실 랭킹");
+        factorLabPanel.Should().Contain("<BacktestFactorExperimentEditor");
+        factorLabPanel.Should().Contain("<BacktestFactorCandidates");
+        factorEditor.Should().Contain("커스텀 팩터 조합");
+        factorCandidates.Should().Contain("실행 여부");
     }
 
     [Theory]

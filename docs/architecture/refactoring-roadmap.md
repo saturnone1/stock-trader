@@ -156,9 +156,10 @@ Performance breakdowns, walk-forward and Monte Carlo validation, and trade histo
 three further display-only components under `features/backtest`. These boundaries reduced the page
 from 2,130 to 1,730 lines. Factor-lab insight cards and ranking tables are also rendered by
 `BacktestFactorRanking.svelte`, with reusable lift and drawdown comparisons in
-`backtestResearch.js`, reducing the page further to 1,664 lines. The page remains responsible for
-research execution and scenario selection while the remaining experiment configuration panels are
-extracted incrementally.
+`backtestResearch.js`. The factor-lab controls now compose a dedicated custom-experiment editor and
+candidate preview table behind `BacktestFactorLabPanel.svelte`. This reduces the page further to
+1,499 lines and keeps it responsible for research execution and scenario selection rather than
+factor-lab presentation details.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

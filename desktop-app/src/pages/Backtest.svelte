@@ -4,6 +4,7 @@
   import { backtestApi, financialFactorApi, metadataApi, patternApi } from '../api/endpoints'
   import FinancialFactorBuilder from '../lib/FinancialFactorBuilder.svelte'
   import UniverseBuilder from '../lib/UniverseBuilder.svelte'
+  import BacktestFactorLabPanel from '../features/backtest/BacktestFactorLabPanel.svelte'
   import BacktestFactorRanking from '../features/backtest/BacktestFactorRanking.svelte'
   import BacktestPerformanceBreakdown from '../features/backtest/BacktestPerformanceBreakdown.svelte'
   import BacktestResultSummary from '../features/backtest/BacktestResultSummary.svelte'
@@ -14,7 +15,6 @@
     factorDrawdownImprovement,
     factorRankingOptions,
     factorReturnLift,
-    factorSourceLabel,
     formatDecimal,
     formatPercent,
     formatSignedPercent,
@@ -1163,185 +1163,20 @@
         </div>
       </div>
 
-      <div class="mt-5 rounded-xl border border-fuchsia-800/40 bg-fuchsia-950/20 p-5">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <div class="text-sm font-semibold text-fuchsia-100">팩터 실험실</div>
-            <div class="mt-1 text-sm text-fuchsia-50">현재 종목 입력을 기준으로 여러 재무 팩터 조합을 자동 생성하고, 같은 타이밍 시나리오로 돌린 뒤 어떤 조합이 더 나았는지 랭킹합니다.</div>
-          </div>
-          <div class="flex items-center gap-3">
-            <label class="flex items-center gap-2 text-sm text-fuchsia-100">
-              <input type="checkbox" bind:checked={factorLab.enabled} />
-              실험실 사용
-            </label>
-            <button on:click={previewFactorLab} disabled={!factorLab.enabled || factorLabLoading || parseSymbols().length === 0 || factorExperimentSelectionCount() === 0} class="rounded bg-fuchsia-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-fuchsia-700 disabled:opacity-40">
-              {factorLabLoading ? '불러오는 중...' : '후보 미리보기'}
-            </button>
-          </div>
-        </div>
-
-        {#if factorLabError}
-          <div class="mt-4 rounded-lg border border-red-700 bg-red-900/20 p-4 text-sm text-red-300">{factorLabError}</div>
-        {/if}
-
-        <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-3">
-          <div class="rounded border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
-            <div class="text-xs text-gray-500">기준 종목군</div>
-            <div class="mt-2 text-xl font-semibold text-white">{uniqueSymbols(parseSymbols()).length}</div>
-          </div>
-          <div class="rounded border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
-            <div class="text-xs text-gray-500">선택한 실험 조합</div>
-            <div class="mt-2 text-xl font-semibold text-white">{factorExperimentSelectionCount()}</div>
-          </div>
-          <div class="rounded border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
-            <div class="text-xs text-gray-500">실행 가능한 프리셋</div>
-            <div class="mt-2 text-xl font-semibold text-white">{factorLabSummaries.filter((item) => item.eligible).length}</div>
-          </div>
-        </div>
-
-        <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-4">
-          <label class="flex items-center gap-2 rounded border border-fuchsia-800/30 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-            <input type="checkbox" bind:checked={factorLab.includeCurrentBuilder} disabled={!factorLab.enabled} />
-            현재 재무 팩터 빌더 조건 포함
-          </label>
-          <label class="text-sm text-gray-300">
-            <div class="mb-2 text-gray-500">최소 종목 수</div>
-            <input type="number" min="1" max="1000" bind:value={factorLab.minMatchedSymbols} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" disabled={!factorLab.enabled} />
-          </label>
-          <label class="text-sm text-gray-300">
-            <div class="mb-2 text-gray-500">랭킹 기준</div>
-            <select bind:value={factorLab.rankingMode} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" disabled={!factorLab.enabled}>
-              {#each factorRankingOptions as option}
-                <option value={option.id}>{option.label}</option>
-              {/each}
-            </select>
-          </label>
-          <label class="text-sm text-gray-300">
-            <div class="mb-2 text-gray-500">랭킹 표시 개수</div>
-            <input type="number" min="1" max="20" bind:value={factorLab.topRankedResults} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" disabled={!factorLab.enabled} />
-          </label>
-        </div>
-
-        <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-3">
-          {#each factorExperimentPresets as preset}
-            <label class={`rounded-xl border px-4 py-3 text-sm transition ${factorLab.selectedPresets.includes(preset.id) ? 'border-fuchsia-500 bg-fuchsia-950/30 text-fuchsia-50' : 'border-gray-800 bg-gray-950 text-gray-300'}`}>
-              <div class="flex items-start gap-3">
-                <input type="checkbox" checked={factorLab.selectedPresets.includes(preset.id)} on:change={() => toggleFactorPreset(preset.id)} disabled={!factorLab.enabled} class="mt-1" />
-                <div>
-                  <div class="font-medium text-white">{preset.label}</div>
-                  <div class="mt-1 text-xs text-gray-400">{preset.note}</div>
-                </div>
-              </div>
-            </label>
-          {/each}
-        </div>
-
-        <div class="mt-4 rounded-xl border border-fuchsia-800/30 bg-gray-950 p-4">
-          <div class="mb-3 flex items-center justify-between gap-4">
-            <div>
-              <div class="text-sm font-semibold text-white">커스텀 팩터 조합</div>
-              <div class="mt-1 text-xs text-gray-400">PER/PBR/ROE/마진/성장/턴어라운드 조건을 직접 섞어서 배치 실험용 조합을 여러 개 만듭니다.</div>
-            </div>
-            <button on:click={addCustomFactorExperiment} disabled={!factorLab.enabled} class="rounded bg-fuchsia-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-fuchsia-600 disabled:opacity-40">
-              커스텀 조합 추가
-            </button>
-          </div>
-
-          <div class="space-y-4">
-            {#each factorLab.customExperiments as experiment, index (experiment.id)}
-              <div class="rounded-lg border border-gray-800 bg-gray-900 p-4">
-                <div class="mb-3 flex items-center justify-between gap-4">
-                  <label class="flex-1 text-sm text-gray-300">
-                    <div class="mb-2 text-gray-500">조합 이름</div>
-                    <input bind:value={experiment.label} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" disabled={!factorLab.enabled} placeholder={`커스텀 조합 ${index + 1}`} />
-                  </label>
-                  <button on:click={() => removeCustomFactorExperiment(experiment.id)} disabled={!factorLab.enabled || factorLab.customExperiments.length === 1} class="mt-6 rounded border border-red-700 px-3 py-2 text-sm text-red-300 transition hover:bg-red-950/30 disabled:opacity-40">
-                    제거
-                  </button>
-                </div>
-
-                <div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
-                  <label class="text-sm text-gray-300">
-                    <div class="mb-2 text-gray-500">PER 최대</div>
-                    <input bind:value={experiment.peRatioMax} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" disabled={!factorLab.enabled} placeholder="예: 15" />
-                  </label>
-                  <label class="text-sm text-gray-300">
-                    <div class="mb-2 text-gray-500">PBR 최대</div>
-                    <input bind:value={experiment.pbRatioMax} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" disabled={!factorLab.enabled} placeholder="예: 1.5" />
-                  </label>
-                  <label class="text-sm text-gray-300">
-                    <div class="mb-2 text-gray-500">ROE 최소 (%)</div>
-                    <input bind:value={experiment.roePercentMin} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" disabled={!factorLab.enabled} placeholder="예: 12" />
-                  </label>
-                  <label class="text-sm text-gray-300">
-                    <div class="mb-2 text-gray-500">영업이익률 최소 (%)</div>
-                    <input bind:value={experiment.operatingMarginMin} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" disabled={!factorLab.enabled} placeholder="예: 8" />
-                  </label>
-                  <label class="text-sm text-gray-300">
-                    <div class="mb-2 text-gray-500">매출 성장 최소</div>
-                    <input bind:value={experiment.revenueGrowthMin} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" disabled={!factorLab.enabled} placeholder="예: 0.1" />
-                  </label>
-                  <label class="text-sm text-gray-300">
-                    <div class="mb-2 text-gray-500">순이익 성장 최소</div>
-                    <input bind:value={experiment.netIncomeGrowthMin} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" disabled={!factorLab.enabled} placeholder="예: 0.15" />
-                  </label>
-                </div>
-
-                <div class="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
-                  <label class="flex items-center gap-2 rounded border border-gray-800 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-                    <input type="checkbox" bind:checked={experiment.positiveEarningsOnly} disabled={!factorLab.enabled} />
-                    흑자 기업만
-                  </label>
-                  <label class="flex items-center gap-2 rounded border border-gray-800 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-                    <input type="checkbox" bind:checked={experiment.turnaroundOnly} disabled={!factorLab.enabled} />
-                    턴어라운드만
-                  </label>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-
-        {#if factorLabSummaries.length > 0}
-          <div class="mt-4 overflow-auto rounded-xl border border-gray-800 bg-gray-950">
-            <table class="min-w-full text-sm">
-              <thead class="text-left text-gray-500">
-                <tr>
-                  <th class="px-3 py-2">프리셋</th>
-                  <th class="px-3 py-2">소스</th>
-                  <th class="px-3 py-2">매칭 종목</th>
-                  <th class="px-3 py-2">실행 여부</th>
-                  <th class="px-3 py-2">평균 PER</th>
-                  <th class="px-3 py-2">평균 PBR</th>
-                  <th class="px-3 py-2">평균 ROE</th>
-                  <th class="px-3 py-2">흑자 수</th>
-                  <th class="px-3 py-2">턴어라운드 수</th>
-                  <th class="px-3 py-2">요약</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each factorLabSummaries as summary}
-                  <tr class="border-t border-gray-800">
-                    <td class="px-3 py-2">
-                      <div class="font-medium text-white">{summary.label}</div>
-                      <div class="text-xs text-gray-500">{summary.note}</div>
-                    </td>
-                    <td class="px-3 py-2 text-gray-300">{factorSourceLabel(summary.source)}</td>
-                    <td class="px-3 py-2 text-gray-300">{summary.matched}</td>
-                    <td class={`px-3 py-2 ${summary.eligible ? 'text-emerald-300' : 'text-amber-300'}`}>{summary.eligible ? '실행' : '제외'}</td>
-                    <td class="px-3 py-2 text-gray-300">{formatDecimal(summary.filteredSummary?.averagePe)}</td>
-                    <td class="px-3 py-2 text-gray-300">{formatDecimal(summary.filteredSummary?.averagePb)}</td>
-                    <td class="px-3 py-2 text-gray-300">{summary.filteredSummary?.averageRoe != null ? `${formatDecimal(summary.filteredSummary.averageRoe)}%` : '-'}</td>
-                    <td class="px-3 py-2 text-gray-300">{summary.filteredSummary?.positiveEarningsCount ?? 0}</td>
-                    <td class="px-3 py-2 text-gray-300">{summary.filteredSummary?.turnaroundCount ?? 0}</td>
-                    <td class="px-3 py-2 text-gray-400">{summary.summaryTags.join(' · ') || '-'}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {/if}
-      </div>
+      <BacktestFactorLabPanel
+        {factorLab}
+        loading={factorLabLoading}
+        error={factorLabError}
+        summaries={factorLabSummaries}
+        presets={factorExperimentPresets}
+        rankingOptions={factorRankingOptions}
+        baseSymbolCount={uniqueSymbols(parseSymbols()).length}
+        selectionCount={factorExperimentSelectionCount()}
+        onPreview={previewFactorLab}
+        onTogglePreset={toggleFactorPreset}
+        onAddCustom={addCustomFactorExperiment}
+        onRemoveCustom={removeCustomFactorExperiment}
+      />
 
       <div class="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
