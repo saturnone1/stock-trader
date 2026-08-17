@@ -222,6 +222,21 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BacktestAndLiveShareCumulativeRsi2ExitDecision()
+    {
+        var repository = FindRepositoryRoot();
+        var backtest = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
+        var live = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/PositionExitManagerService.cs"));
+
+        backtest.Should().Contain("CumulativeRsi2ExitDecisionPolicy.Resolve(");
+        live.Should().Contain("CumulativeRsi2ExitDecisionPolicy.Resolve(");
+        backtest.Should().NotContain("currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold");
+        live.Should().NotContain("currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold");
+    }
+
+    [Fact]
     public void PreviewBacktestAndLiveShareTheExitPolicyCatalog()
     {
         var repository = FindRepositoryRoot();

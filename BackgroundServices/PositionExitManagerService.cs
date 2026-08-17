@@ -287,29 +287,26 @@ public class PositionExitManagerService : BackgroundService
                 currentCumulativeRsi2TrendMa = trendMa[^1];
         }
 
-        StrategyExitInstruction? strategyExit = null;
-        if (position.PatternType == PatternType.CumulativeRsi2
-            && currentCumulativeRsi2TrendMa > 0
-            && position.CurrentPrice <= currentCumulativeRsi2TrendMa)
+        StrategyExitInstruction? strategyExit;
+        if (position.PatternType == PatternType.CumulativeRsi2)
         {
-            strategyExit = new StrategyExitInstruction(
+            strategyExit = CumulativeRsi2ExitDecisionPolicy.Resolve(
                 position.CurrentPrice,
-                $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
+                currentCumulativeRsi2,
+                currentCumulativeRsi2TrendMa,
+                cumulativeRsi2Config.ExitThreshold,
+                cumulativeRsi2Config.LongTrendMaPeriod);
         }
         else if (customStrategy != null && recentBars is { Count: >= 50 })
         {
+            strategyExit = null;
             var detector = new RuleBasedDetector(_indicators, customStrategy);
             detector.SetReferenceData(await LoadReferenceDataAsync(customStrategy, position.Symbol, recentBars, ohlcvRepo, ct), UtcNow);
             if (detector.ShouldExit(recentBars.ToArray()))
                 strategyExit = new StrategyExitInstruction(position.CurrentPrice, $"{customStrategy.Name} 매도 조건 충족");
         }
-        else if (position.PatternType == PatternType.CumulativeRsi2
-            && currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold)
-        {
-            strategyExit = new StrategyExitInstruction(
-                position.CurrentPrice,
-                $"누적 RSI 청산({currentCumulativeRsi2:F1})");
-        }
+        else
+            strategyExit = null;
 
         var stopDistance = Math.Abs(position.EntryPrice - position.StopLossPrice);
         if (stopDistance <= 0)

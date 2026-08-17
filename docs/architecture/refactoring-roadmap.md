@@ -74,6 +74,9 @@
   priority after stop/partial processing. Bar-based preview/backtest and live current-price decisions
   delegate to it. Equivalent-price snapshot fixtures lock stop, target, strategy, time, and hold-state
   parity, including invalid zero-price boundary handling.
+- `CumulativeRsi2ExitDecisionPolicy` now owns the built-in strategy's trend-break-first and cumulative
+  RSI threshold semantics. Backtest and live monitoring pass their independently prepared indicator
+  snapshots into the same pure decision, including the same invalid-price boundary.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

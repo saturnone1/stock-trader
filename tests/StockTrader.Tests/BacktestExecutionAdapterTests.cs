@@ -65,10 +65,35 @@ public class BacktestExecutionAdapterTests
         trades.Should().ContainSingle(trade => trade.ExitReason == "부분 익절(1R)" && trade.Quantity == 5);
     }
 
+    [Fact]
+    public void ProcessExitLogic_UsesSharedCumulativeRsi2TrendBreakDecision()
+    {
+        var (simulator, position, trades) = Setup(patternType: PatternType.CumulativeRsi2);
+        var bar = Bar(open: 100m, high: 101m, low: 96m, close: 99m);
+
+        var result = Process(
+            simulator,
+            position,
+            bar,
+            trades,
+            cumulativeRsi2: 80m,
+            cumulativeRsi2TrendMa: 100m,
+            cumulativeConfig: new CumulativeRsi2Config
+            {
+                ExitThreshold = 70m,
+                LongTrendMaPeriod = 200
+            });
+
+        result.Should().BeNull();
+        trades.Should().ContainSingle(trade =>
+            trade.ExitPrice == 99m && trade.ExitReason == "200SMA 이탈");
+    }
+
     private static (BacktestExecutionAdapter simulator, BacktestExecutionAdapter.OpenPosition position, List<TradeRecord> trades) Setup(
         bool trailing = false,
         bool partial = false,
-        decimal equityAtEntry = 0m)
+        decimal equityAtEntry = 0m,
+        PatternType patternType = PatternType.Custom)
     {
         var profile = new LongPositionExitPolicy(
             MaxHoldingBars: 20,
@@ -82,7 +107,7 @@ public class BacktestExecutionAdapterTests
             BreakevenAtrMultiplier: 0m);
         var position = new BacktestExecutionAdapter.OpenPosition
         {
-            PatternType = PatternType.Custom,
+            PatternType = patternType,
             EntryPrice = 100m,
             OriginalStop = 95m,
             StopLoss = 95m,
@@ -103,8 +128,13 @@ public class BacktestExecutionAdapterTests
 
     private static BacktestExecutionAdapter.OpenPosition? Process(
         BacktestExecutionAdapter simulator, BacktestExecutionAdapter.OpenPosition position, OhlcvBar bar,
-        List<TradeRecord> trades, int barIndex = 1) => simulator.ProcessExitLogic(
-            position, bar, barIndex, 5m, 0m, 0m, 0m, new CumulativeRsi2Config(),
+        List<TradeRecord> trades,
+        int barIndex = 1,
+        decimal cumulativeRsi2 = 0m,
+        decimal cumulativeRsi2TrendMa = 0m,
+        CumulativeRsi2Config? cumulativeConfig = null) => simulator.ProcessExitLogic(
+            position, bar, barIndex, 5m, 0m, cumulativeRsi2, cumulativeRsi2TrendMa,
+            cumulativeConfig ?? new CumulativeRsi2Config(),
             new Dictionary<PatternType, LongPositionExitPolicy>(), null, "TQQQ", trades);
 
     private static OhlcvBar Bar(decimal open, decimal high, decimal low, decimal close, int day = 1) => new()

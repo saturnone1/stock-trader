@@ -58,7 +58,8 @@ uses a separate decision adapter because it submits a real
 broker order and records the broker's fill instead of inventing an OHLC fill; it still shares the
 same state, `LongPositionCloseDecisionPolicy` target/strategy/time priority, and protective-stop
 calculation. Snapshot parity fixtures compare bar-based and live decisions where price ordering is
-fully observable.
+fully observable. Built-in close rules such as cumulative RSI2 trend-break/threshold decisions also
+live in pure execution policies rather than in backtest or worker adapters.
 
 Live execution state belongs to the persisted `Position`, not a background worker's memory. Its
 original risk distance and protective-stop flags survive restarts through an ordered database

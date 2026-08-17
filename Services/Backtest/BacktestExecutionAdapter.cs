@@ -42,22 +42,14 @@ internal sealed class BacktestExecutionAdapter
             exitPolicyCache[openPosition.PatternType] = policy;
         }
 
-        StrategyExitInstruction? strategyExit = null;
-        if (openPosition.PatternType == PatternType.CumulativeRsi2
-            && currentCumulativeRsi2TrendMa > 0
-            && currentBar.Close <= currentCumulativeRsi2TrendMa)
-        {
-            strategyExit = new StrategyExitInstruction(
+        var strategyExit = openPosition.PatternType == PatternType.CumulativeRsi2
+            ? CumulativeRsi2ExitDecisionPolicy.Resolve(
                 currentBar.Close,
-                $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
-        }
-        else if (openPosition.PatternType == PatternType.CumulativeRsi2
-                 && currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold)
-        {
-            strategyExit = new StrategyExitInstruction(
-                currentBar.Close,
-                $"누적 RSI 청산({currentCumulativeRsi2:F1})");
-        }
+                currentCumulativeRsi2,
+                currentCumulativeRsi2TrendMa,
+                cumulativeRsi2Config.ExitThreshold,
+                cumulativeRsi2Config.LongTrendMaPeriod)
+            : null;
 
         var state = new LongPositionExecutionState(
             openPosition.EntryPrice,
