@@ -50,6 +50,55 @@ public class DatabaseMigrationRunnerTests
     }
 
     [Fact]
+    public async Task MigrateAsync_AddsDurablePositionExecutionStateWithoutChangingRows()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await ExecuteAsync(connection, """
+            CREATE TABLE Positions (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Symbol TEXT NOT NULL DEFAULT '',
+                StopLossPrice REAL NOT NULL DEFAULT 0);
+            INSERT INTO Positions (Symbol, StopLossPrice) VALUES ('TQQQ', 42.5);
+            """);
+        await using var db = CreateContext(connection);
+        var migration = new PositionExecutionStateMigration();
+
+        await CreateRunner(db, migration).MigrateAsync();
+
+        (await ColumnsAsync(connection, "Positions")).Should().Contain([
+            "InitialRiskDistance", "BreakevenApplied", "TrailingStopActivated"]);
+        (await ScalarAsync<decimal>(connection,
+            "SELECT StopLossPrice FROM Positions WHERE Symbol = 'TQQQ'")).Should().Be(42.5m);
+        (await ScalarAsync<long>(connection,
+            "SELECT BreakevenApplied FROM Positions WHERE Symbol = 'TQQQ'")).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task PositionExecutionState_RoundTripsThroughCurrentEfModel()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using (var writeDb = CreateContext(connection))
+        {
+            await writeDb.Database.EnsureCreatedAsync();
+            writeDb.Positions.Add(new StockTrader.Models.Position
+            {
+                Symbol = "TQQQ",
+                InitialRiskDistance = 4.25m,
+                BreakevenApplied = true,
+                TrailingStopActivated = true,
+            });
+            await writeDb.SaveChangesAsync();
+        }
+
+        await using var readDb = CreateContext(connection);
+        var restored = await readDb.Positions.AsNoTracking().SingleAsync();
+
+        restored.InitialRiskDistance.Should().Be(4.25m);
+        restored.BreakevenApplied.Should().BeTrue();
+        restored.TrailingStopActivated.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task MigrateAsync_SortsMigrationsByIdEvenWhenRegistrationOrderDiffers()
     {
         await using var connection = await OpenConnectionAsync();

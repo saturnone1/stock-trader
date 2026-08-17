@@ -17,9 +17,13 @@
   decisions to `LiveLongPositionDecisionPolicy`, while broker submission and actual fill lookup stay
   in the live adapter. Both execution policies share the same position state and protective-stop
   calculation.
+- Live protective-stop state is persisted on `Position` through the ordered
+  `PositionExecutionStateMigration`; process restarts no longer discard initial risk, breakeven, or
+  trailing activation. Market-open checks use the injected clock, and daily holding limits count
+  observed market bars instead of approximating business days as calendar days.
 
 Remaining Phase 2 work is primarily the extraction of portfolio and metric orchestration from
-`BacktestService`, durable persistence of live execution state, and broader
+`BacktestService`, durable/idempotent live exit-order reconciliation, and broader
 preview/backtest/live parity fixtures.
 
 ## Phase 0 — Guardrails and governance

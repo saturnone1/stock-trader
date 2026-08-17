@@ -8,6 +8,10 @@ namespace StockTrader.Services.Market;
 /// </summary>
 public class MarketCalendar : IMarketCalendar
 {
+    private readonly TimeProvider _timeProvider;
+
+    public MarketCalendar(TimeProvider timeProvider) => _timeProvider = timeProvider;
+
     private static readonly TimeZoneInfo EasternTime =
         TZConvert.GetTimeZoneInfo("America/New_York");
 
@@ -54,7 +58,7 @@ public class MarketCalendar : IMarketCalendar
 
     public DateTime GetLocalNow(MarketType market)
     {
-        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, GetTimeZone(market));
+        return TimeZoneInfo.ConvertTimeFromUtc(_timeProvider.GetUtcNow().UtcDateTime, GetTimeZone(market));
     }
 
 }

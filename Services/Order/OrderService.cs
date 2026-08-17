@@ -141,7 +141,8 @@ public class OrderService : IOrderService
                 PatternType = recommendation.PatternType,
                 CustomPatternName = recommendation.CustomPatternName,
                 OpenedAt = DateTime.UtcNow,
-                HighSinceEntry = actualEntry
+                HighSinceEntry = actualEntry,
+                InitialRiskDistance = stopDistance
             };
             await _tradeRepo.SavePositionAsync(position, ct);
 

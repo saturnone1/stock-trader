@@ -42,6 +42,8 @@ public static class ServiceCollectionExtensions
         services.AddNotificationServices();
         services.AddBackgroundServices();
 
+        services.AddSingleton(TimeProvider.System);
+
         // Market Calendar (stateless - singleton)
         services.AddSingleton<IMarketCalendar, MarketCalendar>();
 

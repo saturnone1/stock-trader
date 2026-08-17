@@ -114,6 +114,9 @@ public class ArchitectureDependencyTests
         liveManager.Should().Contain("LiveLongPositionDecisionPolicy.Evaluate(");
         liveManager.Should().NotContain("position.CurrentPrice <= position.StopLossPrice");
         liveManager.Should().NotContain("position.CurrentPrice >= position.TargetPrice");
+        liveManager.Should().NotContain("DateTime.UtcNow");
+        liveManager.Should().NotContain("TZConvert");
+        liveManager.Should().NotContain("7.0 / 5.0");
     }
 
     private static string FindRepositoryRoot()

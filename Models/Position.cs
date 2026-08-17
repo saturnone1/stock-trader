@@ -29,6 +29,15 @@ public class Position
     /// <summary>진입 시 ATR 값 (트레일링/손익비 계산용).</summary>
     public decimal EntryAtr { get; set; }
 
+    /// <summary>진입 시 확정된 1주당 위험거리. 보호 손절이 움직여도 변경하지 않는다.</summary>
+    public decimal InitialRiskDistance { get; set; }
+
+    /// <summary>손익분기 손절이 적용됐는지 여부. 서비스 재시작 후에도 유지한다.</summary>
+    public bool BreakevenApplied { get; set; }
+
+    /// <summary>추적손절이 활성화됐는지 여부. 서비스 재시작 후에도 유지한다.</summary>
+    public bool TrailingStopActivated { get; set; }
+
     public bool IsOpen => ClosedAt == null;
     public decimal UnrealizedPnL => (CurrentPrice - EntryPrice) * Quantity;
     public decimal? RealizedPnL => ExitPrice.HasValue

@@ -54,6 +54,11 @@ effect on the next bar. Live monitoring uses a separate decision adapter because
 broker order and records the broker's fill instead of inventing an OHLC fill; it still shares the
 same state, decision priority, and protective-stop calculation.
 
+Live execution state belongs to the persisted `Position`, not a background worker's memory. Its
+original risk distance and protective-stop flags survive restarts through an ordered database
+migration. Session checks receive a `TimeProvider`, and daily time exits count stored daily bars;
+workers must not embed exchange hours or approximate trading sessions from calendar-day ratios.
+
 ## Decision records
 
 - `adr/0001-modular-monolith.md`: why a modular monolith is the target.
