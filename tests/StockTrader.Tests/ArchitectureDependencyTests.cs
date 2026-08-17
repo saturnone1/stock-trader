@@ -448,6 +448,9 @@ public class ArchitectureDependencyTests
         schemaMigrator.Should().NotContain("CREATE TABLE");
         program.Should().NotContain("--verify-ef-baseline");
         program.Should().Contain("--verify-database-migrations");
+        program.Should().Contain("--migrate-database");
+        program.Should().Contain("MigrateDatabaseOnlyAsync()");
+        program.Should().Contain("Environment.ExitCode = 1;");
         initialization.Should().Contain("DatabaseMigrationStatusProvider");
         var health = File.ReadAllText(Path.Combine(repository, "Api/HealthEndpoints.cs"));
         health.Should().Contain("DatabaseMigrationStatusProvider");
@@ -464,6 +467,20 @@ public class ArchitectureDependencyTests
             .Should().Equal("DatabaseMigrationStatusProvider", "DatabaseSchemaMigrator");
         File.Exists(Path.Combine(repository, "docs/architecture/adr/0004-retire-handwritten-migrations.md"))
             .Should().BeTrue();
+    }
+
+    [Fact]
+    public void CanonicalK3sDeployBacksUpAndMigratesTheDatabaseBeforeRollout()
+    {
+        var repository = FindRepositoryRoot();
+        var deploy = File.ReadAllText(Path.Combine(repository, "scripts/deploy-k3s.sh"));
+
+        deploy.Should().Contain("scale deployment stocktrader-api --replicas=0");
+        deploy.Should().Contain("sqlite3 \"$data_dir/stocktrader.db\" \".backup '$backup_path'\"");
+        deploy.Should().Contain("PRAGMA quick_check;");
+        deploy.Should().Contain("dotnet StockTrader.dll --migrate-database");
+        deploy.IndexOf("--migrate-database", StringComparison.Ordinal).Should().BeLessThan(
+            deploy.IndexOf("deployment-api.yaml", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -37,6 +37,11 @@ try
         Environment.ExitCode = await app.VerifyDatabaseMigrationsAsync() ? 0 : 2;
         return;
     }
+    if (args.Contains("--migrate-database", StringComparer.Ordinal))
+    {
+        Environment.ExitCode = await app.MigrateDatabaseOnlyAsync() ? 0 : 2;
+        return;
+    }
     await app.InitializeStockTraderAsync();
     app.UseStockTraderPipeline();
     app.MapStockTraderApi();
@@ -45,6 +50,7 @@ try
 catch (Exception exception)
 {
     Log.Fatal(exception, "Application terminated unexpectedly");
+    Environment.ExitCode = 1;
 }
 finally
 {

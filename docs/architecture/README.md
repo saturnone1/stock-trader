@@ -132,6 +132,9 @@ Stored custom strategies now carry a `DocumentVersion` that is independent from 
 schema version. The compatibility policy reads legacy unversioned requests, stamps every successful
 write with the current document version, and rejects unknown future versions rather than guessing
 their semantics. Existing rows are adopted through an ordered EF migration.
+The application exposes a migration-only process mode so deployment can back up SQLite, apply the
+ordered migration, and exit before the API starts. The canonical K3s script stops the sole writer,
+creates and integrity-checks a SQLite backup, runs that mode, and only then rolls out the API image.
 
 ## Decision records
 

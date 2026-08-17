@@ -11,6 +11,16 @@ namespace StockTrader.Extensions;
 
 public static class ApplicationInitializationExtensions
 {
+    public static async Task<bool> MigrateDatabaseOnlyAsync(this WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var services = scope.ServiceProvider;
+        await services.GetRequiredService<DatabaseSchemaMigrator>().MigrateAsync();
+        var status = await services.GetRequiredService<DatabaseMigrationStatusProvider>()
+            .GetAsync(CancellationToken.None);
+        return status.IsSynchronized;
+    }
+
     public static async Task<bool> VerifyDatabaseMigrationsAsync(this WebApplication app)
     {
         using var scope = app.Services.CreateScope();

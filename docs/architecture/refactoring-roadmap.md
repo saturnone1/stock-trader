@@ -285,6 +285,9 @@ Exit gate: Svelte is the only operational UI and large pages are orchestration s
 Progress: local container operation is consolidated in `docker-compose.yml`; production K3s builds,
 imports, applies the split manifests, and verifies rollouts through `scripts/deploy-k3s.sh`. API and
 Desktop each have one Dockerfile. Obsolete single-process manifests and deployment scripts are gone.
+Before a schema-changing API rollout, the canonical K3s path now stops the sole SQLite writer,
+creates an integrity-checked backup, executes the API's migration-only mode, and starts the new image
+only after the schema reports synchronized.
 
 Exit gate: one documented local path and one documented K3s production path remain.
 

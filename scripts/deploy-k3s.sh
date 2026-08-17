@@ -8,8 +8,11 @@ release_tag="${1:-$(git rev-parse --short=12 HEAD)}"
 api_image="localhost/stock-trader/api:architecture-${release_tag}"
 desktop_image="localhost/stock-trader/desktop:architecture-${release_tag}"
 archive_dir="$(mktemp -d /tmp/stocktrader-deploy.XXXXXX)"
+data_dir="${STOCKTRADER_DATA_DIR:-/home/stocktrader/k3s-data/stocktrader}"
+migration_container="stocktrader-migrate-${release_tag}"
 
 cleanup() {
+  sudo buildah rm "$migration_container" >/dev/null 2>&1 || true
   sudo rm -f -- "$archive_dir/api.tar" "$archive_dir/desktop.tar"
   rmdir "$archive_dir" 2>/dev/null || true
 }
@@ -35,7 +38,28 @@ if sudo k3s kubectl -n stocktrader get deployment stocktrader-api >/dev/null 2>&
   # Clear it atomically while switching strategy so Kubernetes accepts Recreate.
   sudo k3s kubectl -n stocktrader patch deployment stocktrader-api --type=merge \
     -p '{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}'
+  sudo k3s kubectl -n stocktrader scale deployment stocktrader-api --replicas=0
+  if sudo k3s kubectl -n stocktrader get pod -l app=stocktrader-api --no-headers | grep -q .; then
+    sudo k3s kubectl -n stocktrader wait --for=delete pod -l app=stocktrader-api --timeout=180s
+  fi
 fi
+
+sudo install -d -m 0750 "$data_dir/backups"
+if sudo test -f "$data_dir/stocktrader.db"; then
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    echo "sqlite3 is required to create a consistent pre-migration backup." >&2
+    exit 1
+  fi
+  backup_path="$data_dir/backups/stocktrader-pre-${release_tag}-$(date -u +%Y%m%dT%H%M%SZ).db"
+  sudo sqlite3 "$data_dir/stocktrader.db" ".backup '$backup_path'"
+  sudo sqlite3 "$backup_path" "PRAGMA quick_check;" | grep -qx ok
+  echo "Database backup: $backup_path"
+fi
+
+sudo buildah from --name "$migration_container" \
+  --volume "$data_dir:/data:rw" "$api_image" >/dev/null
+sudo buildah run "$migration_container" -- dotnet StockTrader.dll --migrate-database
+sudo buildah rm "$migration_container" >/dev/null
 
 sed "s|localhost/stock-trader/api:latest|$api_image|" k8s/deployment-api.yaml \
   | sudo k3s kubectl apply -f -
