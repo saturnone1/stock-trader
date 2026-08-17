@@ -13,9 +13,13 @@
 - Pattern preview and backtest now share `LongEntryFillPolicy` and
   `LongPositionExecutionPolicy`. The shared policy owns long-entry repricing, gap-stop fills,
   same-bar exit priority, partial profit, target/time exits, and next-bar protective-stop updates.
+- Live position monitoring delegates stop, target, strategy/time priority, breakeven, and trailing
+  decisions to `LiveLongPositionDecisionPolicy`, while broker submission and actual fill lookup stay
+  in the live adapter. Both execution policies share the same position state and protective-stop
+  calculation.
 
 Remaining Phase 2 work is primarily the extraction of portfolio and metric orchestration from
-`BacktestService`, followed by connecting live execution to the same position policy and adding
+`BacktestService`, durable persistence of live execution state, and broader
 preview/backtest/live parity fixtures.
 
 ## Phase 0 — Guardrails and governance

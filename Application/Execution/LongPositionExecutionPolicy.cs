@@ -121,9 +121,30 @@ public static class LongPositionExecutionPolicy
         if (policy.EnableTimeExit && policy.MaxHoldingBars > 0 && barsSinceEntry >= policy.MaxHoldingBars)
             return Close(next, events, bar.Close, $"시간 청산({policy.MaxHoldingBars}봉)");
 
-        var oldStop = next.StopPrice;
+        var stopUpdate = AdvanceProtectiveStop(
+            next,
+            bar.Close,
+            currentAtr,
+            policy,
+            dynamicStopFloor);
+        next = stopUpdate.State;
+        if (stopUpdate.Event is not null)
+            events.Add(stopUpdate.Event);
+
+        return new LongPositionBarResult(next, events, false);
+    }
+
+    internal static (LongPositionExecutionState State, PositionExecutionEvent? Event) AdvanceProtectiveStop(
+        LongPositionExecutionState state,
+        decimal observedPrice,
+        decimal currentAtr,
+        LongPositionExitPolicy policy,
+        decimal? dynamicStopFloor)
+    {
+        var next = state;
+        var oldStop = state.StopPrice;
         if (!next.BreakevenApplied && next.EntryAtr > 0 && policy.BreakevenAtrMultiplier > 0
-            && bar.Close >= next.EntryPrice + next.EntryAtr * policy.BreakevenAtrMultiplier)
+            && observedPrice >= next.EntryPrice + next.EntryAtr * policy.BreakevenAtrMultiplier)
         {
             next = next with
             {
@@ -135,7 +156,7 @@ public static class LongPositionExecutionPolicy
         if (policy.EnableTrailingStop)
         {
             var activationPrice = next.EntryPrice + next.RiskDistance * policy.TrailingActivationR;
-            if (!next.TrailingActivated && bar.Close >= activationPrice)
+            if (!next.TrailingActivated && observedPrice >= activationPrice)
                 next = next with { TrailingActivated = true };
 
             if (next.TrailingActivated && currentAtr > 0)
@@ -151,14 +172,14 @@ public static class LongPositionExecutionPolicy
 
         if (next.StopPrice > oldStop)
         {
-            events.Add(new PositionExecutionEvent(
+            return (next, new PositionExecutionEvent(
                 PositionExecutionEventType.StopMoved,
                 next.StopPrice,
                 0,
                 next.TrailingActivated ? "추적 손절가 상향" : "손절가를 매수가로 상향"));
         }
 
-        return new LongPositionBarResult(next, events, false);
+        return (next, null);
     }
 
     private static LongPositionBarResult Close(

@@ -50,7 +50,9 @@ Pattern preview and backtest must delegate entry repricing and per-bar exit orde
 policy instead of implementing private OHLC rules. Because OHLC data does not reveal intrabar
 ordering, the policy deliberately uses the conservative sequence: the stop known at bar open,
 then partial profit, target/strategy/time exit, and finally protective-stop updates that take
-effect on the next bar. Live execution is the next adapter to move behind this boundary.
+effect on the next bar. Live monitoring uses a separate decision adapter because it submits a real
+broker order and records the broker's fill instead of inventing an OHLC fill; it still shares the
+same state, decision priority, and protective-stop calculation.
 
 ## Decision records
 

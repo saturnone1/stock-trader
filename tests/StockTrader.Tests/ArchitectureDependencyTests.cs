@@ -104,6 +104,18 @@ public class ArchitectureDependencyTests
         preview.Should().NotContain("current.High >= position.TargetPrice");
     }
 
+    [Fact]
+    public void LiveExitManagerDelegatesTradingDecisionsToPurePolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var liveManager = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/PositionExitManagerService.cs"));
+
+        liveManager.Should().Contain("LiveLongPositionDecisionPolicy.Evaluate(");
+        liveManager.Should().NotContain("position.CurrentPrice <= position.StopLossPrice");
+        liveManager.Should().NotContain("position.CurrentPrice >= position.TargetPrice");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

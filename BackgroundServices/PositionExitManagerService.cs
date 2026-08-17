@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using StockTrader.Application.Execution;
 using StockTrader.Application.Strategies;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
@@ -275,94 +276,76 @@ public class PositionExitManagerService : BackgroundService
                 currentCumulativeRsi2TrendMa = trendMa[^1];
         }
 
-        var stopDistance = Math.Abs(position.EntryPrice - position.StopLossPrice);
-        if (stopDistance <= 0) stopDistance = atr > 0 ? atr : position.EntryPrice * 0.02m;
-
-        // 1. HighSinceEntry 업데이트
-        if (position.CurrentPrice > position.HighSinceEntry)
-            position.HighSinceEntry = position.CurrentPrice;
-
-        // 2. 손익분기 스탑
-        if (!state.BreakevenApplied && pep.BreakevenAtrMultiplier > 0 && atr > 0)
-        {
-            var breakevenThreshold = position.EntryPrice + atr * pep.BreakevenAtrMultiplier;
-            if (position.CurrentPrice >= breakevenThreshold)
-            {
-                position.StopLossPrice = Math.Max(position.StopLossPrice, position.EntryPrice);
-                state.BreakevenApplied = true;
-                _logger.LogDebug("[EXIT-MGR] {Symbol}: breakeven stop activated at {Price:F2}",
-                    position.Symbol, position.EntryPrice);
-            }
-        }
-
-        // 3. 트레일링 스탑 (Chandelier)
-        if (pep.EnableTrailingStop)
-        {
-            var activationTarget = position.EntryPrice + stopDistance * pep.TrailingActivationR;
-            if (!state.TrailingActivated && position.CurrentPrice >= activationTarget)
-            {
-                state.TrailingActivated = true;
-                _logger.LogDebug("[EXIT-MGR] {Symbol}: trailing stop activated at {Price:F2}",
-                    position.Symbol, position.CurrentPrice);
-            }
-
-            if (state.TrailingActivated && atr > 0 && position.HighSinceEntry > 0)
-            {
-                var chandelier = position.HighSinceEntry - atr * pep.TrailingStopAtrMultiplier;
-                if (chandelier > position.StopLossPrice)
-                    position.StopLossPrice = chandelier;
-            }
-        }
-
-        // 4. 손절 체크
-        if (position.CurrentPrice <= position.StopLossPrice)
-        {
-            var reason = state.BreakevenApplied || state.TrailingActivated
-                ? "트레일링 손절" : "손절";
-            return (true, reason);
-        }
-
+        StrategyExitInstruction? strategyExit = null;
         if (position.PatternType == PatternType.CumulativeRsi2
             && currentCumulativeRsi2TrendMa > 0
             && position.CurrentPrice <= currentCumulativeRsi2TrendMa)
         {
-            return (true, $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
+            strategyExit = new StrategyExitInstruction(
+                position.CurrentPrice,
+                $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
         }
-
-        if (customStrategy != null && recentBars is { Count: >= 50 })
+        else if (customStrategy != null && recentBars is { Count: >= 50 })
         {
             var detector = new RuleBasedDetector(_indicators, customStrategy);
             detector.SetReferenceData(await LoadReferenceDataAsync(customStrategy, position.Symbol, recentBars, ohlcvRepo, ct), DateTime.UtcNow);
             if (detector.ShouldExit(recentBars.ToArray()))
-                return (true, $"{customStrategy.Name} 매도 조건 충족");
+                strategyExit = new StrategyExitInstruction(position.CurrentPrice, $"{customStrategy.Name} 매도 조건 충족");
         }
-
-        if (position.PatternType == PatternType.CumulativeRsi2
+        else if (position.PatternType == PatternType.CumulativeRsi2
             && currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold)
         {
-            return (true, $"누적 RSI 청산({currentCumulativeRsi2:F1})");
+            strategyExit = new StrategyExitInstruction(
+                position.CurrentPrice,
+                $"누적 RSI 청산({currentCumulativeRsi2:F1})");
         }
 
-        // 5. 목표가 체크
-        if (pep.EnableTargetExit && position.TargetPrice > 0
-            && position.CurrentPrice >= position.TargetPrice)
-        {
-            return (true, "목표 도달");
-        }
+        var stopDistance = Math.Abs(position.EntryPrice - position.StopLossPrice);
+        if (stopDistance <= 0)
+            stopDistance = atr > 0 ? atr : position.EntryPrice * 0.02m;
+        if (state.RiskDistance <= 0)
+            state.RiskDistance = stopDistance;
+        var policy = new LongPositionExitPolicy(
+            pep.MaxHoldingBars,
+            pep.EnableTrailingStop,
+            pep.TrailingStopAtrMultiplier,
+            pep.TrailingActivationR,
+            EnablePartialProfit: false,
+            PartialProfitRMultiple: 0m,
+            pep.EnableTargetExit,
+            pep.EnableTimeExit,
+            pep.BreakevenAtrMultiplier);
+        var maxDays = pep.MaxHoldingBars * 7.0 / 5.0;
+        var timeExitReached = pep.MaxHoldingBars > 0
+            && (DateTime.UtcNow - position.OpenedAt).TotalDays >= maxDays;
+        var decision = LiveLongPositionDecisionPolicy.Evaluate(
+            new LongPositionExecutionState(
+                position.EntryPrice,
+                position.StopLossPrice,
+                position.TargetPrice,
+                Math.Max(position.HighSinceEntry, position.EntryPrice),
+                position.EntryPrice,
+                state.RiskDistance,
+                position.EntryAtr > 0 ? position.EntryAtr : atr,
+                EntryBarIndex: 0,
+                position.Quantity,
+                BreakevenApplied: state.BreakevenApplied,
+                TrailingActivated: state.TrailingActivated),
+            position.CurrentPrice,
+            atr,
+            policy,
+            timeExitReached,
+            strategyExit);
 
-        // 6. 시간 기반 청산 (일봉 기준 보유일수)
-        if (pep.EnableTimeExit)
-        {
-            var holdingDays = (DateTime.UtcNow - position.OpenedAt).TotalDays;
-            // MaxHoldingBars는 일봉 기준 (주말 제외하면 약 5영업일 = 7일)
-            var maxDays = pep.MaxHoldingBars * 7.0 / 5.0; // 영업일 → 달력일 변환
-            if (holdingDays >= maxDays)
-            {
-                return (true, $"시간 청산({pep.MaxHoldingBars}봉)");
-            }
-        }
+        position.HighSinceEntry = decision.State.HighestPrice;
+        position.StopLossPrice = decision.State.StopPrice;
+        state.BreakevenApplied = decision.State.BreakevenApplied;
+        state.TrailingActivated = decision.State.TrailingActivated;
+        if (decision.StopUpdate is not null)
+            _logger.LogDebug("[EXIT-MGR] {Symbol}: {Reason} {Price:F2}",
+                position.Symbol, decision.StopUpdate.Reason, decision.StopUpdate.Price);
 
-        return (false, string.Empty);
+        return (decision.ShouldExit, decision.Reason);
     }
 
     private static async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(
@@ -462,5 +445,6 @@ public class PositionExitManagerService : BackgroundService
     {
         public bool TrailingActivated { get; set; }
         public bool BreakevenApplied { get; set; }
+        public decimal RiskDistance { get; set; }
     }
 }
