@@ -154,8 +154,11 @@ formatters, whipsaw classification, and equity-curve volatility from
 metrics, and the timing report are rendered by `features/backtest/BacktestResultSummary.svelte`.
 Performance breakdowns, walk-forward and Monte Carlo validation, and trade history are isolated in
 three further display-only components under `features/backtest`. These boundaries reduced the page
-from 2,130 to 1,730 lines and leave it responsible for research execution and scenario selection
-while the remaining factor-lab and configuration panels are extracted incrementally.
+from 2,130 to 1,730 lines. Factor-lab insight cards and ranking tables are also rendered by
+`BacktestFactorRanking.svelte`, with reusable lift and drawdown comparisons in
+`backtestResearch.js`, reducing the page further to 1,664 lines. The page remains responsible for
+research execution and scenario selection while the remaining experiment configuration panels are
+extracted incrementally.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

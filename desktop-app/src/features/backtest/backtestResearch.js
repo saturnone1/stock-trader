@@ -58,6 +58,20 @@ export function formatDecimal(value, digits = 2) {
   return Number(value).toFixed(digits)
 }
 
+export function factorSourceLabel(source) {
+  if (source === 'current-builder') return '현재 빌더'
+  if (source === 'custom') return '커스텀'
+  return '기본 프리셋'
+}
+
+export function factorReturnLift(row) {
+  return Number(row?.bestReturn ?? 0) - Number(row?.baselineReturn ?? 0)
+}
+
+export function factorDrawdownImprovement(row) {
+  return Number(row?.baselineDrawdown ?? 0) - Number(row?.bestDrawdown ?? 0)
+}
+
 export function timeframeBarMinutes(timeframe) {
   if (timeframe === 'OneMinute') return 1
   if (timeframe === 'FiveMinute') return 5

@@ -4,13 +4,17 @@
   import { backtestApi, financialFactorApi, metadataApi, patternApi } from '../api/endpoints'
   import FinancialFactorBuilder from '../lib/FinancialFactorBuilder.svelte'
   import UniverseBuilder from '../lib/UniverseBuilder.svelte'
+  import BacktestFactorRanking from '../features/backtest/BacktestFactorRanking.svelte'
   import BacktestPerformanceBreakdown from '../features/backtest/BacktestPerformanceBreakdown.svelte'
   import BacktestResultSummary from '../features/backtest/BacktestResultSummary.svelte'
   import BacktestTradeHistory from '../features/backtest/BacktestTradeHistory.svelte'
   import BacktestValidationResults from '../features/backtest/BacktestValidationResults.svelte'
   import {
     factorExperimentPresets,
+    factorDrawdownImprovement,
     factorRankingOptions,
+    factorReturnLift,
+    factorSourceLabel,
     formatDecimal,
     formatPercent,
     formatSignedPercent,
@@ -350,16 +354,6 @@
 
   function factorRankingLabel() {
     return factorRankingOptions.find((option) => option.id === factorLab.rankingMode)?.label ?? '균형 점수'
-  }
-
-  function factorSourceLabel(source) {
-    switch (source) {
-      case 'current-builder': return '현재 빌더'
-      case 'custom': return '커스텀'
-      case 'preset':
-      default:
-        return '기본 프리셋'
-    }
   }
 
   function normalizeFactorExperimentParams(params = {}) {
@@ -842,14 +836,6 @@
     return rows
       .slice(0, Math.max(1, Number(factorLab.topRankedResults ?? 5)))
       .map((row, index) => ({ ...row, rank: index + 1 }))
-  }
-
-  function factorReturnLift(row) {
-    return Number(row?.bestReturn ?? 0) - Number(row?.baselineReturn ?? 0)
-  }
-
-  function factorDrawdownImprovement(row) {
-    return Number(row?.baselineDrawdown ?? 0) - Number(row?.bestDrawdown ?? 0)
   }
 
   function getFactorLabInsightCards() {
@@ -1589,66 +1575,14 @@
         </section>
       {/if}
 
-      {#if getFactorLabRankingRows().length > 0}
-        <section class="rounded-2xl border border-fuchsia-800/40 bg-fuchsia-950/10 p-5">
-          <div class="text-xl font-semibold text-white">팩터 실험실 랭킹</div>
-          <div class="mt-2 text-sm text-gray-400">선택한 프리셋별로 최고 성과 시나리오를 뽑아 어떤 팩터 조합이 더 강했는지 바로 정렬합니다. 현재 기준은 <span class="text-fuchsia-200">{factorRankingLabel()}</span> 입니다.</div>
-          <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {#each getFactorLabInsightCards() as card}
-              <div class="rounded-xl border border-fuchsia-800/40 bg-gray-950/70 p-4">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{card.label}</div>
-                <div class={`mt-2 text-lg font-semibold ${card.accent}`}>{card.headline}</div>
-                <div class="mt-1 text-sm text-gray-400">{card.detail}</div>
-              </div>
-            {/each}
-          </div>
-          <div class="mt-3 text-sm text-gray-400">{getFactorLabSummaryLine()}</div>
-          <div class="mt-4 overflow-auto">
-            <table class="min-w-full text-sm">
-              <thead class="text-left text-gray-500">
-                <tr>
-                  <th class="px-3 py-2">순위</th>
-                  <th class="px-3 py-2">프리셋</th>
-                  <th class="px-3 py-2">소스</th>
-                  <th class="px-3 py-2">종목 수</th>
-                  <th class="px-3 py-2">기준선 수익률</th>
-                  <th class="px-3 py-2">최고 시나리오</th>
-                  <th class="px-3 py-2">최고 수익률</th>
-                  <th class="px-3 py-2">수익 개선</th>
-                  <th class="px-3 py-2">최고 낙폭</th>
-                  <th class="px-3 py-2">낙폭 개선</th>
-                  <th class="px-3 py-2">최고 샤프</th>
-                  <th class="px-3 py-2">거래 수</th>
-                  <th class="px-3 py-2">점수</th>
-                  <th class="px-3 py-2">요약</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each getFactorLabRankingRows() as row}
-                  <tr class={`border-t border-gray-800 ${row.rank === 1 ? 'bg-fuchsia-950/20' : ''}`}>
-                    <td class="px-3 py-2 font-semibold text-fuchsia-200">#{row.rank}</td>
-                    <td class="px-3 py-2">
-                      <div class="font-medium text-white">{row.label}</div>
-                      <div class="text-xs text-gray-500">{row.note}</div>
-                    </td>
-                    <td class="px-3 py-2 text-gray-300">{factorSourceLabel(row.source)}</td>
-                     <td class="px-3 py-2 text-gray-300">{row.symbolCount}</td>
-                     <td class={`px-3 py-2 ${Number(row.baselineReturn ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}`}>{formatPercent(row.baselineReturn)}</td>
-                     <td class="px-3 py-2 text-gray-300">{row.bestScenarioLabel}</td>
-                     <td class={`px-3 py-2 ${Number(row.bestReturn ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}`}>{formatPercent(row.bestReturn)}</td>
-                     <td class={`px-3 py-2 ${factorReturnLift(row) >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{formatSignedPercent(factorReturnLift(row))}</td>
-                     <td class="px-3 py-2 text-red-300">{formatPercent(row.bestDrawdown)}</td>
-                     <td class={`px-3 py-2 ${factorDrawdownImprovement(row) >= 0 ? 'text-cyan-300' : 'text-red-300'}`}>{formatSignedPercent(factorDrawdownImprovement(row))}</td>
-                     <td class="px-3 py-2 text-gray-300">{formatDecimal(row.bestSharpe)}</td>
-                     <td class="px-3 py-2 text-gray-300">{row.bestTrades ?? 0}</td>
-                     <td class="px-3 py-2 text-fuchsia-200">{formatDecimal(row.bestScore)}</td>
-                     <td class="px-3 py-2 text-gray-400">{row.summaryTags.join(' · ') || '-'}</td>
-                   </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      {@const factorRankingRows = getFactorLabRankingRows()}
+      {#if factorRankingRows.length > 0}
+        <BacktestFactorRanking
+          rows={factorRankingRows}
+          insightCards={getFactorLabInsightCards()}
+          summary={getFactorLabSummaryLine()}
+          rankingLabel={factorRankingLabel()}
+        />
       {/if}
 
       <section class="rounded-2xl border border-gray-800 bg-gray-950 p-5">
