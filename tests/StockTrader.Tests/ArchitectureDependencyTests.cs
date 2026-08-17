@@ -149,6 +149,29 @@ public class ArchitectureDependencyTests
         researchTests.Should().Contain("API returnPct contract");
     }
 
+    [Fact]
+    public void PatternBuilderDelegatesStrategySafetyValidation()
+    {
+        var repository = FindRepositoryRoot();
+        var pagePath = Path.Combine(repository, "desktop-app/src/pages/PatternBuilder.svelte");
+        var page = File.ReadAllText(pagePath);
+        var validation = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternValidation.js"));
+        var validationTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternValidation.test.js"));
+
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1560);
+        page.Should().Contain("from '../features/pattern-builder/patternValidation'");
+        page.Should().NotContain("function collectValidationIssues(");
+        page.Should().Contain("collectPatternValidationIssues(workspace");
+        validation.Should().Contain("export function collectPatternValidationIssues(");
+        validation.Should().Contain("supportsPartialExit");
+        validation.Should().Contain("supportsScaling");
+        validationTests.Should().Contain("invalid MACD ordering");
+        validationTests.Should().Contain("cannot silently contain empty conditions");
+        validationTests.Should().Contain("not supported by the execution engine");
+    }
+
     [Theory]
     [InlineData("Domain")]
     [InlineData("Application")]

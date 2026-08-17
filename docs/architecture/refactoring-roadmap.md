@@ -180,6 +180,13 @@ live in `backtestExecution.js`. API-contract and orchestration goldens cover num
 data-source defaults, timing overlays, progress ordering, and result metadata. `Backtest.svelte` is
 now a 714-line orchestration shell rather than an API request builder.
 
+`PatternBuilder.svelte` decomposition has started at the strategy-safety boundary. Rule, sell-group,
+weight-tier, scaling, portfolio, and live-execution compatibility validation now resides in the pure
+`patternValidation.js` module. Node goldens prevent empty sell/scaling conditions, conflicting bar
+lookbacks, invalid MACD periods, and unsupported live features from silently reaching persistence.
+The page is reduced from 1,630 to 1,553 lines, with workspace normalization and persistence mapping
+remaining as the next extraction boundary.
+
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 
 ## Phase 6 — Operations cleanup
