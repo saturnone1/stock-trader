@@ -170,7 +170,11 @@ Timing overlays, factor experiment normalization/scoring, universe variants, and
 composition are pure functions in `backtestScenarioPlanning.js`, covered by Node golden tests for
 source immutability, conservative OR exits, deduplication, and ranking formulas. This reduces the
 page to 955 lines. The new tests also fixed order-dependent universe deduplication that previously
-could execute the same symbol set twice.
+could execute the same symbol set twice. Baseline selection, scenario deltas, timing reports,
+universe summaries, and factor ranking view models now live in `backtestResultAnalysis.js`, reducing
+the page to 787 lines. Result-analysis and research goldens also fixed two trust defects: API
+`returnPct` losses were excluded from whipsaw counts, and daily/weekly holding bars were derived
+from wall-clock minutes instead of their calendar cadence.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

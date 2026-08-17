@@ -54,8 +54,14 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/backtestScenarioPlanning.js"));
         var scenarioPlanningTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/backtestScenarioPlanning.test.js"));
+        var resultAnalysis = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestResultAnalysis.js"));
+        var resultAnalysisTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestResultAnalysis.test.js"));
+        var researchTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestResearch.test.js"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(960);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(790);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
@@ -91,6 +97,8 @@ public class ArchitectureDependencyTests
         page.Should().NotContain("function safeParseJson(");
         page.Should().NotContain("function buildTimingRule(");
         page.Should().NotContain("totalReturn * 140");
+        page.Should().NotContain("getWhipsawStats(");
+        page.Should().NotContain("getEquityCurveVolatility(");
         research.Should().Contain("export function getWhipsawStats(");
         research.Should().Contain("export function getEquityCurveVolatility(");
         research.Should().Contain("export function factorReturnLift(");
@@ -124,6 +132,10 @@ public class ArchitectureDependencyTests
         scenarioPlanning.Should().Contain("[...symbols].sort().join('|')");
         scenarioPlanningTests.Should().Contain("source[0].raw.exitRulesJson");
         scenarioPlanningTests.Should().Contain("deduplicate identical symbol sets");
+        resultAnalysis.Should().Contain("export function calculateComparisonDelta(");
+        resultAnalysis.Should().Contain("export function buildFactorLabRankingRows(");
+        resultAnalysisTests.Should().Contain("matching group baseline");
+        researchTests.Should().Contain("API returnPct contract");
     }
 
     [Theory]

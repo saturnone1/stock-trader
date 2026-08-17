@@ -92,6 +92,22 @@ export function estimateHoldingBars(trade, timeframe) {
   const start = new Date(trade.entryTime ?? trade.EntryTime ?? '').getTime()
   const end = new Date(trade.exitTime ?? trade.ExitTime ?? '').getTime()
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 1
+  if (timeframe === 'Daily') {
+    let businessDays = 0
+    const cursor = new Date(start)
+    cursor.setUTCHours(0, 0, 0, 0)
+    const endDate = new Date(end)
+    endDate.setUTCHours(0, 0, 0, 0)
+    while (cursor < endDate) {
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+      const day = cursor.getUTCDay()
+      if (day !== 0 && day !== 6) businessDays += 1
+    }
+    return Math.max(1, businessDays)
+  }
+  if (timeframe === 'Weekly') {
+    return Math.max(1, Math.round((end - start) / (7 * 86400000)))
+  }
   return Math.max(1, Math.round(((end - start) / 60000) / timeframeBarMinutes(timeframe)))
 }
 
@@ -100,7 +116,7 @@ export function getWhipsawStats(sourceResult) {
   if (!trades.length) return { count: 0, rate: 0, thresholdBars: whipsawThresholdBars(sourceResult?.usedTimeFrame) }
   const thresholdBars = whipsawThresholdBars(sourceResult?.usedTimeFrame)
   const count = trades.filter((trade) =>
-    Number(trade.pnlPercent ?? trade.PnLPercent ?? 0) < 0
+    Number(trade.returnPct ?? trade.ReturnPct ?? trade.pnlPercent ?? trade.PnLPercent ?? 0) < 0
     && estimateHoldingBars(trade, sourceResult?.usedTimeFrame) <= thresholdBars).length
   return { count, rate: count / trades.length, thresholdBars }
 }
