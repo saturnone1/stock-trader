@@ -21,7 +21,7 @@
     {
       title: '핵심 연구 흐름',
       items: [
-        { id: 'patterns', label: '패턴 빌더', icon: LayoutTemplate },
+        { id: 'patterns', label: '전략 만들기', icon: LayoutTemplate },
         { id: 'backtest', label: '백테스트', icon: BarChart2 },
         { id: 'optimization', label: '최적화', icon: Zap },
         { id: 'pattern-stats', label: '패턴 통계', icon: BarChart3 },

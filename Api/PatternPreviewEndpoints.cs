@@ -11,7 +11,10 @@ namespace StockTrader.Api;
 public sealed record PatternPreviewRequest(
     string Symbol,
     int Bars,
-    CustomPatternDefinition Pattern);
+    CustomPatternDefinition Pattern,
+    TimeFrame TimeFrame = TimeFrame.Daily,
+    DateTime? From = null,
+    DateTime? To = null);
 
 public sealed record PatternPreviewMarker(
     DateTime Date,
@@ -46,63 +49,88 @@ public static class PatternPreviewEndpoints
         if (request.Pattern is null)
             return Results.BadRequest(new { error = "미리보기 패턴 정의가 필요합니다." });
 
-        var displayCount = Math.Clamp(request.Bars <= 0 ? 120 : request.Bars, 60, 240);
-        var dataTo = DateTime.UtcNow.AddDays(1);
-        var dataFrom = DateTime.UtcNow.AddYears(-3);
+        var displayCount = Math.Clamp(request.Bars <= 0 ? 600 : request.Bars, 60, 600);
+        var dataTo = (request.To ?? DateTime.UtcNow).Date.AddDays(1);
+        var dataFrom = (request.From ?? DefaultFrom(request.TimeFrame, dataTo)).Date;
+        if (dataFrom >= dataTo)
+            return Results.BadRequest(new { error = "조회 시작일은 종료일보다 앞서야 합니다." });
+
+        var maximumRange = MaximumRange(request.TimeFrame);
+        if (dataTo - dataFrom > maximumRange)
+            return Results.BadRequest(new
+            {
+                error = $"{DisplayTimeFrame(request.TimeFrame)}은(는) 최대 {DisplayRange(maximumRange)}까지 한 번에 조회할 수 있습니다."
+            });
+
+        var queryFrom = dataFrom - WarmupRange(request.TimeFrame);
         var allBars = (await ohlcvRepository.GetBarsAsync(
-                symbol, TimeFrame.Daily, dataFrom, dataTo, ct))
+                symbol, request.TimeFrame, queryFrom, dataTo, ct))
             .OrderBy(bar => bar.Timestamp)
             .GroupBy(bar => bar.Timestamp)
             .Select(group => group.Last())
-            .TakeLast(displayCount + 260)
             .ToArray();
 
-        if (allBars.Length < 50)
+        var expectedLatest = dataTo < DateTime.UtcNow ? dataTo.AddDays(-1) : DateTime.UtcNow;
+        var tolerance = CoverageTolerance(request.TimeFrame);
+        var needsFetch = allBars.Length < 50
+            || allBars[0].Timestamp > queryFrom + tolerance
+            || allBars[^1].Timestamp < expectedLatest - tolerance;
+
+        if (needsFetch)
         {
             try
             {
                 var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
                 var fetched = await dataFeed.GetHistoricalBarsAsync(
-                    symbol, TimeFrame.Daily, dataFrom, dataTo, ct);
+                    symbol, request.TimeFrame, queryFrom, dataTo, ct);
                 if (fetched.Count > 0)
                     await ohlcvRepository.AddBarsAsync(fetched, ct);
             }
             catch (Exception)
             {
                 return Results.Json(
-                    new { error = $"{symbol} 일봉을 현재 데이터 제공자에서 가져오지 못했습니다." },
+                    new { error = $"{symbol} {DisplayTimeFrame(request.TimeFrame)}을 현재 데이터 제공자에서 가져오지 못했습니다." },
                     statusCode: StatusCodes.Status502BadGateway);
             }
 
             allBars = (await ohlcvRepository.GetBarsAsync(
-                    symbol, TimeFrame.Daily, dataFrom, dataTo, ct))
+                    symbol, request.TimeFrame, queryFrom, dataTo, ct))
                 .OrderBy(bar => bar.Timestamp)
                 .GroupBy(bar => bar.Timestamp)
                 .Select(group => group.Last())
-                .TakeLast(displayCount + 260)
                 .ToArray();
         }
 
         if (allBars.Length < 50)
-            return Results.NotFound(new { error = $"{symbol} 일봉을 찾을 수 없거나 패턴 평가에 필요한 데이터가 부족합니다." });
+            return Results.NotFound(new { error = $"{symbol} {DisplayTimeFrame(request.TimeFrame)}을 찾을 수 없거나 패턴 평가에 필요한 데이터가 부족합니다." });
 
         var latest = allBars[^1];
 
         var detector = new RuleBasedDetector(indicators, request.Pattern);
         var referenceBars = await LoadReferenceBarsAsync(
-            request.Pattern, allBars[0].Timestamp, latest.Timestamp, ohlcvRepository, ct);
-        var spyBars = symbol == "SPY"
-            ? allBars
-            : (await ohlcvRepository.GetBarsAsync(
-                    "SPY", TimeFrame.Daily, allBars[0].Timestamp.AddYears(-1), latest.Timestamp.AddDays(1), ct))
-                .OrderBy(bar => bar.Timestamp)
-                .ToArray();
+            request.Pattern, request.TimeFrame, allBars[0].Timestamp, latest.Timestamp, ohlcvRepository, ct);
+        var spyBars = (await ohlcvRepository.GetBarsAsync(
+                "SPY", TimeFrame.Daily, dataFrom.AddYears(-2), latest.Timestamp.AddDays(1), ct))
+            .OrderBy(bar => bar.Timestamp)
+            .ToArray();
 
         var markers = new List<PatternPreviewMarker>();
+        var matches = new List<PatternPreviewMarker>();
         var warnings = new List<string>();
-        var displayStartIndex = Math.Max(0, allBars.Length - displayCount);
+        var requestedStartIndex = Array.FindIndex(allBars, bar => bar.Timestamp >= dataFrom);
+        if (requestedStartIndex < 0)
+            return Results.NotFound(new { error = "선택한 기간에 표시할 시세가 없습니다." });
+        var requestedBars = allBars.Skip(requestedStartIndex).Where(bar => bar.Timestamp < dataTo).ToArray();
+        if (requestedBars.Length == 0)
+            return Results.NotFound(new { error = "선택한 기간에 표시할 시세가 없습니다." });
+        var displayStartIndex = requestedBars.Length > displayCount
+            ? allBars.Length - requestedBars.Length + (requestedBars.Length - displayCount)
+            : requestedStartIndex;
         var evaluationStartIndex = Math.Max(49, displayStartIndex);
         OpenPreviewPosition? position = null;
+
+        if (requestedBars.Length > displayCount)
+            warnings.Add($"선택 기간의 {requestedBars.Length:N0}개 봉 중 최근 {displayCount:N0}개를 표시합니다. 기간을 줄이거나 더 큰 봉 단위를 선택하세요.");
 
         foreach (var (refSymbol, bars) in referenceBars)
         {
@@ -149,12 +177,20 @@ public static class PatternPreviewEndpoints
                 }
             }
 
-            if (position is not null)
-                continue;
-
             var regime = BuildRegime(current.Timestamp, spyBars);
             var signal = await detector.DetectAsync(symbol, window, regime, ct);
             if (signal is null)
+                continue;
+
+            matches.Add(new PatternPreviewMarker(
+                current.Timestamp,
+                "MATCH",
+                current.Close,
+                signal.StopLossPrice,
+                signal.TargetPrice,
+                signal.Details));
+
+            if (position is not null)
                 continue;
 
             var entryIndex = index;
@@ -186,9 +222,9 @@ public static class PatternPreviewEndpoints
         if (request.Pattern.TrailingAtr > 0 || request.Pattern.PartialProfitR > 0)
             warnings.Add("빠른 미리보기에서는 트레일링 ATR과 부분 익절의 체결 과정은 생략됩니다. 최종 성과는 백테스트에서 확인하세요.");
 
-        var visibleBars = allBars.Skip(displayStartIndex).Select(bar => new
+        var visibleBars = allBars.Skip(displayStartIndex).Where(bar => bar.Timestamp < dataTo).Select(bar => new
         {
-            date = bar.Timestamp.ToString("yyyy-MM-dd"),
+            date = bar.Timestamp.ToString("O"),
             bar.Open,
             bar.High,
             bar.Low,
@@ -196,15 +232,17 @@ public static class PatternPreviewEndpoints
             bar.Volume
         });
         var displayStart = allBars[displayStartIndex].Timestamp;
-        var visibleMarkers = markers.Where(marker => marker.Date >= displayStart).ToList();
+        var visibleMarkers = markers.Where(marker => marker.Date >= displayStart && marker.Date < dataTo).ToList();
+        var visibleMatches = matches.Where(marker => marker.Date >= displayStart && marker.Date < dataTo).ToList();
 
         return Results.Ok(new
         {
             symbol,
+            timeFrame = request.TimeFrame.ToString(),
             bars = visibleBars,
             markers = visibleMarkers.Select(marker => new
             {
-                date = marker.Date.ToString("yyyy-MM-dd"),
+                date = marker.Date.ToString("O"),
                 type = marker.Type,
                 marker.Price,
                 marker.StopPrice,
@@ -212,13 +250,24 @@ public static class PatternPreviewEndpoints
                 marker.Details,
                 marker.Reason
             }),
+            matches = visibleMatches.Select(marker => new
+            {
+                date = marker.Date.ToString("O"),
+                marker.Price,
+                marker.Details
+            }),
             summary = new
             {
+                matchCount = visibleMatches.Count,
                 entryCount = visibleMarkers.Count(marker => marker.Type == "ENTRY"),
                 exitCount = visibleMarkers.Count(marker => marker.Type == "EXIT"),
                 openPosition = position is not null,
-                from = displayStart.ToString("yyyy-MM-dd"),
-                to = allBars[^1].Timestamp.ToString("yyyy-MM-dd")
+                from = displayStart.ToString("O"),
+                to = allBars.Where(bar => bar.Timestamp < dataTo).Last().Timestamp.ToString("O"),
+                requestedFrom = dataFrom.ToString("yyyy-MM-dd"),
+                requestedTo = dataTo.AddDays(-1).ToString("yyyy-MM-dd"),
+                requestedBarCount = requestedBars.Length,
+                displayedBarCount = Math.Min(requestedBars.Length, displayCount)
             },
             warnings = warnings.Distinct()
         });
@@ -241,6 +290,7 @@ public static class PatternPreviewEndpoints
 
     private static async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceBarsAsync(
         CustomPatternDefinition pattern,
+        TimeFrame timeFrame,
         DateTime from,
         DateTime to,
         IOhlcvRepository repository,
@@ -278,7 +328,7 @@ public static class PatternPreviewEndpoints
         foreach (var symbol in symbols)
         {
             result[symbol] = (await repository.GetBarsAsync(
-                    symbol, TimeFrame.Daily, from.AddYears(-1), to.AddDays(1), ct))
+                    symbol, timeFrame, from, to.AddDays(1), ct))
                 .OrderBy(bar => bar.Timestamp)
                 .ToArray();
         }
@@ -290,4 +340,51 @@ public static class PatternPreviewEndpoints
         decimal EntryPrice,
         decimal StopPrice,
         decimal TargetPrice);
+
+    private static DateTime DefaultFrom(TimeFrame timeFrame, DateTime to) => timeFrame switch
+    {
+        TimeFrame.OneMinute => to.AddDays(-1),
+        TimeFrame.FiveMinute => to.AddDays(-5),
+        TimeFrame.FifteenMinute => to.AddDays(-20),
+        TimeFrame.Weekly => to.AddYears(-5),
+        _ => to.AddYears(-1)
+    };
+
+    private static TimeSpan MaximumRange(TimeFrame timeFrame) => timeFrame switch
+    {
+        TimeFrame.OneMinute => TimeSpan.FromDays(7),
+        TimeFrame.FiveMinute => TimeSpan.FromDays(31),
+        TimeFrame.FifteenMinute => TimeSpan.FromDays(120),
+        TimeFrame.Weekly => TimeSpan.FromDays(365 * 15),
+        _ => TimeSpan.FromDays(365 * 5)
+    };
+
+    private static TimeSpan WarmupRange(TimeFrame timeFrame) => timeFrame switch
+    {
+        TimeFrame.OneMinute => TimeSpan.FromDays(3),
+        TimeFrame.FiveMinute => TimeSpan.FromDays(14),
+        TimeFrame.FifteenMinute => TimeSpan.FromDays(45),
+        TimeFrame.Weekly => TimeSpan.FromDays(365 * 5),
+        _ => TimeSpan.FromDays(400)
+    };
+
+    private static TimeSpan CoverageTolerance(TimeFrame timeFrame) => timeFrame switch
+    {
+        TimeFrame.Weekly => TimeSpan.FromDays(14),
+        TimeFrame.Daily => TimeSpan.FromDays(5),
+        _ => TimeSpan.FromDays(4)
+    };
+
+    private static string DisplayTimeFrame(TimeFrame timeFrame) => timeFrame switch
+    {
+        TimeFrame.OneMinute => "1분봉",
+        TimeFrame.FiveMinute => "5분봉",
+        TimeFrame.FifteenMinute => "15분봉",
+        TimeFrame.Weekly => "주봉",
+        _ => "일봉"
+    };
+
+    private static string DisplayRange(TimeSpan range) => range.TotalDays >= 365
+        ? $"{Math.Floor(range.TotalDays / 365):N0}년"
+        : $"{range.TotalDays:N0}일";
 }

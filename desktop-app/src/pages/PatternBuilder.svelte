@@ -80,21 +80,21 @@
     crosses_below: '하향 이탈'
   }
   const entryModeLabels = {
-    CurrentClose: '현재 봉 종가',
-    NextOpen: '다음 봉 시가'
+    CurrentClose: '신호 봉의 종가에 매수',
+    NextOpen: '다음 봉의 시가에 매수'
   }
   const sizingModeLabels = {
-    FixedRisk: '고정 리스크',
-    Kelly: '켈리',
-    HalfKelly: '하프 켈리'
+    FixedRisk: '손실 허용액 기준',
+    Kelly: '켈리 공식',
+    HalfKelly: '절반 켈리 공식'
   }
   const logicLabels = {
     AND: '모두 만족',
     OR: '하나만 만족'
   }
   const scalingDirectionLabels = {
-    SCALE_IN: '추가 진입',
-    SCALE_OUT: '분할 청산'
+    SCALE_IN: '추가 매수',
+    SCALE_OUT: '일부 매도'
   }
   const stopTypeLabels = {
     ATR: 'ATR 기준',
@@ -128,17 +128,17 @@
     signal: '시그널 기간'
   }
   const glossaryTooltips = {
-    workspace: '패턴을 만들고 수정하는 작업 공간입니다. 좌측에서 재료를 고르고, 가운데에서 구조를 만들고, 우측에서 세부값을 조정합니다.',
-    pattern: '패턴은 하나의 매매 아이디어 전체입니다. 진입, 청산, 비중, 예외 규칙을 모두 묶은 전략 단위입니다.',
-    strategy: '전략은 이 패턴이 실제로 언제 들어가고, 어떻게 나가고, 얼마나 살지를 정한 실행 구조입니다.',
-    rule: '규칙은 하나의 판단 조건입니다. 예를 들어 RSI가 30 이하인지, 거래량이 평균보다 큰지 같은 단일 조건입니다.',
-    entryGroup: '진입 그룹은 여러 규칙을 묶은 묶음입니다. 그룹 안에서는 AND/OR로 묶고, 그룹끼리도 다시 AND/OR로 연결할 수 있습니다.',
-    exitRule: '청산 규칙은 포지션을 언제 종료할지를 정하는 조건입니다.',
-    weightTier: '비중 단계는 조건에 따라 몇 퍼센트 비중으로 들어갈지 정하는 계층입니다.',
-    scalingRule: '스케일링 규칙은 추가 진입이나 분할 청산이 언제 일어날지 정하는 조건입니다.',
-    runtime: '공통 실행 노드는 전략 전체에 영향을 주는 제한 규칙입니다. 시간 필터, 재진입, 포트폴리오 제한 같은 것이 여기 들어갑니다.',
-    dynamicExit: '동적 청산은 손절가와 목표가를 고정값이 아니라 ATR, 볼린저, 이전 고점/저점 같은 기준으로 자동 계산하는 방식입니다.',
-    ruleInspector: '선택한 규칙의 지표, 비교 방식, 기준값, 메타 조건을 편집하는 곳입니다.',
+    workspace: '저장한 매매 전략을 고르고 새 전략을 만드는 곳입니다.',
+    pattern: '한 전략에서 언제 사고, 얼마나 사고, 언제 팔지 정하는 기본 설정입니다.',
+    strategy: '매수 조건부터 손절·익절과 거래 제한까지 실제 매매 순서대로 구성합니다.',
+    rule: 'RSI가 30 이하인지, 거래량이 평균보다 큰지처럼 매수·매도를 판단하는 한 가지 조건입니다.',
+    entryGroup: '같이 확인할 매수 조건을 한 상황으로 묶습니다. 모든 조건 또는 하나 이상의 조건을 만족하도록 정할 수 있습니다.',
+    exitRule: '보유한 종목을 언제 팔지 정하는 조건입니다.',
+    weightTier: '시장 상황이나 조건에 따라 투자 비중을 다르게 정합니다.',
+    scalingRule: '보유 중 추가로 사거나 일부를 팔 시점과 수량을 정합니다.',
+    runtime: '거래 가능한 시기, 손실 후 휴식, 동시 보유 한도처럼 전략 전체의 안전장치를 정합니다.',
+    dynamicExit: 'ATR, 이동평균, 이전 고점·저점 등을 이용해 손절가와 목표가를 계산합니다.',
+    ruleInspector: '선택한 매수·매도 조건의 지표와 기준값을 바꾸는 곳입니다.',
     entryMode: '신호가 뜬 현재 봉 종가에 바로 들어갈지, 다음 봉 시가에 들어갈지 정합니다.',
     sizingMode: '주문 크기를 어떤 방식으로 계산할지 정합니다.'
   }
@@ -266,7 +266,7 @@
 
   function blankGroup(label) {
     return {
-      label: label ?? `진입 그룹`,
+      label: label ?? `매수 상황`,
       logic: 'AND',
       rules: [blankRule()]
     }
@@ -274,7 +274,7 @@
 
   function blankWeightTier() {
     return {
-      label: `비중 단계`,
+      label: `기본 매수 비중`,
       logic: 'AND',
       allocationPercent: 100,
       conditions: [blankRule()]
@@ -311,7 +311,7 @@
 
   function normalizeGroup(group = {}) {
     return {
-      label: group.label ?? group.Label ?? 'Entry Group',
+      label: group.label ?? group.Label ?? '매수 상황',
       logic: group.logic ?? group.Logic ?? 'AND',
       rules: (group.rules ?? group.Rules ?? []).map(normalizeRule)
     }
@@ -319,7 +319,7 @@
 
   function normalizeWeightTier(tier = {}) {
     return {
-      label: tier.label ?? tier.Label ?? 'Weight Tier',
+      label: tier.label ?? tier.Label ?? '매수 비중',
       logic: tier.logic ?? tier.Logic ?? 'AND',
       allocationPercent: Number(tier.allocationPercent ?? tier.AllocationPercent ?? 100),
       conditions: (tier.conditions ?? tier.Conditions ?? []).map(normalizeRule)
@@ -358,7 +358,7 @@
       partialProfitR: Number(raw.partialProfitR ?? 0),
       defaultAllocationPercent: Number(raw.defaultAllocationPercent ?? 100),
       useWeightTiers: !!raw.useWeightTiers,
-      entryGroups: entryGroups.length > 0 ? entryGroups : (flatRules.length > 0 ? [{ label: 'Entry Group 1', logic: raw.entryLogic ?? 'AND', rules: flatRules }] : [blankGroup('Entry Group 1')]),
+      entryGroups: entryGroups.length > 0 ? entryGroups : (flatRules.length > 0 ? [{ label: '매수 상황 1', logic: raw.entryLogic ?? 'AND', rules: flatRules }] : [blankGroup('매수 상황 1')]),
       exitRules: safeParse(raw.exitRulesJson, []).map(normalizeRule),
       weightTiers: safeParse(raw.weightTiersJson, []).map(normalizeWeightTier),
       scalingRules: safeParse(raw.scalingRulesJson, []).map(normalizeScalingRule),
@@ -589,30 +589,30 @@
     }
 
     if (!currentWorkspace.entryGroups.length) {
-      issues.push('진입 그룹이 최소 1개는 필요합니다.')
+      issues.push('매수 조건 묶음이 최소 1개는 필요합니다.')
     }
 
     currentWorkspace.entryGroups.forEach((group, groupIndex) => {
       if (!group.rules.length) {
-        issues.push(`진입 그룹 ${groupIndex + 1}: 규칙이 비어 있습니다.`)
+        issues.push(`매수 상황 ${groupIndex + 1}: 조건이 비어 있습니다.`)
       }
-      group.rules.forEach((rule, ruleIndex) => checkRule(rule, `진입 그룹 ${groupIndex + 1} / 규칙 ${ruleIndex + 1}`))
+      group.rules.forEach((rule, ruleIndex) => checkRule(rule, `매수 상황 ${groupIndex + 1} / 조건 ${ruleIndex + 1}`))
     })
 
-    currentWorkspace.exitRules.forEach((rule, ruleIndex) => checkRule(rule, `청산 규칙 ${ruleIndex + 1}`))
+    currentWorkspace.exitRules.forEach((rule, ruleIndex) => checkRule(rule, `매도 조건 ${ruleIndex + 1}`))
 
     currentWorkspace.weightTiers.forEach((tier, tierIndex) => {
       if (!tier.conditions.length) {
-        issues.push(`비중 단계 ${tierIndex + 1}: 조건이 비어 있습니다.`)
+        issues.push(`매수 비중 ${tierIndex + 1}: 조건이 비어 있습니다.`)
       }
-      tier.conditions.forEach((rule, ruleIndex) => checkRule(rule, `비중 단계 ${tierIndex + 1} / 규칙 ${ruleIndex + 1}`))
+      tier.conditions.forEach((rule, ruleIndex) => checkRule(rule, `매수 비중 ${tierIndex + 1} / 조건 ${ruleIndex + 1}`))
     })
 
     currentWorkspace.scalingRules.forEach((scalingRule, scalingIndex) => {
       if (!scalingRule.conditions.length) {
-        issues.push(`스케일링 규칙 ${scalingIndex + 1}: 조건이 비어 있습니다.`)
+        issues.push(`추가 매수·분할 매도 ${scalingIndex + 1}: 조건이 비어 있습니다.`)
       }
-      scalingRule.conditions.forEach((rule, ruleIndex) => checkRule(rule, `스케일링 규칙 ${scalingIndex + 1} / 규칙 ${ruleIndex + 1}`))
+      scalingRule.conditions.forEach((rule, ruleIndex) => checkRule(rule, `추가 매수·분할 매도 ${scalingIndex + 1} / 조건 ${ruleIndex + 1}`))
     })
 
     return issues
@@ -629,7 +629,7 @@
       patterns = res.data || []
       error = ''
     } catch (e) {
-      error = e?.message || '패턴 목록을 불러오지 못했습니다.'
+      error = e?.message || '전략 목록을 불러오지 못했습니다.'
     } finally {
       loading = false
     }
@@ -646,10 +646,10 @@
       workspace = buildWorkspace(res.data.raw)
       selectedNode = { type: 'general' }
       dirty = false
-      notice = '새 패턴을 만들었습니다.'
+      notice = '새 매매 전략을 만들었습니다.'
       error = ''
     } catch (e) {
-      error = e?.message || '패턴 생성에 실패했습니다.'
+      error = e?.message || '전략 생성에 실패했습니다.'
     }
   }
 
@@ -663,13 +663,13 @@
       notice = ''
       error = ''
     } catch (e) {
-      error = e?.message || '패턴을 불러오지 못했습니다.'
+      error = e?.message || '전략을 불러오지 못했습니다.'
     }
   }
 
   async function savePattern() {
     if (!workspace?.name?.trim()) {
-      error = '패턴 이름을 입력하세요.'
+      error = '전략 이름을 입력하세요.'
       return
     }
     if (validationIssues.length > 0) {
@@ -686,17 +686,17 @@
       workspace = buildWorkspace(res.data.raw)
       await loadPatterns()
       dirty = false
-      notice = '패턴 워크스페이스를 저장했습니다.'
+      notice = '매매 전략을 저장했습니다.'
       error = ''
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '패턴 저장에 실패했습니다.'
+      error = e?.response?.data?.error || e?.message || '전략 저장에 실패했습니다.'
     } finally {
       saving = false
     }
   }
 
   async function deletePattern(pat) {
-    if (!confirm(`"${pat.name}" 패턴을 삭제할까요?`)) return
+    if (!confirm(`"${pat.name}" 전략을 삭제할까요?`)) return
     try {
       await patternApi.delete(pat.id)
       if (selectedPattern?.id === pat.id) {
@@ -706,7 +706,7 @@
       }
       await loadPatterns()
     } catch (e) {
-      error = e?.message || '패턴 삭제에 실패했습니다.'
+      error = e?.message || '전략 삭제에 실패했습니다.'
     }
   }
 
@@ -718,7 +718,7 @@
   function addRuleToGroup(template = {}) {
     let index = selectedGroupIndex()
     if (index < 0) {
-      workspace.entryGroups.push(blankGroup(`진입 그룹 1`))
+      workspace.entryGroups.push(blankGroup(`매수 상황 1`))
       index = 0
     }
     workspace.entryGroups[index].rules.push(blankRule(template))
@@ -730,7 +730,7 @@
     if (!workspace) return
 
     if (kind === 'group') {
-      workspace.entryGroups.push(blankGroup(`진입 그룹 ${workspace.entryGroups.length + 1}`))
+      workspace.entryGroups.push(blankGroup(`매수 상황 ${workspace.entryGroups.length + 1}`))
       selectedNode = { type: 'group', groupIndex: workspace.entryGroups.length - 1 }
     } else if (kind === 'exitRule') {
       workspace.exitRules.push(blankRule({ indicator: 'RSI', operator: '>=', value: 70, params: { period: 14 } }))
@@ -847,11 +847,11 @@
       return `손절 ${displayStopType(workspace.dynamicExit.stopType)} · 목표 ${displayTargetType(workspace.dynamicExit.targetType)}`
     }
     if (selectedNode.type === 'general') {
-      return `${displayEntryMode(workspace.entryMode)} 진입 · 손절 ${workspace.atrStopMultiplier} ATR · 목표 ${workspace.atrTargetMultiplier} ATR`
+      return `${displayEntryMode(workspace.entryMode)} · 손절 ${workspace.atrStopMultiplier} ATR · 목표 ${workspace.atrTargetMultiplier} ATR`
     }
     if (selectedNode.type === 'group') {
       const group = workspace.entryGroups[selectedNode.groupIndex]
-      return `${group?.label ?? '진입 그룹'} · ${displayLogic(group?.logic)}`
+      return `${group?.label ?? '매수 상황'} · ${displayLogic(group?.logic)}`
     }
     return ''
   }
@@ -914,23 +914,23 @@
     <div class="border-b border-gray-800 p-6">
       <div class="mb-2 flex items-center gap-3">
         <FolderTree size={20} class="text-blue-400" />
-        <h2 class="text-2xl font-bold">패턴 워크스페이스</h2>
+        <h2 class="text-2xl font-bold">내 매매 전략</h2>
         <span title={tooltipFor('workspace')} class="cursor-help text-gray-500 transition hover:text-blue-300">
           <CircleHelp size={16} />
         </span>
       </div>
-      <p class="text-sm text-gray-400">노드처럼 규칙을 조합해 전략을 설계합니다.</p>
+      <p class="text-sm text-gray-400">언제 사고, 얼마나 사고, 언제 팔지 순서대로 정합니다.</p>
     </div>
 
     <div class="border-b border-gray-800 p-4">
       {#if !showNewPattern}
         <button on:click={() => (showNewPattern = true)} class="flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">
           <Plus size={16} />
-          새 패턴
+          새 전략
         </button>
       {:else}
         <div class="space-y-2">
-          <input bind:value={newPatternName} placeholder="패턴 이름" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white" />
+          <input bind:value={newPatternName} placeholder="전략 이름" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white" />
           <div class="flex gap-2">
             <button on:click={createPattern} class="flex-1 rounded bg-green-600 px-3 py-2 text-sm text-white transition hover:bg-green-700">생성</button>
             <button on:click={() => (showNewPattern = false)} class="flex-1 rounded bg-gray-700 px-3 py-2 text-sm text-white transition hover:bg-gray-600">취소</button>
@@ -940,7 +940,7 @@
     </div>
 
     <div class="flex-1 overflow-y-auto p-4">
-      <div class="mb-3 text-xs uppercase tracking-wider text-gray-500">패턴 목록</div>
+      <div class="mb-3 text-xs uppercase tracking-wider text-gray-500">저장한 전략</div>
       {#if loading}
         <div class="text-sm text-gray-400">불러오는 중...</div>
       {:else}
@@ -962,7 +962,7 @@
       {/if}
     </div>
     <div class="border-t border-gray-800 p-4 text-xs text-gray-500">
-      규칙 추가와 구조 편집은 가운데 전략 트리 각 영역의 <span class="text-gray-300">+ 버튼</span>에서 바로 할 수 있습니다.
+      가운데 매매 규칙에서 조건을 선택하면 오른쪽에서 수치를 바꿀 수 있습니다.
     </div>
   </aside>
 
@@ -971,19 +971,19 @@
       <div class="flex h-full items-center justify-center text-gray-400">
         <div class="text-center">
           <ChevronRight size={48} class="mx-auto mb-4 opacity-50" />
-          <p>패턴을 선택하면 전략 트리가 열립니다.</p>
+          <p>왼쪽에서 전략을 선택하면 매매 규칙이 열립니다.</p>
         </div>
       </div>
     {:else}
       <div class="flex items-center justify-between border-b border-gray-800 px-6 py-4">
         <div>
           <div class="flex items-center gap-2 text-sm uppercase tracking-wider text-gray-500">
-            <span title={tooltipFor('strategy')} class="cursor-help">전략 트리</span>
+            <span title={tooltipFor('strategy')} class="cursor-help">매매 규칙</span>
             <span title={tooltipFor('strategy')} class="cursor-help text-gray-600 transition hover:text-blue-300">
               <CircleHelp size={14} />
             </span>
           </div>
-          <h3 class="mt-1 text-2xl font-bold">{workspace.name || '이름 없는 패턴'}</h3>
+          <h3 class="mt-1 text-2xl font-bold">{workspace.name || '이름 없는 전략'}</h3>
         </div>
         <div class="flex items-center gap-3">
           {#if dirty}
@@ -1019,15 +1019,15 @@
         <div class="mb-6 rounded-xl border border-gray-800 bg-gray-950 p-5">
           <button on:click={() => selectNode({ type: 'general' })} class={`w-full text-left ${selectedNode.type === 'general' ? 'text-blue-300' : 'text-white'}`}>
             <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-              <span title={tooltipFor('pattern')} class="cursor-help">패턴 루트</span>
+              <span title={tooltipFor('pattern')} class="cursor-help">전략 기본 설정</span>
               <span title={tooltipFor('pattern')} class="cursor-help text-gray-600 transition hover:text-blue-300">
                 <CircleHelp size={12} />
               </span>
             </div>
             <div class="mt-1 text-xl font-semibold">{workspace.name}</div>
             <div class="mt-2 flex flex-wrap gap-2 text-xs">
-              <span class="rounded bg-gray-800 px-2 py-1">진입 방식: {displayEntryMode(workspace.entryMode)}</span>
-              <span class="rounded bg-gray-800 px-2 py-1">사이징: {displaySizingMode(workspace.sizingMode)}</span>
+              <span class="rounded bg-gray-800 px-2 py-1">매수 시점: {displayEntryMode(workspace.entryMode)}</span>
+              <span class="rounded bg-gray-800 px-2 py-1">주문 금액: {displaySizingMode(workspace.sizingMode)}</span>
               <span class="rounded bg-gray-800 px-2 py-1">{workspace.isActive ? '활성' : '비활성'}</span>
               <span class="rounded bg-gray-800 px-2 py-1">{workspace.requireBullRegime ? '강세장만 허용' : '장세 무관'}</span>
             </div>
@@ -1039,14 +1039,14 @@
             <div class="mb-4 flex items-center justify-between">
               <button on:click={() => selectNode({ type: 'entryRoot' })} class="text-left">
                 <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-                  <span title={tooltipFor('entryGroup')} class="cursor-help">진입 트리</span>
+                  <span title={tooltipFor('entryGroup')} class="cursor-help">언제 살까?</span>
                   <span title={tooltipFor('entryGroup')} class="cursor-help text-gray-600 transition hover:text-blue-300">
                     <CircleHelp size={12} />
                   </span>
                 </div>
-                <div class="text-lg font-semibold">그룹 결합: {displayLogic(workspace.entryGroupsLogic)}</div>
+                <div class="text-lg font-semibold">매수 상황 중 {displayLogic(workspace.entryGroupsLogic)}</div>
               </button>
-              <button on:click={() => addNode('group')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 그룹</button>
+              <button on:click={() => addNode('group')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 매수 상황</button>
             </div>
 
             <div class="space-y-3">
@@ -1054,18 +1054,18 @@
                 <div class="rounded-lg border border-gray-800 bg-gray-900 p-4">
                   <div class="mb-3 flex items-center justify-between">
                     <button on:click={() => selectNode({ type: 'group', groupIndex })} class={`text-left ${selectedNode.type === 'group' && selectedNode.groupIndex === groupIndex ? 'text-blue-300' : 'text-white'}`}>
-                      <div class="font-semibold">{group.label || `그룹 ${groupIndex + 1}`}</div>
-                      <div class="mt-1 text-xs text-gray-500">{displayLogic(group.logic)} • 규칙 {group.rules.length}개</div>
+                      <div class="font-semibold">{group.label || `매수 상황 ${groupIndex + 1}`}</div>
+                      <div class="mt-1 text-xs text-gray-500">조건을 {displayLogic(group.logic)} • {group.rules.length}개</div>
                     </button>
                     <div class="flex items-center gap-2">
-                      <button on:click={() => addRuleToGroup({})} class="rounded bg-gray-800 px-2 py-1 text-xs text-white transition hover:bg-gray-700">+ 규칙</button>
+                      <button on:click={() => addRuleToGroup({})} class="rounded bg-gray-800 px-2 py-1 text-xs text-white transition hover:bg-gray-700">+ 매수 조건</button>
                       <button on:click={() => removeNode({ type: 'group', groupIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
                     </div>
                   </div>
                   <div class="space-y-2 border-l border-gray-800 pl-4">
                     {#each group.rules as rule, ruleIndex}
                       <button on:click={() => selectNode({ type: 'entryRule', groupIndex, ruleIndex })} class={`block w-full rounded border px-3 py-3 text-left text-sm transition ${selectedNode.type === 'entryRule' && selectedNode.groupIndex === groupIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>
-                        <div title={tooltipFor('rule')} class="font-mono text-xs text-gray-400 cursor-help">규칙 {ruleIndex + 1}</div>
+                        <div title={tooltipFor('rule')} class="text-xs text-gray-400 cursor-help">매수 조건 {ruleIndex + 1}</div>
                         <div class="mt-1">{ruleSummary(rule)}</div>
                       </button>
                     {/each}
@@ -1080,14 +1080,14 @@
               <div class="mb-4 flex items-center justify-between">
                 <button on:click={() => selectNode({ type: 'exitRoot' })} class="text-left">
                   <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-                    <span title={tooltipFor('exitRule')} class="cursor-help">청산 규칙</span>
+                    <span title={tooltipFor('exitRule')} class="cursor-help">언제 팔까?</span>
                     <span title={tooltipFor('exitRule')} class="cursor-help text-gray-600 transition hover:text-blue-300">
                       <CircleHelp size={12} />
                     </span>
                   </div>
                   <div class="text-lg font-semibold">{displayLogic(workspace.exitRulesLogic)}</div>
                 </button>
-                <button on:click={() => addNode('exitRule')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 청산</button>
+                <button on:click={() => addNode('exitRule')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 매도 조건</button>
               </div>
               <div class="space-y-2">
                 {#each workspace.exitRules as rule, ruleIndex}
@@ -1105,14 +1105,14 @@
               <div class="mb-4 flex items-center justify-between">
                 <button on:click={() => selectNode({ type: 'weightRoot' })} class="text-left">
                   <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-                    <span title={tooltipFor('weightTier')} class="cursor-help">비중 단계</span>
+                    <span title={tooltipFor('weightTier')} class="cursor-help">얼마나 살까?</span>
                     <span title={tooltipFor('weightTier')} class="cursor-help text-gray-600 transition hover:text-blue-300">
                       <CircleHelp size={12} />
                     </span>
                   </div>
                   <div class="text-lg font-semibold">{workspace.useWeightTiers ? '사용 중' : '사용 안 함'}</div>
                 </button>
-                <button on:click={() => addNode('weightTier')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 단계</button>
+                <button on:click={() => addNode('weightTier')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 매수 비중</button>
               </div>
               <div class="space-y-2">
                 {#each workspace.weightTiers as tier, tierIndex}
@@ -1123,7 +1123,7 @@
                         <div class="text-xs text-gray-500">{displayLogic(tier.logic)} • {tier.allocationPercent}%</div>
                       </button>
                       <div class="flex gap-2">
-                        <button on:click={() => addTierCondition(tierIndex)} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 규칙</button>
+                        <button on:click={() => addTierCondition(tierIndex)} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 적용 조건</button>
                         <button on:click={() => removeNode({ type: 'weightTier', tierIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
                       </div>
                     </div>
@@ -1145,14 +1145,14 @@
               <div class="mb-4 flex items-center justify-between">
                 <button on:click={() => selectNode({ type: 'scalingRoot' })} class="text-left">
                   <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-                    <span title={tooltipFor('scalingRule')} class="cursor-help">스케일링 규칙</span>
+                    <span title={tooltipFor('scalingRule')} class="cursor-help">추가 매수·분할 매도</span>
                     <span title={tooltipFor('scalingRule')} class="cursor-help text-gray-600 transition hover:text-blue-300">
                       <CircleHelp size={12} />
                     </span>
                   </div>
-                  <div class="text-lg font-semibold">규칙 {workspace.scalingRules.length}개</div>
+                  <div class="text-lg font-semibold">설정 {workspace.scalingRules.length}개</div>
                 </button>
-                <button on:click={() => addNode('scalingRule')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 스케일링</button>
+                <button on:click={() => addNode('scalingRule')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 추가 매수·매도</button>
               </div>
               <div class="space-y-2">
                 {#each workspace.scalingRules as rule, scalingIndex}
@@ -1163,7 +1163,7 @@
                         <div class="text-xs text-gray-500">{displayLogic(rule.logic)} • {rule.percent}% • 최대 {rule.maxCount}회</div>
                       </button>
                       <div class="flex gap-2">
-                        <button on:click={() => addScalingCondition(scalingIndex)} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 규칙</button>
+                        <button on:click={() => addScalingCondition(scalingIndex)} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 실행 조건</button>
                         <button on:click={() => removeNode({ type: 'scalingRule', scalingIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
                       </div>
                     </div>
@@ -1181,17 +1181,17 @@
 
             <div class="rounded-xl border border-gray-800 bg-gray-950 p-5">
               <div class="mb-4 flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-                <span title={tooltipFor('runtime')} class="cursor-help">공통 실행 노드</span>
+                <span title={tooltipFor('runtime')} class="cursor-help">거래 제한·안전장치</span>
                 <span title={tooltipFor('runtime')} class="cursor-help text-gray-600 transition hover:text-blue-300">
                   <CircleHelp size={12} />
                 </span>
               </div>
               <div class="space-y-2">
-                <button on:click={() => selectNode({ type: 'timeFilter' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'timeFilter' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>시간 필터</button>
-                <button on:click={() => selectNode({ type: 'circuitBreaker' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'circuitBreaker' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>서킷 브레이커</button>
-                <button on:click={() => selectNode({ type: 'reentry' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'reentry' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>재진입</button>
-                <button on:click={() => selectNode({ type: 'portfolioRules' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'portfolioRules' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>포트폴리오 규칙</button>
-                <button on:click={() => selectNode({ type: 'dynamicExit' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'dynamicExit' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>동적 청산</button>
+                <button on:click={() => selectNode({ type: 'timeFilter' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'timeFilter' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>매매 가능 시기</button>
+                <button on:click={() => selectNode({ type: 'circuitBreaker' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'circuitBreaker' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>손실 시 거래 중단</button>
+                <button on:click={() => selectNode({ type: 'reentry' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'reentry' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>다시 매수하기까지 대기</button>
+                <button on:click={() => selectNode({ type: 'portfolioRules' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'portfolioRules' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>보유 종목·비중 한도</button>
+                <button on:click={() => selectNode({ type: 'dynamicExit' })} class={`block w-full rounded border px-4 py-3 text-left transition ${selectedNode.type === 'dynamicExit' ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-white hover:border-gray-700'}`}>손절·목표가 계산법</button>
               </div>
             </div>
           </div>
@@ -1202,41 +1202,41 @@
 
   <aside class="w-[30rem] shrink-0 overflow-y-auto bg-gray-950 p-6">
     {#if !workspace}
-      <div class="text-gray-400">패턴을 선택하면 속성 패널이 열립니다.</div>
+      <div class="text-gray-400">전략을 선택하면 세부 설정이 열립니다.</div>
     {:else if selectedNode.type === 'general' || selectedNode.type === 'entryRoot' || selectedNode.type === 'exitRoot' || selectedNode.type === 'weightRoot' || selectedNode.type === 'scalingRoot'}
       <div class="space-y-5">
         <div>
           <div class="mb-2 flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-            <span title={tooltipFor('pattern')} class="cursor-help">패턴 속성</span>
+            <span title={tooltipFor('pattern')} class="cursor-help">전략 세부 설정</span>
             <span title={tooltipFor('pattern')} class="cursor-help text-gray-600 transition hover:text-blue-300">
               <CircleHelp size={12} />
             </span>
           </div>
-          <input bind:value={workspace.name} on:input={touch} placeholder="패턴 이름" class="mb-3 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+          <input bind:value={workspace.name} on:input={touch} placeholder="전략 이름" class="mb-3 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
           <textarea bind:value={workspace.description} on:input={touch} rows="3" placeholder="전략 설명" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white"></textarea>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <label class="rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
-            <div title={tooltipFor('entryMode')} class="mb-2 cursor-help text-gray-500">진입 방식</div>
+            <div title={tooltipFor('entryMode')} class="mb-2 cursor-help text-gray-500">언제 주문할까요?</div>
             <select bind:value={workspace.entryMode} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
               {#each entryModeOptions as option}<option value={option}>{displayEntryMode(option)}</option>{/each}
             </select>
           </label>
           <label class="rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
-            <div title={tooltipFor('sizingMode')} class="mb-2 cursor-help text-gray-500">사이징 방식</div>
+            <div title={tooltipFor('sizingMode')} class="mb-2 cursor-help text-gray-500">주문 금액 계산법</div>
             <select bind:value={workspace.sizingMode} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
               {#each sizingModeOptions as option}<option value={option}>{displaySizingMode(option)}</option>{/each}
             </select>
           </label>
           <label class="rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
-            <div class="mb-2 text-gray-500">진입 그룹 결합</div>
+            <div class="mb-2 text-gray-500">매수 상황이 여러 개라면</div>
             <select bind:value={workspace.entryGroupsLogic} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
               {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
             </select>
           </label>
           <label class="rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
-            <div class="mb-2 text-gray-500">청산 규칙 결합</div>
+            <div class="mb-2 text-gray-500">매도 조건이 여러 개라면</div>
             <select bind:value={workspace.exitRulesLogic} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
               {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
             </select>
@@ -1272,31 +1272,31 @@
 
         <label class="flex items-center gap-3 rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
           <input type="checkbox" bind:checked={workspace.requireBullRegime} on:change={touch} />
-          강세장일 때만 진입
+          강세장일 때만 매수
         </label>
         <label class="flex items-center gap-3 rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
           <input type="checkbox" bind:checked={workspace.useWeightTiers} on:change={touch} />
-          비중 단계 사용
+          상황별 매수 비중 사용
         </label>
         <label class="flex items-center gap-3 rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
           <input type="checkbox" bind:checked={workspace.isActive} on:change={touch} />
-          패턴 활성화
+          이 전략 사용
         </label>
       </div>
     {:else if selectedNode.type === 'group'}
       {@const group = workspace.entryGroups[selectedNode.groupIndex]}
       <div class="space-y-4">
-        <div title={tooltipFor('entryGroup')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">진입 그룹</div>
+        <div title={tooltipFor('entryGroup')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">매수 상황</div>
         <input bind:value={group.label} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         <select bind:value={group.logic} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
           {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
         </select>
-        <button on:click={() => addRuleToGroup({})} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ Rule 추가</button>
+        <button on:click={() => addRuleToGroup({})} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ 매수 조건 추가</button>
       </div>
     {:else if selectedNode.type === 'weightTier'}
       {@const tier = workspace.weightTiers[selectedNode.tierIndex]}
       <div class="space-y-4">
-        <div title={tooltipFor('weightTier')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">비중 단계</div>
+        <div title={tooltipFor('weightTier')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">매수 비중</div>
         <input bind:value={tier.label} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         <div class="grid grid-cols-2 gap-3">
           <select bind:value={tier.logic} on:change={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
@@ -1304,12 +1304,12 @@
           </select>
           <input type="number" bind:value={tier.allocationPercent} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         </div>
-        <button on:click={() => addTierCondition(selectedNode.tierIndex)} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ Tier Rule 추가</button>
+        <button on:click={() => addTierCondition(selectedNode.tierIndex)} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ 적용 조건 추가</button>
       </div>
     {:else if selectedNode.type === 'scalingRule'}
       {@const rule = workspace.scalingRules[selectedNode.scalingIndex]}
       <div class="space-y-4">
-        <div title={tooltipFor('scalingRule')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">스케일링 규칙</div>
+        <div title={tooltipFor('scalingRule')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">추가 매수·분할 매도</div>
         <div class="grid grid-cols-2 gap-3">
           <select bind:value={rule.direction} on:change={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
             {#each scalingDirectionOptions as option}<option value={option}>{displayScalingDirection(option)}</option>{/each}
@@ -1321,11 +1321,11 @@
           <input type="number" bind:value={rule.maxCount} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="최대 횟수" />
           <input type="number" step="0.1" bind:value={rule.minProfitPercent} on:input={touch} class="col-span-2 rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="최소 수익률 %" />
         </div>
-        <button on:click={() => addScalingCondition(selectedNode.scalingIndex)} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ Scaling Condition 추가</button>
+        <button on:click={() => addScalingCondition(selectedNode.scalingIndex)} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ 실행 조건 추가</button>
       </div>
     {:else if selectedNode.type === 'timeFilter'}
       <div class="space-y-4">
-        <div class="text-xs uppercase tracking-wider text-gray-500">시간 필터</div>
+        <div class="text-xs uppercase tracking-wider text-gray-500">매매 가능 시기</div>
         <label class="block text-sm text-gray-300">
           <div class="mb-2 text-gray-500">허용 요일 (0~6)</div>
           <input value={listToText(workspace.timeFilter.allowedDaysOfWeek)} on:input={(e) => { workspace.timeFilter.allowedDaysOfWeek = textToIntList(e.currentTarget.value); touch(); }} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
@@ -1337,28 +1337,28 @@
       </div>
     {:else if selectedNode.type === 'circuitBreaker'}
       <div class="space-y-4">
-        <div class="text-xs uppercase tracking-wider text-gray-500">서킷 브레이커</div>
+        <div class="text-xs uppercase tracking-wider text-gray-500">손실 시 거래 중단</div>
         <input type="number" bind:value={workspace.circuitBreaker.consecutiveLossLimit} on:input={touch} placeholder="연속 손실 허용 횟수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         <input type="number" bind:value={workspace.circuitBreaker.cooldownBars} on:input={touch} placeholder="중단 봉 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         <input type="number" step="0.1" bind:value={workspace.circuitBreaker.maxDrawdownPercent} on:input={touch} placeholder="최대 낙폭 %" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
       </div>
     {:else if selectedNode.type === 'reentry'}
       <div class="space-y-4">
-        <div class="text-xs uppercase tracking-wider text-gray-500">재진입</div>
+        <div class="text-xs uppercase tracking-wider text-gray-500">다시 매수하기까지 대기</div>
         <input type="number" bind:value={workspace.reentry.cooldownBarsAfterLoss} on:input={touch} placeholder="손실 후 대기 봉 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         <input type="number" bind:value={workspace.reentry.cooldownBarsAfterWin} on:input={touch} placeholder="수익 후 대기 봉 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
       </div>
     {:else if selectedNode.type === 'portfolioRules'}
       <div class="space-y-4">
-        <div class="text-xs uppercase tracking-wider text-gray-500">포트폴리오 규칙</div>
-        <input type="number" bind:value={workspace.portfolioRules.maxTotalPositions} on:input={touch} placeholder="최대 동시 포지션 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" step="0.1" bind:value={workspace.portfolioRules.maxSinglePositionPercent} on:input={touch} placeholder="단일 포지션 최대 비중 %" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" bind:value={workspace.portfolioRules.maxEntriesPerDay} on:input={touch} placeholder="일 최대 진입 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <div class="text-xs uppercase tracking-wider text-gray-500">보유 종목·비중 한도</div>
+        <input type="number" bind:value={workspace.portfolioRules.maxTotalPositions} on:input={touch} placeholder="동시에 보유할 최대 종목 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <input type="number" step="0.1" bind:value={workspace.portfolioRules.maxSinglePositionPercent} on:input={touch} placeholder="한 종목의 최대 비중 %" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <input type="number" bind:value={workspace.portfolioRules.maxEntriesPerDay} on:input={touch} placeholder="하루 최대 매수 횟수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         <input type="number" step="0.01" bind:value={workspace.portfolioRules.maxCorrelation} on:input={touch} placeholder="최대 상관계수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
       </div>
     {:else if selectedNode.type === 'dynamicExit'}
       <div class="space-y-4">
-        <div title={tooltipFor('dynamicExit')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">동적 청산</div>
+        <div title={tooltipFor('dynamicExit')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">손절·목표가 계산법</div>
         <div class="rounded border border-gray-800 bg-gray-900 p-4">
           <div class="mb-3 text-sm font-semibold text-white">손절</div>
           <select bind:value={workspace.dynamicExit.stopType} on:change={(e) => setDynamicExitType('stop', e.currentTarget.value)} class="mb-3 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
@@ -1393,7 +1393,7 @@
       {#if rule}
         <div class="space-y-4">
           <div class="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500">
-            <span title={tooltipFor('ruleInspector')} class="cursor-help">규칙 속성</span>
+            <span title={tooltipFor('ruleInspector')} class="cursor-help">선택한 조건 바꾸기</span>
             <span title={tooltipFor('ruleInspector')} class="cursor-help text-gray-600 transition hover:text-blue-300">
               <CircleHelp size={12} />
             </span>
@@ -1418,7 +1418,7 @@
             <input bind:value={rule.refSymbol} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="참조 심볼" />
           </div>
           <div class="rounded border border-gray-800 bg-gray-900 p-3 text-xs text-gray-400">
-            메타 규칙은 별도 지표가 아니라 <span class="text-gray-200">최근 N봉 내</span> 또는 <span class="text-gray-200">연속 봉 수</span>로 설정합니다. 두 값은 동시에 쓰지 않는 것이 맞습니다.
+            조건이 최근에 한 번이라도 나왔는지는 <span class="text-gray-200">최근 N봉 내</span>, 계속 이어져야 한다면 <span class="text-gray-200">연속 봉 수</span>를 사용하세요. 두 값은 하나만 쓰는 것이 좋습니다.
           </div>
           <select bind:value={rule.compareIndicator} on:change={(e) => updateRuleField('compareIndicator', e.currentTarget.value)} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
             <option value="">고정값과 비교</option>
@@ -1433,8 +1433,8 @@
 
           <div class="rounded border border-gray-800 bg-gray-900 p-4">
             <div class="mb-2 flex items-center justify-between">
-              <div class="text-sm font-semibold text-white">파라미터</div>
-              <button on:click={() => addRuleMapEntry('params')} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 사용자 파라미터</button>
+              <div class="text-sm font-semibold text-white">지표 계산 설정</div>
+              <button on:click={() => addRuleMapEntry('params')} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 고급 계산값</button>
             </div>
             {#if getIndicatorFieldConfigs(rule.indicator).length > 0}
               <div class="mb-3 grid grid-cols-2 gap-3">
@@ -1459,8 +1459,8 @@
 
           <div class="rounded border border-gray-800 bg-gray-900 p-4">
             <div class="mb-2 flex items-center justify-between">
-              <div class="text-sm font-semibold text-white">비교 대상 파라미터</div>
-              <button on:click={() => addRuleMapEntry('compareParams')} disabled={!rule.compareIndicator} class="rounded bg-gray-800 px-2 py-1 text-xs text-white disabled:opacity-40">+ 사용자 파라미터</button>
+              <div class="text-sm font-semibold text-white">비교 지표 계산 설정</div>
+              <button on:click={() => addRuleMapEntry('compareParams')} disabled={!rule.compareIndicator} class="rounded bg-gray-800 px-2 py-1 text-xs text-white disabled:opacity-40">+ 고급 계산값</button>
             </div>
             {#if rule.compareIndicator && getIndicatorFieldConfigs(rule.compareIndicator).length > 0}
               <div class="mb-3 grid grid-cols-2 gap-3">
@@ -1482,7 +1482,7 @@
               {/each}
             </div>
             {#if !rule.compareIndicator}
-              <div class="text-xs text-gray-500">비교 지표를 선택하면 해당 지표의 파라미터 필드가 여기 표시됩니다.</div>
+              <div class="text-xs text-gray-500">비교 지표를 선택하면 해당 지표의 계산 설정이 여기 표시됩니다.</div>
             {/if}
           </div>
         </div>
