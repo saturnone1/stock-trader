@@ -131,13 +131,13 @@ public class OptimizationJobExecutor
                     var cumulativeRsi2TrendMaArray = indicators.SMA(
                         closesArray, cumulativeRsi2Config.LongTrendMaPeriod);
 
-                    var dateToIndex = new Dictionary<DateOnly, int>(barsArray.Length);
+                    var timestampToIndex = new Dictionary<DateTime, int>(barsArray.Length);
                     for (int i = 0; i < barsArray.Length; i++)
-                        dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
+                        timestampToIndex[barsArray[i].Timestamp] = i;
 
                     tfDataMap[symbol] = new BacktestService.SymbolPreparedData(
                         barsArray, atrArray, closesArray, sma200Array,
-                        cumulativeRsi2Array, cumulativeRsi2TrendMaArray, dateToIndex);
+                        cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
                 }
                 catch (Exception ex)
                 {
