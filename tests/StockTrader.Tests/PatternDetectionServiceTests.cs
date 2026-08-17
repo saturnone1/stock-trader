@@ -40,6 +40,9 @@ public class PatternDetectionServiceTests
             .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")
             .Options;
         var db = new AppDbContext(options);
+        var strategies = new CompiledStrategyRepository(
+            db,
+            NullLogger<CompiledStrategyRepository>.Instance);
         return new PatternDetectionService(
             detectors ?? Enumerable.Empty<IPatternDetector>(),
             _settingsRepoMock.Object,
@@ -48,6 +51,7 @@ public class PatternDetectionServiceTests
             _regimeClassifierMock.Object,
             Mock.Of<IIndicatorService>(),
             Mock.Of<IOhlcvRepository>(),
+            strategies,
             db,
             NullLogger<PatternDetectionService>.Instance);
     }

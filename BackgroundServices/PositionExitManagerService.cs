@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
+using StockTrader.Application.Strategies;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data;
@@ -111,15 +110,14 @@ public class PositionExitManagerService : BackgroundService
         var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var liveParamService = scope.ServiceProvider.GetRequiredService<ILiveParameterService>();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var strategies = scope.ServiceProvider.GetRequiredService<ICompiledStrategyRepository>();
 
         // DB에서 저장된 청산 파라미터 오버라이드 로드 (매 체크마다 갱신)
         _liveExitOverrides = await liveParamService.GetLiveOverridesAsync(ct);
 
         var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
-        var customPatterns = (await db.CustomPatterns.AsNoTracking()
-                .ToListAsync(ct))
-            .ToDictionary(pattern => pattern.Name, StringComparer.OrdinalIgnoreCase);
+        var customPatterns = await strategies.GetByNamesAsync(
+            openPositions.Select(position => position.CustomPatternName).OfType<string>(), ct);
 
         // Remove stale exit states for positions that are no longer open.
         var openIds = new HashSet<long>(openPositions.Select(p => p.Id));
@@ -149,8 +147,8 @@ public class PositionExitManagerService : BackgroundService
                 var highBefore = position.HighSinceEntry;
                 var stopBefore = position.StopLossPrice;
 
-                customPatterns.TryGetValue(position.CustomPatternName ?? string.Empty, out var customPattern);
-                var exitResult = await EvaluateExitAsync(position, customPattern, ohlcvRepo, ct);
+                customPatterns.TryGetValue(position.CustomPatternName ?? string.Empty, out var customStrategy);
+                var exitResult = await EvaluateExitAsync(position, customStrategy, ohlcvRepo, ct);
 
                 if (exitResult.ShouldExit)
                 {
@@ -226,8 +224,9 @@ public class PositionExitManagerService : BackgroundService
     }
 
     private async Task<(bool ShouldExit, string Reason)> EvaluateExitAsync(
-        Position position, CustomPatternDefinition? customPattern, IOhlcvRepository ohlcvRepo, CancellationToken ct)
+        Position position, CompiledStrategy? customStrategy, IOhlcvRepository ohlcvRepo, CancellationToken ct)
     {
+        var customPattern = customStrategy?.Source;
         var pep = customPattern == null
             ? TradeSimulator.PatternExitProfile.For(position.PatternType, _liveExitOverrides)
             : new TradeSimulator.PatternExitProfile(
@@ -330,12 +329,12 @@ public class PositionExitManagerService : BackgroundService
             return (true, $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
         }
 
-        if (customPattern != null && recentBars is { Count: >= 50 })
+        if (customStrategy != null && recentBars is { Count: >= 50 })
         {
-            var detector = new RuleBasedDetector(_indicators, customPattern);
-            detector.SetReferenceData(await LoadReferenceDataAsync(customPattern, position.Symbol, recentBars, ohlcvRepo, ct), DateTime.UtcNow);
+            var detector = new RuleBasedDetector(_indicators, customStrategy);
+            detector.SetReferenceData(await LoadReferenceDataAsync(customStrategy, position.Symbol, recentBars, ohlcvRepo, ct), DateTime.UtcNow);
             if (detector.ShouldExit(recentBars.ToArray()))
-                return (true, $"{customPattern.Name} 매도 조건 충족");
+                return (true, $"{customStrategy.Name} 매도 조건 충족");
         }
 
         if (position.PatternType == PatternType.CumulativeRsi2
@@ -367,7 +366,7 @@ public class PositionExitManagerService : BackgroundService
     }
 
     private static async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(
-        CustomPatternDefinition pattern,
+        CompiledStrategy strategy,
         string symbol,
         List<OhlcvBar> symbolBars,
         IOhlcvRepository repository,
@@ -377,21 +376,7 @@ public class PositionExitManagerService : BackgroundService
         {
             [symbol] = symbolBars.ToArray()
         };
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var references = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void AddRules(IEnumerable<EntryRule> rules)
-        {
-            foreach (var rule in rules)
-                if (!string.IsNullOrWhiteSpace(rule.RefSymbol)) references.Add(rule.RefSymbol.Trim().ToUpperInvariant());
-        }
-        void AddGroups(string json)
-        {
-            foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(json, options) ?? []) AddRules(group.Rules);
-        }
-        AddRules(JsonSerializer.Deserialize<List<EntryRule>>(pattern.ExitRulesJson, options) ?? []);
-        AddGroups(pattern.ExitGroupsJson);
-
-        foreach (var referenceSymbol in references.Where(value => !value.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
+        foreach (var referenceSymbol in strategy.ReferenceSymbols.Where(value => !value.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
         {
             result[referenceSymbol] = (await repository.GetBarsAsync(referenceSymbol, TimeFrame.Daily,
                     DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct))

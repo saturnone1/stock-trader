@@ -28,6 +28,28 @@ public class ArchitectureDependencyTests
             $"{layer} 계층은 Services/API/Data/BackgroundServices에 의존하면 안 됩니다");
     }
 
+    [Fact]
+    public void LiveStrategyExecutionPathsUseCompiledRepositoryBoundary()
+    {
+        var repository = FindRepositoryRoot();
+        var livePaths = new[]
+        {
+            "Services/Patterns/PatternDetectionService.cs",
+            "Services/Signal/SignalService.cs",
+            "BackgroundServices/PositionExitManagerService.cs"
+        };
+        var forbidden = new[] { "JsonSerializer", "StrategyCompiler.Compile", ".CustomPatterns" };
+
+        var violations = livePaths.SelectMany(path =>
+        {
+            var source = File.ReadAllText(Path.Combine(repository, path));
+            return forbidden.Where(source.Contains).Select(token => $"{path} -> {token}");
+        }).ToArray();
+
+        violations.Should().BeEmpty(
+            "실시간 탐지·추천·청산은 저장 JSON이나 EF 엔티티를 직접 해석하지 않고 ICompiledStrategyRepository를 사용해야 합니다");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

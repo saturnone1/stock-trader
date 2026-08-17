@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -95,17 +96,19 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<UserSettings>(entity =>
         {
-            entity.Property(u => u.EnabledPatterns)
+            var enabledPatterns = entity.Property(u => u.EnabledPatterns)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                    v => JsonSerializer.Deserialize<List<PatternType>>(v, (JsonSerializerOptions?)null)!
+                    v => JsonSerializer.Deserialize<List<PatternType>>(v, (JsonSerializerOptions?)null) ?? new()
                 );
+            enabledPatterns.Metadata.SetValueComparer(ListComparer<PatternType>());
 
-            entity.Property(u => u.WatchlistSymbols)
+            var watchlistSymbols = entity.Property(u => u.WatchlistSymbols)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                    v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null)!
+                    v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new()
                 );
+            watchlistSymbols.Metadata.SetValueComparer(ListComparer<string>());
         });
 
         modelBuilder.Entity<TradingAccount>(entity =>
@@ -132,11 +135,12 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(p => new { p.Symbol, p.Name }).IsUnique();
             entity.HasIndex(p => new { p.Symbol, p.IsActive });
-            entity.Property(p => p.EnabledPatterns)
+            var enabledPatterns = entity.Property(p => p.EnabledPatterns)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                    v => JsonSerializer.Deserialize<List<PatternType>>(v, (JsonSerializerOptions?)null)!
+                    v => JsonSerializer.Deserialize<List<PatternType>>(v, (JsonSerializerOptions?)null) ?? new()
                 );
+            enabledPatterns.Metadata.SetValueComparer(ListComparer<PatternType>());
         });
 
         modelBuilder.Entity<CustomPatternDefinition>(entity =>
@@ -161,4 +165,12 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }
+
+    private static ValueComparer<List<T>> ListComparer<T>() => new(
+        (left, right) => ReferenceEquals(left, right)
+            || (left != null && right != null && left.SequenceEqual(right)),
+        values => values == null
+            ? 0
+            : values.Aggregate(0, (hash, value) => HashCode.Combine(hash, value)),
+        values => values == null ? new List<T>() : values.ToList());
 }

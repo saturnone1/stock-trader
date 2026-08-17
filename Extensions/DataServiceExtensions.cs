@@ -1,4 +1,5 @@
 using StockTrader.Configuration;
+using StockTrader.Application.Strategies;
 using StockTrader.Data.Repositories;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -18,6 +19,7 @@ public static class DataServiceExtensions
         services.AddScoped<ITradeRepository, TradeRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
+        services.AddScoped<ICompiledStrategyRepository, CompiledStrategyRepository>();
 
         // Data Feed - Keyed services for multiple providers
         services.AddKeyedScoped<IDataFeedService, AlpacaDataFeedService>(DataSource.Alpaca);

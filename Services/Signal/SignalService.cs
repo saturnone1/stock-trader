@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
@@ -16,6 +16,7 @@ public class SignalService : ISignalService
     private readonly IStatisticsService _statsService;
     private readonly IRiskManagementService _riskService;
     private readonly ISettingsRepository _settingsRepo;
+    private readonly ICompiledStrategyRepository _strategies;
     private readonly AppDbContext _db;
     private readonly TradingSettings _tradingSettings;
     private readonly ILogger<SignalService> _logger;
@@ -24,6 +25,7 @@ public class SignalService : ISignalService
         IStatisticsService statsService,
         IRiskManagementService riskService,
         ISettingsRepository settingsRepo,
+        ICompiledStrategyRepository strategies,
         AppDbContext db,
         IOptions<TradingSettings> tradingSettings,
         ILogger<SignalService> logger)
@@ -31,6 +33,7 @@ public class SignalService : ISignalService
         _statsService = statsService;
         _riskService = riskService;
         _settingsRepo = settingsRepo;
+        _strategies = strategies;
         _db = db;
         _tradingSettings = tradingSettings.Value;
         _logger = logger;
@@ -54,12 +57,7 @@ public class SignalService : ISignalService
             .Select(name => name!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var customDefinitions = customNames.Count == 0
-            ? new Dictionary<string, CustomPatternDefinition>(StringComparer.OrdinalIgnoreCase)
-            : (await _db.CustomPatterns.AsNoTracking()
-                .Where(pattern => customNames.Contains(pattern.Name))
-                .ToListAsync(ct))
-                .ToDictionary(pattern => pattern.Name, StringComparer.OrdinalIgnoreCase);
+        var customStrategies = await _strategies.GetByNamesAsync(customNames, ct);
         var customTradeHistory = customNames.Count == 0
             ? []
             : await _db.TradeRecords.AsNoTracking()
@@ -97,10 +95,17 @@ public class SignalService : ISignalService
                 _logger.LogInformation("Signal {Strategy} for {Symbol} skipped: a higher-confidence strategy already selected", signal.CustomPatternName ?? signal.PatternType.ToString(), signal.Symbol);
                 continue;
             }
-            customDefinitions.TryGetValue(signal.CustomPatternName ?? string.Empty, out var customDefinition);
-            var portfolioRules = ParseConfig<PortfolioRulesConfig>(customDefinition?.PortfolioRulesJson);
-            var reentryRules = ParseConfig<ReentryConfig>(customDefinition?.ReentryJson);
-            var breakerRules = ParseConfig<CircuitBreakerConfig>(customDefinition?.CircuitBreakerJson);
+            customStrategies.TryGetValue(signal.CustomPatternName ?? string.Empty, out var customStrategy);
+            var isCustomSignal = !string.IsNullOrWhiteSpace(signal.CustomPatternName);
+            if (isCustomSignal && customStrategy is null)
+            {
+                _logger.LogWarning("Custom strategy signal {Strategy} skipped: no valid compiled strategy exists", signal.CustomPatternName);
+                continue;
+            }
+            var customDefinition = customStrategy?.Source;
+            var portfolioRules = customStrategy?.PortfolioRules;
+            var reentryRules = customStrategy?.Reentry;
+            var breakerRules = customStrategy?.CircuitBreaker;
             var strategyTrades = string.IsNullOrWhiteSpace(signal.CustomPatternName)
                 ? []
                 : customTradeHistory.Where(trade => string.Equals(
@@ -262,19 +267,6 @@ public class SignalService : ISignalService
             signals.Count, recommendations.Count, signals.Count - recommendations.Count);
 
         return recommendations;
-    }
-
-    private static T? ParseConfig<T>(string? json) where T : class
-    {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 
     private static bool IsInLiveCooldown(

@@ -24,7 +24,9 @@ public class SettingsRepository : ISettingsRepository
         if (_cache.TryGetValue(CacheKey, out UserSettings? cached) && cached != null)
             return cached;
 
-        var settings = await _db.UserSettings.FirstOrDefaultAsync(ct);
+        var settings = await _db.UserSettings
+            .OrderBy(item => item.Id)
+            .FirstOrDefaultAsync(ct);
         if (settings == null)
         {
             settings = new UserSettings

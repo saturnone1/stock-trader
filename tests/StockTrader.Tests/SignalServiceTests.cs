@@ -50,10 +50,14 @@ public class SignalServiceTests : IDisposable
     private SignalService CreateSut(TradingSettings? settings = null)
     {
         var opts = Options.Create(settings ?? _defaultSettings);
+        var strategies = new CompiledStrategyRepository(
+            _db,
+            NullLogger<CompiledStrategyRepository>.Instance);
         return new SignalService(
             _statsMock.Object,
             _riskMock.Object,
             _settingsRepoMock.Object,
+            strategies,
             _db,
             opts,
             NullLogger<SignalService>.Instance);
@@ -200,6 +204,32 @@ public class SignalServiceTests : IDisposable
 
         result.Should().HaveCount(1);
         result[0].Expectancy.Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_InvalidCustomStrategy_NeverReachesRiskOrOrderSizing()
+    {
+        _db.CustomPatterns.Add(new CustomPatternDefinition
+        {
+            Name = "손상 전략",
+            EnableLiveTrading = true,
+            EntryMode = "NextOpen",
+            EntryGroupsJson = "{broken"
+        });
+        await _db.SaveChangesAsync();
+        var signal = CreateSignal();
+        signal.CustomPatternName = "손상 전략";
+        SetupGetAllStats();
+        _settingsRepoMock.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+
+        var result = await CreateSut().EvaluateSignalsAsync([signal]);
+
+        result.Should().BeEmpty();
+        _riskMock.Verify(service => service.CanOpenPositionAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _riskMock.Verify(service => service.CalculatePositionSize(
+            It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()), Times.Never);
     }
 
     // ────────────────────────────────────────────────────────────

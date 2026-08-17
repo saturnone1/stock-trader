@@ -19,6 +19,7 @@ public class PatternDetectionService
     private readonly IMarketRegimeClassifier _regimeClassifier;
     private readonly IIndicatorService _indicators;
     private readonly IOhlcvRepository _ohlcvRepository;
+    private readonly ICompiledStrategyRepository _strategies;
     private readonly AppDbContext _db;
     private readonly ILogger<PatternDetectionService> _logger;
 
@@ -30,6 +31,7 @@ public class PatternDetectionService
         IMarketRegimeClassifier regimeClassifier,
         IIndicatorService indicators,
         IOhlcvRepository ohlcvRepository,
+        ICompiledStrategyRepository strategies,
         AppDbContext db,
         ILogger<PatternDetectionService> logger)
     {
@@ -40,6 +42,7 @@ public class PatternDetectionService
         _regimeClassifier = regimeClassifier;
         _indicators = indicators;
         _ohlcvRepository = ohlcvRepository;
+        _strategies = strategies;
         _db = db;
         _logger = logger;
     }
@@ -52,7 +55,10 @@ public class PatternDetectionService
         // 종목별 활성 프로파일이 있으면 해당 프로파일의 패턴 목록 사용
         var profile = await _db.SymbolProfiles
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Symbol == symbol && p.IsActive, ct);
+            .Where(p => p.Symbol == symbol && p.IsActive)
+            .OrderByDescending(p => p.UpdatedAt)
+            .ThenBy(p => p.Id)
+            .FirstOrDefaultAsync(ct);
 
         var enabledPatterns = profile?.EnabledPatterns ?? settings.EnabledPatterns;
 
@@ -99,20 +105,13 @@ public class PatternDetectionService
             }
         }
 
-        var activeCustomPatterns = await _db.CustomPatterns
-            .AsNoTracking()
-            .Where(pattern => pattern.IsActive && pattern.EnableLiveTrading)
-            .OrderBy(pattern => pattern.Id)
-            .ToListAsync(ct);
+        var activeCustomPatterns = await _strategies.ListAsync(activeOnly: true, liveOnly: true, ct);
 
-        foreach (var definition in activeCustomPatterns)
+        foreach (var strategy in activeCustomPatterns)
         {
             try
             {
-                var compilation = StrategyCompiler.Compile(definition);
-                if (!compilation.IsValid) continue;
-                var strategy = compilation.Strategy!;
-                if (bars.Length == 0 || definition.TimeFrame != bars[^1].TimeFrame)
+                if (bars.Length == 0 || strategy.TimeFrame != bars[^1].TimeFrame)
                     continue;
                 var detector = new RuleBasedDetector(_indicators, strategy);
                 var referenceData = await LoadReferenceDataAsync(strategy, symbol, bars, ct);
@@ -121,11 +120,11 @@ public class PatternDetectionService
                 if (signal == null) continue;
                 signal.Confidence = await EnhanceConfidenceAsync(signal, bars, effectiveRegime, ct);
                 signals.Add(signal);
-                _logger.LogInformation("Custom strategy {Strategy} detected for {Symbol}", definition.Name, symbol);
+                _logger.LogInformation("Custom strategy {Strategy} detected for {Symbol}", strategy.Name, symbol);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error detecting custom strategy {Strategy} for {Symbol}", definition.Name, symbol);
+                _logger.LogError(ex, "Error detecting custom strategy {Strategy} for {Symbol}", strategy.Name, symbol);
             }
         }
 
