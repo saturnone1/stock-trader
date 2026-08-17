@@ -85,6 +85,11 @@
   releases a claim and only a proven fill closes the position. Trade, portfolio, and dashboard APIs
   share one open-position response with pending-exit state and elapsed time. The desktop portfolio
   disables duplicate close requests and offers a safe status refresh instead of a force retry.
+- Live exit indicator preparation and strategy evaluation now run behind
+  `LivePositionExitEvaluator`; `PositionExitManagerService` has dropped from 426 to 230 lines and
+  coordinates only polling, broker prices, persistence, and durable exit submission. The evaluator
+  is 265 lines and consumes the central ATR period, indicator lookback, exit catalog, TQQQ stop,
+  cumulative RSI2 decision, and custom compiled runtime policies.
 - `LongPositionCloseDecisionPolicy` is the shared owner of target, strategy-rule, and time-exit
   priority after stop/partial processing. Bar-based preview/backtest and live current-price decisions
   delegate to it. Equivalent-price snapshot fixtures lock stop, target, strategy, time, and hold-state

@@ -140,7 +140,7 @@ public sealed class PatternPreviewService : IPatternPreviewService
                 dataFrom,
                 dataTo,
                 allBars,
-                _indicators.ATR(allBars, 14),
+                _indicators.ATR(allBars, StrategyEvaluationPolicy.EntryAtrPeriod),
                 referenceBars,
                 regimeBars,
                 runtime),

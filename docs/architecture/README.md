@@ -73,7 +73,8 @@ by the custom detector. The engine treats `DataTo` as exclusive so a repository-
 bar cannot alter a chart that does not display that bar.
 An end-to-end parity fixture compiles one NextOpen custom strategy once, creates fresh runtimes from
 that compiled object, and asserts identical preview/backtest entry time, repriced fill, exit time,
-exit price, and exit reason.
+exit price, and exit reason. It also runs the live fill and extracted live exit evaluator against
+the same compiled strategy, locking entry risk geometry and the observable exit reason.
 
 Long-position execution now crosses a second named boundary in `Application/Execution`.
 Pattern preview and backtest must delegate entry repricing and per-bar exit ordering to this pure
@@ -88,6 +89,10 @@ same state, `LongPositionCloseDecisionPolicy` target/strategy/time priority, and
 calculation. Snapshot parity fixtures compare bar-based and live decisions where price ordering is
 fully observable. Built-in close rules such as cumulative RSI2 trend-break/threshold decisions also
 live in pure execution policies rather than in backtest or worker adapters.
+`LivePositionExitEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,
+custom sell-rule evaluation, and translation into the shared decision policy. The 230-line
+`PositionExitManagerService` now owns only scheduling, broker state, persistence, and durable exit
+coordination. Entry ATR period and live-exit lookback values come from `StrategyEvaluationPolicy`.
 `StrategyEntryEligibilityPolicy` is the corresponding common entry gate. Preview, backtest, and
 live recommendation adapters translate their runtime state into the same position-limit,
 drawdown, consecutive-loss, session-entry, and reentry decisions. Environment-specific bar/date

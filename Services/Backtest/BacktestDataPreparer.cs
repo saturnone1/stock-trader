@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
@@ -158,7 +159,7 @@ public sealed class BacktestDataPreparer
 
         return new PreparedSymbolData(
             bars,
-            _indicators.ATR(bars, 14),
+            _indicators.ATR(bars, StrategyEvaluationPolicy.EntryAtrPeriod),
             closes,
             PrepareTqqqProtectiveStopFloors(closes, tqqq200Sma),
             _indicators.CumulativeRsi(closes, cumulativeRsi2.RsiPeriod, cumulativeRsi2.CumulativePeriod),

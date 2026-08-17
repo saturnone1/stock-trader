@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ILivePositionExitCoordinator, LivePositionExitCoordinator>();
+        services.AddScoped<LivePositionExitEvaluator>();
         services.AddSingleton<FinancialSnapshotImportService>();
         services.AddSingleton<FinancialSnapshotFileParser>();
         services.AddScoped<BacktestDataPreparer>();

@@ -1,20 +1,14 @@
-using StockTrader.Application.Execution;
 using StockTrader.Application.Strategies;
-using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
-using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
-using StockTrader.Services.Backtest;
 using StockTrader.Services.Broker;
-using StockTrader.Services.Indicators;
 using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Order;
-using StockTrader.Services.Patterns;
 
 namespace StockTrader.BackgroundServices;
 
@@ -36,10 +30,6 @@ public class PositionExitManagerService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IAccountManager _accountManager;
     private readonly INotificationService _notificationService;
-    private readonly IIndicatorService _indicators;
-    private readonly ICustomStrategyDetectorFactory _customDetectors;
-    private readonly IOptionsMonitor<PatternSettings> _patternSettings;
-    private readonly TradingSettings _tradingSettings;
     private readonly IMarketCalendar _marketCalendar;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<PositionExitManagerService> _logger;
@@ -51,10 +41,6 @@ public class PositionExitManagerService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IAccountManager accountManager,
         INotificationService notificationService,
-        IIndicatorService indicators,
-        ICustomStrategyDetectorFactory customDetectors,
-        IOptionsMonitor<PatternSettings> patternSettings,
-        IOptions<TradingSettings> tradingSettings,
         IMarketCalendar marketCalendar,
         TimeProvider timeProvider,
         ILogger<PositionExitManagerService> logger)
@@ -62,10 +48,6 @@ public class PositionExitManagerService : BackgroundService
         _scopeFactory = scopeFactory;
         _accountManager = accountManager;
         _notificationService = notificationService;
-        _indicators = indicators;
-        _customDetectors = customDetectors;
-        _patternSettings = patternSettings;
-        _tradingSettings = tradingSettings.Value;
         _marketCalendar = marketCalendar;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -107,6 +89,7 @@ public class PositionExitManagerService : BackgroundService
         var liveParamService = scope.ServiceProvider.GetRequiredService<ILiveParameterService>();
         var strategies = scope.ServiceProvider.GetRequiredService<ICompiledStrategyRepository>();
         var exitCoordinator = scope.ServiceProvider.GetRequiredService<ILivePositionExitCoordinator>();
+        var exitEvaluator = scope.ServiceProvider.GetRequiredService<LivePositionExitEvaluator>();
 
         // DB에서 저장된 청산 파라미터 오버라이드 로드 (매 체크마다 갱신)
         _liveExitOverrides = await liveParamService.GetLiveOverridesAsync(ct);
@@ -150,7 +133,8 @@ public class PositionExitManagerService : BackgroundService
                 var trailingBefore = position.TrailingStopActivated;
 
                 customPatterns.TryGetValue(position.CustomPatternName ?? string.Empty, out var customStrategy);
-                var exitResult = await EvaluateExitAsync(position, customStrategy, ohlcvRepo, ct);
+                var exitResult = await exitEvaluator.EvaluateAsync(
+                    position, customStrategy, ohlcvRepo, _liveExitOverrides, ct);
 
                 if (exitResult.ShouldExit)
                 {
@@ -240,187 +224,8 @@ public class PositionExitManagerService : BackgroundService
             EntryPrice = position.EntryPrice,
             TargetPrice = position.ExitPrice ?? position.CurrentPrice,
             ShareQuantity = position.Quantity,
-            GeneratedAt = UtcNow,
+            GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime,
         });
     }
 
-    private async Task<(bool ShouldExit, string Reason)> EvaluateExitAsync(
-        Position position, CompiledStrategy? customStrategy, IOhlcvRepository ohlcvRepo, CancellationToken ct)
-    {
-        var customPattern = customStrategy?.Source;
-        var exitPolicy = customPattern == null
-            ? LongPositionExitPolicyCatalog.ForPattern(position.PatternType, _liveExitOverrides)
-            : LongPositionExitPolicyCatalog.ForCustom(customPattern);
-        var effectivePatternSettings = _liveExitOverrides == null
-            ? _patternSettings.CurrentValue
-            : PatternOverrideMerger.Merge(_patternSettings.CurrentValue, _liveExitOverrides);
-        var cumulativeRsi2Config = effectivePatternSettings.CumulativeRsi2;
-        var tqqqConfig = effectivePatternSettings.Tqqq200Sma;
-        List<OhlcvBar>? recentBars = null;
-        decimal currentCumulativeRsi2 = 0;
-        decimal currentCumulativeRsi2TrendMa = 0;
-        decimal? dynamicStopFloor = null;
-
-        // ATR 계산: DB에 저장된 EntryAtr 우선 사용, 없으면 최근 봉에서 계산.
-        // ATR(14)는 15개 봉(TR 14개 + 이전 종가 1개)이 필요하다.
-        // 20일 달력 기간으로 조회하면 주말·공휴일 제외 시 실질 영업일이 14개 이하가 되어
-        // ATR이 0으로 반환될 위험이 있다. 30일로 확장하면 약 21영업일을 확보할 수 있다.
-        var atr = position.EntryAtr;
-        var needsIndicatorBars = customPattern != null
-            || position.PatternType == PatternType.CumulativeRsi2
-            || position.PatternType == PatternType.Tqqq200Sma
-            || atr <= 0
-            || (exitPolicy.EnableTimeExit && exitPolicy.MaxHoldingBars > 0);
-        if (needsIndicatorBars)
-        {
-            var lookbackDays = position.PatternType == PatternType.Tqqq200Sma
-                ? Math.Max(400, Tqqq200SmaExecutionPolicy.RequiredCalendarLookbackDays(tqqqConfig.SmaPeriod))
-                : 400;
-            recentBars = await ohlcvRepo.GetBarsAsync(position.Symbol, TimeFrame.Daily,
-                UtcNow.AddDays(-lookbackDays), UtcNow, ct);
-            recentBars = recentBars.OrderBy(bar => bar.Timestamp).ToList();
-            if (atr <= 0 && recentBars.Count >= 15)
-                atr = CalculateSimpleAtr(recentBars, 14);
-        }
-
-        if (position.PatternType == PatternType.Tqqq200Sma
-            && recentBars is { Count: > 0 }
-            && tqqqConfig.SmaPeriod > 0)
-        {
-            var closes = IndicatorService.ExtractCloses(recentBars.ToArray());
-            var trendSma = _indicators.SMA(closes, tqqqConfig.SmaPeriod);
-            if (trendSma.Length > 0)
-            {
-                dynamicStopFloor = Tqqq200SmaExecutionPolicy.ResolveProtectiveStopFloor(
-                    trendSma[^1], tqqqConfig.SmaStopMultiplier);
-            }
-
-        }
-
-        if (position.PatternType == PatternType.Tqqq200Sma && !dynamicStopFloor.HasValue)
-        {
-            _logger.LogWarning(
-                "[EXIT-MGR] {Symbol}: TQQQ 장기 추세선 보호 손절을 계산하지 못했습니다. " +
-                "기존 손절가를 유지합니다. bars={BarCount}, period={Period}",
-                position.Symbol, recentBars?.Count ?? 0, tqqqConfig.SmaPeriod);
-        }
-
-        if (position.PatternType == PatternType.CumulativeRsi2 && recentBars is { Count: > 0 })
-        {
-            var barsArray = recentBars.ToArray();
-            var closes = IndicatorService.ExtractCloses(barsArray);
-            var cumulativeRsi2 = _indicators.CumulativeRsi(
-                closes, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
-            var trendMa = _indicators.SMA(closes, cumulativeRsi2Config.LongTrendMaPeriod);
-
-            if (cumulativeRsi2.Length > 0)
-                currentCumulativeRsi2 = cumulativeRsi2[^1];
-            if (trendMa.Length > 0)
-                currentCumulativeRsi2TrendMa = trendMa[^1];
-        }
-
-        StrategyExitInstruction? strategyExit;
-        if (position.PatternType == PatternType.CumulativeRsi2)
-        {
-            strategyExit = CumulativeRsi2ExitDecisionPolicy.Resolve(
-                position.CurrentPrice,
-                currentCumulativeRsi2,
-                currentCumulativeRsi2TrendMa,
-                cumulativeRsi2Config.ExitThreshold,
-                cumulativeRsi2Config.LongTrendMaPeriod);
-        }
-        else if (customStrategy != null && recentBars is { Count: >= 50 })
-        {
-            strategyExit = null;
-            var detector = _customDetectors.Create(customStrategy);
-            detector.SetReferenceData(await LoadReferenceDataAsync(customStrategy, position.Symbol, recentBars, ohlcvRepo, ct), UtcNow);
-            if (detector.ShouldExit(recentBars.ToArray()))
-                strategyExit = new StrategyExitInstruction(position.CurrentPrice, $"{customStrategy.Name} 매도 조건 충족");
-        }
-        else
-            strategyExit = null;
-
-        var stopDistance = Math.Abs(position.EntryPrice - position.StopLossPrice);
-        if (stopDistance <= 0)
-            stopDistance = atr > 0 ? atr : position.EntryPrice * 0.02m;
-        if (position.InitialRiskDistance <= 0)
-            position.InitialRiskDistance = stopDistance;
-        var policy = exitPolicy with
-        {
-            EnablePartialProfit = false,
-            PartialProfitRMultiple = 0m
-        };
-        var timeExitReached = recentBars is not null
-            && HoldingPeriodPolicy.HasReachedDailyBarLimit(
-                position.OpenedAt, recentBars, exitPolicy.MaxHoldingBars);
-        var decision = LiveLongPositionDecisionPolicy.Evaluate(
-            new LongPositionExecutionState(
-                position.EntryPrice,
-                position.StopLossPrice,
-                position.TargetPrice,
-                Math.Max(position.HighSinceEntry, position.EntryPrice),
-                position.EntryPrice,
-                position.InitialRiskDistance,
-                position.EntryAtr > 0 ? position.EntryAtr : atr,
-                EntryBarIndex: 0,
-                position.Quantity,
-                BreakevenApplied: position.BreakevenApplied,
-                TrailingActivated: position.TrailingStopActivated),
-            position.CurrentPrice,
-            atr,
-            policy,
-            timeExitReached,
-            strategyExit,
-            dynamicStopFloor);
-
-        position.HighSinceEntry = decision.State.HighestPrice;
-        position.StopLossPrice = decision.State.StopPrice;
-        position.BreakevenApplied = decision.State.BreakevenApplied;
-        position.TrailingStopActivated = decision.State.TrailingActivated;
-        if (decision.StopUpdate is not null)
-            _logger.LogDebug("[EXIT-MGR] {Symbol}: {Reason} {Price:F2}",
-                position.Symbol, decision.StopUpdate.Reason, decision.StopUpdate.Price);
-
-        return (decision.ShouldExit, decision.Reason);
-    }
-
-    private async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(
-        CompiledStrategy strategy,
-        string symbol,
-        List<OhlcvBar> symbolBars,
-        IOhlcvRepository repository,
-        CancellationToken ct)
-    {
-        var result = new Dictionary<string, OhlcvBar[]>(StringComparer.OrdinalIgnoreCase)
-        {
-            [symbol] = symbolBars.ToArray()
-        };
-        foreach (var referenceSymbol in strategy.ReferenceSymbols.Where(value => !value.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
-        {
-            result[referenceSymbol] = (await repository.GetBarsAsync(referenceSymbol, TimeFrame.Daily,
-                    UtcNow.AddDays(-400), UtcNow, ct))
-                .OrderBy(bar => bar.Timestamp)
-                .ToArray();
-        }
-        return result;
-    }
-
-    private static decimal CalculateSimpleAtr(List<OhlcvBar> bars, int period)
-    {
-        if (bars.Count < period + 1) return 0;
-
-        var trueRanges = new List<decimal>();
-        for (int i = bars.Count - period; i < bars.Count; i++)
-        {
-            var high = bars[i].High;
-            var low = bars[i].Low;
-            var prevClose = bars[i - 1].Close;
-            var tr = Math.Max(high - low, Math.Max(Math.Abs(high - prevClose), Math.Abs(low - prevClose)));
-            trueRanges.Add(tr);
-        }
-
-        return trueRanges.Average();
-    }
-
-    private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;
 }

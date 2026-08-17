@@ -141,7 +141,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
         if (!entryPassed) return Task.FromResult<PatternSignal?>(null);
 
         var curr = bars[^1];
-        var atr = ctx.GetAtr(14);
+        var atr = ctx.GetAtr(StrategyEvaluationPolicy.EntryAtrPeriod);
         var currentAtr = atr[^1];
         if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
 
