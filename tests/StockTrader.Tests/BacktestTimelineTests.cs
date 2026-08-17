@@ -1,6 +1,6 @@
 using FluentAssertions;
+using StockTrader.Application.Backtesting;
 using StockTrader.Models;
-using StockTrader.Services.Backtest;
 
 namespace StockTrader.Tests;
 
@@ -20,11 +20,11 @@ public class BacktestTimelineTests
             Volume = 1_000
         }).ToArray();
         var zeros = new decimal[bars.Length];
-        var prepared = new BacktestService.SymbolPreparedData(
+        var prepared = new PreparedSymbolData(
             bars, zeros, zeros, zeros, zeros, zeros,
             bars.Select((bar, index) => (bar.Timestamp, index)).ToDictionary(pair => pair.Timestamp, pair => pair.index));
 
-        var timeline = BacktestService.BuildSimulationTimeline([prepared], start);
+        var timeline = BacktestTimeline.Build([prepared], start);
 
         timeline.Should().Equal(bars.Select(bar => bar.Timestamp));
     }

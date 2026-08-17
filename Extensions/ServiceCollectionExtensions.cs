@@ -60,6 +60,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrderService, OrderService>();
         services.AddSingleton<FinancialSnapshotImportService>();
         services.AddSingleton<FinancialSnapshotFileParser>();
+        services.AddScoped<BacktestDataPreparer>();
         services.AddScoped<BacktestService>();
         services.AddScoped<IBacktestService>(sp => sp.GetRequiredService<BacktestService>());
         services.AddScoped<ILiveParameterService, LiveParameterService>();

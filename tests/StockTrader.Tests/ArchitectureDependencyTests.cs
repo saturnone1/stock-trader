@@ -77,6 +77,19 @@ public class ArchitectureDependencyTests
         source.Should().Contain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
     }
 
+    [Fact]
+    public void OptimizationExecutorDelegatesMarketDataPreparation()
+    {
+        var repository = FindRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(repository, "BackgroundServices/OptimizationJobExecutor.cs"));
+
+        source.Should().Contain("BacktestDataPreparer");
+        source.Should().NotContain("GetHistoricalBarsAsync");
+        source.Should().NotContain("IndicatorService.ExtractCloses");
+        source.Should().NotContain("new PatternSettings()");
+        source.Should().NotContain("BacktestService.SymbolPreparedData");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

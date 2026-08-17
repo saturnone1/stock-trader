@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
 using StockTrader.Configuration;
@@ -56,6 +57,9 @@ public class OptimizationJobExecutor
         var sp = scope.ServiceProvider;
 
         var backtestService  = sp.GetRequiredService<BacktestService>();
+        var dataPreparer     = sp.GetRequiredService<BacktestDataPreparer>();
+        var indicators       = sp.GetRequiredService<IIndicatorService>();
+        var patternSettings  = sp.GetRequiredService<IOptions<PatternSettings>>().Value;
         var repo             = sp.GetRequiredService<IOptimizationRepository>();
         var dataFeedFactory  = sp.GetRequiredService<IDataFeedServiceFactory>();
 
@@ -98,53 +102,20 @@ public class OptimizationJobExecutor
             ? request.OptimizeParams.TimeFrameOptions.Select(tf => (TimeFrame)tf).Distinct().ToList()
             : new List<TimeFrame> { request.TimeFrame };
 
-        var indicators = backtestService.Indicators;
-        var dataByTimeFrame = new Dictionary<TimeFrame, Dictionary<string, BacktestService.SymbolPreparedData>>();
+        var referenceSymbols = new RuleBasedDetector(indicators, request.BasePattern).Strategy.ReferenceSymbols;
+        var optimizationSymbols = request.Symbols
+            .Concat(referenceSymbols)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var dataByTimeFrame = new Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>>();
 
         foreach (var tf in timeFramesToLoad)
         {
-            var warmupDays = BacktestTimeFramePolicy.Get(tf).WarmupCalendarDays;
-
-            var tfDataMap = new Dictionary<string, BacktestService.SymbolPreparedData>();
-
-            foreach (var symbol in request.Symbols)
-            {
-                ct.ThrowIfCancellationRequested();
-                try
-                {
-                    var bars = await dataFeed.GetHistoricalBarsAsync(
-                        symbol, tf, request.From.AddDays(-warmupDays), request.To, ct);
-
-                    if (bars.Count < TradeSimulator.MinWarmupBars) continue;
-
-                    var barsArray   = bars.ToArray();
-                    var atrArray    = indicators.ATR(barsArray, 14);
-                    var closesArray = IndicatorService.ExtractCloses(barsArray);
-                    var sma200Array = indicators.SMA(closesArray, 200);
-                    var cumulativeRsi2Config = new PatternSettings().CumulativeRsi2;
-                    var cumulativeRsi2Array = indicators.CumulativeRsi(
-                        closesArray, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
-                    var cumulativeRsi2TrendMaArray = indicators.SMA(
-                        closesArray, cumulativeRsi2Config.LongTrendMaPeriod);
-
-                    var timestampToIndex = new Dictionary<DateTime, int>(barsArray.Length);
-                    for (int i = 0; i < barsArray.Length; i++)
-                        timestampToIndex[barsArray[i].Timestamp] = i;
-
-                    tfDataMap[symbol] = new BacktestService.SymbolPreparedData(
-                        barsArray, atrArray, closesArray, sma200Array,
-                        cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex,
-                        "[Optimization] Job {Id}: {Symbol}/{TF} 데이터 로드 실패 — 건너뜀",
-                        job.Id, symbol, tf);
-                }
-            }
-
-            if (tfDataMap.Count > 0)
-                dataByTimeFrame[tf] = tfDataMap;
+            var prepared = await dataPreparer.PrepareAsync(
+                dataFeed, optimizationSymbols, tf, request.From, request.To,
+                patternSettings.CumulativeRsi2, ct);
+            if (prepared.HasData)
+                dataByTimeFrame[tf] = prepared.Symbols;
         }
 
         if (dataByTimeFrame.Count == 0)
@@ -232,7 +203,7 @@ public class OptimizationJobExecutor
             var chunk      = stage1Combinations.GetRange(sliceStart, sliceEnd - sliceStart);
 
             var chunkResults = await RunChunkAsync(
-                chunk, request, backtestService, fullDataMap, dataByTimeFrame,
+                chunk, request, backtestService, indicators, fullDataMap, dataByTimeFrame,
                 regimeByDate, riskParams, isTo, ct);
 
             stage1Results.AddRange(chunkResults);
@@ -301,7 +272,7 @@ public class OptimizationJobExecutor
                     var chunk2 = neighbors.GetRange(s, e - s);
 
                     var chunkResults2 = await RunChunkAsync(
-                        chunk2, request, backtestService, fullDataMap, dataByTimeFrame,
+                        chunk2, request, backtestService, indicators, fullDataMap, dataByTimeFrame,
                         regimeByDate, riskParams, isTo, ct);
 
                     if (chunkResults2.Count > 0)
@@ -401,8 +372,9 @@ public class OptimizationJobExecutor
         List<OptimizeParamSnapshot> chunk,
         OptimizeRequest request,
         BacktestService backtestService,
-        Dictionary<string, BacktestService.SymbolPreparedData> fullDataMap,
-        Dictionary<TimeFrame, Dictionary<string, BacktestService.SymbolPreparedData>> dataByTimeFrame,
+        IIndicatorService indicators,
+        IReadOnlyDictionary<string, PreparedSymbolData> fullDataMap,
+        Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>> dataByTimeFrame,
         Dictionary<DateOnly, MarketRegime> regimeByDate,
         BacktestService.RiskParams riskParams,
         DateTime isTo,
@@ -419,7 +391,7 @@ public class OptimizationJobExecutor
 
             var detectors = new List<IPatternDetector>
             {
-                new RuleBasedDetector(backtestService.Indicators, patternCopy)
+                new RuleBasedDetector(indicators, patternCopy)
             };
 
             try

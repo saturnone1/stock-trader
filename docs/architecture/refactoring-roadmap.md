@@ -1,5 +1,19 @@
 # Refactoring roadmap
 
+## Current progress
+
+- Central timeframe, indicator, operator, strategy, and provider catalogs are active.
+- Preview, backtest, and live rule evaluation consume the same compiled strategy model.
+- Live strategy loading is behind `ICompiledStrategyRepository`.
+- Database startup changes run through ordered, versioned migrations.
+- Optimization contracts, search-space generation, strategy variants, and ranking are isolated in
+  `Application/Optimization`.
+- Historical data preparation and derived indicator arrays are shared by backtest, walk-forward,
+  synchronous optimization, and background optimization through `BacktestDataPreparer`.
+
+Remaining Phase 2 work is primarily the extraction of fill, position, portfolio, and metric
+orchestration from `BacktestService`, followed by preview/backtest/live execution parity fixtures.
+
 ## Phase 0 — Guardrails and governance
 
 - Declare the active project and canonical Svelte UI.

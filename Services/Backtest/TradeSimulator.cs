@@ -14,7 +14,6 @@ namespace StockTrader.Services.Backtest;
 /// </summary>
 internal sealed class TradeSimulator
 {
-    internal const int MinWarmupBars = 50;
 
     private readonly IIndicatorService _indicators;
     private readonly ILogger _logger;
@@ -42,7 +41,7 @@ internal sealed class TradeSimulator
         PatternParameterOverrides? exitOverrides,
         CancellationToken ct)
     {
-        if (bars.Count < MinWarmupBars)
+        if (bars.Count < BacktestDataPolicy.MinimumWarmupBars)
         {
             string warning;
             if (TimeFrameCatalog.IsIntraday(timeFrame))
@@ -54,7 +53,7 @@ internal sealed class TradeSimulator
             }
             else
             {
-                warning = $"{symbol}: 데이터 부족 ({bars.Count}개, 최소 {MinWarmupBars}개 필요). " +
+                warning = $"{symbol}: 데이터 부족 ({bars.Count}개, 최소 {BacktestDataPolicy.MinimumWarmupBars}개 필요). " +
                           "기간을 늘리거나 다른 종목을 선택하세요.";
             }
             _logger.LogWarning("{Symbol}: 데이터 부족 ({Count}개, timeFrame={TimeFrame})", symbol, bars.Count, timeFrame);
@@ -80,7 +79,7 @@ internal sealed class TradeSimulator
         var riskPerTrade = riskParams.RiskPerTradePercent;
         var maxTotalPositions = riskParams.MaxTotalPositions;
 
-        for (int i = MinWarmupBars; i < bars.Count; i++)
+        for (int i = BacktestDataPolicy.MinimumWarmupBars; i < bars.Count; i++)
         {
             var currentBar = bars[i];
             if (currentBar.Timestamp < from) continue;

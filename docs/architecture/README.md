@@ -40,6 +40,11 @@ The current high-risk files are intentionally decomposed incrementally:
 
 No phase may change all of these at once. Characterization tests are added before extraction.
 
+Historical market-data preparation now crosses a named boundary:
+`Services/Backtest/BacktestDataPreparer.cs` produces the read-only dictionary boundary in
+`Application/Backtesting/PreparedBacktestData.cs`. Backtest, walk-forward, and both optimization
+execution modes must use this boundary instead of calculating private indicator arrays.
+
 ## Decision records
 
 - `adr/0001-modular-monolith.md`: why a modular monolith is the target.

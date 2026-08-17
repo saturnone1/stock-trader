@@ -18,6 +18,7 @@ public class BacktestService : IBacktestService
     private readonly IDataFeedServiceFactory _dataFeedFactory;
     private readonly IEnumerable<IPatternDetector> _detectors;
     private readonly IIndicatorService _indicators;
+    private readonly BacktestDataPreparer _dataPreparer;
     private readonly TradingSettings _tradingSettings;
     private readonly PatternSettings _basePatternSettings;
     private readonly ISettingsRepository _settingsRepo;
@@ -27,6 +28,7 @@ public class BacktestService : IBacktestService
         IDataFeedServiceFactory dataFeedFactory,
         IEnumerable<IPatternDetector> detectors,
         IIndicatorService indicators,
+        BacktestDataPreparer dataPreparer,
         IOptions<TradingSettings> tradingSettings,
         IOptions<PatternSettings> patternSettings,
         ISettingsRepository settingsRepo,
@@ -35,14 +37,12 @@ public class BacktestService : IBacktestService
         _dataFeedFactory = dataFeedFactory;
         _detectors = detectors;
         _indicators = indicators;
+        _dataPreparer = dataPreparer;
         _tradingSettings = tradingSettings.Value;
         _basePatternSettings = patternSettings.Value;
         _settingsRepo = settingsRepo;
         _logger = logger;
     }
-
-    /// <summary>OptimizationJobExecutor가 데이터 로드 시 재사용할 수 있도록 노출</summary>
-    internal IIndicatorService Indicators => _indicators;
 
     /// <summary>최적화 실행 시 기본 리스크 파라미터 (appsettings 기반)</summary>
     internal RiskParams DefaultRiskParams => new(
@@ -141,77 +141,29 @@ public class BacktestService : IBacktestService
             MaxPositionsPerSector: _tradingSettings.MaxPositionsPerSector
         );
 
-        var simulator = new TradeSimulator(_indicators, _logger);
-        var warnings = new List<string>();
-        DateTime? actualDataFrom = null;
         effectivePatternSettings ??= ResolvePatternSettings(exitOverrides);
         var cumulativeRsi2Config = effectivePatternSettings.CumulativeRsi2;
-
-        // ── Phase 1: 모든 심볼 데이터 사전 로드 & 지표 계산 ──
-        var symbolDataMap = new Dictionary<string, SymbolPreparedData>();
-        var warmupDays = BacktestTimeFramePolicy.Get(timeFrame).WarmupCalendarDays;
 
         var symbolsToLoad = symbols
             .Concat(CollectReferenceSymbols(detectors))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var prepared = await _dataPreparer.PrepareAsync(
+            dataFeed, symbolsToLoad, timeFrame, from, to, cumulativeRsi2Config, ct);
 
-        foreach (var symbol in symbolsToLoad)
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                var fetchFrom = from.AddDays(-warmupDays);
-                var bars = await dataFeed.GetHistoricalBarsAsync(symbol, timeFrame, fetchFrom, to, ct);
-
-                if (bars.Count < TradeSimulator.MinWarmupBars)
-                {
-                    string warning = TimeFrameCatalog.IsIntraday(timeFrame)
-                        ? $"{symbol}: 분봉 데이터 부족 ({bars.Count}개). 시작일을 조정하세요."
-                        : $"{symbol}: 데이터 부족 ({bars.Count}개, 최소 {TradeSimulator.MinWarmupBars}개 필요)";
-                    warnings.Add(warning);
-                    continue;
-                }
-
-                var barsArray = bars.ToArray();
-                var atrArray = _indicators.ATR(barsArray, 14);
-                var closesArray = IndicatorService.ExtractCloses(barsArray);
-                var sma200Array = _indicators.SMA(closesArray, 200);
-                var cumulativeRsi2Array = _indicators.CumulativeRsi(
-                    closesArray, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
-                var cumulativeRsi2TrendMaArray = _indicators.SMA(
-                    closesArray, cumulativeRsi2Config.LongTrendMaPeriod);
-
-                var timestampToIndex = new Dictionary<DateTime, int>();
-                for (int i = 0; i < barsArray.Length; i++)
-                    timestampToIndex[barsArray[i].Timestamp] = i;
-
-                symbolDataMap[symbol] = new SymbolPreparedData(
-                    barsArray, atrArray, closesArray, sma200Array,
-                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
-
-                var firstTs = barsArray[0].Timestamp;
-                if (!actualDataFrom.HasValue || firstTs < actualDataFrom.Value)
-                    actualDataFrom = firstTs;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "{Symbol} 백테스트 데이터 로드 실패", symbol);
-                warnings.Add($"{symbol}: 데이터 로드 실패 — {ex.Message}");
-            }
-        }
-
-        if (symbolDataMap.Count == 0)
+        if (!prepared.HasData)
         {
             _logger.LogWarning("유효한 심볼 데이터가 없습니다");
-            return new BacktestResult { Warnings = warnings };
+            return new BacktestResult { Warnings = prepared.Warnings.ToList() };
         }
 
+        var simulator = new TradeSimulator(_indicators, _logger);
         return await RunSimulationAsync(
-            symbols, symbolDataMap, detectors, regimeByDate,
+            symbols, prepared.Symbols, detectors, regimeByDate,
             from, to, initialCapital, slippagePercent, commissionPerTrade,
             timeFrame, riskParams, exitOverrides, slippageModel,
-            warnings, actualDataFrom, simulator, weightStrategy, cumulativeRsi2Config, ct);
+            prepared.Warnings.ToList(), prepared.ActualDataFrom, simulator,
+            weightStrategy, cumulativeRsi2Config, ct);
     }
 
     /// <summary>
@@ -220,7 +172,7 @@ public class BacktestService : IBacktestService
     /// </summary>
     private async Task<BacktestResult> RunSimulationAsync(
         List<string> symbols,
-        Dictionary<string, SymbolPreparedData> symbolDataMap,
+        IReadOnlyDictionary<string, PreparedSymbolData> symbolDataMap,
         List<IPatternDetector> detectors,
         Dictionary<DateOnly, MarketRegime> regimeByDate,
         DateTime from, DateTime to,
@@ -238,7 +190,7 @@ public class BacktestService : IBacktestService
         CancellationToken ct)
     {
         // ── Phase 2: 날짜순 포트폴리오 시뮬레이션 ──
-        var allDates = BuildSimulationTimeline(symbolDataMap.Values, from);
+        var allDates = BacktestTimeline.Build(symbolDataMap.Values, from);
 
         var openPositions = new Dictionary<string, TradeSimulator.OpenPosition>();
         var trades = new List<TradeRecord>();
@@ -651,7 +603,7 @@ public class BacktestService : IBacktestService
                 if (openPositions.Count >= maxTotalPositions) break;
                 if (!symbolDataMap.TryGetValue(symbol, out var sd)) continue;
                 if (!sd.TimestampToIndex.TryGetValue(date, out var barIdx)) continue;
-                if (barIdx < TradeSimulator.MinWarmupBars) continue;
+                if (barIdx < BacktestDataPolicy.MinimumWarmupBars) continue;
 
                 var windowSize = Math.Min(barIdx + 1, maxWindow);
                 var windowStart = barIdx + 1 - windowSize;
@@ -1039,7 +991,7 @@ public class BacktestService : IBacktestService
     /// </summary>
     internal async Task<BacktestResult> RunCoreWithPreloadedDataAsync(
         List<string> symbols,
-        Dictionary<string, SymbolPreparedData> fullDataMap,
+        IReadOnlyDictionary<string, PreparedSymbolData> fullDataMap,
         List<IPatternDetector> detectors,
         Dictionary<DateOnly, MarketRegime> regimeByDate,
         DateTime from, DateTime to,
@@ -1053,89 +1005,28 @@ public class BacktestService : IBacktestService
         PatternSettings? effectivePatternSettings = null,
         CancellationToken ct = default)
     {
-        var simulator = new TradeSimulator(_indicators, _logger);
-        var warnings = new List<string>();
-        DateTime? actualDataFrom = null;
         effectivePatternSettings ??= ResolvePatternSettings(exitOverrides);
         var cumulativeRsi2Config = effectivePatternSettings.CumulativeRsi2;
-
-        // 사전 로드된 데이터에서 날짜 범위 슬라이싱 (API 재호출 없음)
-        var symbolDataMap = new Dictionary<string, SymbolPreparedData>();
-        var toDate = DateOnly.FromDateTime(to);
-
-        // warmupDays만큼 앞의 데이터가 필요하므로 from 이전 데이터도 포함
-        var warmupDays = BacktestTimeFramePolicy.Get(timeFrame).WarmupCalendarDays;
-        var fetchFrom = DateOnly.FromDateTime(from.AddDays(-warmupDays));
 
         var sliceSymbols = symbols
             .Concat(CollectReferenceSymbols(detectors))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        foreach (var symbol in sliceSymbols)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (!fullDataMap.TryGetValue(symbol, out var full)) continue;
+        var prepared = _dataPreparer.Slice(
+            fullDataMap, sliceSymbols, timeFrame, from, to, cumulativeRsi2Config);
 
-            // 날짜 범위에 해당하는 bar 인덱스 범위 결정
-            int startIdx = -1, endIdx = -1;
-            for (int i = 0; i < full.Bars.Length; i++)
-            {
-                var d = DateOnly.FromDateTime(full.Bars[i].Timestamp);
-                if (d >= fetchFrom && startIdx == -1) startIdx = i;
-                if (d <= toDate) endIdx = i;
-            }
-
-            if (startIdx == -1 || endIdx < startIdx) continue;
-
-            var barsSlice = full.Bars[startIdx..(endIdx + 1)];
-            var atrSlice  = full.Atr[startIdx..(endIdx + 1)];
-            var closesSlice = full.Closes[startIdx..(endIdx + 1)];
-            var sma200Slice = full.Sma200[startIdx..(endIdx + 1)];
-            var cumulativeRsi2Slice = _indicators.CumulativeRsi(
-                closesSlice, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
-            var cumulativeRsi2TrendMaSlice = _indicators.SMA(
-                closesSlice, cumulativeRsi2Config.LongTrendMaPeriod);
-
-            if (barsSlice.Length < TradeSimulator.MinWarmupBars)
-            {
-                warnings.Add($"{symbol}: 데이터 부족 ({barsSlice.Length}개)");
-                continue;
-            }
-
-            // 슬라이싱된 범위에 맞는 봉 시각 인덱스 재구성
-            var timestampToIndex = new Dictionary<DateTime, int>(barsSlice.Length);
-            for (int i = 0; i < barsSlice.Length; i++)
-                timestampToIndex[barsSlice[i].Timestamp] = i;
-
-            symbolDataMap[symbol] = new SymbolPreparedData(
-                barsSlice, atrSlice, closesSlice, sma200Slice,
-                cumulativeRsi2Slice, cumulativeRsi2TrendMaSlice, timestampToIndex);
-
-            var firstTs = barsSlice[0].Timestamp;
-            if (!actualDataFrom.HasValue || firstTs < actualDataFrom.Value)
-                actualDataFrom = firstTs;
-        }
-
-        if (symbolDataMap.Count == 0)
-            return new BacktestResult { Warnings = warnings };
+        if (!prepared.HasData)
+            return new BacktestResult { Warnings = prepared.Warnings.ToList() };
 
         // 이하 RunCoreAsync와 동일한 시뮬레이션 로직 (공통 메서드로 위임)
+        var simulator = new TradeSimulator(_indicators, _logger);
         return await RunSimulationAsync(
-            symbols, symbolDataMap, detectors, regimeByDate,
+            symbols, prepared.Symbols, detectors, regimeByDate,
             from, to, initialCapital, slippagePercent, commissionPerTrade,
             timeFrame, riskParams, exitOverrides, slippageModel,
-            warnings, actualDataFrom, simulator, weightStrategy, cumulativeRsi2Config, ct);
+            prepared.Warnings.ToList(), prepared.ActualDataFrom, simulator,
+            weightStrategy, cumulativeRsi2Config, ct);
     }
-
-    /// <summary>심볼별 사전 계산 데이터</summary>
-    internal sealed record SymbolPreparedData(
-        OhlcvBar[] Bars,
-        decimal[] Atr,
-        decimal[] Closes,
-        decimal[] Sma200,
-        decimal[] CumulativeRsi2,
-        decimal[] CumulativeRsi2TrendMa,
-        Dictionary<DateTime, int> TimestampToIndex);
 
     #region Walk-Forward Analysis
 
@@ -1153,44 +1044,14 @@ public class BacktestService : IBacktestService
 
         // ── 전체 기간 데이터 1회 사전 로드 (윈도우마다 API 재호출 방지) ──
         // 일봉 기준 warmup 400일치를 포함하여 충분히 이전 데이터부터 로드
-        var warmupDays = BacktestTimeFramePolicy.Get(request.TimeFrame).WarmupCalendarDays;
-        var wfFullDataMap = new Dictionary<string, SymbolPreparedData>();
         var walkForwardSymbols = request.Symbols
             .Concat(CollectReferenceSymbols(detectors))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        foreach (var symbol in walkForwardSymbols)
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                var fetchFrom = request.From.AddDays(-warmupDays);
-                var bars = await dataFeed.GetHistoricalBarsAsync(symbol, request.TimeFrame, fetchFrom, request.To, ct);
-                if (bars.Count < TradeSimulator.MinWarmupBars) continue;
-
-                var barsArray = bars.ToArray();
-                var atrArray = _indicators.ATR(barsArray, 14);
-                var closesArray = IndicatorService.ExtractCloses(barsArray);
-                var sma200Array = _indicators.SMA(closesArray, 200);
-                var cumulativeRsi2Array = _indicators.CumulativeRsi(
-                    closesArray, _basePatternSettings.CumulativeRsi2.RsiPeriod,
-                    _basePatternSettings.CumulativeRsi2.CumulativePeriod);
-                var cumulativeRsi2TrendMaArray = _indicators.SMA(
-                    closesArray, _basePatternSettings.CumulativeRsi2.LongTrendMaPeriod);
-
-                var timestampToIndex = new Dictionary<DateTime, int>(barsArray.Length);
-                for (int i = 0; i < barsArray.Length; i++)
-                    timestampToIndex[barsArray[i].Timestamp] = i;
-
-                wfFullDataMap[symbol] = new SymbolPreparedData(
-                    barsArray, atrArray, closesArray, sma200Array,
-                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Walk-Forward 사전 로드 실패: {Symbol}", symbol);
-            }
-        }
+        var walkForwardData = await _dataPreparer.PrepareAsync(
+            dataFeed, walkForwardSymbols, request.TimeFrame, request.From, request.To,
+            effectivePatternSettings.CumulativeRsi2, ct);
+        var wfFullDataMap = walkForwardData.Symbols;
 
         _logger.LogInformation("Walk-Forward 사전 데이터 로드 완료: {Count}개 심볼", wfFullDataMap.Count);
 
@@ -1339,14 +1200,6 @@ public class BacktestService : IBacktestService
     #endregion
 
     #region Helpers
-
-    internal static List<DateTime> BuildSimulationTimeline(IEnumerable<SymbolPreparedData> preparedData, DateTime from) =>
-        preparedData
-            .SelectMany(data => data.TimestampToIndex.Keys)
-            .Distinct()
-            .Where(timestamp => timestamp >= from)
-            .OrderBy(timestamp => timestamp)
-            .ToList();
 
     private static IReadOnlyCollection<string> CollectReferenceSymbols(IEnumerable<IPatternDetector> detectors)
     {
@@ -1559,51 +1412,19 @@ public class BacktestService : IBacktestService
             ? request.OptimizeParams.TimeFrameOptions.Select(tf => (Models.Enums.TimeFrame)tf).Distinct().ToList()
             : new List<Models.Enums.TimeFrame> { request.TimeFrame };
 
-        var dataByTimeFrame = new Dictionary<Models.Enums.TimeFrame, Dictionary<string, SymbolPreparedData>>();
+        var dataByTimeFrame = new Dictionary<Models.Enums.TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>>();
+        var optimizationSymbols = request.Symbols
+            .Concat(CollectReferenceSymbols([new RuleBasedDetector(_indicators, request.BasePattern)]))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         foreach (var tf in timeFramesToLoad)
         {
-            var warmupDays = BacktestTimeFramePolicy.Get(tf).WarmupCalendarDays;
-            var tfDataMap = new Dictionary<string, SymbolPreparedData>();
-            var optimizationSymbols = request.Symbols
-                .Concat(CollectReferenceSymbols([new RuleBasedDetector(_indicators, request.BasePattern)]))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            foreach (var symbol in optimizationSymbols)
-            {
-                ct.ThrowIfCancellationRequested();
-                try
-                {
-                    var fetchFrom = request.From.AddDays(-warmupDays);
-                    var bars = await dataFeed.GetHistoricalBarsAsync(
-                        symbol, tf, fetchFrom, request.To, ct);
-                    if (bars.Count < TradeSimulator.MinWarmupBars) continue;
-
-                    var barsArray   = bars.ToArray();
-                    var atrArray    = _indicators.ATR(barsArray, 14);
-                    var closesArray = IndicatorService.ExtractCloses(barsArray);
-                    var sma200Array = _indicators.SMA(closesArray, 200);
-                    var cumulativeRsi2Array = _indicators.CumulativeRsi(
-                        closesArray, _basePatternSettings.CumulativeRsi2.RsiPeriod,
-                        _basePatternSettings.CumulativeRsi2.CumulativePeriod);
-                    var cumulativeRsi2TrendMaArray = _indicators.SMA(
-                        closesArray, _basePatternSettings.CumulativeRsi2.LongTrendMaPeriod);
-
-                    var timestampToIndex = new Dictionary<DateTime, int>(barsArray.Length);
-                    for (int i = 0; i < barsArray.Length; i++)
-                        timestampToIndex[barsArray[i].Timestamp] = i;
-
-                    tfDataMap[symbol] = new SymbolPreparedData(
-                        barsArray, atrArray, closesArray, sma200Array,
-                        cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "최적화 데이터 로드 실패: {Symbol}/{TF}", symbol, tf);
-                }
-            }
-            if (tfDataMap.Count > 0)
-                dataByTimeFrame[tf] = tfDataMap;
+            var prepared = await _dataPreparer.PrepareAsync(
+                dataFeed, optimizationSymbols, tf, request.From, request.To,
+                _basePatternSettings.CumulativeRsi2, ct);
+            if (prepared.HasData)
+                dataByTimeFrame[tf] = prepared.Symbols;
         }
 
         if (dataByTimeFrame.Count == 0)
