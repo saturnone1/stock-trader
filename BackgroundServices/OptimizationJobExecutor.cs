@@ -376,7 +376,7 @@ public class OptimizationJobExecutor
         IReadOnlyDictionary<string, PreparedSymbolData> fullDataMap,
         Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>> dataByTimeFrame,
         Dictionary<DateOnly, MarketRegime> regimeByDate,
-        BacktestService.RiskParams riskParams,
+        BacktestRiskParameters riskParams,
         DateTime isTo,
         CancellationToken ct)
     {

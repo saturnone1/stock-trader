@@ -81,6 +81,22 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BacktestServiceDelegatesPreparedDataSimulationAndExecutionCosts()
+    {
+        var repository = FindRepositoryRoot();
+        var servicePath = Path.Combine(repository, "Services/Backtest/BacktestService.cs");
+        var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
+        var service = File.ReadAllText(servicePath);
+        var engine = File.ReadAllText(enginePath);
+
+        File.ReadAllLines(servicePath).Length.Should().BeLessThanOrEqualTo(800);
+        service.Should().Contain("_simulationEngine.RunAsync(");
+        service.Should().NotContain("private async Task<BacktestResult> RunSimulationAsync(");
+        service.Should().NotContain("volatilityFactor");
+        engine.Should().Contain("BacktestExecutionCostLedger");
+    }
+
+    [Fact]
     public void OptimizationExecutorDelegatesMarketDataPreparation()
     {
         var repository = FindRepositoryRoot();

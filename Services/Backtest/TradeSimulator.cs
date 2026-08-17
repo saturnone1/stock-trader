@@ -38,7 +38,7 @@ internal sealed class TradeSimulator
         DateTime from,
         decimal capital,
         TimeFrame timeFrame,
-        BacktestService.RiskParams riskParams,
+        BacktestRiskParameters riskParams,
         PatternParameterOverrides? exitOverrides,
         CancellationToken ct)
     {

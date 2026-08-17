@@ -25,14 +25,19 @@
   database position before contacting a broker, persists the broker order ID, waits on ambiguous
   states instead of resubmitting, and finalizes the position plus trade record in one transaction.
   The broker port returns a trackable `BrokerOrder` instead of discarding it as a boolean.
-- `Program.cs` is now a 58-line composition root. Health, authentication, order, and backtest APIs
+- `Program.cs` is now a 59-line composition root. Health, authentication, order, and backtest APIs
   are registered through feature endpoint modules; startup migration/recovery/seeding and the web
   middleware pipeline have dedicated extensions. A route-table test verifies the extracted public
   routes are registered exactly once.
+- Prepared-data execution now runs behind `BacktestSimulationEngine`; `BacktestService` coordinates
+  data loading, walk-forward, and optimization instead of owning the date-by-date portfolio loop.
+  Execution costs are isolated in `BacktestExecutionCostLedger`, with regression tests covering
+  fixed/adaptive slippage and exactly-once commission application. Result/metric construction is
+  isolated in `BacktestResultBuilder`; portfolio runtime state remains the next extraction target.
 
-Remaining Phase 2 work is primarily the extraction of portfolio and metric orchestration from
-`BacktestService`, operational visibility and recovery controls for pending live exits, and broader
-preview/backtest/live parity fixtures.
+Remaining Phase 2 work is primarily the extraction of portfolio state and metric/result orchestration
+from `BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
+and broader preview/backtest/live parity fixtures.
 
 ## Phase 0 — Guardrails and governance
 
