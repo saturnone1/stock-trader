@@ -12,6 +12,23 @@ public class ArchitectureDependencyTests
         "using StockTrader.BackgroundServices"
     ];
 
+    [Fact]
+    public void DesktopBacktestDelegatesPureResearchCalculations()
+    {
+        var repository = FindRepositoryRoot();
+        var pagePath = Path.Combine(repository, "desktop-app/src/pages/Backtest.svelte");
+        var page = File.ReadAllText(pagePath);
+        var research = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestResearch.js"));
+
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(2_000);
+        page.Should().Contain("from '../features/backtest/backtestResearch'");
+        page.Should().NotContain("function getWhipsawStats(");
+        page.Should().NotContain("const factorExperimentPresets = [");
+        research.Should().Contain("export function getWhipsawStats(");
+        research.Should().Contain("export function getEquityCurveVolatility(");
+    }
+
     [Theory]
     [InlineData("Domain")]
     [InlineData("Application")]

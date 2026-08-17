@@ -148,6 +148,11 @@ Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate 
 - Remove frontend copies of backend catalogs.
 - Freeze and then remove legacy Blazor routes and packages after usage verification.
 
+Progress: `Backtest.svelte` now imports timing/factor research catalogs, symbol-set operations,
+formatters, whipsaw classification, and equity-curve volatility from
+`features/backtest/backtestResearch.js`. This first pure boundary reduced the page from 2,130 to
+1,988 lines and is the shared base for extracting the result and factor-lab panels next.
+
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 
 ## Phase 6 — Operations cleanup
