@@ -17,12 +17,11 @@ public class PatternDetectionService
     private readonly IPatternStatsRepository _statsRepo;
     private readonly ISignalScorer _signalScorer;
     private readonly IMarketRegimeClassifier _regimeClassifier;
-    private readonly IIndicatorService _indicators;
+    private readonly ICustomStrategyDetectorFactory _customDetectors;
     private readonly IOhlcvRepository _ohlcvRepository;
     private readonly ICompiledStrategyRepository _strategies;
     private readonly AppDbContext _db;
     private readonly ILogger<PatternDetectionService> _logger;
-    private readonly TimeProvider _timeProvider;
 
     public PatternDetectionService(
         IEnumerable<IPatternDetector> detectors,
@@ -30,11 +29,10 @@ public class PatternDetectionService
         IPatternStatsRepository statsRepo,
         ISignalScorer signalScorer,
         IMarketRegimeClassifier regimeClassifier,
-        IIndicatorService indicators,
+        ICustomStrategyDetectorFactory customDetectors,
         IOhlcvRepository ohlcvRepository,
         ICompiledStrategyRepository strategies,
         AppDbContext db,
-        TimeProvider timeProvider,
         ILogger<PatternDetectionService> logger)
     {
         _detectors = detectors;
@@ -42,11 +40,10 @@ public class PatternDetectionService
         _statsRepo = statsRepo;
         _signalScorer = signalScorer;
         _regimeClassifier = regimeClassifier;
-        _indicators = indicators;
+        _customDetectors = customDetectors;
         _ohlcvRepository = ohlcvRepository;
         _strategies = strategies;
         _db = db;
-        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -116,7 +113,7 @@ public class PatternDetectionService
             {
                 if (bars.Length == 0 || strategy.TimeFrame != bars[^1].TimeFrame)
                     continue;
-                var detector = new RuleBasedDetector(_indicators, strategy, _timeProvider);
+                var detector = _customDetectors.Create(strategy);
                 var referenceData = await LoadReferenceDataAsync(strategy, symbol, bars, ct);
                 detector.SetReferenceData(referenceData, bars[^1].Timestamp);
                 var signal = await detector.DetectAsync(symbol, bars, effectiveRegime, ct);

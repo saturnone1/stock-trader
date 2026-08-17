@@ -12,7 +12,7 @@ namespace StockTrader.Services.Patterns;
 /// 사용자 정의 규칙 기반 패턴 감지기.
 /// 22종 지표 + 6종 연산자 + withinBars 메타조건을 지원합니다.
 /// </summary>
-public class RuleBasedDetector : IPatternDetector
+public class RuleBasedDetector : ICustomStrategyDetector
 {
     private readonly RuleIndicatorEvaluator _indicatorEvaluator;
     private readonly RuleConditionEvaluator _conditionEvaluator;
@@ -40,7 +40,7 @@ public class RuleBasedDetector : IPatternDetector
     public CustomPatternDefinition Definition => _definition;
     public CompiledStrategy Strategy => _strategy;
 
-    public RuleBasedDetector(
+    internal RuleBasedDetector(
         IIndicatorService indicators,
         CustomPatternDefinition definition,
         TimeProvider timeProvider)
@@ -48,7 +48,7 @@ public class RuleBasedDetector : IPatternDetector
     {
     }
 
-    public RuleBasedDetector(
+    internal RuleBasedDetector(
         IIndicatorService indicators,
         CompiledStrategy strategy,
         TimeProvider timeProvider)

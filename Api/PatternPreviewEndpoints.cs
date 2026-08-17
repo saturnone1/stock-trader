@@ -44,7 +44,7 @@ public static class PatternPreviewEndpoints
         IOhlcvRepository ohlcvRepository,
         IDataFeedServiceFactory dataFeedFactory,
         IIndicatorService indicators,
-        TimeProvider timeProvider,
+        ICustomStrategyDetectorFactory customDetectors,
         CancellationToken ct)
     {
         var symbol = (request.Symbol ?? string.Empty).Trim().ToUpperInvariant();
@@ -118,7 +118,7 @@ public static class PatternPreviewEndpoints
 
         var latest = allBars[^1];
 
-        var detector = new RuleBasedDetector(indicators, strategy, timeProvider);
+        var detector = customDetectors.Create(strategy);
         var circuitBreaker = strategy.CircuitBreaker;
         var reentry = strategy.Reentry;
         var portfolioRules = strategy.PortfolioRules;

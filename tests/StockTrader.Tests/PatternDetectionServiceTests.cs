@@ -49,11 +49,10 @@ public class PatternDetectionServiceTests
             _statsRepoMock.Object,
             _signalScorerMock.Object,
             _regimeClassifierMock.Object,
-            Mock.Of<IIndicatorService>(),
+            Mock.Of<ICustomStrategyDetectorFactory>(),
             Mock.Of<IOhlcvRepository>(),
             strategies,
             db,
-            TimeProvider.System,
             NullLogger<PatternDetectionService>.Instance);
     }
 

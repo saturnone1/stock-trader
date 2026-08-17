@@ -318,6 +318,55 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void ProductionPathsUseTheCustomStrategyDetectorContractAndFactory()
+    {
+        var repository = FindRepositoryRoot();
+        var factoryPath = Path.Combine(repository, "Services/Patterns/CustomStrategyDetectorFactory.cs");
+        var detectorPath = Path.Combine(repository, "Services/Patterns/RuleBasedDetector.cs");
+        var contract = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/ICustomStrategyDetector.cs"));
+        var factory = File.ReadAllText(factoryPath);
+        var detector = File.ReadAllText(detectorPath);
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/PatternServiceExtensions.cs"));
+        var productionRoots = new[] { "Api", "Application", "BackgroundServices", "Services" };
+        var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            Path.GetFullPath(factoryPath),
+            Path.GetFullPath(detectorPath)
+        };
+        var forbidden = new[]
+        {
+            "new RuleBasedDetector(",
+            "OfType<RuleBasedDetector>",
+            "as RuleBasedDetector"
+        };
+        var violations = productionRoots
+            .SelectMany(root => Directory.EnumerateFiles(
+                Path.Combine(repository, root), "*.cs", SearchOption.AllDirectories))
+            .Where(path => !excluded.Contains(Path.GetFullPath(path)))
+            .SelectMany(path => forbidden
+                .Where(token => File.ReadAllText(path).Contains(token, StringComparison.Ordinal))
+                .Select(token => $"{Path.GetRelativePath(repository, path)} -> {token}"))
+            .ToArray();
+
+        violations.Should().BeEmpty(
+            "미리보기·백테스트·최적화·실시간 경로는 구체 감지기를 직접 조립하거나 캐스팅하면 안 됩니다");
+        contract.Should().Contain("public interface ICustomStrategyDetector : IPatternDetector");
+        contract.Should().Contain("public interface ICustomStrategyDetectorFactory");
+        factory.Should().Contain("new RuleBasedDetector(_indicators, strategy, _timeProvider)");
+        detector.Should().Contain("internal RuleBasedDetector(");
+        registrations.Should().Contain(
+            "AddSingleton<ICustomStrategyDetectorFactory, CustomStrategyDetectorFactory>()");
+
+        var factoryTests = File.ReadAllText(Path.Combine(
+            repository, "tests/StockTrader.Tests/CustomStrategyDetectorFactoryTests.cs"));
+        factoryTests.Should().Contain("FromCompiledStrategyPreservesTheExactCompiledAggregate");
+        factoryTests.Should().Contain("ReturnsAnIsolatedRuntimeForEveryExecutionScope");
+        factoryTests.Should().Contain("InvalidDefinitionCannotBypassCentralCompilation");
+    }
+
+    [Fact]
     public void LiveStrategyExecutionPathsUseCompiledRepositoryBoundary()
     {
         var repository = FindRepositoryRoot();

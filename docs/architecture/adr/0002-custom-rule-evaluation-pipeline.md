@@ -28,6 +28,8 @@ Custom-rule evaluation is an ordered, deterministic pipeline with the following 
    explanations.
 5. `DynamicExitPricePolicy` owns initial custom-strategy stop and target selection.
 6. `RuleBasedDetector` coordinates these components and assembles the signal.
+7. `CustomStrategyDetectorFactory` is the only production composition boundary. Consumers depend on
+   `ICustomStrategyDetector` and cannot construct or cast to `RuleBasedDetector` directly.
 
 Bar arrays, reference data, the reference as-of boundary, and the observation clock are explicit
 inputs. The detector must not read the system clock directly. API, worker, preview, optimization, and
@@ -43,5 +45,7 @@ internal and have no EF Core, ASP.NET, HTTP, broker SDK, or configuration depend
 - Preview, backtest, optimization, and live paths construct the same detector pipeline.
 - Signal observation time can be fixed in tests and replayed deterministically.
 - Adding an indicator, comparison operator, group rule, or price-level method has one named owner.
+- Preview, backtest, optimization, scanning, and live exits cannot drift into different constructor
+  graphs because they all resolve the same factory.
 - The detector remains responsible for entry/exit/scaling orchestration until those application
   use cases are separated in a later phase.

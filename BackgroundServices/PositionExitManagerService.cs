@@ -37,6 +37,7 @@ public class PositionExitManagerService : BackgroundService
     private readonly IAccountManager _accountManager;
     private readonly INotificationService _notificationService;
     private readonly IIndicatorService _indicators;
+    private readonly ICustomStrategyDetectorFactory _customDetectors;
     private readonly IOptionsMonitor<PatternSettings> _patternSettings;
     private readonly TradingSettings _tradingSettings;
     private readonly IMarketCalendar _marketCalendar;
@@ -51,6 +52,7 @@ public class PositionExitManagerService : BackgroundService
         IAccountManager accountManager,
         INotificationService notificationService,
         IIndicatorService indicators,
+        ICustomStrategyDetectorFactory customDetectors,
         IOptionsMonitor<PatternSettings> patternSettings,
         IOptions<TradingSettings> tradingSettings,
         IMarketCalendar marketCalendar,
@@ -61,6 +63,7 @@ public class PositionExitManagerService : BackgroundService
         _accountManager = accountManager;
         _notificationService = notificationService;
         _indicators = indicators;
+        _customDetectors = customDetectors;
         _patternSettings = patternSettings;
         _tradingSettings = tradingSettings.Value;
         _marketCalendar = marketCalendar;
@@ -329,7 +332,7 @@ public class PositionExitManagerService : BackgroundService
         else if (customStrategy != null && recentBars is { Count: >= 50 })
         {
             strategyExit = null;
-            var detector = new RuleBasedDetector(_indicators, customStrategy, _timeProvider);
+            var detector = _customDetectors.Create(customStrategy);
             detector.SetReferenceData(await LoadReferenceDataAsync(customStrategy, position.Symbol, recentBars, ohlcvRepo, ct), UtcNow);
             if (detector.ShouldExit(recentBars.ToArray()))
                 strategyExit = new StrategyExitInstruction(position.CurrentPrice, $"{customStrategy.Name} 매도 조건 충족");

@@ -11,7 +11,7 @@ namespace StockTrader.Services.Backtest;
 internal sealed class BacktestStrategyRuntimeRegistry
 {
     private readonly Dictionary<string, BacktestStrategyRuntime> _runtimes;
-    private readonly Dictionary<string, RuleBasedDetector> _detectorsByName;
+    private readonly Dictionary<string, ICustomStrategyDetector> _detectorsByName;
     private readonly Dictionary<string, OhlcvBar[]>? _referenceData;
     private readonly Dictionary<string, int> _reentryCooldowns =
         new(StringComparer.OrdinalIgnoreCase);
@@ -22,7 +22,7 @@ internal sealed class BacktestStrategyRuntimeRegistry
         decimal initialCapital)
     {
         _detectorsByName = detectors
-            .OfType<RuleBasedDetector>()
+            .OfType<ICustomStrategyDetector>()
             .GroupBy(detector => detector.Definition.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         _runtimes = _detectorsByName.ToDictionary(
@@ -53,7 +53,7 @@ internal sealed class BacktestStrategyRuntimeRegistry
             ? runtime
             : null;
 
-    public RuleBasedDetector? FindDetector(string? strategyName) =>
+    public ICustomStrategyDetector? FindDetector(string? strategyName) =>
         !string.IsNullOrWhiteSpace(strategyName)
         && _detectorsByName.TryGetValue(strategyName, out var detector)
             ? detector

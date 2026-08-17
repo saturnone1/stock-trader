@@ -38,7 +38,7 @@ public sealed class BacktestSignalEntryProcessor
             {
                 try
                 {
-                    var ruleDetector = detector as RuleBasedDetector;
+                    var ruleDetector = detector as ICustomStrategyDetector;
                     var strategyRuntime = context.RuntimeRegistry.Find(
                         ruleDetector?.Definition.Name);
                     var portfolioRules = strategyRuntime?.Portfolio;

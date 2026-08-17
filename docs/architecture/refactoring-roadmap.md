@@ -110,6 +110,10 @@
 - Custom-rule signal timestamps now come from an explicitly supplied `TimeProvider`; the detector
   no longer reads `DateTime.UtcNow`. Live scanning and preview receive the application clock, while
   tests can replay an identical observation timestamp without changing strategy semantics.
+- `ICustomStrategyDetector` is now the runtime contract used by preview, backtest, optimization,
+  scanning, and live exits. `CustomStrategyDetectorFactory` is the sole production constructor for
+  `RuleBasedDetector`; production code no longer creates or casts the concrete detector directly,
+  and every execution receives a fresh runtime over the same compiled-strategy semantics.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.
