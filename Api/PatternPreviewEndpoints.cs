@@ -2,6 +2,7 @@ using System.Text.Json;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Services.DataFeed;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
 
@@ -34,6 +35,7 @@ public static class PatternPreviewEndpoints
     private static async Task<IResult> PreviewAsync(
         PatternPreviewRequest request,
         IOhlcvRepository ohlcvRepository,
+        IDataFeedServiceFactory dataFeedFactory,
         IIndicatorService indicators,
         CancellationToken ct)
     {
@@ -45,16 +47,10 @@ public static class PatternPreviewEndpoints
             return Results.BadRequest(new { error = "미리보기 패턴 정의가 필요합니다." });
 
         var displayCount = Math.Clamp(request.Bars <= 0 ? 120 : request.Bars, 60, 240);
-        var latest = await ohlcvRepository.GetLatestBarAsync(symbol, TimeFrame.Daily, ct);
-        if (latest is null)
-            return Results.NotFound(new { error = $"{symbol} 일봉 데이터가 없습니다." });
-
+        var dataTo = DateTime.UtcNow.AddDays(1);
+        var dataFrom = DateTime.UtcNow.AddYears(-3);
         var allBars = (await ohlcvRepository.GetBarsAsync(
-                symbol,
-                TimeFrame.Daily,
-                latest.Timestamp.AddYears(-3),
-                latest.Timestamp.AddDays(1),
-                ct))
+                symbol, TimeFrame.Daily, dataFrom, dataTo, ct))
             .OrderBy(bar => bar.Timestamp)
             .GroupBy(bar => bar.Timestamp)
             .Select(group => group.Last())
@@ -62,7 +58,35 @@ public static class PatternPreviewEndpoints
             .ToArray();
 
         if (allBars.Length < 50)
-            return Results.BadRequest(new { error = $"{symbol} 패턴 평가에 필요한 일봉 데이터가 부족합니다." });
+        {
+            try
+            {
+                var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
+                var fetched = await dataFeed.GetHistoricalBarsAsync(
+                    symbol, TimeFrame.Daily, dataFrom, dataTo, ct);
+                if (fetched.Count > 0)
+                    await ohlcvRepository.AddBarsAsync(fetched, ct);
+            }
+            catch (Exception)
+            {
+                return Results.Json(
+                    new { error = $"{symbol} 일봉을 현재 데이터 제공자에서 가져오지 못했습니다." },
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
+
+            allBars = (await ohlcvRepository.GetBarsAsync(
+                    symbol, TimeFrame.Daily, dataFrom, dataTo, ct))
+                .OrderBy(bar => bar.Timestamp)
+                .GroupBy(bar => bar.Timestamp)
+                .Select(group => group.Last())
+                .TakeLast(displayCount + 260)
+                .ToArray();
+        }
+
+        if (allBars.Length < 50)
+            return Results.NotFound(new { error = $"{symbol} 일봉을 찾을 수 없거나 패턴 평가에 필요한 데이터가 부족합니다." });
+
+        var latest = allBars[^1];
 
         var detector = new RuleBasedDetector(indicators, request.Pattern);
         var referenceBars = await LoadReferenceBarsAsync(
