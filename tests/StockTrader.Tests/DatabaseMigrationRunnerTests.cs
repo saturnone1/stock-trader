@@ -10,6 +10,75 @@ namespace StockTrader.Tests;
 public class DatabaseMigrationRunnerTests
 {
     [Fact]
+    public async Task SchemaMigrator_EmptyDatabaseIsCreatedOnlyByEfMigrations()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+        var migrator = CreateSchemaMigrator(db);
+
+        await migrator.MigrateAsync();
+        await migrator.MigrateAsync();
+
+        (await TableExistsAsync(connection, "OhlcvBars")).Should().BeTrue();
+        (await TableExistsAsync(connection, "CustomPatterns")).Should().BeTrue();
+        (await TableExistsAsync(connection, "__EFMigrationsHistory")).Should().BeTrue();
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM __EFMigrationsHistory")).Should().Be(1);
+        (await TableExistsAsync(connection, DatabaseMigrationRunner.HistoryTable)).Should().BeFalse(
+            "새 데이터베이스는 레거시 보정기를 거치면 안 됩니다");
+    }
+
+    [Fact]
+    public async Task SchemaMigrator_CurrentLegacyDatabasePreservesRowsAndAdoptsInitialEfBaseline()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using (var setup = CreateContext(connection))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.Positions.Add(new StockTrader.Models.Position
+            {
+                Symbol = "TQQQ",
+                EntryPrice = 100m,
+                CurrentPrice = 101m,
+                StopLossPrice = 95m,
+                TargetPrice = 110m,
+                Quantity = 3
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var db = CreateContext(connection);
+
+        await CreateSchemaMigrator(db).MigrateAsync();
+
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM Positions WHERE Symbol = 'TQQQ' AND Quantity = 3")).Should().Be(1);
+        (await ScalarAsync<long>(connection,
+            $"SELECT COUNT(*) FROM \"{DatabaseMigrationRunner.HistoryTable}\"")).Should().Be(3);
+        (await ScalarAsync<string>(connection,
+            "SELECT MigrationId FROM __EFMigrationsHistory LIMIT 1"))
+            .Should().EndWith(DatabaseSchemaMigrator.InitialMigrationSuffix);
+    }
+
+    [Fact]
+    public async Task SchemaMigrator_IncompleteLegacyDatabaseRefusesToForgeEfHistory()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await ExecuteAsync(connection, """
+            CREATE TABLE Positions (Id INTEGER PRIMARY KEY AUTOINCREMENT, Symbol TEXT NOT NULL DEFAULT '');
+            INSERT INTO Positions (Symbol) VALUES ('TQQQ');
+            """);
+        await using var db = CreateContext(connection);
+
+        var action = () => CreateSchemaMigrator(db).MigrateAsync();
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*EF 초기 스키마와 일치하지 않아*");
+        (await TableExistsAsync(connection, "__EFMigrationsHistory")).Should().BeFalse();
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM Positions WHERE Symbol = 'TQQQ'")).Should().Be(1);
+    }
+
+    [Fact]
     public async Task MigrateAsync_EmptyDatabaseCreatesCurrentSchemaAndRunsOnlyOnce()
     {
         await using var connection = await OpenConnectionAsync();
@@ -165,6 +234,19 @@ public class DatabaseMigrationRunnerTests
 
     private static DatabaseMigrationRunner CreateRunner(AppDbContext db, params IDatabaseMigration[] migrations) =>
         new(db, migrations, NullLogger<DatabaseMigrationRunner>.Instance);
+
+    private static DatabaseSchemaMigrator CreateSchemaMigrator(AppDbContext db)
+    {
+        var legacy = CreateRunner(
+            db,
+            new LegacySchemaBaselineMigration(NullLogger<LegacySchemaBaselineMigration>.Instance),
+            new PositionExecutionStateMigration(),
+            new PositionExitIntentMigration());
+        return new DatabaseSchemaMigrator(
+            db,
+            legacy,
+            NullLogger<DatabaseSchemaMigrator>.Instance);
+    }
 
     private static AppDbContext CreateContext(SqliteConnection connection) => new(
         new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);

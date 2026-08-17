@@ -11,6 +11,26 @@ namespace StockTrader.Extensions;
 
 public static class ApplicationInitializationExtensions
 {
+    public static async Task<bool> VerifyEfBaselineCompatibilityAsync(this WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var compatibility = await scope.ServiceProvider
+            .GetRequiredService<EfBaselineCompatibilityValidator>()
+            .ValidateAsync(CancellationToken.None);
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+            .CreateLogger(typeof(ApplicationInitializationExtensions));
+        if (compatibility.IsCompatible)
+        {
+            logger.LogInformation("EF baseline compatibility verification passed");
+            return true;
+        }
+
+        logger.LogError(
+            "EF baseline compatibility verification failed: {Differences}",
+            compatibility.Describe());
+        return false;
+    }
+
     public static async Task InitializeStockTraderAsync(this WebApplication app)
     {
         using var scope = app.Services.CreateScope();
@@ -18,7 +38,7 @@ public static class ApplicationInitializationExtensions
         var logger = services.GetRequiredService<ILoggerFactory>()
             .CreateLogger(typeof(ApplicationInitializationExtensions));
 
-        await services.GetRequiredService<DatabaseMigrationRunner>().MigrateAsync();
+        await services.GetRequiredService<DatabaseSchemaMigrator>().MigrateAsync();
         await RecoverOptimizationJobsAsync(services, logger);
         await SeedDefaultAlpacaAccountAsync(app.Configuration, services, logger);
 

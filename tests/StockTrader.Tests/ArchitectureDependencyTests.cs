@@ -389,7 +389,7 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
-    public void ProgramDelegatesSchemaChangesToVersionedMigrationRunner()
+    public void StartupUsesEfSchemaMigratorAndKeepsLegacySqlBehindCompatibilityBoundary()
     {
         var repository = FindRepositoryRoot();
         var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
@@ -397,11 +397,48 @@ public class ArchitectureDependencyTests
             repository, "Extensions/ApplicationInitializationExtensions.cs"));
 
         program.Should().Contain("InitializeStockTraderAsync(");
-        initialization.Should().Contain("DatabaseMigrationRunner");
+        initialization.Should().Contain("DatabaseSchemaMigrator");
+        initialization.Should().NotContain("DatabaseMigrationRunner");
         (program + initialization).Should().NotContain("ALTER TABLE");
         (program + initialization).Should().NotContain("PRAGMA table_info");
         (program + initialization).Should().NotContain("CREATE TABLE");
         (program + initialization).Should().NotContain("EnsureCreatedAsync");
+
+        var legacyRunner = File.ReadAllText(Path.Combine(
+            repository, "Data/Migrations/DatabaseMigrationRunner.cs"));
+        var schemaMigrator = File.ReadAllText(Path.Combine(
+            repository, "Data/Migrations/DatabaseSchemaMigrator.cs"));
+        var efMigration = Directory.EnumerateFiles(
+                Path.Combine(repository, "Data/EfMigrations"), "*_InitialSchema.cs")
+            .Single();
+        var toolManifest = File.ReadAllText(Path.Combine(repository, "dotnet-tools.json"));
+
+        legacyRunner.Should().NotContain("EnsureCreated");
+        schemaMigrator.Should().Contain("_db.Database.MigrateAsync(");
+        schemaMigrator.Should().Contain("EfBaselineCompatibilityValidator");
+        schemaMigrator.Should().Contain("GetInsertScript(new HistoryRow(");
+        program.Should().Contain("--verify-ef-baseline");
+        initialization.Should().Contain("VerifyEfBaselineCompatibilityAsync");
+        File.ReadAllText(efMigration).Should().Contain("migrationBuilder.CreateTable(");
+        File.Exists(Path.Combine(
+            repository, "Data/EfMigrations/AppDbContextModelSnapshot.cs")).Should().BeTrue();
+        toolManifest.Should().Contain("\"dotnet-ef\"");
+        toolManifest.Should().Contain("\"10.0.10\"");
+
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/DataServiceExtensions.cs"));
+        var legacyImplementations = Directory.EnumerateFiles(
+                Path.Combine(repository, "Data/Migrations"), "*.cs")
+            .Where(path => File.ReadAllText(path).Contains(": IDatabaseMigration", StringComparison.Ordinal))
+            .Select(Path.GetFileNameWithoutExtension)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        legacyImplementations.Should().Equal(
+            "LegacySchemaBaselineMigration",
+            "PositionExecutionStateMigration",
+            "PositionExitIntentMigration");
+        registrations.Split("AddScoped<IDatabaseMigration", StringSplitOptions.None).Length.Should().Be(4,
+            "세 개의 기존 호환 리더 외에 새 수동 스키마 마이그레이션을 등록하면 안 됩니다");
     }
 
     [Fact]

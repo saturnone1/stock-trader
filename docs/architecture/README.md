@@ -90,9 +90,17 @@ monitoring and the operator API call the same use case. Position responses use o
 shows whether an exit is ready, missing a confirmed broker order ID, or awaiting broker resolution;
 the operator can request reconciliation but cannot force-clear an uncertain order.
 
+Database schema ownership now crosses a fail-closed EF Core baseline boundary. Empty databases are
+created from the generated initial migration. Existing SQLite databases run only the frozen legacy
+compatibility readers, must match every EF table, column, and named index, and then adopt the initial
+EF history row before later migrations run. `--verify-ef-baseline` performs the same comparison
+without writes so production volumes can be checked before rollout.
+
 ## Decision records
 
 - `adr/0001-modular-monolith.md`: why a modular monolith is the target.
 - `adr/0002-custom-rule-evaluation-pipeline.md`: deterministic ownership of custom-rule indicators,
   conditions, groups, dynamic price levels, reference history, and observation time.
+- `adr/0003-ef-core-migration-baseline.md`: safe adoption of EF schema history by new and legacy SQLite
+  databases.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

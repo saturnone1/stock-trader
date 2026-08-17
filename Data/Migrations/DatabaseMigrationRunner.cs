@@ -28,7 +28,6 @@ public sealed class DatabaseMigrationRunner
 
     public async Task MigrateAsync(CancellationToken ct = default)
     {
-        await _db.Database.EnsureCreatedAsync(ct);
         var connection = _db.Database.GetDbConnection();
         if (connection.State != ConnectionState.Open) await connection.OpenAsync(ct);
 

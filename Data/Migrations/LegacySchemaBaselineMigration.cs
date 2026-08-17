@@ -4,7 +4,7 @@ namespace StockTrader.Data.Migrations;
 
 /// <summary>
 /// EnsureCreated 기반으로 운영되던 모든 과거 스키마 보정을 하나의 추적 가능한 기준선으로 이관한다.
-/// 이후 변경은 이 파일을 수정하지 않고 새 IDatabaseMigration으로 추가한다.
+/// EF 기준선 채택 전 기존 DB에만 적용되는 동결된 호환 리더이며 새 스키마 변경을 추가하지 않는다.
 /// </summary>
 public sealed class LegacySchemaBaselineMigration : IDatabaseMigration
 {

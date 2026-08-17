@@ -114,6 +114,11 @@
   scanning, and live exits. `CustomStrategyDetectorFactory` is the sole production constructor for
   `RuleBasedDetector`; production code no longer creates or casts the concrete detector directly,
   and every execution receives a fresh runtime over the same compiled-strategy semantics.
+- EF Core now owns the generated initial schema, model snapshot, and future schema history. Empty
+  databases migrate directly through EF. Existing databases run the frozen compatibility reader,
+  must pass table/column/index parity, and only then adopt the initial EF history row. A read-only
+  `--verify-ef-baseline` mode supports production preflight; tests cover empty creation, row-preserving
+  baseline adoption, idempotency, and fail-closed handling of incomplete legacy schemas.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

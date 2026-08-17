@@ -42,6 +42,11 @@ try
     });
 
     var app = builder.Build();
+    if (args.Contains("--verify-ef-baseline", StringComparer.Ordinal))
+    {
+        Environment.ExitCode = await app.VerifyEfBaselineCompatibilityAsync() ? 0 : 2;
+        return;
+    }
     await app.InitializeStockTraderAsync();
     app.UseStockTraderPipeline();
     app.MapStockTraderApi();
