@@ -1,4 +1,5 @@
 using FluentAssertions;
+using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Backtest;
@@ -69,7 +70,7 @@ public class BacktestExecutionAdapterTests
         bool partial = false,
         decimal equityAtEntry = 0m)
     {
-        var profile = new BacktestExecutionAdapter.PatternExitProfile(
+        var profile = new LongPositionExitPolicy(
             MaxHoldingBars: 20,
             EnableTrailingStop: trailing,
             TrailingStopAtrMultiplier: 2m,
@@ -104,7 +105,7 @@ public class BacktestExecutionAdapterTests
         BacktestExecutionAdapter simulator, BacktestExecutionAdapter.OpenPosition position, OhlcvBar bar,
         List<TradeRecord> trades, int barIndex = 1) => simulator.ProcessExitLogic(
             position, bar, barIndex, 5m, 0m, 0m, 0m, new CumulativeRsi2Config(),
-            new Dictionary<PatternType, BacktestExecutionAdapter.PatternExitProfile>(), null, "TQQQ", trades);
+            new Dictionary<PatternType, LongPositionExitPolicy>(), null, "TQQQ", trades);
 
     private static OhlcvBar Bar(decimal open, decimal high, decimal low, decimal close, int day = 1) => new()
     {

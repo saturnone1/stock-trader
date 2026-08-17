@@ -99,7 +99,7 @@ internal sealed class BacktestPendingEntryProcessor
                 data.CumulativeRsi2[barIndex],
                 data.CumulativeRsi2TrendMa[barIndex],
                 context.CumulativeRsi2Config,
-                context.PatternExitProfiles,
+                context.ExitPolicies,
                 context.ExitOverrides,
                 symbol,
                 context.Trades);
@@ -142,6 +142,6 @@ internal sealed record BacktestPendingEntryContext(
     List<TradeRecord> Trades,
     BacktestExecutionAdapter ExecutionAdapter,
     CumulativeRsi2Config CumulativeRsi2Config,
-    Dictionary<PatternType, BacktestExecutionAdapter.PatternExitProfile> PatternExitProfiles,
+    Dictionary<PatternType, LongPositionExitPolicy> ExitPolicies,
     PatternParameterOverrides? ExitOverrides,
     Action<int> ApplyNewTradeCosts);

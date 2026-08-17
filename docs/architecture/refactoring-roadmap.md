@@ -62,8 +62,11 @@
   circuit breakers, daily entry limits, and same-symbol reentry cooldown boundaries. Both immediate
   entries and NextOpen pending entries delegate to it, preventing delayed orders from bypassing the
   runtime gates that applied when their signal was created.
+- `LongPositionExitPolicyCatalog` now owns built-in pattern defaults, exit overrides, and custom-strategy
+  policy construction. Preview, backtest, and live monitoring consume the same `LongPositionExitPolicy`;
+  live code no longer reaches into a nested backtest-adapter profile type.
 
-Remaining Phase 2 work is primarily custom exit-profile/runtime orchestration extraction from
+Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
 and broader preview/backtest/live parity fixtures.
 

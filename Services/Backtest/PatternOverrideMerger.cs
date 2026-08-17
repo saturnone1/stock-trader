@@ -7,7 +7,7 @@ namespace StockTrader.Services.Backtest;
 /// <summary>
 /// PatternParameterOverrides의 flat 프로퍼티를 PatternSettings의 중첩 Config 객체에
 /// 리플렉션으로 자동 매핑합니다. "{Prefix}_{ConfigPropertyName}" 규칙을 따릅니다.
-/// Exit 관련 오버라이드(_Exit*)는 PatternExitProfile에서 별도 처리하므로 제외됩니다.
+/// Exit 관련 오버라이드(_Exit*)는 LongPositionExitPolicyCatalog에서 별도 처리하므로 제외됩니다.
 /// </summary>
 internal static class PatternOverrideMerger
 {

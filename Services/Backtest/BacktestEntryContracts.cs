@@ -14,7 +14,7 @@ internal sealed record BacktestPendingEntry(
     decimal EquityAtSignal,
     decimal RiskFraction,
     decimal PositionCapFraction,
-    BacktestExecutionAdapter.PatternExitProfile? ExitProfile);
+    LongPositionExitPolicy? ExitProfile);
 
 /// <summary>현재가와 차기봉 시가 진입이 공유하는 백테스트 포지션 생성 계약입니다.</summary>
 internal static class BacktestOpenPositionFactory
@@ -28,7 +28,7 @@ internal static class BacktestOpenPositionFactory
         int quantity,
         decimal entryAtr,
         decimal equityAtEntry,
-        BacktestExecutionAdapter.PatternExitProfile? exitProfile) =>
+        LongPositionExitPolicy? exitProfile) =>
         Create(
             patternType,
             strategyName,
@@ -75,7 +75,7 @@ internal static class BacktestOpenPositionFactory
         int quantity,
         decimal entryAtr,
         decimal equityAtEntry,
-        BacktestExecutionAdapter.PatternExitProfile? exitProfile) => new()
+        LongPositionExitPolicy? exitProfile) => new()
     {
         PatternType = patternType,
         CustomPatternName = strategyName,

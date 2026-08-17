@@ -1,4 +1,5 @@
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
@@ -38,7 +39,7 @@ internal sealed class BacktestPositionExitProcessor
                 data.Atr[barIndex], data.Sma200[barIndex],
                 data.CumulativeRsi2[barIndex], data.CumulativeRsi2TrendMa[barIndex],
                 context.CumulativeRsi2Config,
-                context.PatternExitProfiles,
+                context.ExitPolicies,
                 context.ExitOverrides,
                 symbol,
                 context.Trades);
@@ -171,7 +172,7 @@ internal sealed record BacktestPositionExitContext(
     int MaxWindow,
     int MaxTotalPositions,
     CumulativeRsi2Config CumulativeRsi2Config,
-    Dictionary<PatternType, BacktestExecutionAdapter.PatternExitProfile> PatternExitProfiles,
+    Dictionary<PatternType, LongPositionExitPolicy> ExitPolicies,
     PatternParameterOverrides? ExitOverrides,
     BacktestPortfolioState Portfolio,
     IReadOnlyDictionary<string, RuleBasedDetector> DetectorsByName,

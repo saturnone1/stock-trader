@@ -21,7 +21,7 @@ namespace StockTrader.BackgroundServices;
 /// <summary>
 /// 실시간 포지션 청산 관리 서비스.
 ///
-/// 백테스트의 BacktestExecutionAdapter와 동일한 청산 로직을 실거래에 적용:
+/// 미리보기·백테스트와 공유하는 LongPositionExitPolicy를 실거래 판단에 적용:
 /// - 트레일링 스탑 (Chandelier exit)
 /// - 손익분기 스탑 (breakeven)
 /// - 시간 기반 청산 (최대 보유 봉수)
@@ -296,17 +296,9 @@ public class PositionExitManagerService : BackgroundService
         Position position, CompiledStrategy? customStrategy, IOhlcvRepository ohlcvRepo, CancellationToken ct)
     {
         var customPattern = customStrategy?.Source;
-        var pep = customPattern == null
-            ? BacktestExecutionAdapter.PatternExitProfile.For(position.PatternType, _liveExitOverrides)
-            : new BacktestExecutionAdapter.PatternExitProfile(
-                customPattern.MaxHoldingBars,
-                customPattern.TrailingAtr > 0,
-                customPattern.TrailingAtr,
-                1.0m,
-                customPattern.PartialProfitR > 0,
-                customPattern.PartialProfitR,
-                true,
-                true);
+        var exitPolicy = customPattern == null
+            ? LongPositionExitPolicyCatalog.ForPattern(position.PatternType, _liveExitOverrides)
+            : LongPositionExitPolicyCatalog.ForCustom(customPattern);
         var effectivePatternSettings = _liveExitOverrides == null
             ? _patternSettings.CurrentValue
             : PatternOverrideMerger.Merge(_patternSettings.CurrentValue, _liveExitOverrides);
@@ -323,7 +315,7 @@ public class PositionExitManagerService : BackgroundService
         var needsIndicatorBars = customPattern != null
             || position.PatternType == PatternType.CumulativeRsi2
             || atr <= 0
-            || (pep.EnableTimeExit && pep.MaxHoldingBars > 0);
+            || (exitPolicy.EnableTimeExit && exitPolicy.MaxHoldingBars > 0);
         if (needsIndicatorBars)
         {
             recentBars = await ohlcvRepo.GetBarsAsync(position.Symbol, TimeFrame.Daily,
@@ -375,19 +367,14 @@ public class PositionExitManagerService : BackgroundService
             stopDistance = atr > 0 ? atr : position.EntryPrice * 0.02m;
         if (position.InitialRiskDistance <= 0)
             position.InitialRiskDistance = stopDistance;
-        var policy = new LongPositionExitPolicy(
-            pep.MaxHoldingBars,
-            pep.EnableTrailingStop,
-            pep.TrailingStopAtrMultiplier,
-            pep.TrailingActivationR,
-            EnablePartialProfit: false,
-            PartialProfitRMultiple: 0m,
-            pep.EnableTargetExit,
-            pep.EnableTimeExit,
-            pep.BreakevenAtrMultiplier);
+        var policy = exitPolicy with
+        {
+            EnablePartialProfit = false,
+            PartialProfitRMultiple = 0m
+        };
         var timeExitReached = recentBars is not null
             && HoldingPeriodPolicy.HasReachedDailyBarLimit(
-                position.OpenedAt, recentBars, pep.MaxHoldingBars);
+                position.OpenedAt, recentBars, exitPolicy.MaxHoldingBars);
         var decision = LiveLongPositionDecisionPolicy.Evaluate(
             new LongPositionExecutionState(
                 position.EntryPrice,

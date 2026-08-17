@@ -151,15 +151,7 @@ public static class PatternPreviewEndpoints
         var currentEntryDay = DateOnly.MinValue;
         var entriesToday = 0;
         var safetyBlockedEntries = 0;
-        var exitPolicy = new LongPositionExitPolicy(
-            request.Pattern.MaxHoldingBars,
-            request.Pattern.TrailingAtr > 0,
-            request.Pattern.TrailingAtr,
-            1m,
-            request.Pattern.PartialProfitR > 0,
-            request.Pattern.PartialProfitR,
-            EnableTargetExit: true,
-            EnableTimeExit: true);
+        var exitPolicy = LongPositionExitPolicyCatalog.ForCustom(request.Pattern);
 
         void Realize(OpenPreviewPosition openPosition, decimal price, int quantity)
         {

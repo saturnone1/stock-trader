@@ -47,7 +47,7 @@ public sealed class BacktestSimulationEngine
         var portfolio = new BacktestPortfolioState(initialCapital, from);
         var openPositions = portfolio.OpenPositions;
         var trades = new List<TradeRecord>();
-        var pepCache = new Dictionary<PatternType, BacktestExecutionAdapter.PatternExitProfile>();
+        var exitPolicyCache = new Dictionary<PatternType, LongPositionExitPolicy>();
         var maxTotalPositions = riskParams.MaxTotalPositions;
         var riskPerTrade = riskParams.RiskPerTradePercent;
         var dailyLossLimitPercent = riskParams.DailyLossLimitPercent;
@@ -141,7 +141,7 @@ public sealed class BacktestSimulationEngine
                 maxWindow,
                 maxTotalPositions,
                 cumulativeRsi2Config,
-                pepCache,
+                exitPolicyCache,
                 exitOverrides,
                 portfolio,
                 customDetectorsByName,
@@ -173,7 +173,7 @@ public sealed class BacktestSimulationEngine
                     trades,
                     simulator,
                     cumulativeRsi2Config,
-                    pepCache,
+                    exitPolicyCache,
                     exitOverrides,
                     ApplyNewTradeCosts));
             }
@@ -290,20 +290,11 @@ public sealed class BacktestSimulationEngine
 
                         var entryAtr = sd.Atr[barIdx] > 0 ? sd.Atr[barIdx] : stopDistance;
 
-                        BacktestExecutionAdapter.PatternExitProfile? customExit = null;
+                        LongPositionExitPolicy? customExit = null;
                         if (ruleDetector != null)
                         {
-                            var def = ruleDetector.Definition;
-                            customExit = new BacktestExecutionAdapter.PatternExitProfile(
-                                MaxHoldingBars: def.MaxHoldingBars,
-                                EnableTrailingStop: def.TrailingAtr > 0,
-                                TrailingStopAtrMultiplier: def.TrailingAtr,
-                                TrailingActivationR: 1.0m,
-                                EnablePartialProfit: def.PartialProfitR > 0,
-                                PartialProfitRMultiple: def.PartialProfitR,
-                                EnableTargetExit: true,
-                                EnableTimeExit: true
-                            );
+                            customExit = LongPositionExitPolicyCatalog.ForCustom(
+                                ruleDetector.Definition);
                         }
 
                         var entryDefinition = ruleDetector?.Definition;

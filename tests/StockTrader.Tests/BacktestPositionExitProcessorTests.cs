@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
@@ -59,7 +60,7 @@ public class BacktestPositionExitProcessorTests
             HighestHighSinceEntry = 100m,
             LowestLowSinceEntry = 100m,
             RiskDistance = 50m,
-            CustomExitProfile = new BacktestExecutionAdapter.PatternExitProfile(
+            CustomExitProfile = new LongPositionExitPolicy(
                 999, false, 0m, 0m, false, 0m, false, false)
         };
         var trades = new List<TradeRecord>();

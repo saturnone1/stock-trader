@@ -207,6 +207,27 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void PreviewBacktestAndLiveShareTheExitPolicyCatalog()
+    {
+        var repository = FindRepositoryRoot();
+        var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
+        var engine = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSimulationEngine.cs"));
+        var adapter = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
+        var live = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/PositionExitManagerService.cs"));
+
+        preview.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");
+        engine.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");
+        adapter.Should().Contain("LongPositionExitPolicyCatalog.ForPattern(");
+        live.Should().Contain("LongPositionExitPolicyCatalog.ForPattern(");
+        live.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");
+        adapter.Should().NotContain("record PatternExitProfile(");
+        live.Should().NotContain("BacktestExecutionAdapter.PatternExitProfile");
+    }
+
+    [Fact]
     public void LiveExitManagerDelegatesTradingDecisionsToPurePolicy()
     {
         var repository = FindRepositoryRoot();
