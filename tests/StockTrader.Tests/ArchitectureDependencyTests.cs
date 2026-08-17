@@ -44,8 +44,14 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/BacktestUniverseControls.svelte"));
         var universeResults = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/BacktestUniverseComparison.svelte"));
+        var executionInputs = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestExecutionInputs.svelte"));
+        var riskSettings = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestRiskSettings.svelte"));
+        var patternSelection = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestPatternSelection.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_370);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_230);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
@@ -58,6 +64,9 @@ public class ArchitectureDependencyTests
         page.Should().Contain("<BacktestScenarioComparison");
         page.Should().Contain("<BacktestUniverseControls");
         page.Should().Contain("<BacktestUniverseComparison");
+        page.Should().Contain("<BacktestExecutionInputs");
+        page.Should().Contain("<BacktestRiskSettings");
+        page.Should().Contain("<BacktestPatternSelection");
         page.Should().NotContain("백테스트 실패:");
         page.Should().NotContain("타이밍 리포트");
         page.Should().NotContain("종목별 성과");
@@ -70,6 +79,9 @@ public class ArchitectureDependencyTests
         page.Should().NotContain(">타이밍·팩터 비교 결과</div>");
         page.Should().NotContain(">유니버스·팩터 비교</div>");
         page.Should().NotContain(">필터 전/후 기준 비교</div>");
+        page.Should().NotContain(">거래당 리스크</div>");
+        page.Should().NotContain(">포트폴리오 비중 전략</div>");
+        page.Should().NotContain(">패턴 선택</div>");
         page.Should().NotContain("function getWhipsawStats(");
         page.Should().NotContain("const factorExperimentPresets = [");
         research.Should().Contain("export function getWhipsawStats(");
@@ -94,6 +106,12 @@ public class ArchitectureDependencyTests
         universeControls.Should().Contain("bind:checked={universeComparison.includeCombined}");
         universeControls.Should().Contain("교집합 필터 후");
         universeResults.Should().Contain("필터 전/후 기준 비교");
+        executionInputs.Should().Contain("warning");
+        executionInputs.Should().Contain("bind:value={form.timeFrame}");
+        riskSettings.Should().Contain("bind:value={form.riskPerTradePercent}");
+        riskSettings.Should().Contain("bind:checked={form.useWeightStrategy}");
+        patternSelection.Should().Contain("onRun");
+        patternSelection.Should().Contain("패턴 선택");
     }
 
     [Theory]

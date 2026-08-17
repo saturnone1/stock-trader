@@ -1,13 +1,16 @@
 <script>
   import { onMount } from 'svelte'
-  import { Play, RotateCcw, TriangleAlert } from 'lucide-svelte'
+  import { RotateCcw } from 'lucide-svelte'
   import { backtestApi, financialFactorApi, metadataApi, patternApi } from '../api/endpoints'
   import FinancialFactorBuilder from '../lib/FinancialFactorBuilder.svelte'
   import UniverseBuilder from '../lib/UniverseBuilder.svelte'
   import BacktestFactorLabPanel from '../features/backtest/BacktestFactorLabPanel.svelte'
   import BacktestFactorRanking from '../features/backtest/BacktestFactorRanking.svelte'
+  import BacktestExecutionInputs from '../features/backtest/BacktestExecutionInputs.svelte'
   import BacktestPerformanceBreakdown from '../features/backtest/BacktestPerformanceBreakdown.svelte'
+  import BacktestPatternSelection from '../features/backtest/BacktestPatternSelection.svelte'
   import BacktestResultSummary from '../features/backtest/BacktestResultSummary.svelte'
+  import BacktestRiskSettings from '../features/backtest/BacktestRiskSettings.svelte'
   import BacktestScenarioComparison from '../features/backtest/BacktestScenarioComparison.svelte'
   import BacktestTradeHistory from '../features/backtest/BacktestTradeHistory.svelte'
   import BacktestTimingOptions from '../features/backtest/BacktestTimingOptions.svelte'
@@ -1162,166 +1165,25 @@
     <section class="rounded-2xl border border-gray-800 bg-gray-950 p-6">
       <h3 class="mb-5 text-xl font-semibold">실행 설정</h3>
 
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <label class="text-sm text-gray-300 xl:col-span-2">
-          <div class="mb-2 text-gray-500">종목</div>
-          <input bind:value={form.symbolsText} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="AAPL, MSFT, NVDA" />
-        </label>
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">시작일</div>
-          <input type="date" bind:value={form.from} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        </label>
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">종료일</div>
-          <input type="date" bind:value={form.to} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        </label>
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">초기 자본금</div>
-          <input type="number" bind:value={form.initialCapital} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        </label>
-      </div>
+      <BacktestExecutionInputs
+        {form}
+        {timeFrameOptions}
+        {dataSourceOptions}
+        {slippageOptions}
+        warning={timeframeWarning()}
+      />
 
-      <div class="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">타임프레임</div>
-          <select bind:value={form.timeFrame} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
-            {#each timeFrameOptions as [value, label]}
-              <option value={value}>{label}</option>
-            {/each}
-          </select>
-        </label>
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">데이터 소스</div>
-          <select bind:value={form.dataSource} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
-            {#each dataSourceOptions as [value, label]}
-              <option value={value}>{label}</option>
-            {/each}
-          </select>
-        </label>
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">슬리피지 모델</div>
-          <select bind:value={form.slippageModel} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
-            {#each slippageOptions as [value, label]}
-              <option value={value}>{label}</option>
-            {/each}
-          </select>
-        </label>
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">슬리피지 %</div>
-          <input type="number" step="0.01" bind:value={form.slippagePercent} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        </label>
-        <label class="text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">거래당 수수료</div>
-          <input type="number" step="0.1" bind:value={form.commissionPerTrade} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        </label>
-      </div>
+      <BacktestRiskSettings {form} />
 
-      {#if timeframeWarning()}
-        <div class="mt-4 rounded-lg border border-yellow-700 bg-yellow-900/20 p-4 text-sm text-yellow-300">
-          <div class="flex items-center gap-2">
-            <TriangleAlert size={16} />
-            {timeframeWarning()}
-          </div>
-        </div>
-      {/if}
-
-      <div class="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
-          <div class="mb-4 text-sm font-semibold text-white">고급 분석</div>
-          <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <div class="rounded-lg border border-gray-800 bg-gray-950 p-4">
-              <label class="mb-3 flex items-center gap-2 text-sm text-gray-300">
-                <input type="checkbox" bind:checked={form.enableWalkForward} />
-                워크포워드 분석
-              </label>
-              <div class="grid grid-cols-2 gap-2">
-                <input type="number" bind:value={form.walkForwardInSampleMonths} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="IS 개월" disabled={!form.enableWalkForward} />
-                <input type="number" bind:value={form.walkForwardOutOfSampleMonths} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="OOS 개월" disabled={!form.enableWalkForward} />
-              </div>
-            </div>
-            <div class="rounded-lg border border-gray-800 bg-gray-950 p-4">
-              <label class="mb-3 flex items-center gap-2 text-sm text-gray-300">
-                <input type="checkbox" bind:checked={form.enableMonteCarlo} />
-                몬테카를로 시뮬레이션
-              </label>
-              <input type="number" bind:value={form.monteCarloSimulations} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="시뮬레이션 횟수" disabled={!form.enableMonteCarlo} />
-            </div>
-          </div>
-        </div>
-
-        <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
-          <div class="mb-4 text-sm font-semibold text-white">리스크 관리</div>
-          <div class="grid grid-cols-2 gap-3 text-sm">
-            <label class="text-gray-300">
-              <div class="mb-2 text-gray-500">거래당 리스크</div>
-              <input type="number" step="0.001" bind:value={form.riskPerTradePercent} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" />
-            </label>
-            <label class="text-gray-300">
-              <div class="mb-2 text-gray-500">일일 손실 한도</div>
-              <input type="number" step="0.005" bind:value={form.dailyLossLimitPercent} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" />
-            </label>
-            <label class="text-gray-300">
-              <div class="mb-2 text-gray-500">전체 최대 포지션</div>
-              <input type="number" bind:value={form.maxTotalPositions} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" />
-            </label>
-            <label class="text-gray-300">
-              <div class="mb-2 text-gray-500">섹터당 최대 포지션</div>
-              <input type="number" bind:value={form.maxPositionsPerSector} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white" />
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <div class="text-sm font-semibold text-white">포트폴리오 비중 전략</div>
-          <label class="flex items-center gap-2 text-sm text-gray-300">
-            <input type="checkbox" bind:checked={form.useWeightStrategy} />
-            사용
-          </label>
-        </div>
-        <div class="grid grid-cols-2 gap-3 xl:grid-cols-6">
-          <input type="number" step="0.05" bind:value={form.bullWeight} class="rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white disabled:opacity-40" placeholder="강세 가중치" disabled={!form.useWeightStrategy} />
-          <input type="number" step="0.05" bind:value={form.bearWeight} class="rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white disabled:opacity-40" placeholder="약세 가중치" disabled={!form.useWeightStrategy} />
-          <input type="number" step="0.05" bind:value={form.overheat1Weight} class="rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white disabled:opacity-40" placeholder="과열1 가중치" disabled={!form.useWeightStrategy} />
-          <input type="number" step="0.05" bind:value={form.overheat2Weight} class="rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white disabled:opacity-40" placeholder="과열2 가중치" disabled={!form.useWeightStrategy} />
-          <input type="number" step="0.01" bind:value={form.overheatStage1Pct} class="rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white disabled:opacity-40" placeholder="과열1 임계" disabled={!form.useWeightStrategy} />
-          <input type="number" step="0.01" bind:value={form.overheatStage2Pct} class="rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white disabled:opacity-40" placeholder="과열2 임계" disabled={!form.useWeightStrategy} />
-        </div>
-        <div class="mt-3 max-w-xs">
-          <input type="number" bind:value={form.smaPeriod} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white disabled:opacity-40" placeholder="SMA 기간" disabled={!form.useWeightStrategy} />
-        </div>
-      </div>
-
-      <div class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <div class="mb-4 text-sm font-semibold text-white">패턴 선택</div>
-        {#if loading}
-          <div class="text-sm text-gray-400">패턴을 불러오는 중...</div>
-        {:else if patterns.length === 0}
-          <div class="text-sm text-gray-400">저장된 커스텀 패턴이 없습니다.</div>
-        {:else}
-          <div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            {#each patterns as pattern}
-              <label class={`rounded-lg border p-4 text-sm transition ${selectedPatternIds.includes(String(pattern.id)) ? 'border-blue-500 bg-blue-950/20' : 'border-gray-800 bg-gray-950 hover:border-gray-700'}`}>
-                <div class="flex items-start gap-3">
-                  <input type="checkbox" checked={selectedPatternIds.includes(String(pattern.id))} on:change={() => togglePattern(pattern.id)} class="mt-1" />
-                  <div>
-                    <div class="font-medium text-white">{pattern.name}</div>
-                    <div class="mt-1 text-xs text-gray-400">{pattern.description || '설명 없음'}</div>
-                  </div>
-                </div>
-              </label>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <div class="mt-6 flex justify-end">
-        <button on:click={runBacktest} disabled={running || loading} class="flex items-center gap-2 rounded bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50">
-          <Play size={16} />
-          {running ? (runStatus || '실행 중...') : '백테스트 실행'}
-        </button>
-      </div>
+      <BacktestPatternSelection
+        {patterns}
+        {selectedPatternIds}
+        {loading}
+        {running}
+        {runStatus}
+        onToggle={togglePattern}
+        onRun={runBacktest}
+      />
     </section>
 
     {#if comparisonResults.length > 0}

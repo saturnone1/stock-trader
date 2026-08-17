@@ -163,7 +163,9 @@ to `BacktestTimingOptions.svelte` and `BacktestScenarioComparison.svelte`; the p
 comparison deltas and owns scenario selection. The page is now 1,437 lines and remains responsible
 for research execution rather than result-table presentation details. Universe filter controls and
 their baseline comparison table are likewise isolated in `BacktestUniverseControls.svelte` and
-`BacktestUniverseComparison.svelte`, reducing the page to 1,366 lines.
+`BacktestUniverseComparison.svelte`. Execution inputs, statistical validation and risk/weight
+settings, and pattern selection/run controls now live in three focused components. This reduces
+the page to 1,228 lines while preserving the parent's request construction and execution state.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 
