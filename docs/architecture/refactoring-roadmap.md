@@ -70,6 +70,10 @@
   releases a claim and only a proven fill closes the position. Trade, portfolio, and dashboard APIs
   share one open-position response with pending-exit state and elapsed time. The desktop portfolio
   disables duplicate close requests and offers a safe status refresh instead of a force retry.
+- `LongPositionCloseDecisionPolicy` is the shared owner of target, strategy-rule, and time-exit
+  priority after stop/partial processing. Bar-based preview/backtest and live current-price decisions
+  delegate to it. Equivalent-price snapshot fixtures lock stop, target, strategy, time, and hold-state
+  parity, including invalid zero-price boundary handling.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

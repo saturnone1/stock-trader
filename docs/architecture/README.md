@@ -56,7 +56,9 @@ effect on the next bar. `LongPositionExitPolicyCatalog` is the sole owner of bui
 custom-strategy exit-policy construction for preview, backtest, and live monitoring. Live monitoring
 uses a separate decision adapter because it submits a real
 broker order and records the broker's fill instead of inventing an OHLC fill; it still shares the
-same state, decision priority, and protective-stop calculation.
+same state, `LongPositionCloseDecisionPolicy` target/strategy/time priority, and protective-stop
+calculation. Snapshot parity fixtures compare bar-based and live decisions where price ordering is
+fully observable.
 
 Live execution state belongs to the persisted `Position`, not a background worker's memory. Its
 original risk distance and protective-stop flags survive restarts through an ordered database

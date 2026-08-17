@@ -39,14 +39,15 @@ public static class LiveLongPositionDecisionPolicy
             LowestPrice = state.LowestPrice == 0 ? currentPrice : Math.Min(state.LowestPrice, currentPrice),
         };
 
-        if (policy.EnableTargetExit && next.TargetPrice > 0 && currentPrice >= next.TargetPrice)
-            return new LiveLongPositionDecision(next, true, "목표 도달");
-
-        if (strategyExit is not null)
-            return new LiveLongPositionDecision(next, true, strategyExit.Reason);
-
-        if (policy.EnableTimeExit && policy.MaxHoldingBars > 0 && timeExitReached)
-            return new LiveLongPositionDecision(next, true, $"시간 청산({policy.MaxHoldingBars}봉)");
+        var closeDecision = LongPositionCloseDecisionPolicy.Resolve(
+            next.TargetPrice,
+            currentPrice,
+            currentPrice,
+            policy,
+            strategyExit,
+            timeExitReached);
+        if (closeDecision is not null)
+            return new LiveLongPositionDecision(next, true, closeDecision.Reason);
 
         var stopUpdate = LongPositionExecutionPolicy.AdvanceProtectiveStop(
             next,

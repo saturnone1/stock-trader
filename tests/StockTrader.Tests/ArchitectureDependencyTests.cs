@@ -207,6 +207,21 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BarAndLiveExecutionShareCloseDecisionPriority()
+    {
+        var repository = FindRepositoryRoot();
+        var barPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LongPositionExecutionPolicy.cs"));
+        var livePolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LiveLongPositionDecisionPolicy.cs"));
+
+        barPolicy.Should().Contain("LongPositionCloseDecisionPolicy.Resolve(");
+        livePolicy.Should().Contain("LongPositionCloseDecisionPolicy.Resolve(");
+        barPolicy.Should().NotContain("bar.High >= next.TargetPrice");
+        livePolicy.Should().NotContain("currentPrice >= next.TargetPrice");
+    }
+
+    [Fact]
     public void PreviewBacktestAndLiveShareTheExitPolicyCatalog()
     {
         var repository = FindRepositoryRoot();

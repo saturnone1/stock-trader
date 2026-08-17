@@ -111,15 +111,16 @@ public static class LongPositionExecutionPolicy
             }
         }
 
-        if (policy.EnableTargetExit && bar.High >= next.TargetPrice)
-            return Close(next, events, next.TargetPrice, "목표 도달");
-
-        if (strategyExit is not null && strategyExit.Price > 0)
-            return Close(next, events, strategyExit.Price, strategyExit.Reason);
-
         var barsSinceEntry = barIndex - next.EntryBarIndex;
-        if (policy.EnableTimeExit && policy.MaxHoldingBars > 0 && barsSinceEntry >= policy.MaxHoldingBars)
-            return Close(next, events, bar.Close, $"시간 청산({policy.MaxHoldingBars}봉)");
+        var closeDecision = LongPositionCloseDecisionPolicy.Resolve(
+            next.TargetPrice,
+            bar.High,
+            bar.Close,
+            policy,
+            strategyExit,
+            barsSinceEntry >= policy.MaxHoldingBars);
+        if (closeDecision is not null)
+            return Close(next, events, closeDecision.Price, closeDecision.Reason);
 
         var stopUpdate = AdvanceProtectiveStop(
             next,
