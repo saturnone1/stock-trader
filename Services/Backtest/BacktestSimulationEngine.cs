@@ -51,7 +51,8 @@ public sealed class BacktestSimulationEngine
         var maxTotalPositions = riskParams.MaxTotalPositions;
         var riskPerTrade = riskParams.RiskPerTradePercent;
         var dailyLossLimitPercent = riskParams.DailyLossLimitPercent;
-        Dictionary<string, BacktestStrategyRuntime> strategyRuntimes = null!;
+        var runtimeRegistry = new BacktestStrategyRuntimeRegistry(
+            detectors, symbolDataMap, initialCapital);
         var executionCosts = new BacktestExecutionCostLedger(
             slippageModel, slippagePercent, commissionPerTrade);
 
@@ -60,57 +61,13 @@ public sealed class BacktestSimulationEngine
             executionCosts.ApplyNewTrades(trades, startIndex, trade =>
             {
                 portfolio.ApplyRealizedTrade(trade);
-
-                if (!string.IsNullOrWhiteSpace(trade.CustomPatternName)
-                    && strategyRuntimes != null
-                    && strategyRuntimes.TryGetValue(trade.CustomPatternName, out var runtime))
-                {
-                    runtime.RealizedEquity += trade.PnL;
-                    if (runtime.RealizedEquity > runtime.PeakEquity)
-                        runtime.PeakEquity = runtime.RealizedEquity;
-                    if (runtime.CircuitBreaker.MaxDrawdownPercent > 0 && runtime.PeakEquity > 0)
-                    {
-                        var drawdownPercent = (runtime.PeakEquity - runtime.RealizedEquity)
-                            / runtime.PeakEquity * 100m;
-                        if (drawdownPercent >= runtime.CircuitBreaker.MaxDrawdownPercent)
-                            runtime.CircuitBreakerTripped = true;
-                    }
-                }
+                runtimeRegistry.ApplyRealizedTrade(trade);
             });
         }
         var pendingEntryProcessor = new BacktestPendingEntryProcessor();
         var maxWindow = BacktestTimeFramePolicy.Get(timeFrame).SimulationWindowBars;
 
-        // ── 커스텀 패턴 고급 기능: 상태 추적 ──
-        // 서킷브레이커, 재진입 쿨다운, 스케일링 등에 사용
-        var customDetectors = detectors.OfType<RuleBasedDetector>().ToList();
-        var customDetectorsByName = customDetectors
-            .GroupBy(detector => detector.Definition.Name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-        strategyRuntimes = customDetectorsByName.ToDictionary(
-            pair => pair.Key,
-            pair => new BacktestStrategyRuntime
-            {
-                Detector = pair.Value,
-                CircuitBreaker = pair.Value.Strategy.CircuitBreaker,
-                Reentry = pair.Value.Strategy.Reentry,
-                Portfolio = pair.Value.Strategy.PortfolioRules,
-                RealizedEquity = initialCapital,
-                PeakEquity = initialCapital
-            },
-            StringComparer.OrdinalIgnoreCase);
-
-        // 전략+종목별 재진입 쿨다운
-        var reentryCooldowns = new Dictionary<string, int>();
         var positionExitProcessor = new BacktestPositionExitProcessor();
-        // ── 참조 종목 데이터 준비 (RefSymbol 지원) ──
-        Dictionary<string, OhlcvBar[]>? referenceData = null;
-        if (customDetectors.Count > 0)
-        {
-            referenceData = new Dictionary<string, OhlcvBar[]>();
-            foreach (var (sym, sd) in symbolDataMap)
-                referenceData[sym.ToUpperInvariant()] = sd.Bars;
-        }
 
         for (var timelineIndex = 0; timelineIndex < allDates.Count; timelineIndex++)
         {
@@ -118,20 +75,10 @@ public sealed class BacktestSimulationEngine
             var tradingDay = DateOnly.FromDateTime(date);
             ct.ThrowIfCancellationRequested();
             portfolio.UpdateLatestPrices(date, symbolDataMap);
-            if (referenceData != null)
-            {
-                var referenceAsOf = date;
-                foreach (var detector in customDetectors)
-                    detector.SetReferenceData(referenceData, referenceAsOf);
-            }
+            runtimeRegistry.BeginStep(date, tradingDay);
             var regime = BacktestExecutionAdapter.GetRegimeForDate(tradingDay, regimeByDate);
 
             portfolio.BeginTradingDay(tradingDay);
-
-            foreach (var runtime in strategyRuntimes.Values)
-            {
-                if (runtime.LastEntryDate != tradingDay) runtime.DailyEntryCount = 0;
-            }
 
             // 장중 체결 → 종가 규칙 청산 → 분할매매 순서를 전용 처리기가 보존한다.
             positionExitProcessor.Process(new BacktestPositionExitContext(
@@ -144,14 +91,12 @@ public sealed class BacktestSimulationEngine
                 exitPolicyCache,
                 exitOverrides,
                 portfolio,
-                customDetectorsByName,
-                strategyRuntimes,
-                reentryCooldowns,
+                runtimeRegistry,
                 trades,
                 simulator,
                 ApplyNewTradeCosts));
 
-            // ── 전략별 피크 에퀴티 + 최대낙폭 거래 중단 체크 ──
+            // ── 일일 포트폴리오 손실 제한 ──
             var dailyLossLimitReached =
                 portfolio.HasReachedDailyLossLimit(dailyLossLimitPercent);
 
@@ -168,8 +113,7 @@ public sealed class BacktestSimulationEngine
                     maxTotalPositions,
                     symbolDataMap,
                     portfolio,
-                    strategyRuntimes,
-                    reentryCooldowns,
+                    runtimeRegistry,
                     trades,
                     simulator,
                     cumulativeRsi2Config,
@@ -205,8 +149,7 @@ public sealed class BacktestSimulationEngine
                 regime!,
                 weightStrategy,
                 portfolio,
-                strategyRuntimes,
-                reentryCooldowns,
+                runtimeRegistry,
                 trades,
                 pendingEntryProcessor), ct);
 

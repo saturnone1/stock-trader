@@ -24,14 +24,7 @@ internal sealed class BacktestPositionExitProcessor
             if (!data.TimestampToIndex.TryGetValue(context.Date, out var barIndex)) continue;
 
             var position = openPositions[symbol];
-            var detector = position.CustomPatternName != null
-                && context.DetectorsByName.TryGetValue(position.CustomPatternName, out var matchedDetector)
-                    ? matchedDetector
-                    : null;
-            var runtime = position.CustomPatternName != null
-                && context.StrategyRuntimes.TryGetValue(position.CustomPatternName, out var matchedRuntime)
-                    ? matchedRuntime
-                    : null;
+            var detector = context.RuntimeRegistry.FindDetector(position.CustomPatternName);
 
             var tradesBefore = context.Trades.Count;
             var exitResult = context.Simulator.ProcessExitLogic(
@@ -47,7 +40,7 @@ internal sealed class BacktestPositionExitProcessor
 
             if (exitResult == null)
             {
-                ClosePositionState(symbol, position, barIndex, runtime, context, tradesBefore);
+                ClosePositionState(symbol, position, barIndex, context, tradesBefore);
                 continue;
             }
 
@@ -69,7 +62,7 @@ internal sealed class BacktestPositionExitProcessor
                     "규칙 청산",
                     CurrentQuantity(position)));
                 context.ApplyNewTradeCosts(tradesBefore);
-                ClosePositionState(symbol, position, barIndex, runtime, context, tradesBefore);
+                ClosePositionState(symbol, position, barIndex, context, tradesBefore);
                 continue;
             }
 
@@ -91,7 +84,12 @@ internal sealed class BacktestPositionExitProcessor
             var scaleQuantity = Math.Max(1, (int)(position.Quantity * scaling.Percent / 100m));
             if (scaling.Direction == StrategyCatalog.ScalingInDirection)
             {
-                ApplyScaleIn(position, data.Bars[barIndex].Close, scaleQuantity, runtime, context);
+                ApplyScaleIn(
+                    position,
+                    data.Bars[barIndex].Close,
+                    scaleQuantity,
+                    context.RuntimeRegistry.Find(position.CustomPatternName),
+                    context);
                 continue;
             }
 
@@ -116,21 +114,19 @@ internal sealed class BacktestPositionExitProcessor
         string symbol,
         BacktestExecutionAdapter.OpenPosition position,
         int barIndex,
-        BacktestStrategyRuntime? runtime,
         BacktestPositionExitContext context,
         int tradesBefore)
     {
         context.Portfolio.OpenPositions.Remove(symbol);
         _positionScaleCounts.Remove(symbol);
-        if (runtime == null || context.Trades.Count <= tradesBefore) return;
+        if (context.Trades.Count <= tradesBefore) return;
 
-        BacktestStrategyTransitionPolicy.RegisterClosedTrade(
-            $"{position.CustomPatternName}|{symbol}",
+        context.RuntimeRegistry.RegisterClosedTrade(
+            position.CustomPatternName,
+            symbol,
             barIndex,
             context.TimelineIndex,
-            context.Trades[^1],
-            runtime,
-            context.ReentryCooldowns);
+            context.Trades[^1]);
     }
 
     private static void ApplyScaleIn(
@@ -175,9 +171,7 @@ internal sealed record BacktestPositionExitContext(
     Dictionary<PatternType, LongPositionExitPolicy> ExitPolicies,
     PatternParameterOverrides? ExitOverrides,
     BacktestPortfolioState Portfolio,
-    IReadOnlyDictionary<string, RuleBasedDetector> DetectorsByName,
-    IReadOnlyDictionary<string, BacktestStrategyRuntime> StrategyRuntimes,
-    Dictionary<string, int> ReentryCooldowns,
+    BacktestStrategyRuntimeRegistry RuntimeRegistry,
     List<TradeRecord> Trades,
     BacktestExecutionAdapter Simulator,
     Action<int> ApplyNewTradeCosts);

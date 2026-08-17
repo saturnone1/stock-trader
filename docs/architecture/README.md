@@ -50,6 +50,10 @@ execution modes must use this boundary instead of calculating private indicator 
 eligibility, regime allocation, correlation blocking, past-only sizing samples, position sizing,
 and current-close versus next-open registration. `BacktestSimulationEngine` only schedules this
 pipeline within the daily exit/pending-entry/mark-to-market sequence.
+`BacktestStrategyRuntimeRegistry` owns per-strategy equity peaks, drawdown stops, daily entry counts,
+consecutive-loss transitions, per-symbol reentry cooldown keys, and reference-data as-of updates.
+Entry and exit processors resolve runtime state through this registry instead of sharing mutable
+dictionaries or constructing strategy-symbol keys themselves.
 
 Long-position execution now crosses a second named boundary in `Application/Execution`.
 Pattern preview and backtest must delegate entry repricing and per-bar exit ordering to this pure

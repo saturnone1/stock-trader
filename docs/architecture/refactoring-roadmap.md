@@ -38,6 +38,10 @@
   regime allocation, correlation blocking, past-only Kelly samples, sizing, and immediate or
   next-open registration. The simulation engine is reduced to daily sequencing and no longer
   performs detector-specific entry orchestration inline.
+- `BacktestStrategyRuntimeRegistry` is the single owner of custom-strategy runtime lookup and state
+  transitions: reference-data as-of snapshots, daily entry counts, strategy equity peaks, drawdown
+  circuit breakers, consecutive-loss cooldowns, and strategy-symbol reentry keys. The simulation
+  engine and entry/exit processors no longer exchange mutable runtime/cooldown dictionaries.
 - Realized/unrealized equity, daily loss limits, marked-equity drawdown, and open positions now live
   in `BacktestPortfolioState`. `LongPositionSizingPolicy` is the shared owner for stop-risk capital,
   portfolio caps, minimum Kelly samples, Kelly/Half-Kelly selection, and the 25% Kelly ceiling.

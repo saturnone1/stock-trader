@@ -193,6 +193,31 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BacktestRuntimeStateHasOneRegistryOwner()
+    {
+        var repository = FindRepositoryRoot();
+        var engine = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSimulationEngine.cs"));
+        var registry = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestStrategyRuntimeRegistry.cs"));
+        var entry = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
+        var pending = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPendingEntryProcessor.cs"));
+        var exit = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPositionExitProcessor.cs"));
+
+        engine.Should().Contain("new BacktestStrategyRuntimeRegistry(");
+        engine.Should().Contain("runtimeRegistry.ApplyRealizedTrade(");
+        engine.Should().Contain("runtimeRegistry.BeginStep(");
+        engine.Should().NotContain("runtime.RealizedEquity +=");
+        registry.Should().Contain("BacktestStrategyTransitionPolicy.RegisterClosedTrade(");
+        entry.Should().Contain("context.RuntimeRegistry");
+        pending.Should().Contain("context.RuntimeRegistry");
+        exit.Should().Contain("context.RuntimeRegistry");
+    }
+
+    [Fact]
     public void OptimizationExecutorDelegatesMarketDataPreparation()
     {
         var repository = FindRepositoryRoot();

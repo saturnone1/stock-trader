@@ -32,15 +32,9 @@ internal sealed class BacktestPendingEntryProcessor
             if (!data.TimestampToIndex.TryGetValue(context.Date, out var barIndex)) continue;
 
             var pending = _entries[symbol];
-            var runtime = pending.StrategyName != null
-                && context.StrategyRuntimes.TryGetValue(pending.StrategyName, out var resolvedRuntime)
-                    ? resolvedRuntime
-                    : null;
-            var cooldownUntil = pending.StrategyName != null
-                && context.ReentryCooldowns.TryGetValue(
-                    $"{pending.StrategyName}|{symbol}", out var blockedUntil)
-                        ? blockedUntil
-                        : (int?)null;
+            var runtime = context.RuntimeRegistry.Find(pending.StrategyName);
+            var cooldownUntil = context.RuntimeRegistry.GetCooldownUntil(
+                pending.StrategyName, symbol);
             var eligibility = BacktestEntryEligibilityPolicy.Evaluate(
                 new BacktestEntryEligibilityRequest(
                     context.MaxTotalPositions,
@@ -109,22 +103,18 @@ internal sealed class BacktestPendingEntryProcessor
             {
                 context.Portfolio.OpenPositions[symbol] = exitResult;
             }
-            else if (runtime != null && context.Trades.Count > tradesBefore)
+            else if (context.Trades.Count > tradesBefore)
             {
-                BacktestStrategyTransitionPolicy.RegisterClosedTrade(
-                    $"{pending.StrategyName}|{symbol}",
+                context.RuntimeRegistry.RegisterClosedTrade(
+                    pending.StrategyName,
+                    symbol,
                     barIndex,
                     context.TimelineIndex,
-                    context.Trades[^1],
-                    runtime,
-                    context.ReentryCooldowns);
+                    context.Trades[^1]);
             }
 
             _entries.Remove(symbol);
-            if (runtime == null) continue;
-
-            runtime.DailyEntryCount++;
-            runtime.LastEntryDate = context.TradingDay;
+            context.RuntimeRegistry.RegisterEntry(pending.StrategyName, context.TradingDay);
         }
     }
 
@@ -137,8 +127,7 @@ internal sealed record BacktestPendingEntryContext(
     int MaxTotalPositions,
     IReadOnlyDictionary<string, PreparedSymbolData> SymbolData,
     BacktestPortfolioState Portfolio,
-    IReadOnlyDictionary<string, BacktestStrategyRuntime> StrategyRuntimes,
-    Dictionary<string, int> ReentryCooldowns,
+    BacktestStrategyRuntimeRegistry RuntimeRegistry,
     List<TradeRecord> Trades,
     BacktestExecutionAdapter ExecutionAdapter,
     CumulativeRsi2Config CumulativeRsi2Config,

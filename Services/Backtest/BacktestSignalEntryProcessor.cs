@@ -39,17 +39,11 @@ public sealed class BacktestSignalEntryProcessor
                 try
                 {
                     var ruleDetector = detector as RuleBasedDetector;
-                    var strategyRuntime = ruleDetector != null
-                        && context.StrategyRuntimes.TryGetValue(
-                            ruleDetector.Definition.Name, out var configuredRuntime)
-                            ? configuredRuntime
-                            : null;
+                    var strategyRuntime = context.RuntimeRegistry.Find(
+                        ruleDetector?.Definition.Name);
                     var portfolioRules = strategyRuntime?.Portfolio;
-                    var cooldownUntil = ruleDetector != null
-                        && context.ReentryCooldowns.TryGetValue(
-                            $"{ruleDetector.Definition.Name}|{symbol}", out var blockedUntil)
-                                ? blockedUntil
-                                : (int?)null;
+                    var cooldownUntil = context.RuntimeRegistry.GetCooldownUntil(
+                        ruleDetector?.Definition.Name, symbol);
                     var entryEligibility = BacktestEntryEligibilityPolicy.Evaluate(
                         new BacktestEntryEligibilityRequest(
                             context.MaxTotalPositions,
@@ -154,11 +148,8 @@ public sealed class BacktestSignalEntryProcessor
                             allocation.EffectiveEquity,
                             customExit);
 
-                        if (strategyRuntime != null)
-                        {
-                            strategyRuntime.DailyEntryCount++;
-                            strategyRuntime.LastEntryDate = context.TradingDay;
-                        }
+                        context.RuntimeRegistry.RegisterEntry(
+                            entryDefinition?.Name, context.TradingDay);
                     }
 
                     break;
@@ -187,7 +178,6 @@ internal sealed record BacktestSignalEntryContext(
     MarketRegime Regime,
     WeightStrategy? WeightStrategy,
     BacktestPortfolioState Portfolio,
-    IReadOnlyDictionary<string, BacktestStrategyRuntime> StrategyRuntimes,
-    Dictionary<string, int> ReentryCooldowns,
+    BacktestStrategyRuntimeRegistry RuntimeRegistry,
     IReadOnlyList<TradeRecord> Trades,
     BacktestPendingEntryProcessor PendingEntries);

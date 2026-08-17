@@ -65,20 +65,21 @@ public class BacktestPositionExitProcessorTests
         };
         var trades = new List<TradeRecord>();
         var prepared = Prepared(bars);
+        var symbolData = new Dictionary<string, PreparedSymbolData> { ["AAA"] = prepared };
+        var runtimeRegistry = new BacktestStrategyRuntimeRegistry(
+            [detector], symbolData, 100_000m);
 
         new BacktestPositionExitProcessor().Process(new BacktestPositionExitContext(
             bars[^1].Timestamp,
             59,
-            new Dictionary<string, PreparedSymbolData> { ["AAA"] = prepared },
+            symbolData,
             260,
             10,
             new CumulativeRsi2Config(),
             [],
             null,
             portfolio,
-            new Dictionary<string, RuleBasedDetector> { [definition.Name] = detector },
-            new Dictionary<string, BacktestStrategyRuntime>(),
-            [],
+            runtimeRegistry,
             trades,
             new BacktestExecutionAdapter(),
             _ => { }));
