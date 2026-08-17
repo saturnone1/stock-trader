@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { ChevronRight, CircleHelp, FolderTree, Plus, Save, Trash2 } from 'lucide-svelte'
+  import { ArrowDown, ArrowUp, ChevronRight, CircleHelp, Copy, FolderTree, Plus, Save, Trash2 } from 'lucide-svelte'
   import { patternApi } from '../api/endpoints'
   import PatternPreview from '../lib/PatternPreview.svelte'
 
@@ -272,6 +272,14 @@
     }
   }
 
+  function blankExitGroup(label) {
+    return {
+      label: label ?? `매도 상황`,
+      logic: 'AND',
+      rules: [blankRule({ indicator: 'RSI', operator: '>=', value: 70, params: { period: 14 } })]
+    }
+  }
+
   function blankWeightTier() {
     return {
       label: `기본 매수 비중`,
@@ -340,17 +348,20 @@
   function buildWorkspace(raw) {
     const entryGroups = safeParse(raw.entryGroupsJson, []).map(normalizeGroup)
     const flatRules = safeParse(raw.entryRulesJson, []).map(normalizeRule)
+    const storedExitGroups = safeParse(raw.exitGroupsJson, []).map(normalizeGroup)
+    const flatExitRules = safeParse(raw.exitRulesJson, []).map(normalizeRule)
 
     return {
       raw,
       name: raw.name ?? '',
       description: raw.description ?? '',
       isActive: raw.isActive ?? true,
+      enableLiveTrading: raw.enableLiveTrading ?? false,
       requireBullRegime: !!raw.requireBullRegime,
       entryMode: raw.entryMode ?? 'CurrentClose',
       sizingMode: raw.sizingMode ?? 'FixedRisk',
       entryGroupsLogic: raw.entryGroupsLogic ?? raw.entryLogic ?? 'AND',
-      exitRulesLogic: raw.exitRulesLogic ?? 'OR',
+      exitGroupsLogic: raw.exitGroupsLogic ?? raw.exitRulesLogic ?? 'OR',
       atrStopMultiplier: Number(raw.atrStopMultiplier ?? 2),
       atrTargetMultiplier: Number(raw.atrTargetMultiplier ?? 3),
       maxHoldingBars: Number(raw.maxHoldingBars ?? 10),
@@ -359,7 +370,9 @@
       defaultAllocationPercent: Number(raw.defaultAllocationPercent ?? 100),
       useWeightTiers: !!raw.useWeightTiers,
       entryGroups: entryGroups.length > 0 ? entryGroups : (flatRules.length > 0 ? [{ label: '매수 상황 1', logic: raw.entryLogic ?? 'AND', rules: flatRules }] : [blankGroup('매수 상황 1')]),
-      exitRules: safeParse(raw.exitRulesJson, []).map(normalizeRule),
+      exitGroups: storedExitGroups.length > 0
+        ? storedExitGroups
+        : (flatExitRules.length > 0 ? [{ label: '매도 상황 1', logic: raw.exitRulesLogic ?? 'OR', rules: flatExitRules }] : []),
       weightTiers: safeParse(raw.weightTiersJson, []).map(normalizeWeightTier),
       scalingRules: safeParse(raw.scalingRulesJson, []).map(normalizeScalingRule),
       timeFilter: {
@@ -523,7 +536,10 @@
       ...group,
       rules: group.rules.map(sanitizeRule)
     }))
-    const exitRules = currentWorkspace.exitRules.map(sanitizeRule)
+    const exitGroups = currentWorkspace.exitGroups.map((group) => ({
+      ...group,
+      rules: group.rules.map(sanitizeRule)
+    }))
     const weightTiers = currentWorkspace.weightTiers.map((tier) => ({
       ...tier,
       allocationPercent: toNumber(tier.allocationPercent, 100),
@@ -548,12 +564,14 @@
       name: currentWorkspace.name,
       description: currentWorkspace.description,
       isActive: currentWorkspace.isActive,
+      enableLiveTrading: currentWorkspace.enableLiveTrading,
       requireBullRegime: currentWorkspace.requireBullRegime,
       entryMode: currentWorkspace.entryMode,
       sizingMode: currentWorkspace.sizingMode,
       entryLogic: currentWorkspace.entryGroupsLogic,
       entryGroupsLogic: currentWorkspace.entryGroupsLogic,
-      exitRulesLogic: currentWorkspace.exitRulesLogic,
+      exitRulesLogic: currentWorkspace.exitGroupsLogic,
+      exitGroupsLogic: currentWorkspace.exitGroupsLogic,
       atrStopMultiplier: toNumber(currentWorkspace.atrStopMultiplier, 2),
       atrTargetMultiplier: toNumber(currentWorkspace.atrTargetMultiplier, 3),
       maxHoldingBars: toNumber(currentWorkspace.maxHoldingBars, 10),
@@ -563,7 +581,8 @@
       useWeightTiers: currentWorkspace.useWeightTiers,
       entryRulesJson: JSON.stringify([]),
       entryGroupsJson: JSON.stringify(entryGroups),
-      exitRulesJson: JSON.stringify(exitRules),
+      exitRulesJson: JSON.stringify([]),
+      exitGroupsJson: JSON.stringify(exitGroups),
       weightTiersJson: JSON.stringify(weightTiers),
       scalingRulesJson: JSON.stringify(scalingRules),
       timeFilterJson: JSON.stringify(currentWorkspace.timeFilter),
@@ -586,7 +605,17 @@
       if (toNumber(rule.withinBars, 0) > 0 && toNumber(rule.consecutiveBars, 0) > 0) {
         issues.push(`${scope}: 최근 N봉 내와 연속 봉 수는 동시에 사용할 수 없습니다.`)
       }
+      if (toNumber(rule.withinBars, 0) < 0 || toNumber(rule.consecutiveBars, 0) < 0) issues.push(`${scope}: 봉 수는 0 이상이어야 합니다.`)
+      if (toNumber(rule.weight, 0) <= 0) issues.push(`${scope}: 가중치는 0보다 커야 합니다.`)
+      if (Object.values(rule.params ?? {}).some((value) => toNumber(value, -1) < 0)) issues.push(`${scope}: 지표 계산값은 음수일 수 없습니다.`)
     }
+
+    if (!currentWorkspace.name.trim()) issues.push('전략 이름을 입력하세요.')
+    if (toNumber(currentWorkspace.atrStopMultiplier, 0) <= 0) issues.push('ATR 손절 배수는 0보다 커야 합니다.')
+    if (toNumber(currentWorkspace.atrTargetMultiplier, 0) <= 0) issues.push('ATR 목표 배수는 0보다 커야 합니다.')
+    if (toNumber(currentWorkspace.maxHoldingBars, -1) < 0) issues.push('최대 보유 봉 수는 0 이상이어야 합니다.')
+    if (toNumber(currentWorkspace.trailingAtr, -1) < 0 || toNumber(currentWorkspace.partialProfitR, -1) < 0) issues.push('트레일링 ATR과 부분 익절 R은 0 이상이어야 합니다.')
+    if (toNumber(currentWorkspace.defaultAllocationPercent, -1) < 0 || toNumber(currentWorkspace.defaultAllocationPercent, 101) > 100) issues.push('기본 매수 비중은 0~100%여야 합니다.')
 
     if (!currentWorkspace.entryGroups.length) {
       issues.push('매수 조건 묶음이 최소 1개는 필요합니다.')
@@ -599,9 +628,15 @@
       group.rules.forEach((rule, ruleIndex) => checkRule(rule, `매수 상황 ${groupIndex + 1} / 조건 ${ruleIndex + 1}`))
     })
 
-    currentWorkspace.exitRules.forEach((rule, ruleIndex) => checkRule(rule, `매도 조건 ${ruleIndex + 1}`))
+    currentWorkspace.exitGroups.forEach((group, groupIndex) => {
+      if (!group.rules.length) {
+        issues.push(`매도 상황 ${groupIndex + 1}: 조건이 비어 있습니다.`)
+      }
+      group.rules.forEach((rule, ruleIndex) => checkRule(rule, `매도 상황 ${groupIndex + 1} / 조건 ${ruleIndex + 1}`))
+    })
 
     currentWorkspace.weightTiers.forEach((tier, tierIndex) => {
+      if (toNumber(tier.allocationPercent, -1) < 0 || toNumber(tier.allocationPercent, 101) > 100) issues.push(`매수 비중 ${tierIndex + 1}: 비중은 0~100%여야 합니다.`)
       if (!tier.conditions.length) {
         issues.push(`매수 비중 ${tierIndex + 1}: 조건이 비어 있습니다.`)
       }
@@ -609,11 +644,20 @@
     })
 
     currentWorkspace.scalingRules.forEach((scalingRule, scalingIndex) => {
+      if (toNumber(scalingRule.percent, 0) <= 0 || toNumber(scalingRule.percent, 101) > 100) issues.push(`추가 매수·분할 매도 ${scalingIndex + 1}: 비율은 0 초과 100% 이하여야 합니다.`)
+      if (toNumber(scalingRule.maxCount, 0) < 1) issues.push(`추가 매수·분할 매도 ${scalingIndex + 1}: 최대 횟수는 1 이상이어야 합니다.`)
       if (!scalingRule.conditions.length) {
         issues.push(`추가 매수·분할 매도 ${scalingIndex + 1}: 조건이 비어 있습니다.`)
       }
       scalingRule.conditions.forEach((rule, ruleIndex) => checkRule(rule, `추가 매수·분할 매도 ${scalingIndex + 1} / 조건 ${ruleIndex + 1}`))
     })
+
+    if (currentWorkspace.circuitBreaker.consecutiveLossLimit < 0 || currentWorkspace.circuitBreaker.cooldownBars < 0) issues.push('손실 횟수와 거래 중단 봉 수는 0 이상이어야 합니다.')
+    if (currentWorkspace.circuitBreaker.maxDrawdownPercent < 0 || currentWorkspace.circuitBreaker.maxDrawdownPercent > 100) issues.push('최대 낙폭은 0~100%여야 합니다.')
+    if (currentWorkspace.reentry.cooldownBarsAfterLoss < 0 || currentWorkspace.reentry.cooldownBarsAfterWin < 0) issues.push('재매수 대기 봉 수는 0 이상이어야 합니다.')
+    if (currentWorkspace.portfolioRules.maxTotalPositions < 0 || currentWorkspace.portfolioRules.maxEntriesPerDay < 0) issues.push('보유 종목 수와 하루 매수 횟수는 0 이상이어야 합니다.')
+    if (currentWorkspace.portfolioRules.maxSinglePositionPercent < 0 || currentWorkspace.portfolioRules.maxSinglePositionPercent > 100) issues.push('한 종목 최대 비중은 0~100%여야 합니다.')
+    if (currentWorkspace.portfolioRules.maxCorrelation < 0 || currentWorkspace.portfolioRules.maxCorrelation > 1) issues.push('최대 상관계수는 0~1 사이여야 합니다.')
 
     return issues
   }
@@ -637,6 +681,7 @@
 
   async function createPattern() {
     if (!newPatternName.trim()) return
+    if (dirty && !confirm('저장하지 않은 변경이 있습니다. 새 전략을 만들까요?')) return
     try {
       const res = await patternApi.create({ name: newPatternName, description: '' })
       newPatternName = ''
@@ -654,6 +699,7 @@
   }
 
   async function selectPattern(pat) {
+    if (selectedPattern?.id !== pat.id && dirty && !confirm('저장하지 않은 변경이 있습니다. 다른 전략을 불러올까요?')) return
     try {
       const res = await patternApi.get(pat.id)
       selectedPattern = res.data
@@ -696,6 +742,7 @@
   }
 
   async function deletePattern(pat) {
+    if (selectedPattern?.id === pat.id && dirty && !confirm('저장하지 않은 변경도 함께 사라집니다. 계속할까요?')) return
     if (!confirm(`"${pat.name}" 전략을 삭제할까요?`)) return
     try {
       await patternApi.delete(pat.id)
@@ -715,6 +762,11 @@
     return workspace?.entryGroups?.length ? 0 : -1
   }
 
+  function selectedExitGroupIndex() {
+    if (selectedNode.type === 'exitGroup' || selectedNode.type === 'exitRule') return selectedNode.groupIndex
+    return workspace?.exitGroups?.length ? 0 : -1
+  }
+
   function addRuleToGroup(template = {}) {
     let index = selectedGroupIndex()
     if (index < 0) {
@@ -726,15 +778,27 @@
     touch()
   }
 
+  function addRuleToExitGroup(template = {}) {
+    let index = selectedExitGroupIndex()
+    if (index < 0) {
+      workspace.exitGroups.push(blankExitGroup('매도 상황 1'))
+      index = 0
+    } else {
+      workspace.exitGroups[index].rules.push(blankRule(template))
+    }
+    selectedNode = { type: 'exitRule', groupIndex: index, ruleIndex: workspace.exitGroups[index].rules.length - 1 }
+    touch()
+  }
+
   function addNode(kind) {
     if (!workspace) return
 
     if (kind === 'group') {
       workspace.entryGroups.push(blankGroup(`매수 상황 ${workspace.entryGroups.length + 1}`))
       selectedNode = { type: 'group', groupIndex: workspace.entryGroups.length - 1 }
-    } else if (kind === 'exitRule') {
-      workspace.exitRules.push(blankRule({ indicator: 'RSI', operator: '>=', value: 70, params: { period: 14 } }))
-      selectedNode = { type: 'exitRule', ruleIndex: workspace.exitRules.length - 1 }
+    } else if (kind === 'exitGroup') {
+      workspace.exitGroups.push(blankExitGroup(`매도 상황 ${workspace.exitGroups.length + 1}`))
+      selectedNode = { type: 'exitGroup', groupIndex: workspace.exitGroups.length - 1 }
     } else if (kind === 'weightTier') {
       workspace.weightTiers.push(blankWeightTier())
       workspace.useWeightTiers = true
@@ -768,9 +832,12 @@
     } else if (node.type === 'entryRule') {
       workspace.entryGroups[node.groupIndex].rules.splice(node.ruleIndex, 1)
       selectedNode = { type: 'group', groupIndex: node.groupIndex }
-    } else if (node.type === 'exitRule') {
-      workspace.exitRules.splice(node.ruleIndex, 1)
+    } else if (node.type === 'exitGroup') {
+      workspace.exitGroups.splice(node.groupIndex, 1)
       selectedNode = { type: 'general' }
+    } else if (node.type === 'exitRule') {
+      workspace.exitGroups[node.groupIndex].rules.splice(node.ruleIndex, 1)
+      selectedNode = { type: 'exitGroup', groupIndex: node.groupIndex }
     } else if (node.type === 'weightTier') {
       workspace.weightTiers.splice(node.tierIndex, 1)
       selectedNode = { type: 'general' }
@@ -785,6 +852,42 @@
       selectedNode = { type: 'scalingRule', scalingIndex: node.scalingIndex }
     }
 
+    touch()
+  }
+
+  function cloneValue(value) {
+    return JSON.parse(JSON.stringify(value))
+  }
+
+  function moveItem(list, index, offset) {
+    const next = index + offset
+    if (next < 0 || next >= list.length) return index
+    const [item] = list.splice(index, 1)
+    list.splice(next, 0, item)
+    touch()
+    return next
+  }
+
+  function moveNode(node, offset) {
+    if (node.type === 'group') selectedNode = { ...node, groupIndex: moveItem(workspace.entryGroups, node.groupIndex, offset) }
+    else if (node.type === 'entryRule') selectedNode = { ...node, ruleIndex: moveItem(workspace.entryGroups[node.groupIndex].rules, node.ruleIndex, offset) }
+    else if (node.type === 'exitGroup') selectedNode = { ...node, groupIndex: moveItem(workspace.exitGroups, node.groupIndex, offset) }
+    else if (node.type === 'exitRule') selectedNode = { ...node, ruleIndex: moveItem(workspace.exitGroups[node.groupIndex].rules, node.ruleIndex, offset) }
+    else if (node.type === 'weightTier') selectedNode = { ...node, tierIndex: moveItem(workspace.weightTiers, node.tierIndex, offset) }
+    else if (node.type === 'tierRule') selectedNode = { ...node, ruleIndex: moveItem(workspace.weightTiers[node.tierIndex].conditions, node.ruleIndex, offset) }
+    else if (node.type === 'scalingRule') selectedNode = { ...node, scalingIndex: moveItem(workspace.scalingRules, node.scalingIndex, offset) }
+    else if (node.type === 'scalingRuleCondition') selectedNode = { ...node, ruleIndex: moveItem(workspace.scalingRules[node.scalingIndex].conditions, node.ruleIndex, offset) }
+  }
+
+  function duplicateNode(node) {
+    if (node.type === 'entryRule') workspace.entryGroups[node.groupIndex].rules.splice(node.ruleIndex + 1, 0, cloneValue(workspace.entryGroups[node.groupIndex].rules[node.ruleIndex]))
+    else if (node.type === 'exitRule') workspace.exitGroups[node.groupIndex].rules.splice(node.ruleIndex + 1, 0, cloneValue(workspace.exitGroups[node.groupIndex].rules[node.ruleIndex]))
+    else if (node.type === 'tierRule') workspace.weightTiers[node.tierIndex].conditions.splice(node.ruleIndex + 1, 0, cloneValue(workspace.weightTiers[node.tierIndex].conditions[node.ruleIndex]))
+    else if (node.type === 'scalingRuleCondition') workspace.scalingRules[node.scalingIndex].conditions.splice(node.ruleIndex + 1, 0, cloneValue(workspace.scalingRules[node.scalingIndex].conditions[node.ruleIndex]))
+    else if (node.type === 'group') workspace.entryGroups.splice(node.groupIndex + 1, 0, cloneValue(workspace.entryGroups[node.groupIndex]))
+    else if (node.type === 'exitGroup') workspace.exitGroups.splice(node.groupIndex + 1, 0, cloneValue(workspace.exitGroups[node.groupIndex]))
+    else if (node.type === 'weightTier') workspace.weightTiers.splice(node.tierIndex + 1, 0, cloneValue(workspace.weightTiers[node.tierIndex]))
+    else if (node.type === 'scalingRule') workspace.scalingRules.splice(node.scalingIndex + 1, 0, cloneValue(workspace.scalingRules[node.scalingIndex]))
     touch()
   }
 
@@ -833,7 +936,7 @@
   function getCurrentRule() {
     if (!workspace) return null
     if (selectedNode.type === 'entryRule') return workspace.entryGroups[selectedNode.groupIndex]?.rules[selectedNode.ruleIndex] ?? null
-    if (selectedNode.type === 'exitRule') return workspace.exitRules[selectedNode.ruleIndex] ?? null
+    if (selectedNode.type === 'exitRule') return workspace.exitGroups[selectedNode.groupIndex]?.rules[selectedNode.ruleIndex] ?? null
     if (selectedNode.type === 'tierRule') return workspace.weightTiers[selectedNode.tierIndex]?.conditions[selectedNode.ruleIndex] ?? null
     if (selectedNode.type === 'scalingRuleCondition') return workspace.scalingRules[selectedNode.scalingIndex]?.conditions[selectedNode.ruleIndex] ?? null
     return null
@@ -852,6 +955,10 @@
     if (selectedNode.type === 'group') {
       const group = workspace.entryGroups[selectedNode.groupIndex]
       return `${group?.label ?? '매수 상황'} · ${displayLogic(group?.logic)}`
+    }
+    if (selectedNode.type === 'exitGroup') {
+      const group = workspace.exitGroups[selectedNode.groupIndex]
+      return `${group?.label ?? '매도 상황'} · ${displayLogic(group?.logic)}`
     }
     return ''
   }
@@ -1028,7 +1135,8 @@
             <div class="mt-2 flex flex-wrap gap-2 text-xs">
               <span class="rounded bg-gray-800 px-2 py-1">매수 시점: {displayEntryMode(workspace.entryMode)}</span>
               <span class="rounded bg-gray-800 px-2 py-1">주문 금액: {displaySizingMode(workspace.sizingMode)}</span>
-              <span class="rounded bg-gray-800 px-2 py-1">{workspace.isActive ? '활성' : '비활성'}</span>
+              <span class="rounded bg-gray-800 px-2 py-1">{workspace.isActive ? '연구 사용 중' : '연구 제외'}</span>
+              <span class={`rounded px-2 py-1 ${workspace.enableLiveTrading ? 'bg-amber-900/50 text-amber-200' : 'bg-gray-800'}`}>{workspace.enableLiveTrading ? '실시간 주문 연결' : '실시간 주문 꺼짐'}</span>
               <span class="rounded bg-gray-800 px-2 py-1">{workspace.requireBullRegime ? '강세장만 허용' : '장세 무관'}</span>
             </div>
           </button>
@@ -1059,15 +1167,24 @@
                     </button>
                     <div class="flex items-center gap-2">
                       <button on:click={() => addRuleToGroup({})} class="rounded bg-gray-800 px-2 py-1 text-xs text-white transition hover:bg-gray-700">+ 매수 조건</button>
+                      <button title="위로" on:click={() => moveNode({ type: 'group', groupIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                      <button title="아래로" on:click={() => moveNode({ type: 'group', groupIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                      <button title="복제" on:click={() => duplicateNode({ type: 'group', groupIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
                       <button on:click={() => removeNode({ type: 'group', groupIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
                     </div>
                   </div>
                   <div class="space-y-2 border-l border-gray-800 pl-4">
                     {#each group.rules as rule, ruleIndex}
-                      <button on:click={() => selectNode({ type: 'entryRule', groupIndex, ruleIndex })} class={`block w-full rounded border px-3 py-3 text-left text-sm transition ${selectedNode.type === 'entryRule' && selectedNode.groupIndex === groupIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>
-                        <div title={tooltipFor('rule')} class="text-xs text-gray-400 cursor-help">매수 조건 {ruleIndex + 1}</div>
-                        <div class="mt-1">{ruleSummary(rule)}</div>
-                      </button>
+                      <div class="flex items-center gap-1">
+                        <button on:click={() => selectNode({ type: 'entryRule', groupIndex, ruleIndex })} class={`min-w-0 flex-1 rounded border px-3 py-3 text-left text-sm transition ${selectedNode.type === 'entryRule' && selectedNode.groupIndex === groupIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>
+                          <div title={tooltipFor('rule')} class="text-xs text-gray-400 cursor-help">매수 조건 {ruleIndex + 1}</div>
+                          <div class="mt-1">{ruleSummary(rule)}</div>
+                        </button>
+                        <button title="위로" on:click={() => moveNode({ type: 'entryRule', groupIndex, ruleIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                        <button title="아래로" on:click={() => moveNode({ type: 'entryRule', groupIndex, ruleIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                        <button title="복제" on:click={() => duplicateNode({ type: 'entryRule', groupIndex, ruleIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
+                        <button title="삭제" on:click={() => removeNode({ type: 'entryRule', groupIndex, ruleIndex })} class="rounded p-1 text-red-400 hover:bg-red-950/30"><Trash2 size={13} /></button>
+                      </div>
                     {/each}
                   </div>
                 </div>
@@ -1085,17 +1202,39 @@
                       <CircleHelp size={12} />
                     </span>
                   </div>
-                  <div class="text-lg font-semibold">{displayLogic(workspace.exitRulesLogic)}</div>
+                  <div class="text-lg font-semibold">매도 상황 중 {displayLogic(workspace.exitGroupsLogic)}</div>
                 </button>
-                <button on:click={() => addNode('exitRule')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 매도 조건</button>
+                <button on:click={() => addNode('exitGroup')} class="rounded bg-gray-800 px-3 py-1 text-xs text-white transition hover:bg-gray-700">+ 매도 상황</button>
               </div>
-              <div class="space-y-2">
-                {#each workspace.exitRules as rule, ruleIndex}
-                  <div class="flex gap-2">
-                    <button on:click={() => selectNode({ type: 'exitRule', ruleIndex })} class={`flex-1 rounded border px-3 py-3 text-left text-sm transition ${selectedNode.type === 'exitRule' && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-900 text-gray-200 hover:border-gray-700'}`}>
-                      {ruleSummary(rule)}
-                    </button>
-                    <button on:click={() => removeNode({ type: 'exitRule', ruleIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
+              <div class="space-y-3">
+                {#each workspace.exitGroups as group, groupIndex}
+                  <div class="rounded-lg border border-gray-800 bg-gray-900 p-3">
+                    <div class="mb-2 flex items-center justify-between gap-2">
+                      <button on:click={() => selectNode({ type: 'exitGroup', groupIndex })} class={`text-left ${selectedNode.type === 'exitGroup' && selectedNode.groupIndex === groupIndex ? 'text-blue-300' : 'text-white'}`}>
+                        <div class="font-semibold">{group.label || `매도 상황 ${groupIndex + 1}`}</div>
+                        <div class="text-xs text-gray-500">조건을 {displayLogic(group.logic)} • {group.rules.length}개</div>
+                      </button>
+                      <div class="flex gap-2">
+                        <button on:click={() => { selectNode({ type: 'exitGroup', groupIndex }); addRuleToExitGroup({}); }} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 매도 조건</button>
+                        <button title="위로" on:click={() => moveNode({ type: 'exitGroup', groupIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                        <button title="아래로" on:click={() => moveNode({ type: 'exitGroup', groupIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                        <button title="복제" on:click={() => duplicateNode({ type: 'exitGroup', groupIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
+                        <button on:click={() => removeNode({ type: 'exitGroup', groupIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
+                      </div>
+                    </div>
+                    <div class="space-y-2 border-l border-gray-800 pl-3">
+                      {#each group.rules as rule, ruleIndex}
+                        <div class="flex gap-2">
+                          <button on:click={() => selectNode({ type: 'exitRule', groupIndex, ruleIndex })} class={`flex-1 rounded border px-3 py-2 text-left text-sm transition ${selectedNode.type === 'exitRule' && selectedNode.groupIndex === groupIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>
+                            {ruleSummary(rule)}
+                          </button>
+                          <button title="위로" on:click={() => moveNode({ type: 'exitRule', groupIndex, ruleIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                          <button title="아래로" on:click={() => moveNode({ type: 'exitRule', groupIndex, ruleIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                          <button title="복제" on:click={() => duplicateNode({ type: 'exitRule', groupIndex, ruleIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
+                          <button on:click={() => removeNode({ type: 'exitRule', groupIndex, ruleIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
+                        </div>
+                      {/each}
+                    </div>
                   </div>
                 {/each}
               </div>
@@ -1124,14 +1263,21 @@
                       </button>
                       <div class="flex gap-2">
                         <button on:click={() => addTierCondition(tierIndex)} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 적용 조건</button>
+                        <button title="위로" on:click={() => moveNode({ type: 'weightTier', tierIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                        <button title="아래로" on:click={() => moveNode({ type: 'weightTier', tierIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                        <button title="복제" on:click={() => duplicateNode({ type: 'weightTier', tierIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
                         <button on:click={() => removeNode({ type: 'weightTier', tierIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
                       </div>
                     </div>
                     <div class="space-y-2 border-l border-gray-800 pl-3">
                       {#each tier.conditions as rule, ruleIndex}
-                        <button on:click={() => selectNode({ type: 'tierRule', tierIndex, ruleIndex })} class={`block w-full rounded border px-3 py-2 text-left text-sm transition ${selectedNode.type === 'tierRule' && selectedNode.tierIndex === tierIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>
-                          {ruleSummary(rule)}
-                        </button>
+                        <div class="flex gap-2">
+                          <button on:click={() => selectNode({ type: 'tierRule', tierIndex, ruleIndex })} class={`flex-1 rounded border px-3 py-2 text-left text-sm transition ${selectedNode.type === 'tierRule' && selectedNode.tierIndex === tierIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>{ruleSummary(rule)}</button>
+                          <button title="위로" on:click={() => moveNode({ type: 'tierRule', tierIndex, ruleIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                          <button title="아래로" on:click={() => moveNode({ type: 'tierRule', tierIndex, ruleIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                          <button title="복제" on:click={() => duplicateNode({ type: 'tierRule', tierIndex, ruleIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
+                          <button on:click={() => removeNode({ type: 'tierRule', tierIndex, ruleIndex })} class="rounded p-1 text-red-400 hover:bg-red-950/30"><Trash2 size={14} /></button>
+                        </div>
                       {/each}
                     </div>
                   </div>
@@ -1164,14 +1310,21 @@
                       </button>
                       <div class="flex gap-2">
                         <button on:click={() => addScalingCondition(scalingIndex)} class="rounded bg-gray-800 px-2 py-1 text-xs text-white">+ 실행 조건</button>
+                        <button title="위로" on:click={() => moveNode({ type: 'scalingRule', scalingIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                        <button title="아래로" on:click={() => moveNode({ type: 'scalingRule', scalingIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                        <button title="복제" on:click={() => duplicateNode({ type: 'scalingRule', scalingIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
                         <button on:click={() => removeNode({ type: 'scalingRule', scalingIndex })} class="rounded p-1 text-red-400 transition hover:bg-red-950/30"><Trash2 size={14} /></button>
                       </div>
                     </div>
                     <div class="space-y-2 border-l border-gray-800 pl-3">
                       {#each rule.conditions as condition, ruleIndex}
-                        <button on:click={() => selectNode({ type: 'scalingRuleCondition', scalingIndex, ruleIndex })} class={`block w-full rounded border px-3 py-2 text-left text-sm transition ${selectedNode.type === 'scalingRuleCondition' && selectedNode.scalingIndex === scalingIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>
-                          {ruleSummary(condition)}
-                        </button>
+                        <div class="flex gap-2">
+                          <button on:click={() => selectNode({ type: 'scalingRuleCondition', scalingIndex, ruleIndex })} class={`flex-1 rounded border px-3 py-2 text-left text-sm transition ${selectedNode.type === 'scalingRuleCondition' && selectedNode.scalingIndex === scalingIndex && selectedNode.ruleIndex === ruleIndex ? 'border-blue-600 bg-blue-950/20 text-blue-100' : 'border-gray-800 bg-gray-950 text-gray-200 hover:border-gray-700'}`}>{ruleSummary(condition)}</button>
+                          <button title="위로" on:click={() => moveNode({ type: 'scalingRuleCondition', scalingIndex, ruleIndex }, -1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowUp size={13} /></button>
+                          <button title="아래로" on:click={() => moveNode({ type: 'scalingRuleCondition', scalingIndex, ruleIndex }, 1)} class="rounded p-1 text-gray-400 hover:text-white"><ArrowDown size={13} /></button>
+                          <button title="복제" on:click={() => duplicateNode({ type: 'scalingRuleCondition', scalingIndex, ruleIndex })} class="rounded p-1 text-gray-400 hover:text-white"><Copy size={13} /></button>
+                          <button on:click={() => removeNode({ type: 'scalingRuleCondition', scalingIndex, ruleIndex })} class="rounded p-1 text-red-400 hover:bg-red-950/30"><Trash2 size={14} /></button>
+                        </div>
                       {/each}
                     </div>
                   </div>
@@ -1237,7 +1390,7 @@
           </label>
           <label class="rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
             <div class="mb-2 text-gray-500">매도 조건이 여러 개라면</div>
-            <select bind:value={workspace.exitRulesLogic} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
+            <select bind:value={workspace.exitGroupsLogic} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
               {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
             </select>
           </label>
@@ -1280,7 +1433,14 @@
         </label>
         <label class="flex items-center gap-3 rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
           <input type="checkbox" bind:checked={workspace.isActive} on:change={touch} />
-          이 전략 사용
+          연구·미리보기·백테스트에서 이 전략 사용
+        </label>
+        <label class="block rounded border border-amber-900/60 bg-amber-950/20 p-3 text-sm text-gray-300">
+          <span class="flex items-center gap-3">
+            <input type="checkbox" bind:checked={workspace.enableLiveTrading} on:change={touch} />
+            실시간 감시와 자동 주문에 연결
+          </span>
+          <span class="mt-2 block text-xs leading-5 text-amber-300/80">현재 실시간 실행은 관심종목을 일봉으로 판단합니다. 켜면 실제 주문 설정에 따라 주문이 발생할 수 있습니다. 추가 매수·부분 매도 표식은 미리보기와 백테스트에 적용되며, 실시간 브로커는 전량 청산만 지원합니다.</span>
         </label>
       </div>
     {:else if selectedNode.type === 'group'}
@@ -1292,6 +1452,19 @@
           {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
         </select>
         <button on:click={() => addRuleToGroup({})} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ 매수 조건 추가</button>
+      </div>
+    {:else if selectedNode.type === 'exitGroup'}
+      {@const group = workspace.exitGroups[selectedNode.groupIndex]}
+      <div class="space-y-4">
+        <div title={tooltipFor('exitRule')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">매도 상황</div>
+        <input bind:value={group.label} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <label class="block text-sm text-gray-300">
+          <div class="mb-2 text-gray-500">이 상황의 조건이 여러 개라면</div>
+          <select bind:value={group.logic} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
+            {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
+          </select>
+        </label>
+        <button on:click={() => addRuleToExitGroup({})} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ 매도 조건 추가</button>
       </div>
     {:else if selectedNode.type === 'weightTier'}
       {@const tier = workspace.weightTiers[selectedNode.tierIndex]}
@@ -1338,23 +1511,23 @@
     {:else if selectedNode.type === 'circuitBreaker'}
       <div class="space-y-4">
         <div class="text-xs uppercase tracking-wider text-gray-500">손실 시 거래 중단</div>
-        <input type="number" bind:value={workspace.circuitBreaker.consecutiveLossLimit} on:input={touch} placeholder="연속 손실 허용 횟수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" bind:value={workspace.circuitBreaker.cooldownBars} on:input={touch} placeholder="중단 봉 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" step="0.1" bind:value={workspace.circuitBreaker.maxDrawdownPercent} on:input={touch} placeholder="최대 낙폭 %" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">연속 손실 허용 횟수</span><input type="number" bind:value={workspace.circuitBreaker.consecutiveLossLimit} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">거래를 멈출 봉 수</span><input type="number" bind:value={workspace.circuitBreaker.cooldownBars} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">전략 최대 낙폭 %</span><input type="number" step="0.1" bind:value={workspace.circuitBreaker.maxDrawdownPercent} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
       </div>
     {:else if selectedNode.type === 'reentry'}
       <div class="space-y-4">
         <div class="text-xs uppercase tracking-wider text-gray-500">다시 매수하기까지 대기</div>
-        <input type="number" bind:value={workspace.reentry.cooldownBarsAfterLoss} on:input={touch} placeholder="손실 후 대기 봉 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" bind:value={workspace.reentry.cooldownBarsAfterWin} on:input={touch} placeholder="수익 후 대기 봉 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">손실 후 대기 봉 수</span><input type="number" bind:value={workspace.reentry.cooldownBarsAfterLoss} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">수익 후 대기 봉 수</span><input type="number" bind:value={workspace.reentry.cooldownBarsAfterWin} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
       </div>
     {:else if selectedNode.type === 'portfolioRules'}
       <div class="space-y-4">
         <div class="text-xs uppercase tracking-wider text-gray-500">보유 종목·비중 한도</div>
-        <input type="number" bind:value={workspace.portfolioRules.maxTotalPositions} on:input={touch} placeholder="동시에 보유할 최대 종목 수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" step="0.1" bind:value={workspace.portfolioRules.maxSinglePositionPercent} on:input={touch} placeholder="한 종목의 최대 비중 %" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" bind:value={workspace.portfolioRules.maxEntriesPerDay} on:input={touch} placeholder="하루 최대 매수 횟수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input type="number" step="0.01" bind:value={workspace.portfolioRules.maxCorrelation} on:input={touch} placeholder="최대 상관계수" class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">동시에 보유할 최대 종목 수</span><input type="number" bind:value={workspace.portfolioRules.maxTotalPositions} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">한 종목의 최대 비중 %</span><input type="number" step="0.1" bind:value={workspace.portfolioRules.maxSinglePositionPercent} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">하루 최대 매수 횟수</span><input type="number" bind:value={workspace.portfolioRules.maxEntriesPerDay} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+        <label class="block text-sm text-gray-300"><span class="mb-2 block text-gray-500">최대 상관계수 (백테스트)</span><input type="number" step="0.01" bind:value={workspace.portfolioRules.maxCorrelation} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
       </div>
     {:else if selectedNode.type === 'dynamicExit'}
       <div class="space-y-4">

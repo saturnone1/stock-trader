@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Services.Risk;
 using StockTrader.Services.Statistics;
+using StockTrader.Services.Backtest;
 
 namespace StockTrader.Services.Signal;
 
@@ -46,6 +48,36 @@ public class SignalService : ISignalService
         var recommendations = new List<TradeRecommendation>();
         var settings = await _settingsRepo.GetAsync(ct);
 
+        var customNames = signals
+            .Select(signal => signal.CustomPatternName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var customDefinitions = customNames.Count == 0
+            ? new Dictionary<string, CustomPatternDefinition>(StringComparer.OrdinalIgnoreCase)
+            : (await _db.CustomPatterns.AsNoTracking()
+                .Where(pattern => customNames.Contains(pattern.Name))
+                .ToListAsync(ct))
+                .ToDictionary(pattern => pattern.Name, StringComparer.OrdinalIgnoreCase);
+        var customTradeHistory = customNames.Count == 0
+            ? []
+            : await _db.TradeRecords.AsNoTracking()
+                .Where(trade => trade.CustomPatternName != null && customNames.Contains(trade.CustomPatternName))
+                .OrderBy(trade => trade.ExitTime)
+                .ToListAsync(ct);
+        var openCustomPositions = customNames.Count == 0
+            ? []
+            : await _db.Positions.AsNoTracking()
+                .Where(position => position.ClosedAt == null)
+                .ToListAsync(ct);
+        var todayUtc = DateTime.UtcNow.Date;
+        var executedToday = customNames.Count == 0
+            ? []
+            : await _db.TradeRecommendations.AsNoTracking()
+                .Where(rec => rec.WasExecuted && rec.GeneratedAt >= todayUtc && rec.CustomPatternName != null)
+                .ToListAsync(ct);
+
         // 섹터 정보를 일괄 조회하여 N+1 방지 (W02 fix)
         var symbols = signals.Select(s => s.Symbol).Distinct().ToList();
         var sectorMap = await _db.Tickers
@@ -57,8 +89,49 @@ public class SignalService : ISignalService
         var allStats = await _statsService.GetAllStatsAsync(ct);
         var statsCache = (allStats ?? []).ToDictionary(s => s.PatternType);
 
-        foreach (var signal in signals)
+        var recommendedSymbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var signal in signals.OrderByDescending(signal => signal.Confidence))
         {
+            if (recommendedSymbols.Contains(signal.Symbol))
+            {
+                _logger.LogInformation("Signal {Strategy} for {Symbol} skipped: a higher-confidence strategy already selected", signal.CustomPatternName ?? signal.PatternType.ToString(), signal.Symbol);
+                continue;
+            }
+            customDefinitions.TryGetValue(signal.CustomPatternName ?? string.Empty, out var customDefinition);
+            var portfolioRules = ParseConfig<PortfolioRulesConfig>(customDefinition?.PortfolioRulesJson);
+            var reentryRules = ParseConfig<ReentryConfig>(customDefinition?.ReentryJson);
+            var breakerRules = ParseConfig<CircuitBreakerConfig>(customDefinition?.CircuitBreakerJson);
+            var strategyTrades = string.IsNullOrWhiteSpace(signal.CustomPatternName)
+                ? []
+                : customTradeHistory.Where(trade => string.Equals(
+                    trade.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (customDefinition != null && (!customDefinition.IsActive || !customDefinition.EnableLiveTrading))
+                continue;
+            if (portfolioRules?.MaxTotalPositions > 0
+                && openCustomPositions.Count + recommendations.Count >= portfolioRules.MaxTotalPositions)
+            {
+                _logger.LogInformation("Custom strategy {Strategy} blocked: maximum open positions reached", signal.CustomPatternName);
+                continue;
+            }
+            if (portfolioRules?.MaxEntriesPerDay > 0
+                && executedToday.Count(rec => string.Equals(rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase))
+                    + recommendations.Count(rec => string.Equals(rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase))
+                    >= portfolioRules.MaxEntriesPerDay)
+            {
+                _logger.LogInformation("Custom strategy {Strategy} blocked: daily entry limit reached", signal.CustomPatternName);
+                continue;
+            }
+            if (IsInLiveCooldown(strategyTrades, reentryRules, breakerRules, out var cooldownReason))
+            {
+                _logger.LogInformation("Custom strategy {Strategy} blocked: {Reason}", signal.CustomPatternName, cooldownReason);
+                continue;
+            }
+            if (breakerRules?.MaxDrawdownPercent > 0 && ComputeStrategyDrawdown(strategyTrades) >= breakerRules.MaxDrawdownPercent)
+            {
+                _logger.LogWarning("Custom strategy {Strategy} blocked: drawdown circuit breaker", signal.CustomPatternName);
+                continue;
+            }
             // ── 1. 신뢰도 필터: 자동매매 실행 최소 기준 ──
             if (signal.Confidence < _tradingSettings.MinConfidence)
             {
@@ -79,7 +152,9 @@ public class SignalService : ISignalService
             }
 
             // ── 3. 기대값 필터 ──
-            statsCache.TryGetValue(signal.PatternType, out var stats);
+            PatternStats? stats = null;
+            if (string.IsNullOrWhiteSpace(signal.CustomPatternName))
+                statsCache.TryGetValue(signal.PatternType, out stats);
 
             // Gap 3 fix: 거래 이력이 충분한 경우에만 Expectancy 필터 적용.
             // 신규 패턴(stats==null 또는 샘플 부족)은 통과시켜서 거래 기회 확보.
@@ -112,11 +187,25 @@ public class SignalService : ISignalService
             }
 
             // ── 5. 포지션 사이징 ──
+            var effectiveRisk = _tradingSettings.RiskPerTradePercent;
+            if (customDefinition != null && strategyTrades.Count >= 10
+                && customDefinition.SizingMode is "Kelly" or "HalfKelly")
+            {
+                var wins = strategyTrades.Where(trade => trade.PnL > 0).ToList();
+                var losses = strategyTrades.Where(trade => trade.PnL < 0).ToList();
+                var kelly = PerformanceCalculator.ComputeKellyFraction(
+                    (decimal)wins.Count / strategyTrades.Count,
+                    wins.Count > 0 ? wins.Average(trade => trade.PnLPercent) : 0,
+                    losses.Count > 0 ? Math.Abs(losses.Average(trade => trade.PnLPercent)) : 0);
+                if (kelly > 0)
+                    effectiveRisk = customDefinition.SizingMode == "HalfKelly" ? kelly / 2 : kelly;
+            }
             var positionSize = _riskService.CalculatePositionSize(
                 settings.AccountSize,
-                _tradingSettings.RiskPerTradePercent,
+                effectiveRisk,
                 signal.EntryPrice,
                 signal.StopLossPrice);
+            positionSize *= signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m;
 
             // Gap 4 fix: 백테스트와 동일하게 1/MaxTotalPositions 캡 적용
             var maxTotalPositions = _tradingSettings.MaxTotalPositions;
@@ -126,6 +215,9 @@ public class SignalService : ISignalService
                 var maxPositionSize = settings.AccountSize * maxPositionCapitalRatio;
                 positionSize = Math.Min(positionSize, maxPositionSize);
             }
+            if (portfolioRules?.MaxSinglePositionPercent > 0)
+                positionSize = Math.Min(positionSize,
+                    settings.AccountSize * portfolioRules.MaxSinglePositionPercent / 100m);
 
             var shareQty = signal.EntryPrice > 0
                 ? (int)Math.Floor(positionSize / signal.EntryPrice)
@@ -144,6 +236,7 @@ public class SignalService : ISignalService
             {
                 Symbol = signal.Symbol,
                 PatternType = signal.PatternType,
+                CustomPatternName = signal.CustomPatternName,
                 GeneratedAt = DateTime.UtcNow,
                 EntryPrice = signal.EntryPrice,
                 StopLossPrice = signal.StopLossPrice,
@@ -156,6 +249,7 @@ public class SignalService : ISignalService
             };
 
             recommendations.Add(recommendation);
+            recommendedSymbols.Add(signal.Symbol);
             _logger.LogInformation(
                 "Recommendation: {Pattern} {Symbol} Entry={Entry} SL={SL} Target={Target} Qty={Qty}",
                 signal.PatternType, signal.Symbol, signal.EntryPrice,
@@ -167,5 +261,59 @@ public class SignalService : ISignalService
             signals.Count, recommendations.Count, signals.Count - recommendations.Count);
 
         return recommendations;
+    }
+
+    private static T? ParseConfig<T>(string? json) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsInLiveCooldown(
+        List<TradeRecord> trades,
+        ReentryConfig? reentry,
+        CircuitBreakerConfig? breaker,
+        out string reason)
+    {
+        reason = string.Empty;
+        if (trades.Count == 0) return false;
+        var latest = trades[^1];
+        var waitDays = latest.PnL < 0 ? reentry?.CooldownBarsAfterLoss ?? 0 : reentry?.CooldownBarsAfterWin ?? 0;
+        if (waitDays > 0 && DateTime.UtcNow.Date < latest.ExitTime.Date.AddDays(waitDays))
+        {
+            reason = $"재매수 대기 {waitDays}봉";
+            return true;
+        }
+
+        if (breaker?.ConsecutiveLossLimit > 0)
+        {
+            var consecutiveLosses = trades.AsEnumerable().Reverse().TakeWhile(trade => trade.PnL < 0).Count();
+            if (consecutiveLosses >= breaker.ConsecutiveLossLimit
+                && DateTime.UtcNow.Date < latest.ExitTime.Date.AddDays(breaker.CooldownBars))
+            {
+                reason = $"연속 손실 후 {breaker.CooldownBars}봉 중단";
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static decimal ComputeStrategyDrawdown(List<TradeRecord> trades)
+    {
+        decimal equity = 1m, peak = 1m, maximum = 0m;
+        foreach (var trade in trades)
+        {
+            equity *= Math.Max(0m, 1m + trade.PnLPercent);
+            peak = Math.Max(peak, equity);
+            if (peak > 0) maximum = Math.Max(maximum, (peak - equity) / peak * 100m);
+        }
+        return maximum;
     }
 }

@@ -44,6 +44,12 @@ public class CustomPatternDefinition
     /// <summary>청산 조건 결합 방식: "OR"(하나라도 충족) 또는 "AND"(모두 충족)</summary>
     public string ExitRulesLogic { get; set; } = "OR";
 
+    /// <summary>매도 조건 그룹 (JSON: List&lt;ConditionGroup&gt;). 비어있지 않으면 ExitRulesJson보다 우선 적용됩니다.</summary>
+    public string ExitGroupsJson { get; set; } = "[]";
+
+    /// <summary>매도 조건 그룹 간 결합 방식: "AND" 또는 "OR"</summary>
+    public string ExitGroupsLogic { get; set; } = "OR";
+
     /// <summary>스케일링 규칙 (JSON: List&lt;ScalingRule&gt;)</summary>
     public string ScalingRulesJson { get; set; } = "[]";
 
@@ -75,6 +81,12 @@ public class CustomPatternDefinition
     public string SizingMode { get; set; } = "FixedRisk";
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// 실시간 스캐너와 자동 주문에 이 전략을 연결할지 여부.
+    /// 기존 연구 전략이 배포만으로 주문을 만들지 않도록 기본값은 false입니다.
+    /// </summary>
+    public bool EnableLiveTrading { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

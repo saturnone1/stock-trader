@@ -418,6 +418,7 @@ using (var scope = app.Services.CreateScope())
         // 고급 설정 컬럼 추가
         foreach (var (col, def) in new[] {
             ("ExitRulesJson", "'[]'"), ("ExitRulesLogic", "'OR'"),
+            ("ExitGroupsJson", "'[]'"), ("ExitGroupsLogic", "'OR'"),
             ("ScalingRulesJson", "'[]'"), ("TimeFilterJson", "'{}'"),
             ("CircuitBreakerJson", "'{}'"), ("ReentryJson", "'{}'"), ("PortfolioRulesJson", "'{}'"),
             ("EntryGroupsJson", "'[]'"), ("EntryGroupsLogic", "'AND'"), ("DynamicExitJson", "'{}'"),
@@ -426,6 +427,27 @@ using (var scope = app.Services.CreateScope())
             if (!existingCols.Contains(col))
             {
                 cmd.CommandText = $"ALTER TABLE CustomPatterns ADD COLUMN {col} TEXT NOT NULL DEFAULT {def}";
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+        if (!existingCols.Contains("EnableLiveTrading"))
+        {
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN EnableLiveTrading INTEGER NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // 사용자 전략 이름을 신호 → 추천 → 포지션 → 거래까지 보존
+        foreach (var table in new[] { "PatternSignals", "TradeRecommendations", "Positions", "TradeRecords" })
+        {
+            cmd.CommandText = $"PRAGMA table_info({table})";
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync()) columns.Add(reader.GetString(1));
+            }
+            if (!columns.Contains("CustomPatternName"))
+            {
+                cmd.CommandText = $"ALTER TABLE {table} ADD COLUMN CustomPatternName TEXT";
                 await cmd.ExecuteNonQueryAsync();
             }
         }
@@ -933,6 +955,9 @@ app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService sv
         PerPattern = result.PerPatternStats.ToDictionary(
             kv => kv.Key.ToString(),
             kv => new { kv.Value.SampleSize, kv.Value.WinRate, kv.Value.AvgWinPercent, kv.Value.AvgLossPercent, kv.Value.Expectancy, kv.Value.ProfitFactor }),
+        PerStrategy = result.PerStrategyStats.ToDictionary(
+            kv => kv.Key,
+            kv => new { kv.Value.SampleSize, kv.Value.WinRate, kv.Value.AvgWinPercent, kv.Value.AvgLossPercent, kv.Value.Expectancy, kv.Value.ProfitFactor }),
         PerSymbol = result.PerSymbolStats.Select(s => new
         {
             s.Symbol, s.TradeCount, s.WinRate, s.TotalPnL, s.AvgPnLPercent
@@ -940,7 +965,7 @@ app.MapPost("/api/backtest", async (BacktestRequest request, IBacktestService sv
         EquityCurve = equityCurve.Select(e => new { Date = e.Date.ToString("yyyy-MM-dd"), e.Equity }),
         Trades = result.Trades.Select(t => new
         {
-            t.Symbol, Pattern = t.PatternType.ToString(),
+            t.Symbol, Pattern = t.PatternType.ToString(), t.CustomPatternName,
             EntryTime = t.EntryTime.ToString("yyyy-MM-dd"), ExitTime = t.ExitTime.ToString("yyyy-MM-dd"),
             t.EntryPrice, t.ExitPrice, ReturnPct = t.EntryPrice > 0 ? (t.ExitPrice - t.EntryPrice) / t.EntryPrice : 0m,
             t.ExitReason

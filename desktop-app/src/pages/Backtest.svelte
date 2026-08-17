@@ -1986,10 +1986,10 @@
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div class="rounded-2xl border border-gray-800 bg-gray-950 p-5">
-            <div class="mb-3 text-sm font-semibold">패턴별 성과</div>
-            {#if result.perPattern && Object.keys(result.perPattern).length > 0}
+            <div class="mb-3 text-sm font-semibold">전략별 성과</div>
+            {#if (result.perStrategy && Object.keys(result.perStrategy).length > 0) || (result.perPattern && Object.keys(result.perPattern).length > 0)}
               <div class="space-y-3">
-                {#each Object.entries(result.perPattern) as [patternName, stats]}
+                {#each Object.entries(result.perStrategy && Object.keys(result.perStrategy).length > 0 ? result.perStrategy : result.perPattern) as [patternName, stats]}
                   <div class="rounded-lg border border-gray-800 bg-gray-900 p-4 text-sm">
                     <div class="mb-2 font-medium text-white">{patternName}</div>
                     <div class="grid grid-cols-2 gap-2 text-gray-300">
@@ -2004,7 +2004,7 @@
                 {/each}
               </div>
             {:else}
-              <div class="text-sm text-gray-400">패턴별 결과가 없습니다.</div>
+              <div class="text-sm text-gray-400">전략별 결과가 없습니다.</div>
             {/if}
           </div>
 

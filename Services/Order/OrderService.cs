@@ -126,6 +126,7 @@ public class OrderService : IOrderService
                 StopLossPrice = recommendation.StopLossPrice,
                 TargetPrice = recommendation.TargetPrice,
                 PatternType = recommendation.PatternType,
+                CustomPatternName = recommendation.CustomPatternName,
                 OpenedAt = DateTime.UtcNow,
                 HighSinceEntry = recommendation.EntryPrice
             };
@@ -209,6 +210,7 @@ public class OrderService : IOrderService
             {
                 Symbol = signal.Symbol,
                 PatternType = signal.PatternType,
+                CustomPatternName = signal.CustomPatternName,
                 GeneratedAt = DateTime.UtcNow,
                 EntryPrice = signal.EntryPrice,
                 StopLossPrice = signal.StopLossPrice,
@@ -319,6 +321,7 @@ public class OrderService : IOrderService
             StopLossPrice = recommendation.StopLossPrice,
             TargetPrice = recommendation.TargetPrice,
             PatternType = recommendation.PatternType,
+            CustomPatternName = recommendation.CustomPatternName,
             OpenedAt = DateTime.UtcNow,
             HighSinceEntry = recommendation.EntryPrice
         };

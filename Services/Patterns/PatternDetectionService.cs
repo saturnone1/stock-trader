@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Services.Indicators;
 using StockTrader.Services.ML;
 
 namespace StockTrader.Services.Patterns;
@@ -14,6 +16,8 @@ public class PatternDetectionService
     private readonly IPatternStatsRepository _statsRepo;
     private readonly ISignalScorer _signalScorer;
     private readonly IMarketRegimeClassifier _regimeClassifier;
+    private readonly IIndicatorService _indicators;
+    private readonly IOhlcvRepository _ohlcvRepository;
     private readonly AppDbContext _db;
     private readonly ILogger<PatternDetectionService> _logger;
 
@@ -23,6 +27,8 @@ public class PatternDetectionService
         IPatternStatsRepository statsRepo,
         ISignalScorer signalScorer,
         IMarketRegimeClassifier regimeClassifier,
+        IIndicatorService indicators,
+        IOhlcvRepository ohlcvRepository,
         AppDbContext db,
         ILogger<PatternDetectionService> logger)
     {
@@ -31,6 +37,8 @@ public class PatternDetectionService
         _statsRepo = statsRepo;
         _signalScorer = signalScorer;
         _regimeClassifier = regimeClassifier;
+        _indicators = indicators;
+        _ohlcvRepository = ohlcvRepository;
         _db = db;
         _logger = logger;
     }
@@ -91,7 +99,72 @@ public class PatternDetectionService
             }
         }
 
+        var activeCustomPatterns = await _db.CustomPatterns
+            .AsNoTracking()
+            .Where(pattern => pattern.IsActive && pattern.EnableLiveTrading)
+            .OrderBy(pattern => pattern.Id)
+            .ToListAsync(ct);
+
+        foreach (var definition in activeCustomPatterns)
+        {
+            try
+            {
+                if (CustomPatternValidator.Validate(definition).Count > 0) continue;
+                var detector = new RuleBasedDetector(_indicators, definition);
+                var referenceData = await LoadReferenceDataAsync(definition, symbol, bars, ct);
+                detector.SetReferenceData(referenceData, bars[^1].Timestamp);
+                var signal = await detector.DetectAsync(symbol, bars, effectiveRegime, ct);
+                if (signal == null) continue;
+                signal.Confidence = await EnhanceConfidenceAsync(signal, bars, effectiveRegime, ct);
+                signals.Add(signal);
+                _logger.LogInformation("Custom strategy {Strategy} detected for {Symbol}", definition.Name, symbol);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error detecting custom strategy {Strategy} for {Symbol}", definition.Name, symbol);
+            }
+        }
+
         return signals;
+    }
+
+    private async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(
+        CustomPatternDefinition definition, string symbol, OhlcvBar[] bars, CancellationToken ct)
+    {
+        var result = new Dictionary<string, OhlcvBar[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            [symbol] = bars
+        };
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddRules(IEnumerable<EntryRule> rules)
+        {
+            foreach (var rule in rules)
+                if (!string.IsNullOrWhiteSpace(rule.RefSymbol)) symbols.Add(rule.RefSymbol.Trim().ToUpperInvariant());
+        }
+
+        void AddGroups(string json)
+        {
+            foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(json, options) ?? []) AddRules(group.Rules);
+        }
+
+        AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.EntryRulesJson, options) ?? []);
+        AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.ExitRulesJson, options) ?? []);
+        AddGroups(definition.EntryGroupsJson);
+        AddGroups(definition.ExitGroupsJson);
+        foreach (var tier in JsonSerializer.Deserialize<List<WeightTier>>(definition.WeightTiersJson, options) ?? []) AddRules(tier.Conditions);
+        foreach (var scaling in JsonSerializer.Deserialize<List<ScalingRule>>(definition.ScalingRulesJson, options) ?? []) AddRules(scaling.Conditions);
+
+        var timeFrame = bars[0].TimeFrame;
+        foreach (var referenceSymbol in symbols.Where(value => !value.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
+        {
+            result[referenceSymbol] = (await _ohlcvRepository.GetBarsAsync(
+                    referenceSymbol, timeFrame, bars[0].Timestamp, bars[^1].Timestamp.AddDays(1), ct))
+                .OrderBy(bar => bar.Timestamp)
+                .ToArray();
+        }
+        return result;
     }
 
     /// <summary>
@@ -107,7 +180,9 @@ public class PatternDetectionService
         try
         {
             // 역사적 승률 조회 (없으면 0.5 기본값)
-            var stats = await _statsRepo.GetAsync(signal.PatternType, symbol: signal.Symbol, ct);
+            var stats = string.IsNullOrWhiteSpace(signal.CustomPatternName)
+                ? await _statsRepo.GetAsync(signal.PatternType, symbol: signal.Symbol, ct)
+                : null;
             var winRate = stats?.WinRate ?? 0.5m;
 
             return await _signalScorer.ScoreAsync(signal, bars, regime, winRate, ct);

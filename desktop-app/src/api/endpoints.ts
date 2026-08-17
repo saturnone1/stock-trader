@@ -227,11 +227,18 @@ export const patternApi = {
     };
   },
   create: async (data: any) => {
+    const starterGroup = [{
+      label: '매수 상황 1',
+      logic: 'AND',
+      rules: [{ indicator: 'RSI', params: { period: 14 }, operator: '<=', value: 30, withinBars: 0, consecutiveBars: 0, refSymbol: '', compareIndicator: '', compareParams: {}, weight: 1 }]
+    }]
     const response = await api.post('/api/custom-patterns', {
       name: data.name,
       description: data.description || '',
       entryRulesJson: '[]',
       entryLogic: 'AND',
+      entryGroupsJson: JSON.stringify(starterGroup),
+      entryGroupsLogic: 'AND',
       isActive: true
     });
     return {

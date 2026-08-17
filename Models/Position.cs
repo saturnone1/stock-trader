@@ -18,6 +18,7 @@ public class Position
     public decimal StopLossPrice { get; set; }
     public decimal TargetPrice { get; set; }
     public PatternType PatternType { get; set; }
+    public string? CustomPatternName { get; set; }
     public DateTime OpenedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
     public decimal? ExitPrice { get; set; }

@@ -106,7 +106,7 @@
   }
 
   function applyPreset(days) {
-    fromDate = shiftDate(toDate, -days)
+    fromDate = shiftDate(toDate, -(days - 1))
     comparison = null
     loadPreview('filters')
   }
@@ -121,7 +121,7 @@
 
   function defaultFromDate(value, endDate) {
     const preset = value === 'OneMinute' ? 1 : value === 'FiveMinute' ? 5 : value === 'FifteenMinute' ? 20 : value === 'Weekly' ? 1095 : 365
-    return shiftDate(endDate, -preset)
+    return shiftDate(endDate, -(preset - 1))
   }
 
   function shiftDate(value, days) {
@@ -281,6 +281,8 @@
           <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-amber-400"></span>매수 조건 충족 {result.summary.matchCount}회</span>
           <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-400"></span>실제 매수 {result.summary.entryCount}회</span>
           <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-rose-400"></span>매도 {result.summary.exitCount}회</span>
+          <span class="text-cyan-300">추가 매수 {result.summary.scaleInCount ?? 0}회</span>
+          <span class="text-orange-300">일부 매도 {result.summary.partialExitCount ?? 0}회</span>
           <span>{result.summary.requestedFrom} ~ {result.summary.requestedTo}</span>
         </div>
         <div class={result.summary.openPosition ? 'text-amber-300' : 'text-gray-500'}>
@@ -320,10 +322,22 @@
               <path d={`M ${marker.x} ${marker.y + 13} L ${marker.x - 6} ${marker.y + 22} L ${marker.x + 6} ${marker.y + 22} Z`} fill="#34d399">
                 <title>실제 매수 {formatAxisDate(marker.date)} · {formatPrice(marker.price)}&#10;손절 {formatPrice(marker.stopPrice)} · 목표 {formatPrice(marker.targetPrice)}&#10;{marker.details ?? ''}</title>
               </path>
-            {:else}
+            {:else if marker.type === 'EXIT'}
               <path d={`M ${marker.x} ${marker.y - 13} L ${marker.x - 6} ${marker.y - 22} L ${marker.x + 6} ${marker.y - 22} Z`} fill="#fb7185">
                 <title>매도 {formatAxisDate(marker.date)} · {formatPrice(marker.price)}&#10;{marker.reason ?? ''}</title>
               </path>
+            {:else if marker.type === 'SCALE_IN'}
+              <circle cx={marker.x} cy={marker.y} r="6" fill="#22d3ee" stroke="#083344" stroke-width="2">
+                <title>추가 매수 {formatAxisDate(marker.date)} · {formatPrice(marker.price)}&#10;{marker.details ?? ''}</title>
+              </circle>
+            {:else if marker.type === 'STOP_MOVE'}
+              <rect x={marker.x - 4} y={marker.y - 4} width="8" height="8" transform={`rotate(45 ${marker.x} ${marker.y})`} fill="#a78bfa">
+                <title>손절가 상향 {formatAxisDate(marker.date)} · {formatPrice(marker.price)}&#10;{marker.details ?? ''}</title>
+              </rect>
+            {:else}
+              <rect x={marker.x - 5} y={marker.y - 5} width="10" height="10" fill="#fb923c">
+                <title>일부 매도 {formatAxisDate(marker.date)} · {formatPrice(marker.price)}&#10;{marker.reason ?? marker.details ?? ''}</title>
+              </rect>
             {/if}
           {/each}
 
@@ -337,6 +351,9 @@
         <span>● 노랑: 매수 조건을 만족한 모든 봉</span>
         <span>▲ 초록: 포지션이 없어 실제 매수한 시점</span>
         <span>▼ 빨강: 매도 시점</span>
+        <span>● 하늘: 추가 매수</span>
+        <span>■ 주황: 부분 익절·일부 매도</span>
+        <span>◆ 보라: 손절가 상향</span>
         <span>점선: 실제 매수 당시 손절가·목표가</span>
       </div>
 

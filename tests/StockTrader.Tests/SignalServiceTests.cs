@@ -498,4 +498,25 @@ public class SignalServiceTests : IDisposable
         result.Should().HaveCount(1);
         result[0].Symbol.Should().Be("AAPL");
     }
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_SameSymbolChoosesHighestConfidenceSignal()
+    {
+        var sut = CreateSut();
+        var lower = CreateSignal("TQQQ", PatternType.GapUpPullback, confidence: 0.6m);
+        var higher = CreateSignal("TQQQ", PatternType.Breakout, confidence: 0.9m);
+        SetupGetAllStats();
+        _settingsRepoMock.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+        _riskMock.Setup(risk => risk.CanOpenPositionAsync("TQQQ", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, string.Empty));
+        _riskMock.Setup(risk => risk.CalculatePositionSize(
+                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
+            .Returns(5_000m);
+
+        var result = await sut.EvaluateSignalsAsync([lower, higher]);
+
+        result.Should().ContainSingle();
+        result[0].PatternType.Should().Be(PatternType.Breakout);
+    }
 }

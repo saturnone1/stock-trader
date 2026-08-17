@@ -200,37 +200,38 @@ internal static class PerformanceCalculator
 
         foreach (var group in trades.GroupBy(t => t.PatternType))
         {
-            var all = group.ToList();
-            int winCount = 0, lossCount = 0;
-            decimal winPnlSum = 0, lossPnlSum = 0;
-
-            foreach (var t in all)
-            {
-                if (t.IsWin)
-                {
-                    winCount++;
-                    winPnlSum += t.PnLPercent;
-                }
-                else
-                {
-                    lossCount++;
-                    lossPnlSum += t.PnLPercent;
-                }
-            }
-
-            stats[group.Key] = new PatternStats
-            {
-                PatternType    = group.Key,
-                SampleSize     = all.Count,
-                WinRate        = all.Count > 0 ? (decimal)winCount / all.Count : 0,
-                AvgWinPercent  = winCount  > 0 ? winPnlSum  / winCount  : 0,
-                AvgLossPercent = lossCount > 0 ? Math.Abs(lossPnlSum / lossCount) : 0,
-                MaxDrawdownPercent = ComputeGroupDrawdown(all),
-                LastUpdated    = DateTime.UtcNow
-            };
+            stats[group.Key] = ComputeStats(group.ToList(), group.Key);
         }
 
         return stats;
+    }
+
+    public static Dictionary<string, PatternStats> ComputePerStrategyStats(List<TradeRecord> trades)
+    {
+        return trades
+            .GroupBy(trade => string.IsNullOrWhiteSpace(trade.CustomPatternName)
+                ? trade.PatternType.ToString()
+                : trade.CustomPatternName!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => ComputeStats(group.ToList(), group.First().PatternType),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static PatternStats ComputeStats(List<TradeRecord> trades, PatternType patternType)
+    {
+        var wins = trades.Where(trade => trade.IsWin).ToList();
+        var losses = trades.Where(trade => !trade.IsWin).ToList();
+        return new PatternStats
+        {
+            PatternType = patternType,
+            SampleSize = trades.Count,
+            WinRate = trades.Count > 0 ? (decimal)wins.Count / trades.Count : 0,
+            AvgWinPercent = wins.Count > 0 ? wins.Average(trade => trade.PnLPercent) : 0,
+            AvgLossPercent = losses.Count > 0 ? Math.Abs(losses.Average(trade => trade.PnLPercent)) : 0,
+            MaxDrawdownPercent = ComputeGroupDrawdown(trades),
+            LastUpdated = DateTime.UtcNow
+        };
     }
 
     /// <summary>

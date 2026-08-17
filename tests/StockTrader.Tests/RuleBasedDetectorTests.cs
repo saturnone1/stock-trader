@@ -85,6 +85,58 @@ public class RuleBasedDetectorTests
         result.Should().NotBeNull();
     }
 
+    [Fact]
+    public void ShouldExit_UsesGroupedExitLogic()
+    {
+        var bars = CreateBars(Enumerable.Range(0, 60).Select(index => index == 59 ? 110m : 100m).ToArray());
+        var falseGroup = new ConditionGroup
+        {
+            Label = "false",
+            Logic = "AND",
+            Rules = [new EntryRule { Indicator = "PRICE_CHANGE", Operator = "<", Value = -5m, Params = new() { ["bars"] = 1 } }]
+        };
+        var trueGroup = new ConditionGroup
+        {
+            Label = "true",
+            Logic = "AND",
+            Rules = [new EntryRule { Indicator = "PRICE_CHANGE", Operator = ">", Value = 5m, Params = new() { ["bars"] = 1 } }]
+        };
+        var definition = new CustomPatternDefinition
+        {
+            Name = "grouped-exit",
+            EntryRulesJson = JsonSerializer.Serialize(new[] { new EntryRule { Indicator = "PRICE_CHANGE", Operator = ">", Value = -100m } }),
+            ExitGroupsJson = JsonSerializer.Serialize(new[] { falseGroup, trueGroup }),
+            ExitGroupsLogic = "OR"
+        };
+
+        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeTrue();
+
+        definition.ExitGroupsLogic = "AND";
+        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DetectAsync_ReferenceSymbolIgnoresBarsAfterEvaluationDate()
+    {
+        var mainBars = CreateBars(Enumerable.Repeat(100m, 60).ToArray());
+        var referenceBars = CreateBars(Enumerable.Repeat(100m, 61).ToArray());
+        referenceBars[^1].Close = 120m;
+        referenceBars[^1].High = 121m;
+        var sut = CreateSut(new EntryRule
+        {
+            Indicator = "PRICE_CHANGE",
+            Operator = ">",
+            Value = 5m,
+            RefSymbol = "SPY",
+            Params = new() { ["bars"] = 1 }
+        });
+        sut.SetReferenceData(new Dictionary<string, OhlcvBar[]> { ["SPY"] = referenceBars }, mainBars[^1].Timestamp);
+
+        var result = await sut.DetectAsync("AAPL", mainBars, BullRegime);
+
+        result.Should().BeNull();
+    }
+
     private static RuleBasedDetector CreateSut(EntryRule rule)
     {
         var definition = new CustomPatternDefinition

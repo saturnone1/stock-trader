@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -10,6 +13,7 @@ using StockTrader.Services.Broker;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Notification;
+using StockTrader.Services.Patterns;
 using TimeZoneConverter;
 
 namespace StockTrader.BackgroundServices;
@@ -107,11 +111,15 @@ public class PositionExitManagerService : BackgroundService
         var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var liveParamService = scope.ServiceProvider.GetRequiredService<ILiveParameterService>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         // DB에서 저장된 청산 파라미터 오버라이드 로드 (매 체크마다 갱신)
         _liveExitOverrides = await liveParamService.GetLiveOverridesAsync(ct);
 
         var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
+        var customPatterns = (await db.CustomPatterns.AsNoTracking()
+                .ToListAsync(ct))
+            .ToDictionary(pattern => pattern.Name, StringComparer.OrdinalIgnoreCase);
 
         // Remove stale exit states for positions that are no longer open.
         var openIds = new HashSet<long>(openPositions.Select(p => p.Id));
@@ -141,7 +149,8 @@ public class PositionExitManagerService : BackgroundService
                 var highBefore = position.HighSinceEntry;
                 var stopBefore = position.StopLossPrice;
 
-                var exitResult = await EvaluateExitAsync(position, ohlcvRepo, ct);
+                customPatterns.TryGetValue(position.CustomPatternName ?? string.Empty, out var customPattern);
+                var exitResult = await EvaluateExitAsync(position, customPattern, ohlcvRepo, ct);
 
                 if (exitResult.ShouldExit)
                 {
@@ -170,6 +179,7 @@ public class PositionExitManagerService : BackgroundService
                         {
                             Symbol = position.Symbol,
                             PatternType = position.PatternType,
+                            CustomPatternName = position.CustomPatternName,
                             EntryPrice = position.EntryPrice,
                             ExitPrice = exitPx,
                             Quantity = position.Quantity,
@@ -188,6 +198,7 @@ public class PositionExitManagerService : BackgroundService
                         {
                             Symbol = position.Symbol,
                             PatternType = position.PatternType,
+                            CustomPatternName = position.CustomPatternName,
                             EntryPrice = position.EntryPrice,
                             TargetPrice = position.CurrentPrice,
                             ShareQuantity = position.Quantity,
@@ -215,9 +226,19 @@ public class PositionExitManagerService : BackgroundService
     }
 
     private async Task<(bool ShouldExit, string Reason)> EvaluateExitAsync(
-        Position position, IOhlcvRepository ohlcvRepo, CancellationToken ct)
+        Position position, CustomPatternDefinition? customPattern, IOhlcvRepository ohlcvRepo, CancellationToken ct)
     {
-        var pep = TradeSimulator.PatternExitProfile.For(position.PatternType, _liveExitOverrides);
+        var pep = customPattern == null
+            ? TradeSimulator.PatternExitProfile.For(position.PatternType, _liveExitOverrides)
+            : new TradeSimulator.PatternExitProfile(
+                customPattern.MaxHoldingBars,
+                customPattern.TrailingAtr > 0,
+                customPattern.TrailingAtr,
+                1.0m,
+                customPattern.PartialProfitR > 0,
+                customPattern.PartialProfitR,
+                true,
+                true);
         var effectivePatternSettings = _liveExitOverrides == null
             ? _patternSettings.CurrentValue
             : PatternOverrideMerger.Merge(_patternSettings.CurrentValue, _liveExitOverrides);
@@ -232,7 +253,7 @@ public class PositionExitManagerService : BackgroundService
         // 20일 달력 기간으로 조회하면 주말·공휴일 제외 시 실질 영업일이 14개 이하가 되어
         // ATR이 0으로 반환될 위험이 있다. 30일로 확장하면 약 21영업일을 확보할 수 있다.
         var atr = position.EntryAtr;
-        var needsIndicatorBars = position.PatternType == PatternType.CumulativeRsi2 || atr <= 0;
+        var needsIndicatorBars = customPattern != null || position.PatternType == PatternType.CumulativeRsi2 || atr <= 0;
         if (needsIndicatorBars)
         {
             recentBars = await ohlcvRepo.GetBarsAsync(position.Symbol, TimeFrame.Daily,
@@ -309,6 +330,14 @@ public class PositionExitManagerService : BackgroundService
             return (true, $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
         }
 
+        if (customPattern != null && recentBars is { Count: >= 50 })
+        {
+            var detector = new RuleBasedDetector(_indicators, customPattern);
+            detector.SetReferenceData(await LoadReferenceDataAsync(customPattern, position.Symbol, recentBars, ohlcvRepo, ct), DateTime.UtcNow);
+            if (detector.ShouldExit(recentBars.ToArray()))
+                return (true, $"{customPattern.Name} 매도 조건 충족");
+        }
+
         if (position.PatternType == PatternType.CumulativeRsi2
             && currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold)
         {
@@ -335,6 +364,41 @@ public class PositionExitManagerService : BackgroundService
         }
 
         return (false, string.Empty);
+    }
+
+    private static async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(
+        CustomPatternDefinition pattern,
+        string symbol,
+        List<OhlcvBar> symbolBars,
+        IOhlcvRepository repository,
+        CancellationToken ct)
+    {
+        var result = new Dictionary<string, OhlcvBar[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            [symbol] = symbolBars.ToArray()
+        };
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var references = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AddRules(IEnumerable<EntryRule> rules)
+        {
+            foreach (var rule in rules)
+                if (!string.IsNullOrWhiteSpace(rule.RefSymbol)) references.Add(rule.RefSymbol.Trim().ToUpperInvariant());
+        }
+        void AddGroups(string json)
+        {
+            foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(json, options) ?? []) AddRules(group.Rules);
+        }
+        AddRules(JsonSerializer.Deserialize<List<EntryRule>>(pattern.ExitRulesJson, options) ?? []);
+        AddGroups(pattern.ExitGroupsJson);
+
+        foreach (var referenceSymbol in references.Where(value => !value.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
+        {
+            result[referenceSymbol] = (await repository.GetBarsAsync(referenceSymbol, TimeFrame.Daily,
+                    DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct))
+                .OrderBy(bar => bar.Timestamp)
+                .ToArray();
+        }
+        return result;
     }
 
     /// <summary>

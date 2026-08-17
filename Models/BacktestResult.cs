@@ -337,6 +337,7 @@ public class BacktestResult
     public int TotalTrades { get; set; }
     public decimal OverallWinRate { get; set; }
     public Dictionary<PatternType, PatternStats> PerPatternStats { get; set; } = new();
+    public Dictionary<string, PatternStats> PerStrategyStats { get; set; } = new();
     public List<SymbolStats> PerSymbolStats { get; set; } = new();
 
     /// <summary>백테스트에 사용된 타임프레임 (결과 표시용)</summary>

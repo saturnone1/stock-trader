@@ -267,6 +267,8 @@ public class OptimizationAutoTuneService
         target.DefaultAllocationPercent = source.DefaultAllocationPercent;
         target.ExitRulesJson = source.ExitRulesJson;
         target.ExitRulesLogic = source.ExitRulesLogic;
+        target.ExitGroupsJson = source.ExitGroupsJson;
+        target.ExitGroupsLogic = source.ExitGroupsLogic;
         target.ScalingRulesJson = source.ScalingRulesJson;
         target.TimeFilterJson = source.TimeFilterJson;
         target.CircuitBreakerJson = source.CircuitBreakerJson;
@@ -278,6 +280,7 @@ public class OptimizationAutoTuneService
         target.EntryMode = source.EntryMode;
         target.SizingMode = source.SizingMode;
         target.IsActive = source.IsActive;
+        target.EnableLiveTrading = source.EnableLiveTrading;
     }
 
     private static int GetTradeCount(OptimizationResult result, bool useOos)

@@ -8,6 +8,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.ML;
 using StockTrader.Services.Patterns;
+using StockTrader.Services.Indicators;
 
 namespace StockTrader.Tests;
 
@@ -45,6 +46,8 @@ public class PatternDetectionServiceTests
             _statsRepoMock.Object,
             _signalScorerMock.Object,
             _regimeClassifierMock.Object,
+            Mock.Of<IIndicatorService>(),
+            Mock.Of<IOhlcvRepository>(),
             db,
             NullLogger<PatternDetectionService>.Instance);
     }

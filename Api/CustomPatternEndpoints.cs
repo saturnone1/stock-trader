@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Data;
 using StockTrader.Models;
+using StockTrader.Services.Patterns;
 
 namespace StockTrader.Api;
 
@@ -31,8 +32,9 @@ public static class CustomPatternEndpoints
 
         group.MapPost("/", async (CustomPatternDefinition input, AppDbContext db, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(input.Name))
-                return Results.BadRequest(new { error = "패턴 이름을 입력하세요." });
+            var validationErrors = CustomPatternValidator.Validate(input);
+            if (validationErrors.Count > 0)
+                return Results.BadRequest(new { error = validationErrors[0], errors = validationErrors });
 
             var existing = await db.CustomPatterns
                 .FirstOrDefaultAsync(p => p.Name == input.Name, ct);
@@ -53,6 +55,8 @@ public static class CustomPatternEndpoints
                 existing.DefaultAllocationPercent = input.DefaultAllocationPercent;
                 existing.ExitRulesJson = input.ExitRulesJson;
                 existing.ExitRulesLogic = input.ExitRulesLogic;
+                existing.ExitGroupsJson = input.ExitGroupsJson;
+                existing.ExitGroupsLogic = input.ExitGroupsLogic;
                 existing.ScalingRulesJson = input.ScalingRulesJson;
                 existing.TimeFilterJson = input.TimeFilterJson;
                 existing.CircuitBreakerJson = input.CircuitBreakerJson;
@@ -64,6 +68,7 @@ public static class CustomPatternEndpoints
                 existing.EntryMode = input.EntryMode;
                 existing.SizingMode = input.SizingMode;
                 existing.IsActive = input.IsActive;
+                existing.EnableLiveTrading = input.EnableLiveTrading;
                 existing.UpdatedAt = DateTime.UtcNow;
                 await db.SaveChangesAsync(ct);
                 return Results.Ok(existing);

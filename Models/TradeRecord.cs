@@ -7,6 +7,7 @@ public class TradeRecord
     public long Id { get; set; }
     public string Symbol { get; set; } = string.Empty;
     public PatternType PatternType { get; set; }
+    public string? CustomPatternName { get; set; }
     public decimal EntryPrice { get; set; }
     public decimal ExitPrice { get; set; }
     public int Quantity { get; set; }

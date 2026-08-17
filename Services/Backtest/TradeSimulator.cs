@@ -269,13 +269,14 @@ internal sealed class TradeSimulator
                 openPosition = new OpenPosition
                 {
                     PatternType              = openPosition.PatternType,
+                    CustomPatternName        = openPosition.CustomPatternName,
                     EntryPrice               = openPosition.EntryPrice,
                     OriginalStop             = openPosition.OriginalStop,
                     StopLoss                 = Math.Max(openPosition.StopLoss, openPosition.EntryPrice),
                     Target                   = openPosition.Target,
                     Quantity                 = remainQty,
                     CurrentQuantity          = remainQty,
-                    TotalCost                = openPosition.TotalCost,
+                    TotalCost                = openPosition.EntryPrice * remainQty,
                     EntryTime                = openPosition.EntryTime,
                     EntryBarIndex            = openPosition.EntryBarIndex,
                     EntryAtr                 = openPosition.EntryAtr,
@@ -372,6 +373,7 @@ internal sealed class TradeSimulator
         {
             Symbol         = symbol,
             PatternType    = pos.PatternType,
+            CustomPatternName = pos.CustomPatternName,
             EntryPrice     = pos.EntryPrice,
             ExitPrice      = exitPrice,
             Quantity       = qty,
@@ -421,7 +423,8 @@ internal sealed class TradeSimulator
     internal sealed class OpenPosition
     {
         public PatternType PatternType { get; init; }
-        public decimal EntryPrice { get; init; }
+        public decimal EntryPrice { get; set; }
+        public string? CustomPatternName { get; init; }
         public decimal OriginalStop { get; init; }
         public decimal Target { get; init; }
         public int Quantity { get; init; }

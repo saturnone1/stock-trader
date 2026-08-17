@@ -17,12 +17,15 @@ public class RuleBasedDetector : IPatternDetector
     private readonly string _entryGroupsLogic;
     private readonly List<WeightTier> _weightTiers;
     private readonly List<EntryRule> _exitRules;
+    private readonly List<ConditionGroup> _exitGroups;
+    private readonly string _exitGroupsLogic;
     private readonly List<ScalingRule> _scalingRules;
     private readonly TimeFilter _timeFilter;
     private readonly DynamicExitConfig? _dynamicExit;
 
     // 참조 종목 데이터 (BacktestService에서 주입)
     private Dictionary<string, OhlcvBar[]>? _referenceData;
+    private DateTime? _referenceAsOf;
 
     public PatternType PatternType => PatternType.Custom;
     public string CustomPatternName => _definition.Name;
@@ -43,6 +46,9 @@ public class RuleBasedDetector : IPatternDetector
             : [];
         _exitRules = JsonSerializer.Deserialize<List<EntryRule>>(
             definition.ExitRulesJson, jsonOpts) ?? [];
+        _exitGroups = JsonSerializer.Deserialize<List<ConditionGroup>>(
+            definition.ExitGroupsJson, jsonOpts) ?? [];
+        _exitGroupsLogic = definition.ExitGroupsLogic;
         _scalingRules = JsonSerializer.Deserialize<List<ScalingRule>>(
             definition.ScalingRulesJson, jsonOpts) ?? [];
         _timeFilter = JsonSerializer.Deserialize<TimeFilter>(
@@ -55,7 +61,11 @@ public class RuleBasedDetector : IPatternDetector
     }
 
     /// <summary>참조 종목 데이터를 설정합니다. BacktestService에서 매 심볼 루프 전에 호출.</summary>
-    public void SetReferenceData(Dictionary<string, OhlcvBar[]> refData) => _referenceData = refData;
+    public void SetReferenceData(Dictionary<string, OhlcvBar[]> refData, DateTime? asOf = null)
+    {
+        _referenceData = refData;
+        _referenceAsOf = asOf;
+    }
 
     public Task<PatternSignal?> DetectAsync(string symbol, OhlcvBar[] bars,
         MarketRegime regime, CancellationToken ct = default)
@@ -131,6 +141,9 @@ public class RuleBasedDetector : IPatternDetector
             target = curr.Close + currentAtr * _definition.AtrTargetMultiplier;
         }
 
+        if (stopLoss <= 0 || stopLoss >= curr.Close || target <= curr.Close)
+            return Task.FromResult<PatternSignal?>(null);
+
         var confidence = Math.Min(1.0m, totalWeight > 0 ? matchedWeight / totalWeight : 1.0m);
 
         // ── 비중 단계 평가 ──
@@ -169,6 +182,7 @@ public class RuleBasedDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.Custom,
+            CustomPatternName = _definition.Name,
             DetectedAt = DateTime.UtcNow,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
@@ -186,8 +200,12 @@ public class RuleBasedDetector : IPatternDetector
     /// </summary>
     public bool ShouldExit(OhlcvBar[] bars)
     {
-        if (_exitRules.Count == 0) return false;
+        if (_exitGroups.Count == 0 && _exitRules.Count == 0) return false;
         var ctx = new EvalContext(bars, _indicators);
+
+        if (_exitGroups.Count > 0)
+            return EvaluateGroups(_exitGroups, _exitGroupsLogic, ctx).passed;
+
         var isOr = string.Equals(_definition.ExitRulesLogic, "OR", StringComparison.OrdinalIgnoreCase);
 
         foreach (var rule in _exitRules)
@@ -235,7 +253,7 @@ public class RuleBasedDetector : IPatternDetector
         return null;
     }
 
-    public bool HasExitRules => _exitRules.Count > 0;
+    public bool HasExitRules => _exitGroups.Count > 0 || _exitRules.Count > 0;
     public bool HasScalingRules => _scalingRules.Count > 0;
 
     /// <summary>그룹 기반 조건 평가. 각 그룹 내 규칙을 AND/OR로 평가하고, 그룹 간 결합을 적용.</summary>
@@ -280,7 +298,7 @@ public class RuleBasedDetector : IPatternDetector
         }
 
         var passed = isGroupsAnd
-            ? groupResults.All(r => r.passed)
+            ? groupResults.Count > 0 && groupResults.All(r => r.passed)
             : groupResults.Any(r => r.passed);
 
         return (passed, matchedWeightSum, totalWeightSum, string.Join(" | ", allDescs));
@@ -360,11 +378,16 @@ public class RuleBasedDetector : IPatternDetector
             // 참조 종목이 있으면 해당 종목의 EvalContext 사용
             var evalCtx = ctx;
             var refPrefix = "";
-            if (!string.IsNullOrWhiteSpace(rule.RefSymbol) && _referenceData != null
-                && _referenceData.TryGetValue(rule.RefSymbol.ToUpperInvariant(), out var refBars)
-                && refBars.Length >= 50)
+            if (!string.IsNullOrWhiteSpace(rule.RefSymbol))
             {
-                evalCtx = new EvalContext(refBars, _indicators);
+                if (_referenceData == null || !_referenceData.TryGetValue(rule.RefSymbol.ToUpperInvariant(), out var refBars))
+                    return (false, $"{rule.RefSymbol}: 참조 데이터 없음");
+                var availableBars = _referenceAsOf.HasValue
+                    ? refBars.Where(bar => bar.Timestamp <= _referenceAsOf.Value).ToArray()
+                    : refBars;
+                if (availableBars.Length < 50)
+                    return (false, $"{rule.RefSymbol}: 참조 데이터 부족");
+                evalCtx = new EvalContext(availableBars, _indicators);
                 refPrefix = $"{rule.RefSymbol}:";
             }
 

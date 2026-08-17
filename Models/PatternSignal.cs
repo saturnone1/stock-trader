@@ -5,6 +5,7 @@ public class PatternSignal
     public long Id { get; set; }
     public string Symbol { get; set; } = string.Empty;
     public PatternType PatternType { get; set; }
+    public string? CustomPatternName { get; set; }
     public DateTime DetectedAt { get; set; }
     public decimal EntryPrice { get; set; }
     public decimal StopLossPrice { get; set; }

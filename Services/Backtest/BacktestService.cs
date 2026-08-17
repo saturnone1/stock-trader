@@ -256,7 +256,7 @@ public class BacktestService : IBacktestService
         // [BUG-PB-08] Kelly 사이징용 (결과 생성부에서 실제 계산, 루프 중에는 0 = FixedRisk)
         decimal kellyFraction = 0, halfKellyFraction = 0;
         // [A-1] NextOpen 진입 대기 시그널: (symbol → pending signal 정보)
-        var pendingNextOpenSignals = new Dictionary<string, (decimal entryPrice, decimal stopLoss, decimal target, decimal stopDistance, decimal entryAtr, long entryVolume, decimal equityAtEntry, TradeSimulator.PatternExitProfile? customExit, decimal riskPerTradeSnap, decimal effectiveMaxPosSnap)>();
+        var pendingNextOpenSignals = new Dictionary<string, (decimal entryPrice, decimal stopLoss, decimal target, decimal stopDistance, decimal entryAtr, long entryVolume, decimal equityAtEntry, TradeSimulator.PatternExitProfile? customExit, decimal riskPerTradeSnap, decimal effectiveMaxPosSnap, string? customPatternName)>();
         var maxWindow = timeFrame switch
         {
             TimeFrame.OneMinute     => 800,
@@ -267,43 +267,46 @@ public class BacktestService : IBacktestService
 
         // ── 커스텀 패턴 고급 기능: 상태 추적 ──
         // 서킷브레이커, 재진입 쿨다운, 스케일링 등에 사용
-        var customDetector = detectors.OfType<RuleBasedDetector>().FirstOrDefault();
-        CircuitBreakerConfig? circuitBreaker = null;
-        ReentryConfig? reentryConfig = null;
-        PortfolioRulesConfig? portfolioRules = null;
-        if (customDetector != null)
-        {
-            var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var def = customDetector.Definition;
-            circuitBreaker = JsonSerializer.Deserialize<CircuitBreakerConfig>(def.CircuitBreakerJson, jsonOpts) ?? new();
-            reentryConfig = JsonSerializer.Deserialize<ReentryConfig>(def.ReentryJson, jsonOpts) ?? new();
-            portfolioRules = JsonSerializer.Deserialize<PortfolioRulesConfig>(def.PortfolioRulesJson, jsonOpts) ?? new();
-        }
+        var customDetectors = detectors.OfType<RuleBasedDetector>().ToList();
+        var customDetectorsByName = customDetectors
+            .GroupBy(detector => detector.Definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var strategyRuntimes = customDetectorsByName.ToDictionary(
+            pair => pair.Key,
+            pair => new CustomStrategyRuntime
+            {
+                Detector = pair.Value,
+                CircuitBreaker = JsonSerializer.Deserialize<CircuitBreakerConfig>(pair.Value.Definition.CircuitBreakerJson, jsonOpts) ?? new(),
+                Reentry = JsonSerializer.Deserialize<ReentryConfig>(pair.Value.Definition.ReentryJson, jsonOpts) ?? new(),
+                Portfolio = JsonSerializer.Deserialize<PortfolioRulesConfig>(pair.Value.Definition.PortfolioRulesJson, jsonOpts) ?? new(),
+                PeakEquity = initialCapital
+            },
+            StringComparer.OrdinalIgnoreCase);
 
-        var consecutiveLosses = 0;
-        var circuitBreakerUntilDate = DateOnly.MinValue; // 서킷브레이커 해제 날짜
-        var peakSimEquity = initialCapital;
-        var circuitBreakerTripped = false; // 최대 낙폭 서킷브레이커 (영구)
-        // 종목별 재진입 쿨다운: (symbol → 쿨다운 해제 날짜)
+        // 전략+종목별 재진입 쿨다운
         var reentryCooldowns = new Dictionary<string, DateOnly>();
-        // 하루 진입 수 추적
-        var dailyEntryCount = 0;
-        var lastEntryDate = DateOnly.MinValue;
         // 스케일링 횟수 추적: (symbol → rule index → count)
         var positionScaleCounts = new Dictionary<string, Dictionary<int, int>>();
 
         // ── 참조 종목 데이터 준비 (RefSymbol 지원) ──
-        if (customDetector != null)
+        Dictionary<string, OhlcvBar[]>? referenceData = null;
+        if (customDetectors.Count > 0)
         {
-            var refData = new Dictionary<string, OhlcvBar[]>();
+            referenceData = new Dictionary<string, OhlcvBar[]>();
             foreach (var (sym, sd) in symbolDataMap)
-                refData[sym.ToUpperInvariant()] = sd.Bars;
-            customDetector.SetReferenceData(refData);
+                referenceData[sym.ToUpperInvariant()] = sd.Bars;
         }
 
         foreach (var date in allDates)
         {
             ct.ThrowIfCancellationRequested();
+            if (referenceData != null)
+            {
+                var referenceAsOf = date.ToDateTime(TimeOnly.MaxValue);
+                foreach (var detector in customDetectors)
+                    detector.SetReferenceData(referenceData, referenceAsOf);
+            }
             var regime = TradeSimulator.GetRegimeForDate(date, regimeByDate);
 
             if (date != dailyLossDate)
@@ -312,8 +315,10 @@ public class BacktestService : IBacktestService
                 dailyStartEquity = currentEquity;
             }
 
-            // 하루 진입 수 리셋
-            if (date != lastEntryDate) dailyEntryCount = 0;
+            foreach (var runtime in strategyRuntimes.Values)
+            {
+                if (runtime.LastEntryDate != date) runtime.DailyEntryCount = 0;
+            }
 
             // ── 2a. 보유 중인 모든 포지션의 청산 로직 ──
             foreach (var symbol in openPositions.Keys.ToList())
@@ -323,15 +328,23 @@ public class BacktestService : IBacktestService
 
                 var pos = openPositions[symbol];
                 var tradesBefore = trades.Count;
+                var positionDetector = pos.CustomPatternName != null
+                    && customDetectorsByName.TryGetValue(pos.CustomPatternName, out var matchedDetector)
+                        ? matchedDetector
+                        : null;
+                var positionRuntime = pos.CustomPatternName != null
+                    && strategyRuntimes.TryGetValue(pos.CustomPatternName, out var matchedRuntime)
+                        ? matchedRuntime
+                        : null;
 
                 // ── 규칙 기반 청산 체크 (ATR 청산 전에 먼저 평가) ──
-                if (customDetector != null && customDetector.HasExitRules)
+                if (positionDetector != null && positionDetector.HasExitRules)
                 {
                     var windowSize2 = Math.Min(barIdx + 1, maxWindow);
                     var windowStart2 = barIdx + 1 - windowSize2;
                     var windowBars2 = sd.Bars[windowStart2..(barIdx + 1)];
 
-                    if (customDetector.ShouldExit(windowBars2))
+                    if (positionDetector.ShouldExit(windowBars2))
                     {
                         var exitPrice = sd.Bars[barIdx].Close;
                         trades.Add(TradeSimulator.CreateTradeRecord(
@@ -342,15 +355,18 @@ public class BacktestService : IBacktestService
                         openPositions.Remove(symbol);
                         positionScaleCounts.Remove(symbol);
                         // 재진입 쿨다운 등록
-                        RegisterCooldown(symbol, date, trades[^1], reentryConfig, reentryCooldowns);
-                        UpdateCircuitBreaker(trades[^1], ref consecutiveLosses, ref circuitBreakerUntilDate,
-                            date, circuitBreaker);
+                        if (positionRuntime != null)
+                        {
+                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", date, trades[^1], positionRuntime.Reentry, reentryCooldowns);
+                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilDate,
+                                date, positionRuntime.CircuitBreaker);
+                        }
                         continue;
                     }
                 }
 
                 // ── 스케일링 체크 ──
-                if (customDetector != null && customDetector.HasScalingRules)
+                if (positionDetector != null && positionDetector.HasScalingRules)
                 {
                     var windowSize3 = Math.Min(barIdx + 1, maxWindow);
                     var windowStart3 = barIdx + 1 - windowSize3;
@@ -363,7 +379,7 @@ public class BacktestService : IBacktestService
                         sc = new Dictionary<int, int>();
                         positionScaleCounts[symbol] = sc;
                     }
-                    var matchedScale = customDetector.CheckScaling(windowBars3, currentProfitPct, sc);
+                    var matchedScale = positionDetector.CheckScaling(windowBars3, currentProfitPct, sc);
                     if (matchedScale != null)
                     {
                         var baseQty = pos.Quantity;
@@ -371,9 +387,12 @@ public class BacktestService : IBacktestService
 
                         if (matchedScale.Direction == "SCALE_IN")
                         {
-                            var newQty = (pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity) + scaleQty;
+                            var currentQty = pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity;
+                            var newQty = currentQty + scaleQty;
+                            var newTotalCost = pos.TotalCost + sd.Bars[barIdx].Close * scaleQty;
                             pos.CurrentQuantity = newQty;
-                            pos.TotalCost += sd.Bars[barIdx].Close * scaleQty;
+                            pos.TotalCost = newTotalCost;
+                            pos.EntryPrice = newTotalCost / newQty;
                         }
                         else // SCALE_OUT
                         {
@@ -385,6 +404,7 @@ public class BacktestService : IBacktestService
                                     symbol, pos, sd.Bars[barIdx].Close,
                                     sd.Bars[barIdx].Timestamp, $"스케일아웃({matchedScale.Percent}%)", sellQty));
                                 pos.CurrentQuantity = curQty - sellQty;
+                                pos.TotalCost = pos.EntryPrice * pos.CurrentQuantity;
                                 for (int ti = tradesBefore; ti < trades.Count; ti++)
                                     currentEquity += trades[ti].PnL;
                             }
@@ -409,22 +429,28 @@ public class BacktestService : IBacktestService
                     // 재진입 쿨다운 등록
                     if (trades.Count > tradesBefore)
                     {
-                        RegisterCooldown(symbol, date, trades[^1], reentryConfig, reentryCooldowns);
-                        UpdateCircuitBreaker(trades[^1], ref consecutiveLosses, ref circuitBreakerUntilDate,
-                            date, circuitBreaker);
+                        if (positionRuntime != null)
+                        {
+                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", date, trades[^1], positionRuntime.Reentry, reentryCooldowns);
+                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilDate,
+                                date, positionRuntime.CircuitBreaker);
+                        }
                     }
                 }
                 else
                     openPositions[symbol] = exitResult;
             }
 
-            // ── 피크 에퀴티 + 최대낙폭 서킷브레이커 체크 ──
-            if (currentEquity > peakSimEquity) peakSimEquity = currentEquity;
-            if (circuitBreaker != null && circuitBreaker.MaxDrawdownPercent > 0 && peakSimEquity > 0)
+            // ── 전략별 피크 에퀴티 + 최대낙폭 거래 중단 체크 ──
+            foreach (var runtime in strategyRuntimes.Values)
             {
-                var dd = (peakSimEquity - currentEquity) / peakSimEquity * 100;
-                if (dd >= circuitBreaker.MaxDrawdownPercent)
-                    circuitBreakerTripped = true;
+                if (currentEquity > runtime.PeakEquity) runtime.PeakEquity = currentEquity;
+                if (runtime.CircuitBreaker.MaxDrawdownPercent > 0 && runtime.PeakEquity > 0)
+                {
+                    var dd = (runtime.PeakEquity - currentEquity) / runtime.PeakEquity * 100;
+                    if (dd >= runtime.CircuitBreaker.MaxDrawdownPercent)
+                        runtime.CircuitBreakerTripped = true;
+                }
             }
 
             var dailyLossLimitReached =
@@ -447,6 +473,22 @@ public class BacktestService : IBacktestService
                     if (!pendingSd.DateToIndex.TryGetValue(date, out var pendingBarIdx)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
 
                     var pending = pendingNextOpenSignals[pendingSymbol];
+                    var pendingRuntime = pending.customPatternName != null
+                        && strategyRuntimes.TryGetValue(pending.customPatternName, out var resolvedPendingRuntime)
+                            ? resolvedPendingRuntime
+                            : null;
+                    var pendingPositionLimit = pendingRuntime?.Portfolio.MaxTotalPositions > 0
+                        ? Math.Min(maxTotalPositions, pendingRuntime.Portfolio.MaxTotalPositions)
+                        : maxTotalPositions;
+                    if (openPositions.Count >= pendingPositionLimit
+                        || pendingRuntime?.CircuitBreakerTripped == true
+                        || (pendingRuntime != null && pendingRuntime.CircuitBreaker.ConsecutiveLossLimit > 0 && date < pendingRuntime.CircuitBreakerUntilDate)
+                        || (pendingRuntime != null && pendingRuntime.Portfolio.MaxEntriesPerDay > 0 && pendingRuntime.DailyEntryCount >= pendingRuntime.Portfolio.MaxEntriesPerDay)
+                        || (pending.customPatternName != null && reentryCooldowns.TryGetValue($"{pending.customPatternName}|{pendingSymbol}", out var pendingCooldown) && date < pendingCooldown))
+                    {
+                        pendingNextOpenSignals.Remove(pendingSymbol);
+                        continue;
+                    }
                     var nextOpen = pendingSd.Bars[pendingBarIdx].Open;
                     if (nextOpen <= 0) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
 
@@ -469,6 +511,7 @@ public class BacktestService : IBacktestService
                     openPositions[pendingSymbol] = new TradeSimulator.OpenPosition
                     {
                         PatternType           = PatternType.Custom,
+                        CustomPatternName     = pending.customPatternName,
                         EntryPrice            = nextOpen,
                         OriginalStop          = newStop,
                         StopLoss              = newStop,
@@ -488,39 +531,26 @@ public class BacktestService : IBacktestService
                     };
 
                     pendingNextOpenSignals.Remove(pendingSymbol);
-                    dailyEntryCount++;
-                    lastEntryDate = date;
+                    if (pendingRuntime != null)
+                    {
+                        pendingRuntime.DailyEntryCount++;
+                        pendingRuntime.LastEntryDate = date;
+                    }
                 }
             }
 
             // ── 2b. 새 진입 ──
-            // 서킷브레이커 체크
-            if (circuitBreakerTripped) continue;
-            if (circuitBreaker != null && circuitBreaker.ConsecutiveLossLimit > 0 && date < circuitBreakerUntilDate)
-                continue;
             if (dailyLossLimitReached) continue;
 
-            // 포트폴리오 규칙: 최대 포지션 수
-            var effectiveMaxPos = maxTotalPositions;
-            if (portfolioRules != null && portfolioRules.MaxTotalPositions > 0)
-                effectiveMaxPos = Math.Min(effectiveMaxPos, portfolioRules.MaxTotalPositions);
-            if (openPositions.Count >= effectiveMaxPos) continue;
-
-            // 하루 최대 진입 수
-            if (portfolioRules != null && portfolioRules.MaxEntriesPerDay > 0 && dailyEntryCount >= portfolioRules.MaxEntriesPerDay)
-                continue;
+            if (openPositions.Count >= maxTotalPositions) continue;
 
             foreach (var symbol in symbols)
             {
                 if (openPositions.ContainsKey(symbol)) continue;
-                if (openPositions.Count >= effectiveMaxPos) break;
+                if (openPositions.Count >= maxTotalPositions) break;
                 if (!symbolDataMap.TryGetValue(symbol, out var sd)) continue;
                 if (!sd.DateToIndex.TryGetValue(date, out var barIdx)) continue;
                 if (barIdx < TradeSimulator.MinWarmupBars) continue;
-
-                // 재진입 쿨다운 체크
-                if (reentryCooldowns.TryGetValue(symbol, out var cooldownUntil) && date < cooldownUntil)
-                    continue;
 
                 var windowSize = Math.Min(barIdx + 1, maxWindow);
                 var windowStart = barIdx + 1 - windowSize;
@@ -530,6 +560,27 @@ public class BacktestService : IBacktestService
                 {
                     try
                     {
+                        var ruleDetector = detector as RuleBasedDetector;
+                        var strategyRuntime = ruleDetector != null
+                            && strategyRuntimes.TryGetValue(ruleDetector.Definition.Name, out var configuredRuntime)
+                                ? configuredRuntime
+                                : null;
+                        var portfolioRules = strategyRuntime?.Portfolio;
+                        var effectiveMaxPos = maxTotalPositions;
+                        if (portfolioRules?.MaxTotalPositions > 0)
+                            effectiveMaxPos = Math.Min(effectiveMaxPos, portfolioRules.MaxTotalPositions);
+                        if (openPositions.Count >= effectiveMaxPos) continue;
+                        if (strategyRuntime?.CircuitBreakerTripped == true) continue;
+                        if (strategyRuntime != null
+                            && strategyRuntime.CircuitBreaker.ConsecutiveLossLimit > 0
+                            && date < strategyRuntime.CircuitBreakerUntilDate) continue;
+                        if (strategyRuntime != null
+                            && strategyRuntime.Portfolio.MaxEntriesPerDay > 0
+                            && strategyRuntime.DailyEntryCount >= strategyRuntime.Portfolio.MaxEntriesPerDay) continue;
+                        if (ruleDetector != null
+                            && reentryCooldowns.TryGetValue($"{ruleDetector.Definition.Name}|{symbol}", out var cooldownUntil)
+                            && date < cooldownUntil) continue;
+
                         var signal = await detector.DetectAsync(symbol, windowBars, regime!, ct);
                         if (signal == null) continue;
                         if (signal.EntryPrice <= 0 || signal.StopLossPrice <= 0) continue;
@@ -580,15 +631,31 @@ public class BacktestService : IBacktestService
                             if (correlationBlocked) continue;
                         }
 
-                        // [BUG-PB-08] SizingMode Kelly/HalfKelly 반영
+                        // 완료된 과거 거래만 사용해 켈리 비율 계산 (미래 거래 누출 방지)
                         var effectiveRisk = riskPerTrade;
                         if (detector is RuleBasedDetector rbdSizing)
                         {
+                            var sizingTrades = trades
+                                .Where(trade => string.Equals(
+                                    trade.CustomPatternName,
+                                    rbdSizing.Definition.Name,
+                                    StringComparison.OrdinalIgnoreCase))
+                                .ToList();
+                            decimal rollingKelly = 0;
+                            if (sizingTrades.Count >= 10)
+                            {
+                                var completedWins = sizingTrades.Where(trade => trade.PnL > 0).ToList();
+                                var completedLosses = sizingTrades.Where(trade => trade.PnL < 0).ToList();
+                                var rollingWinRate = (decimal)completedWins.Count / sizingTrades.Count;
+                                var rollingAvgWin = completedWins.Count > 0 ? completedWins.Average(trade => trade.PnLPercent * 100) : 0;
+                                var rollingAvgLoss = completedLosses.Count > 0 ? Math.Abs(completedLosses.Average(trade => trade.PnLPercent * 100)) : 0;
+                                rollingKelly = PerformanceCalculator.ComputeKellyFraction(rollingWinRate, rollingAvgWin, rollingAvgLoss);
+                            }
                             var sizingMode = rbdSizing.Definition.SizingMode;
-                            if (sizingMode == "Kelly" && kellyFraction > 0)
-                                effectiveRisk = kellyFraction;
-                            else if (sizingMode == "HalfKelly" && halfKellyFraction > 0)
-                                effectiveRisk = halfKellyFraction;
+                            if (sizingMode == "Kelly" && rollingKelly > 0)
+                                effectiveRisk = rollingKelly;
+                            else if (sizingMode == "HalfKelly" && rollingKelly > 0)
+                                effectiveRisk = rollingKelly / 2;
                         }
                         var riskAmount = effectiveEquity * effectiveRisk;
                         var quantity = (int)(riskAmount / stopDistance);
@@ -604,9 +671,9 @@ public class BacktestService : IBacktestService
                         var entryAtr = sd.Atr[barIdx] > 0 ? sd.Atr[barIdx] : stopDistance;
 
                         TradeSimulator.PatternExitProfile? customExit = null;
-                        if (detector is RuleBasedDetector rbd)
+                        if (ruleDetector != null)
                         {
-                            var def = rbd.Definition;
+                            var def = ruleDetector.Definition;
                             customExit = new TradeSimulator.PatternExitProfile(
                                 MaxHoldingBars: def.MaxHoldingBars,
                                 EnableTrailingStop: def.TrailingAtr > 0,
@@ -620,14 +687,13 @@ public class BacktestService : IBacktestService
                         }
 
                         // [A-1] NextOpen 진입 모드 체크
-                        bool isNextOpen = detector is RuleBasedDetector rbdEntry
-                            && rbdEntry.Definition.EntryMode == "NextOpen";
+                        var entryDefinition = ruleDetector?.Definition;
+                        bool isNextOpen = entryDefinition?.EntryMode == "NextOpen";
 
                         if (isNextOpen && !pendingNextOpenSignals.ContainsKey(symbol))
                         {
                             // 이번 봉에서 시그널만 저장하고, 다음 봉 Open에서 진입
                             signal.PendingEntry = true;
-                            var capRatioSnap = effectiveMaxPos > 0 ? 1.0m / effectiveMaxPos : 0.10m;
                             pendingNextOpenSignals[symbol] = (
                                 signal.EntryPrice,
                                 signal.StopLossPrice,
@@ -637,8 +703,9 @@ public class BacktestService : IBacktestService
                                 sd.Bars[barIdx].Volume,
                                 effectiveEquity,
                                 customExit,
-                                riskPerTrade,
-                                capRatioSnap
+                                effectiveRisk,
+                                capRatio,
+                                entryDefinition!.Name
                             );
                         }
                         else if (!isNextOpen)
@@ -646,6 +713,7 @@ public class BacktestService : IBacktestService
                             openPositions[symbol] = new TradeSimulator.OpenPosition
                             {
                                 PatternType           = detector.PatternType,
+                                CustomPatternName     = (detector as RuleBasedDetector)?.Definition.Name,
                                 EntryPrice            = signal.EntryPrice,
                                 OriginalStop          = signal.StopLossPrice,
                                 StopLoss              = signal.StopLossPrice,
@@ -664,8 +732,11 @@ public class BacktestService : IBacktestService
                                 CustomExitProfile     = customExit
                             };
 
-                            dailyEntryCount++;
-                            lastEntryDate = date;
+                            if (strategyRuntime != null)
+                            {
+                                strategyRuntime.DailyEntryCount++;
+                                strategyRuntime.LastEntryDate = date;
+                            }
                         }
 
                         break;
@@ -760,6 +831,7 @@ public class BacktestService : IBacktestService
 
         // ── [E-1] Kelly Criterion ──
         var perPatternStats = PerformanceCalculator.ComputePerPatternStats(trades);
+        var perStrategyStats = PerformanceCalculator.ComputePerStrategyStats(trades);
         kellyFraction = 0; halfKellyFraction = 0;
         if (trades.Count > 0)
         {
@@ -812,6 +884,7 @@ public class BacktestService : IBacktestService
             TotalTrades         = trades.Count,
             OverallWinRate      = overallWinRate,
             PerPatternStats     = perPatternStats,
+            PerStrategyStats    = perStrategyStats,
             PerSymbolStats      = PerformanceCalculator.ComputePerSymbolStats(trades, initialCapital),
             EquityCurve         = equityCurve,
             TotalSlippageCost   = totalSlippage,
@@ -1269,6 +1342,20 @@ public class BacktestService : IBacktestService
         int MaxTotalPositions,
         int MaxPositionsPerSector
     );
+
+    private sealed class CustomStrategyRuntime
+    {
+        public required RuleBasedDetector Detector { get; init; }
+        public required CircuitBreakerConfig CircuitBreaker { get; init; }
+        public required ReentryConfig Reentry { get; init; }
+        public required PortfolioRulesConfig Portfolio { get; init; }
+        public int ConsecutiveLosses;
+        public DateOnly CircuitBreakerUntilDate = DateOnly.MinValue;
+        public decimal PeakEquity;
+        public bool CircuitBreakerTripped;
+        public int DailyEntryCount;
+        public DateOnly LastEntryDate = DateOnly.MinValue;
+    }
 
     internal List<IPatternDetector> BuildDetectors(
         List<PatternType> patterns, PatternParameterOverrides? overrides,
@@ -1973,6 +2060,8 @@ public class BacktestService : IBacktestService
             DefaultAllocationPercent = src.DefaultAllocationPercent,
             ExitRulesJson        = src.ExitRulesJson,
             ExitRulesLogic       = src.ExitRulesLogic,
+            ExitGroupsJson       = src.ExitGroupsJson,
+            ExitGroupsLogic      = src.ExitGroupsLogic,
             ScalingRulesJson     = src.ScalingRulesJson,
             TimeFilterJson       = src.TimeFilterJson,
             CircuitBreakerJson   = src.CircuitBreakerJson,
