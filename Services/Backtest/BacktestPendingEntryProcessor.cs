@@ -36,7 +36,25 @@ internal sealed class BacktestPendingEntryProcessor
                 && context.StrategyRuntimes.TryGetValue(pending.StrategyName, out var resolvedRuntime)
                     ? resolvedRuntime
                     : null;
-            if (IsBlocked(symbol, pending, runtime, barIndex, context))
+            var cooldownUntil = pending.StrategyName != null
+                && context.ReentryCooldowns.TryGetValue(
+                    $"{pending.StrategyName}|{symbol}", out var blockedUntil)
+                        ? blockedUntil
+                        : (int?)null;
+            var eligibility = BacktestEntryEligibilityPolicy.Evaluate(
+                new BacktestEntryEligibilityRequest(
+                    context.MaxTotalPositions,
+                    runtime?.Portfolio.MaxTotalPositions ?? 0,
+                    context.Portfolio.OpenPositions.Count,
+                    runtime?.CircuitBreakerTripped == true,
+                    runtime?.CircuitBreaker.ConsecutiveLossLimit > 0,
+                    context.TimelineIndex,
+                    runtime?.CircuitBreakerUntilStep ?? 0,
+                    runtime?.Portfolio.MaxEntriesPerDay ?? 0,
+                    runtime?.DailyEntryCount ?? 0,
+                    barIndex,
+                    cooldownUntil));
+            if (!eligibility.CanEnter)
             {
                 _entries.Remove(symbol);
                 continue;
@@ -110,29 +128,6 @@ internal sealed class BacktestPendingEntryProcessor
         }
     }
 
-    private static bool IsBlocked(
-        string symbol,
-        BacktestPendingEntry pending,
-        BacktestStrategyRuntime? runtime,
-        int barIndex,
-        BacktestPendingEntryContext context)
-    {
-        var positionLimit = runtime?.Portfolio.MaxTotalPositions > 0
-            ? Math.Min(context.MaxTotalPositions, runtime.Portfolio.MaxTotalPositions)
-            : context.MaxTotalPositions;
-        return context.Portfolio.OpenPositions.Count >= positionLimit
-            || runtime?.CircuitBreakerTripped == true
-            || runtime != null
-                && runtime.CircuitBreaker.ConsecutiveLossLimit > 0
-                && context.TimelineIndex < runtime.CircuitBreakerUntilStep
-            || runtime != null
-                && runtime.Portfolio.MaxEntriesPerDay > 0
-                && runtime.DailyEntryCount >= runtime.Portfolio.MaxEntriesPerDay
-            || pending.StrategyName != null
-                && context.ReentryCooldowns.TryGetValue(
-                    $"{pending.StrategyName}|{symbol}", out var cooldownUntil)
-                && barIndex < cooldownUntil;
-    }
 }
 
 internal sealed record BacktestPendingEntryContext(

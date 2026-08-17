@@ -165,6 +165,21 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BacktestEntryPathsShareOneEligibilityPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
+        var engine = File.ReadAllText(enginePath);
+        var pending = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPendingEntryProcessor.cs"));
+
+        File.ReadAllLines(enginePath).Length.Should().BeLessThanOrEqualTo(410);
+        engine.Should().Contain("BacktestEntryEligibilityPolicy.Evaluate(");
+        pending.Should().Contain("BacktestEntryEligibilityPolicy.Evaluate(");
+        pending.Should().NotContain("private static bool IsBlocked(");
+    }
+
+    [Fact]
     public void OptimizationExecutorDelegatesMarketDataPreparation()
     {
         var repository = FindRepositoryRoot();

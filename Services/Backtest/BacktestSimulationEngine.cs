@@ -213,20 +213,26 @@ public sealed class BacktestSimulationEngine
                                 ? configuredRuntime
                                 : null;
                         var portfolioRules = strategyRuntime?.Portfolio;
-                        var effectiveMaxPos = maxTotalPositions;
-                        if (portfolioRules?.MaxTotalPositions > 0)
-                            effectiveMaxPos = Math.Min(effectiveMaxPos, portfolioRules.MaxTotalPositions);
-                        if (openPositions.Count >= effectiveMaxPos) continue;
-                        if (strategyRuntime?.CircuitBreakerTripped == true) continue;
-                        if (strategyRuntime != null
-                            && strategyRuntime.CircuitBreaker.ConsecutiveLossLimit > 0
-                            && timelineIndex < strategyRuntime.CircuitBreakerUntilStep) continue;
-                        if (strategyRuntime != null
-                            && strategyRuntime.Portfolio.MaxEntriesPerDay > 0
-                            && strategyRuntime.DailyEntryCount >= strategyRuntime.Portfolio.MaxEntriesPerDay) continue;
-                        if (ruleDetector != null
-                            && reentryCooldowns.TryGetValue($"{ruleDetector.Definition.Name}|{symbol}", out var cooldownUntil)
-                            && barIdx < cooldownUntil) continue;
+                        var cooldownUntil = ruleDetector != null
+                            && reentryCooldowns.TryGetValue(
+                                $"{ruleDetector.Definition.Name}|{symbol}", out var blockedUntil)
+                                    ? blockedUntil
+                                    : (int?)null;
+                        var entryEligibility = BacktestEntryEligibilityPolicy.Evaluate(
+                            new BacktestEntryEligibilityRequest(
+                                maxTotalPositions,
+                                portfolioRules?.MaxTotalPositions ?? 0,
+                                openPositions.Count,
+                                strategyRuntime?.CircuitBreakerTripped == true,
+                                strategyRuntime?.CircuitBreaker.ConsecutiveLossLimit > 0,
+                                timelineIndex,
+                                strategyRuntime?.CircuitBreakerUntilStep ?? 0,
+                                portfolioRules?.MaxEntriesPerDay ?? 0,
+                                strategyRuntime?.DailyEntryCount ?? 0,
+                                barIdx,
+                                cooldownUntil));
+                        if (!entryEligibility.CanEnter) continue;
+                        var effectiveMaxPos = entryEligibility.EffectiveMaxPositions;
 
                         var signal = await detector.DetectAsync(symbol, windowBars, regime!, ct);
                         if (signal == null) continue;

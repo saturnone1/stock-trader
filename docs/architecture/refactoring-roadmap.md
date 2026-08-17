@@ -58,8 +58,12 @@
   an explicit 60-bar window and 10-return minimum. The simulation engine is now 391 lines and delegates
   correlation blocking instead of calculating Pearson statistics inline. Golden fixtures cover bear
   weight reduction and rejection of a second highly correlated symbol.
+- `BacktestEntryEligibilityPolicy` is the single owner of position limits, drawdown and consecutive-loss
+  circuit breakers, daily entry limits, and same-symbol reentry cooldown boundaries. Both immediate
+  entries and NextOpen pending entries delegate to it, preventing delayed orders from bypassing the
+  runtime gates that applied when their signal was created.
 
-Remaining Phase 2 work is primarily entry eligibility/runtime orchestration extraction from
+Remaining Phase 2 work is primarily custom exit-profile/runtime orchestration extraction from
 `BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
 and broader preview/backtest/live parity fixtures.
 
