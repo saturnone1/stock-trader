@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
@@ -31,6 +32,7 @@ public class OrderService : IOrderService
     private readonly INotificationService _notificationService;
     private readonly IMarketCalendar _marketCalendar;
     private readonly ISignalService _signalService;
+    private readonly TimeProvider _timeProvider;
     private readonly AppDbContext _db;
     private readonly ILogger<OrderService> _logger;
 
@@ -41,6 +43,7 @@ public class OrderService : IOrderService
         INotificationService notificationService,
         IMarketCalendar marketCalendar,
         ISignalService signalService,
+        TimeProvider timeProvider,
         AppDbContext db,
         ILogger<OrderService> logger)
     {
@@ -50,6 +53,7 @@ public class OrderService : IOrderService
         _notificationService = notificationService;
         _marketCalendar = marketCalendar;
         _signalService = signalService;
+        _timeProvider = timeProvider;
         _db = db;
         _logger = logger;
     }
@@ -127,8 +131,11 @@ public class OrderService : IOrderService
             var actualQuantity = brokerPosition?.Quantity > 0
                 ? brokerPosition.Quantity
                 : recommendation.ShareQuantity;
-            var stopDistance = Math.Max(0m, recommendation.EntryPrice - recommendation.StopLossPrice);
-            var targetDistance = Math.Max(0m, recommendation.TargetPrice - recommendation.EntryPrice);
+            var fill = LongEntryFillPolicy.ReanchorExecutedFill(
+                recommendation.EntryPrice,
+                recommendation.StopLossPrice,
+                recommendation.TargetPrice,
+                actualEntry);
 
             var position = new Position
             {
@@ -136,13 +143,13 @@ public class OrderService : IOrderService
                 Quantity = actualQuantity,
                 EntryPrice = actualEntry,
                 CurrentPrice = brokerPosition?.CurrentPrice > 0 ? brokerPosition.CurrentPrice : actualEntry,
-                StopLossPrice = stopDistance > 0 ? actualEntry - stopDistance : recommendation.StopLossPrice,
-                TargetPrice = targetDistance > 0 ? actualEntry + targetDistance : recommendation.TargetPrice,
+                StopLossPrice = fill.StopPrice,
+                TargetPrice = fill.TargetPrice,
                 PatternType = recommendation.PatternType,
                 CustomPatternName = recommendation.CustomPatternName,
-                OpenedAt = DateTime.UtcNow,
+                OpenedAt = _timeProvider.GetUtcNow().UtcDateTime,
                 HighSinceEntry = actualEntry,
-                InitialRiskDistance = stopDistance
+                InitialRiskDistance = fill.RiskDistance
             };
             await _tradeRepo.SavePositionAsync(position, ct);
 
@@ -244,7 +251,7 @@ public class OrderService : IOrderService
                 Symbol = signal.Symbol,
                 PatternType = signal.PatternType,
                 CustomPatternName = signal.CustomPatternName,
-                GeneratedAt = DateTime.UtcNow,
+                GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime,
                 EntryPrice = signal.EntryPrice,
                 StopLossPrice = signal.StopLossPrice,
                 TargetPrice = signal.TargetPrice,
@@ -281,7 +288,7 @@ public class OrderService : IOrderService
 
         // 4.5 시그널 유효성 검증 — 시장가 주문이므로 기본 논리 검증 수행
         // (진입가 감지 이후 시간 경과 + 가격 레벨 일관성 확인)
-        var signalAge = DateTime.UtcNow - signal.DetectedAt;
+        var signalAge = _timeProvider.GetUtcNow().UtcDateTime - signal.DetectedAt;
         var maxSignalAge = TimeSpan.FromHours(24); // 일봉 시그널 기준 24시간
         if (signalAge > maxSignalAge)
         {
@@ -355,7 +362,7 @@ public class OrderService : IOrderService
             TargetPrice = recommendation.TargetPrice,
             PatternType = recommendation.PatternType,
             CustomPatternName = recommendation.CustomPatternName,
-            OpenedAt = DateTime.UtcNow,
+            OpenedAt = _timeProvider.GetUtcNow().UtcDateTime,
             HighSinceEntry = recommendation.EntryPrice
         };
         await _tradeRepo.SavePositionAsync(position, ct);

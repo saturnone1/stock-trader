@@ -56,6 +56,7 @@ public class OrderServiceTests
         _notificationServiceMock.Object,
         _marketCalendarMock.Object,
         _signalServiceMock.Object,
+        TimeProvider.System,
         CreateInMemoryDb(),
         NullLogger<OrderService>.Instance);
 
@@ -371,6 +372,44 @@ public class OrderServiceTests
         savedPosition.StopLossPrice.Should().Be(190m);
         savedPosition.TargetPrice.Should().Be(220m);
         savedPosition.PatternType.Should().Be(PatternType.GapUpPullback);
+    }
+
+    [Fact]
+    public async Task PlaceOrder_BrokerFill_ReanchorsStopAndTargetWithSharedFillPolicy()
+    {
+        SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
+        _accountManagerMock
+            .Setup(manager => manager.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
+        _brokerServiceMock
+            .Setup(broker => broker.PlaceOrderAsync(
+                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _brokerServiceMock
+            .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new Position
+            {
+                Symbol = "TSLA",
+                Quantity = 5,
+                EntryPrice = 208m,
+                CurrentPrice = 208m
+            }]);
+        Position? savedPosition = null;
+        _tradeRepoMock
+            .Setup(repository => repository.SavePositionAsync(
+                It.IsAny<Position>(), It.IsAny<CancellationToken>()))
+            .Callback<Position, CancellationToken>((position, _) => savedPosition = position)
+            .Returns(Task.CompletedTask);
+
+        await CreateSut().PlaceOrderAsync(CreateRecommendation(
+            "TSLA", 5, 200m, 190m, 220m));
+
+        savedPosition.Should().NotBeNull();
+        savedPosition!.EntryPrice.Should().Be(208m);
+        savedPosition.StopLossPrice.Should().Be(198m);
+        savedPosition.TargetPrice.Should().Be(228m);
+        savedPosition.InitialRiskDistance.Should().Be(10m);
     }
 
     // ── PlaceOrder: AutoOrder 모드 — 브로커 실패 ───────────────────────────

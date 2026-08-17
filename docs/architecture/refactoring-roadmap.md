@@ -100,7 +100,9 @@
   ATR values, reference-data as-of boundaries, and the same long-position entry/exit policies used
   by backtest. Goldens lock NextOpen gap repricing, entry-bar exits, prepared-indicator prefix
   stability, and exclusion of a hidden repository-inclusive end bar. A cross-engine fixture also
-  compiles one strategy once and locks identical preview/backtest entry and exit events.
+  compiles one strategy once and locks identical preview/backtest entry events plus the live
+  broker-fill entry, stop, and target geometry. Live order persistence now reuses
+  `LongEntryFillPolicy`, and both live scanning and order timestamps use `TimeProvider`.
 - `CumulativeRsi2ExitDecisionPolicy` now owns the built-in strategy's trend-break-first and cumulative
   RSI threshold semantics. Backtest and live monitoring pass their independently prepared indicator
   snapshots into the same pure decision, including the same invalid-price boundary.

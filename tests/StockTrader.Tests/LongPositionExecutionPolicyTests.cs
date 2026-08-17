@@ -103,6 +103,15 @@ public class LongPositionExecutionPolicyTests
         fill.Should().Be(new LongEntryFill(108m, 103m, 123m, 5m));
     }
 
+    [Fact]
+    public void ReanchorExecutedFill_UsesTheSameNextOpenRiskGeometry()
+    {
+        var fill = LongEntryFillPolicy.ReanchorExecutedFill(
+            100m, 95m, 115m, 108m);
+
+        fill.Should().Be(new LongEntryFill(108m, 103m, 123m, 5m));
+    }
+
     [Theory]
     [InlineData(100, 100, 105)]
     [InlineData(100, 101, 105)]

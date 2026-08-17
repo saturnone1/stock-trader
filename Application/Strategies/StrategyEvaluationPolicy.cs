@@ -11,4 +11,7 @@ public static class StrategyEvaluationPolicy
 
     /// <summary>200거래일 레짐을 안정적으로 준비하기 위한 기본 달력일 조회 범위입니다.</summary>
     public const int RegimeLookbackCalendarDays = 400;
+
+    /// <summary>실시간 일봉 신호가 지표 워밍업을 포함해 조회하는 기본 달력일 범위입니다.</summary>
+    public const int LiveDailySignalLookbackDays = 365;
 }

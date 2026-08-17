@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using Microsoft.Extensions.Options;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -25,6 +25,7 @@ public class PatternScannerService : BackgroundService
     private readonly Channel<string> _symbolChannel;
     private readonly IIndicatorService _indicatorService;
     private readonly INotificationService _notificationService;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<PatternScannerService> _logger;
 
     private int _consecutiveFailures = 0;
@@ -49,12 +50,14 @@ public class PatternScannerService : BackgroundService
         Channel<string> symbolChannel,
         IIndicatorService indicatorService,
         INotificationService notificationService,
+        TimeProvider timeProvider,
         ILogger<PatternScannerService> logger)
     {
         _scopeFactory = scopeFactory;
         _symbolChannel = symbolChannel;
         _indicatorService = indicatorService;
         _notificationService = notificationService;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -119,7 +122,8 @@ public class PatternScannerService : BackgroundService
     {
         // 일봉 패턴: 하루에 한 번만 스캔 (ET 날짜 기준)
         // 스트리밍은 1분마다 symbol을 push하지만, 일봉 데이터는 하루에 한 번만 갱신됨
-        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
+        var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(nowUtc,
             TZConvert.GetTimeZoneInfo("America/New_York"));
         var todayEt = DateOnly.FromDateTime(nowEt);
 
@@ -136,7 +140,7 @@ public class PatternScannerService : BackgroundService
         var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
 
         var bars = await ohlcvRepo.GetBarsAsync(symbol, TimeFrame.Daily,
-            DateTime.UtcNow.AddYears(-1), DateTime.UtcNow, ct);
+            nowUtc.AddDays(-StrategyEvaluationPolicy.LiveDailySignalLookbackDays), nowUtc, ct);
 
         if (bars.Count < 20)
         {
@@ -186,18 +190,20 @@ public class PatternScannerService : BackgroundService
     private async Task<MarketRegime> ComputeRegimeAsync(IOhlcvRepository ohlcvRepo,
         CancellationToken ct)
     {
+        var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
         // SMA200에는 최소 200개 daily bars 필요 — 영업일 기준 ~280일(공휴일 감안)이므로 400일치 조회
         var spyBars = await ohlcvRepo.GetBarsAsync("SPY", TimeFrame.Daily,
-            DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+            nowUtc.AddDays(-StrategyEvaluationPolicy.RegimeLookbackCalendarDays), nowUtc, ct);
 
-        var regime = new MarketRegime { AsOf = DateTime.UtcNow };
+        var regime = new MarketRegime { AsOf = nowUtc };
 
         _logger.LogDebug("ComputeRegime: SPY daily bars count = {Count}", spyBars.Count);
 
-        if (spyBars.Count >= 200)
+        if (spyBars.Count >= StrategyEvaluationPolicy.RegimeTrendBars)
         {
             var closes = ExtractCloses(spyBars.ToArray());
-            var sma200 = _indicatorService.SMA(closes, 200);
+            var sma200 = _indicatorService.SMA(
+                closes, StrategyEvaluationPolicy.RegimeTrendBars);
             regime.SpyPrice = closes[^1];
             regime.Spy200Ma = sma200[^1];
             regime.SpyAbove200Ma = regime.SpyPrice > regime.Spy200Ma;

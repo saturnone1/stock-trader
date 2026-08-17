@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.StrategyPreview;
 using StockTrader.Configuration;
@@ -17,7 +18,7 @@ namespace StockTrader.Tests;
 public class CustomStrategyExecutionParityTests
 {
     [Fact]
-    public async Task PreviewAndBacktest_RunTheSameCompiledNextOpenStrategy()
+    public async Task PreviewBacktestAndLiveFill_RunTheSameCompiledNextOpenStrategy()
     {
         var bars = Bars();
         bars[51].Open = 105m;
@@ -91,11 +92,27 @@ public class CustomStrategyExecutionParityTests
                 new CumulativeRsi2Config(),
                 CancellationToken.None);
 
+        var liveRuntime = factory.Create(strategy);
+        var liveSignal = await liveRuntime.EvaluateEntryAsync(
+            "AAA",
+            bars[..51],
+            new MarketRegime { SpyAbove200Ma = true },
+            CancellationToken.None);
+        liveSignal.Should().NotBeNull();
+        var liveFill = LongEntryFillPolicy.ReanchorExecutedFill(
+            liveSignal!.EntryPrice,
+            liveSignal.StopLossPrice,
+            liveSignal.TargetPrice,
+            bars[51].Open);
+
         var previewEntry = preview!.Markers.Single(marker => marker.Type == "ENTRY");
         var previewExit = preview.Markers.Single(marker => marker.Type == "EXIT");
         var backtestTrade = backtest.Trades.Should().ContainSingle().Subject;
         previewEntry.Date.Should().Be(backtestTrade.EntryTime);
         previewEntry.Price.Should().Be(backtestTrade.EntryPrice);
+        previewEntry.Price.Should().Be(liveFill.EntryPrice);
+        previewEntry.StopPrice.Should().Be(liveFill.StopPrice);
+        previewEntry.TargetPrice.Should().Be(liveFill.TargetPrice);
         previewExit.Date.Should().Be(backtestTrade.ExitTime);
         previewExit.Price.Should().Be(backtestTrade.ExitPrice);
         previewExit.Reason.Should().Be(backtestTrade.ExitReason);

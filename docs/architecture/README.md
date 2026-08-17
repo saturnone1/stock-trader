@@ -94,6 +94,12 @@ drawdown, consecutive-loss, session-entry, and reentry decisions. Environment-sp
 bookkeeping stays outside the policy, but it cannot change the gate ordering or effective position
 limit. Live recommendation timestamps and cooldown boundaries use the injected `TimeProvider`,
 and per-day entry counts reset at the US market calendar's date boundary instead of UTC midnight.
+Next-open risk geometry is likewise centralized: preview and backtest call
+`LongEntryFillPolicy.Reprice`, while live order persistence calls
+`LongEntryFillPolicy.ReanchorExecutedFill` after reading the broker's actual average fill. A direct
+golden compiles one strategy once and compares preview, backtest, and live entry price, stop, and
+target. Live daily scanning uses the injected application clock and the same central regime period
+and lookback values instead of private `DateTime.UtcNow`, 200-bar, or 400-day constants.
 The TQQQ long-trend strategy likewise owns its entry stop/target and rolling SMA stop-floor math in
 `Tqqq200SmaExecutionPolicy`. Its configured SMA period and multipliers feed detection, prepared
 backtest data, and live monitoring; adapters must not embed their own 200-day or multiplier values.

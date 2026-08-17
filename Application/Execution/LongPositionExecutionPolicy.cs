@@ -232,4 +232,32 @@ public static class LongEntryFillPolicy
             actualEntry + riskDistance * targetMultiple,
             riskDistance);
     }
+
+    /// <summary>
+    /// 이미 체결된 실시간 주문을 실제 평균단가에 맞춰 재기준화합니다. 정상적인 롱 신호는
+    /// <see cref="Reprice"/>와 완전히 같은 결과를 사용하고, 외부 주문 입력이 비정상이어도
+    /// 체결된 포지션 자체를 유실하지 않도록 기존 절대 거리 기준으로 안전하게 폴백합니다.
+    /// </summary>
+    public static LongEntryFill ReanchorExecutedFill(
+        decimal signalEntry,
+        decimal signalStop,
+        decimal signalTarget,
+        decimal actualEntry)
+    {
+        var repriced = Reprice(
+            signalEntry,
+            signalStop,
+            signalTarget,
+            actualEntry,
+            fallbackTargetMultiple: 2m);
+        if (repriced is not null) return repriced;
+
+        var riskDistance = Math.Max(0m, signalEntry - signalStop);
+        var targetDistance = Math.Max(0m, signalTarget - signalEntry);
+        return new LongEntryFill(
+            actualEntry,
+            actualEntry - riskDistance,
+            actualEntry + targetDistance,
+            riskDistance);
+    }
 }

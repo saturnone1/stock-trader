@@ -745,18 +745,44 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
-    public void PreviewAndBacktestUseTheSameLongPositionExecutionPolicy()
+    public void PreviewBacktestAndLiveUseTheSameLongPositionExecutionPolicy()
     {
         var repository = FindRepositoryRoot();
         var preview = File.ReadAllText(Path.Combine(
             repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
+        var order = File.ReadAllText(Path.Combine(repository, "Services/Order/OrderService.cs"));
+        var parity = File.ReadAllText(Path.Combine(
+            repository, "tests/StockTrader.Tests/CustomStrategyExecutionParityTests.cs"));
 
         preview.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
         backtest.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
         preview.Should().Contain("LongEntryFillPolicy.Reprice(");
+        order.Should().Contain("LongEntryFillPolicy.ReanchorExecutedFill(");
+        order.Should().Contain("_timeProvider.GetUtcNow()");
+        order.Should().NotContain("DateTime.UtcNow");
+        order.Should().NotContain("actualEntry - stopDistance");
+        order.Should().NotContain("actualEntry + targetDistance");
+        parity.Should().Contain("PreviewBacktestAndLiveFill_RunTheSameCompiledNextOpenStrategy");
+        parity.Should().Contain("previewEntry.StopPrice.Should().Be(liveFill.StopPrice)");
         preview.Should().NotContain("current.Low <= position.StopPrice");
         preview.Should().NotContain("current.High >= position.TargetPrice");
+    }
+
+    [Fact]
+    public void LiveDailyScannerUsesCentralClockAndRegimePolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var scanner = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/PatternScannerService.cs"));
+
+        scanner.Should().Contain("_timeProvider.GetUtcNow()");
+        scanner.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
+        scanner.Should().Contain("StrategyEvaluationPolicy.RegimeLookbackCalendarDays");
+        scanner.Should().Contain("StrategyEvaluationPolicy.LiveDailySignalLookbackDays");
+        scanner.Should().NotContain("DateTime.UtcNow");
+        scanner.Should().NotContain("AddDays(-400)");
+        scanner.Should().NotContain("SMA(closes, 200)");
     }
 
     [Fact]
