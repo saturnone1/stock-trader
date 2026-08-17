@@ -24,6 +24,7 @@ public static class ApiEndpointExtensions
         api.MapFinancialFactorApi();
         api.MapSymbolProfileApi();
         api.MapCustomPatternApi();
+        api.MapPatternPreviewApi();
         api.MapOptimizeApi();
         api.MapOptimizeJobApi();
 

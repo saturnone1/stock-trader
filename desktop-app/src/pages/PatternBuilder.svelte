@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { ChevronRight, CircleHelp, FolderTree, Plus, Save, Trash2 } from 'lucide-svelte'
   import { patternApi } from '../api/endpoints'
+  import PatternPreview from '../lib/PatternPreview.svelte'
 
   const indicatorPalette = [
     {
@@ -516,6 +517,63 @@
     }
   }
 
+  function buildPatternPayload(currentWorkspace) {
+    if (!currentWorkspace) return null
+    const entryGroups = currentWorkspace.entryGroups.map((group) => ({
+      ...group,
+      rules: group.rules.map(sanitizeRule)
+    }))
+    const exitRules = currentWorkspace.exitRules.map(sanitizeRule)
+    const weightTiers = currentWorkspace.weightTiers.map((tier) => ({
+      ...tier,
+      allocationPercent: toNumber(tier.allocationPercent, 100),
+      conditions: tier.conditions.map(sanitizeRule)
+    }))
+    const scalingRules = currentWorkspace.scalingRules.map((rule) => ({
+      ...rule,
+      percent: toNumber(rule.percent, 50),
+      maxCount: toNumber(rule.maxCount, 1),
+      minProfitPercent: toNumber(rule.minProfitPercent, 0),
+      conditions: rule.conditions.map(sanitizeRule)
+    }))
+    const dynamicExit = {
+      stopType: currentWorkspace.dynamicExit.stopType,
+      stopParams: normalizeDynamicParams('stop', currentWorkspace.dynamicExit.stopType, currentWorkspace.dynamicExit.stopParams),
+      targetType: currentWorkspace.dynamicExit.targetType,
+      targetParams: normalizeDynamicParams('target', currentWorkspace.dynamicExit.targetType, currentWorkspace.dynamicExit.targetParams)
+    }
+
+    return {
+      ...currentWorkspace.raw,
+      name: currentWorkspace.name,
+      description: currentWorkspace.description,
+      isActive: currentWorkspace.isActive,
+      requireBullRegime: currentWorkspace.requireBullRegime,
+      entryMode: currentWorkspace.entryMode,
+      sizingMode: currentWorkspace.sizingMode,
+      entryLogic: currentWorkspace.entryGroupsLogic,
+      entryGroupsLogic: currentWorkspace.entryGroupsLogic,
+      exitRulesLogic: currentWorkspace.exitRulesLogic,
+      atrStopMultiplier: toNumber(currentWorkspace.atrStopMultiplier, 2),
+      atrTargetMultiplier: toNumber(currentWorkspace.atrTargetMultiplier, 3),
+      maxHoldingBars: toNumber(currentWorkspace.maxHoldingBars, 10),
+      trailingAtr: toNumber(currentWorkspace.trailingAtr, 0),
+      partialProfitR: toNumber(currentWorkspace.partialProfitR, 0),
+      defaultAllocationPercent: toNumber(currentWorkspace.defaultAllocationPercent, 100),
+      useWeightTiers: currentWorkspace.useWeightTiers,
+      entryRulesJson: JSON.stringify([]),
+      entryGroupsJson: JSON.stringify(entryGroups),
+      exitRulesJson: JSON.stringify(exitRules),
+      weightTiersJson: JSON.stringify(weightTiers),
+      scalingRulesJson: JSON.stringify(scalingRules),
+      timeFilterJson: JSON.stringify(currentWorkspace.timeFilter),
+      circuitBreakerJson: JSON.stringify(currentWorkspace.circuitBreaker),
+      reentryJson: JSON.stringify(currentWorkspace.reentry),
+      portfolioRulesJson: JSON.stringify(currentWorkspace.portfolioRules),
+      dynamicExitJson: JSON.stringify(dynamicExit)
+    }
+  }
+
   function collectValidationIssues(currentWorkspace) {
     if (!currentWorkspace) return []
 
@@ -561,6 +619,8 @@
   }
 
   $: validationIssues = workspace ? collectValidationIssues(workspace) : []
+  $: previewPattern = workspace ? buildPatternPayload(workspace) : null
+  $: previewSelectedSummary = getSelectedPreviewSummary()
 
   async function loadPatterns() {
     loading = true
@@ -619,58 +679,7 @@
 
     saving = true
     try {
-      const entryGroups = workspace.entryGroups.map((group) => ({
-        ...group,
-        rules: group.rules.map(sanitizeRule)
-      }))
-      const exitRules = workspace.exitRules.map(sanitizeRule)
-      const weightTiers = workspace.weightTiers.map((tier) => ({
-        ...tier,
-        allocationPercent: toNumber(tier.allocationPercent, 100),
-        conditions: tier.conditions.map(sanitizeRule)
-      }))
-      const scalingRules = workspace.scalingRules.map((rule) => ({
-        ...rule,
-        percent: toNumber(rule.percent, 50),
-        maxCount: toNumber(rule.maxCount, 1),
-        minProfitPercent: toNumber(rule.minProfitPercent, 0),
-        conditions: rule.conditions.map(sanitizeRule)
-      }))
-      const dynamicExit = {
-        stopType: workspace.dynamicExit.stopType,
-        stopParams: normalizeDynamicParams('stop', workspace.dynamicExit.stopType, workspace.dynamicExit.stopParams),
-        targetType: workspace.dynamicExit.targetType,
-        targetParams: normalizeDynamicParams('target', workspace.dynamicExit.targetType, workspace.dynamicExit.targetParams)
-      }
-      const payload = {
-        ...workspace.raw,
-        name: workspace.name,
-        description: workspace.description,
-        isActive: workspace.isActive,
-        requireBullRegime: workspace.requireBullRegime,
-        entryMode: workspace.entryMode,
-        sizingMode: workspace.sizingMode,
-        entryLogic: workspace.entryGroupsLogic,
-        entryGroupsLogic: workspace.entryGroupsLogic,
-        exitRulesLogic: workspace.exitRulesLogic,
-        atrStopMultiplier: toNumber(workspace.atrStopMultiplier, 2),
-        atrTargetMultiplier: toNumber(workspace.atrTargetMultiplier, 3),
-        maxHoldingBars: toNumber(workspace.maxHoldingBars, 10),
-        trailingAtr: toNumber(workspace.trailingAtr, 0),
-        partialProfitR: toNumber(workspace.partialProfitR, 0),
-        defaultAllocationPercent: toNumber(workspace.defaultAllocationPercent, 100),
-        useWeightTiers: workspace.useWeightTiers,
-        entryRulesJson: JSON.stringify([]),
-        entryGroupsJson: JSON.stringify(entryGroups),
-        exitRulesJson: JSON.stringify(exitRules),
-        weightTiersJson: JSON.stringify(weightTiers),
-        scalingRulesJson: JSON.stringify(scalingRules),
-        timeFilterJson: JSON.stringify(workspace.timeFilter),
-        circuitBreakerJson: JSON.stringify(workspace.circuitBreaker),
-        reentryJson: JSON.stringify(workspace.reentry),
-        portfolioRulesJson: JSON.stringify(workspace.portfolioRules),
-        dynamicExitJson: JSON.stringify(dynamicExit)
-      }
+      const payload = buildPatternPayload(workspace)
 
       const res = await patternApi.update(selectedPattern.id, payload)
       selectedPattern = res.data
@@ -830,6 +839,23 @@
     return null
   }
 
+  function getSelectedPreviewSummary() {
+    if (!workspace) return ''
+    const rule = getCurrentRule()
+    if (rule) return ruleSummary(rule)
+    if (selectedNode.type === 'dynamicExit') {
+      return `손절 ${displayStopType(workspace.dynamicExit.stopType)} · 목표 ${displayTargetType(workspace.dynamicExit.targetType)}`
+    }
+    if (selectedNode.type === 'general') {
+      return `${displayEntryMode(workspace.entryMode)} 진입 · 손절 ${workspace.atrStopMultiplier} ATR · 목표 ${workspace.atrTargetMultiplier} ATR`
+    }
+    if (selectedNode.type === 'group') {
+      const group = workspace.entryGroups[selectedNode.groupIndex]
+      return `${group?.label ?? '진입 그룹'} · ${displayLogic(group?.logic)}`
+    }
+    return ''
+  }
+
   function updateRuleField(field, value) {
     const rule = getCurrentRule()
     if (!rule) return
@@ -987,6 +1013,8 @@
             </div>
           </div>
         {/if}
+
+        <PatternPreview pattern={previewPattern} selectedRuleSummary={previewSelectedSummary} />
 
         <div class="mb-6 rounded-xl border border-gray-800 bg-gray-950 p-5">
           <button on:click={() => selectNode({ type: 'general' })} class={`w-full text-left ${selectedNode.type === 'general' ? 'text-blue-300' : 'text-white'}`}>
