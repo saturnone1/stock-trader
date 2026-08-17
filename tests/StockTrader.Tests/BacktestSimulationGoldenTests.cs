@@ -140,6 +140,8 @@ public class BacktestSimulationGoldenTests
             && trade.Quantity == 50);
         result.TotalReturn.Should().Be(1_000m);
         result.TotalTrades.Should().Be(1);
+        result.EquityCurve[^1].Equity.Should().Be(101_000m,
+            "기간 종료 청산 손익을 실현한 뒤 같은 포지션의 미실현손익을 다시 더하면 안 됩니다");
     }
 
     [Fact]

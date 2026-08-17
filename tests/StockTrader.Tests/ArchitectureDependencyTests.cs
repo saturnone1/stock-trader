@@ -88,12 +88,15 @@ public class ArchitectureDependencyTests
         var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
         var service = File.ReadAllText(servicePath);
         var engine = File.ReadAllText(enginePath);
+        var tradeLedger = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestTradeLedger.cs"));
 
         File.ReadAllLines(servicePath).Length.Should().BeLessThanOrEqualTo(800);
         service.Should().Contain("_simulationEngine.RunAsync(");
         service.Should().NotContain("private async Task<BacktestResult> RunSimulationAsync(");
         service.Should().NotContain("volatilityFactor");
-        engine.Should().Contain("BacktestExecutionCostLedger");
+        engine.Should().Contain("new BacktestTradeLedger(");
+        tradeLedger.Should().Contain("new BacktestExecutionCostLedger(");
     }
 
     [Fact]
@@ -200,6 +203,8 @@ public class ArchitectureDependencyTests
             repository, "Services/Backtest/BacktestSimulationEngine.cs"));
         var registry = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestStrategyRuntimeRegistry.cs"));
+        var tradeLedger = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestTradeLedger.cs"));
         var entry = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
         var pending = File.ReadAllText(Path.Combine(
@@ -208,13 +213,28 @@ public class ArchitectureDependencyTests
             repository, "Services/Backtest/BacktestPositionExitProcessor.cs"));
 
         engine.Should().Contain("new BacktestStrategyRuntimeRegistry(");
-        engine.Should().Contain("runtimeRegistry.ApplyRealizedTrade(");
+        engine.Should().Contain("new BacktestTradeLedger(");
         engine.Should().Contain("runtimeRegistry.BeginStep(");
         engine.Should().NotContain("runtime.RealizedEquity +=");
+        tradeLedger.Should().Contain("_runtimeRegistry.ApplyRealizedTrade(");
         registry.Should().Contain("BacktestStrategyTransitionPolicy.RegisterClosedTrade(");
         entry.Should().Contain("context.RuntimeRegistry");
         pending.Should().Contain("context.RuntimeRegistry");
         exit.Should().Contain("context.RuntimeRegistry");
+    }
+
+    [Fact]
+    public void TerminalLiquidationSettlesTradesAndRemovesOpenPositions()
+    {
+        var repository = FindRepositoryRoot();
+        var engine = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSimulationEngine.cs"));
+        var liquidator = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestTerminalPositionLiquidator.cs"));
+
+        engine.Should().Contain("BacktestTerminalPositionLiquidator.Liquidate(");
+        liquidator.Should().Contain("portfolio.OpenPositions.Remove(symbol)");
+        liquidator.Should().Contain("ledger.SettleSince(firstNewTrade)");
     }
 
     [Fact]

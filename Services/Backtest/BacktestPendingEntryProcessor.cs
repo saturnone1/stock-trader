@@ -83,7 +83,7 @@ internal sealed class BacktestPendingEntryProcessor
                 pending, fill, entryBar, barIndex, sizing.Quantity);
 
             // 시가 진입 봉의 고가·저가는 실제 보유 구간이므로 즉시 체결 정책을 평가한다.
-            var tradesBefore = context.Trades.Count;
+            var tradesBefore = context.TradeLedger.Count;
             var exitResult = context.ExecutionAdapter.ProcessExitLogic(
                 position,
                 entryBar,
@@ -96,21 +96,21 @@ internal sealed class BacktestPendingEntryProcessor
                 context.ExitPolicies,
                 context.ExitOverrides,
                 symbol,
-                context.Trades);
-            context.ApplyNewTradeCosts(tradesBefore);
+                context.TradeLedger.Trades);
+            context.TradeLedger.SettleSince(tradesBefore);
 
             if (exitResult != null)
             {
                 context.Portfolio.OpenPositions[symbol] = exitResult;
             }
-            else if (context.Trades.Count > tradesBefore)
+            else if (context.TradeLedger.Count > tradesBefore)
             {
                 context.RuntimeRegistry.RegisterClosedTrade(
                     pending.StrategyName,
                     symbol,
                     barIndex,
                     context.TimelineIndex,
-                    context.Trades[^1]);
+                    context.TradeLedger.Trades[^1]);
             }
 
             _entries.Remove(symbol);
@@ -128,9 +128,8 @@ internal sealed record BacktestPendingEntryContext(
     IReadOnlyDictionary<string, PreparedSymbolData> SymbolData,
     BacktestPortfolioState Portfolio,
     BacktestStrategyRuntimeRegistry RuntimeRegistry,
-    List<TradeRecord> Trades,
+    BacktestTradeLedger TradeLedger,
     BacktestExecutionAdapter ExecutionAdapter,
     CumulativeRsi2Config CumulativeRsi2Config,
     Dictionary<PatternType, LongPositionExitPolicy> ExitPolicies,
-    PatternParameterOverrides? ExitOverrides,
-    Action<int> ApplyNewTradeCosts);
+    PatternParameterOverrides? ExitOverrides);

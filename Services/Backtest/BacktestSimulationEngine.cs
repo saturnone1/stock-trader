@@ -46,24 +46,18 @@ public sealed class BacktestSimulationEngine
 
         var portfolio = new BacktestPortfolioState(initialCapital, from);
         var openPositions = portfolio.OpenPositions;
-        var trades = new List<TradeRecord>();
         var exitPolicyCache = new Dictionary<PatternType, LongPositionExitPolicy>();
         var maxTotalPositions = riskParams.MaxTotalPositions;
         var riskPerTrade = riskParams.RiskPerTradePercent;
         var dailyLossLimitPercent = riskParams.DailyLossLimitPercent;
         var runtimeRegistry = new BacktestStrategyRuntimeRegistry(
             detectors, symbolDataMap, initialCapital);
-        var executionCosts = new BacktestExecutionCostLedger(
-            slippageModel, slippagePercent, commissionPerTrade);
-
-        void ApplyNewTradeCosts(int startIndex)
-        {
-            executionCosts.ApplyNewTrades(trades, startIndex, trade =>
-            {
-                portfolio.ApplyRealizedTrade(trade);
-                runtimeRegistry.ApplyRealizedTrade(trade);
-            });
-        }
+        var tradeLedger = new BacktestTradeLedger(
+            portfolio,
+            runtimeRegistry,
+            slippageModel,
+            slippagePercent,
+            commissionPerTrade);
         var pendingEntryProcessor = new BacktestPendingEntryProcessor();
         var maxWindow = BacktestTimeFramePolicy.Get(timeFrame).SimulationWindowBars;
 
@@ -92,9 +86,8 @@ public sealed class BacktestSimulationEngine
                 exitOverrides,
                 portfolio,
                 runtimeRegistry,
-                trades,
-                simulator,
-                ApplyNewTradeCosts));
+                tradeLedger,
+                simulator));
 
             // ── 일일 포트폴리오 손실 제한 ──
             var dailyLossLimitReached =
@@ -114,12 +107,11 @@ public sealed class BacktestSimulationEngine
                     symbolDataMap,
                     portfolio,
                     runtimeRegistry,
-                    trades,
+                    tradeLedger,
                     simulator,
                     cumulativeRsi2Config,
                     exitPolicyCache,
-                    exitOverrides,
-                    ApplyNewTradeCosts));
+                    exitOverrides));
             }
 
             // ── 2b. 새 진입 ──
@@ -150,32 +142,19 @@ public sealed class BacktestSimulationEngine
                 weightStrategy,
                 portfolio,
                 runtimeRegistry,
-                trades,
+                tradeLedger.Trades,
                 pendingEntryProcessor), ct);
 
             portfolio.RecordMarkedEquity(date);
         }
 
-        // ── 잔여 포지션 종가 청산 ──
-        var finalTradeStart = trades.Count;
-        foreach (var (symbol, pos) in openPositions)
-        {
-            if (symbolDataMap.TryGetValue(symbol, out var sd) && sd.Bars.Length > 0)
-            {
-                var lastBar = sd.Bars[^1];
-                var exitQty = pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity;
-                trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
-                    symbol, pos, lastBar.Close, lastBar.Timestamp, "기간 종료", exitQty));
-            }
-        }
-        ApplyNewTradeCosts(finalTradeStart);
-        if (trades.Count > 0)
-            portfolio.RecordMarkedEquity(trades.Max(trade => trade.ExitTime));
+        BacktestTerminalPositionLiquidator.Liquidate(
+            symbolDataMap, portfolio, tradeLedger);
 
         return BacktestResultBuilder.Build(new BacktestResultInputs
         {
             Symbols = symbols,
-            Trades = trades,
+            Trades = tradeLedger.Trades,
             RegimeByDate = regimeByDate,
             EquityCurve = portfolio.EquityCurve,
             Warnings = warnings,
@@ -185,8 +164,8 @@ public sealed class BacktestSimulationEngine
             InitialCapital = initialCapital,
             CurrentEquity = portfolio.CurrentEquity,
             MaxDrawdown = portfolio.MaxDrawdown,
-            TotalSlippage = executionCosts.TotalSlippage,
-            TotalCommission = executionCosts.TotalCommission,
+            TotalSlippage = tradeLedger.TotalSlippage,
+            TotalCommission = tradeLedger.TotalCommission,
             WeightStrategyApplied = weightStrategy != null,
             WeightReducedTrades = portfolio.WeightReducedTrades,
             ActualDataFrom = actualDataFrom

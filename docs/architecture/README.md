@@ -54,6 +54,10 @@ pipeline within the daily exit/pending-entry/mark-to-market sequence.
 consecutive-loss transitions, per-symbol reentry cooldown keys, and reference-data as-of updates.
 Entry and exit processors resolve runtime state through this registry instead of sharing mutable
 dictionaries or constructing strategy-symbol keys themselves.
+`BacktestTradeLedger` is the single settlement boundary for simulated trades: execution costs,
+portfolio realized equity, and strategy runtime equity are applied exactly once. Terminal positions
+are closed by `BacktestTerminalPositionLiquidator`, which removes each settled position before the
+final marked-equity snapshot so realized and unrealized profit cannot be counted twice.
 
 Long-position execution now crosses a second named boundary in `Application/Execution`.
 Pattern preview and backtest must delegate entry repricing and per-bar exit ordering to this pure

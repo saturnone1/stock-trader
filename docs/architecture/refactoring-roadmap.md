@@ -42,6 +42,10 @@
   transitions: reference-data as-of snapshots, daily entry counts, strategy equity peaks, drawdown
   circuit breakers, consecutive-loss cooldowns, and strategy-symbol reentry keys. The simulation
   engine and entry/exit processors no longer exchange mutable runtime/cooldown dictionaries.
+- `BacktestTradeLedger` now owns exactly-once cost and realized-equity settlement for every exit
+  producer. `BacktestTerminalPositionLiquidator` closes and removes remaining positions before the
+  final equity mark; a golden fixture prevents the former double-count of terminal realized profit
+  as unrealized profit. `BacktestSimulationEngine` is now a 175-line daily sequencer.
 - Realized/unrealized equity, daily loss limits, marked-equity drawdown, and open positions now live
   in `BacktestPortfolioState`. `LongPositionSizingPolicy` is the shared owner for stop-risk capital,
   portfolio caps, minimum Kelly samples, Kelly/Half-Kelly selection, and the 25% Kelly ceiling.

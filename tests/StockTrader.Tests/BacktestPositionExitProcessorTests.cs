@@ -5,6 +5,7 @@ using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 using StockTrader.Services.Backtest;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
@@ -63,11 +64,12 @@ public class BacktestPositionExitProcessorTests
             CustomExitProfile = new LongPositionExitPolicy(
                 999, false, 0m, 0m, false, 0m, false, false)
         };
-        var trades = new List<TradeRecord>();
         var prepared = Prepared(bars);
         var symbolData = new Dictionary<string, PreparedSymbolData> { ["AAA"] = prepared };
         var runtimeRegistry = new BacktestStrategyRuntimeRegistry(
             [detector], symbolData, 100_000m);
+        var tradeLedger = new BacktestTradeLedger(
+            portfolio, runtimeRegistry, SlippageModel.Fixed, 0m, 0m);
 
         new BacktestPositionExitProcessor().Process(new BacktestPositionExitContext(
             bars[^1].Timestamp,
@@ -80,11 +82,10 @@ public class BacktestPositionExitProcessorTests
             null,
             portfolio,
             runtimeRegistry,
-            trades,
-            new BacktestExecutionAdapter(),
-            _ => { }));
+            tradeLedger,
+            new BacktestExecutionAdapter()));
 
-        trades.Should().ContainSingle(trade =>
+        tradeLedger.Trades.Should().ContainSingle(trade =>
             trade.ExitReason == "분할 매도(50%)"
             && trade.Quantity == 5
             && trade.ExitPrice == 110m);

@@ -26,7 +26,7 @@ internal sealed class BacktestPositionExitProcessor
             var position = openPositions[symbol];
             var detector = context.RuntimeRegistry.FindDetector(position.CustomPatternName);
 
-            var tradesBefore = context.Trades.Count;
+            var tradesBefore = context.TradeLedger.Count;
             var exitResult = context.Simulator.ProcessExitLogic(
                 position, data.Bars[barIndex], barIndex,
                 data.Atr[barIndex], data.TqqqProtectiveStopFloor[barIndex],
@@ -35,8 +35,8 @@ internal sealed class BacktestPositionExitProcessor
                 context.ExitPolicies,
                 context.ExitOverrides,
                 symbol,
-                context.Trades);
-            context.ApplyNewTradeCosts(tradesBefore);
+                context.TradeLedger.Trades);
+            context.TradeLedger.SettleSince(tradesBefore);
 
             if (exitResult == null)
             {
@@ -53,15 +53,15 @@ internal sealed class BacktestPositionExitProcessor
             // 장중 스탑/목표가 평가가 끝난 뒤 종가 기반 사용자 청산 규칙을 적용한다.
             if (detector is { HasExitRules: true } && detector.ShouldExit(windowBars))
             {
-                tradesBefore = context.Trades.Count;
-                context.Trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
+                tradesBefore = context.TradeLedger.Count;
+                context.TradeLedger.Trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
                     symbol,
                     position,
                     data.Bars[barIndex].Close,
                     data.Bars[barIndex].Timestamp,
                     "규칙 청산",
                     CurrentQuantity(position)));
-                context.ApplyNewTradeCosts(tradesBefore);
+                context.TradeLedger.SettleSince(tradesBefore);
                 ClosePositionState(symbol, position, barIndex, context, tradesBefore);
                 continue;
             }
@@ -96,8 +96,8 @@ internal sealed class BacktestPositionExitProcessor
             var sellQuantity = Math.Min(scaleQuantity, CurrentQuantity(position) - 1);
             if (sellQuantity <= 0) continue;
 
-            tradesBefore = context.Trades.Count;
-            context.Trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
+            tradesBefore = context.TradeLedger.Count;
+            context.TradeLedger.Trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
                 symbol,
                 position,
                 data.Bars[barIndex].Close,
@@ -106,7 +106,7 @@ internal sealed class BacktestPositionExitProcessor
                 sellQuantity));
             position.CurrentQuantity = CurrentQuantity(position) - sellQuantity;
             position.TotalCost = position.EntryPrice * position.CurrentQuantity;
-            context.ApplyNewTradeCosts(tradesBefore);
+            context.TradeLedger.SettleSince(tradesBefore);
         }
     }
 
@@ -119,14 +119,14 @@ internal sealed class BacktestPositionExitProcessor
     {
         context.Portfolio.OpenPositions.Remove(symbol);
         _positionScaleCounts.Remove(symbol);
-        if (context.Trades.Count <= tradesBefore) return;
+        if (context.TradeLedger.Count <= tradesBefore) return;
 
         context.RuntimeRegistry.RegisterClosedTrade(
             position.CustomPatternName,
             symbol,
             barIndex,
             context.TimelineIndex,
-            context.Trades[^1]);
+            context.TradeLedger.Trades[^1]);
     }
 
     private static void ApplyScaleIn(
@@ -172,6 +172,5 @@ internal sealed record BacktestPositionExitContext(
     PatternParameterOverrides? ExitOverrides,
     BacktestPortfolioState Portfolio,
     BacktestStrategyRuntimeRegistry RuntimeRegistry,
-    List<TradeRecord> Trades,
-    BacktestExecutionAdapter Simulator,
-    Action<int> ApplyNewTradeCosts);
+    BacktestTradeLedger TradeLedger,
+    BacktestExecutionAdapter Simulator);
