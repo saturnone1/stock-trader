@@ -25,6 +25,10 @@
   database position before contacting a broker, persists the broker order ID, waits on ambiguous
   states instead of resubmitting, and finalizes the position plus trade record in one transaction.
   The broker port returns a trackable `BrokerOrder` instead of discarding it as a boolean.
+- `Program.cs` is now a 58-line composition root. Health, authentication, order, and backtest APIs
+  are registered through feature endpoint modules; startup migration/recovery/seeding and the web
+  middleware pipeline have dedicated extensions. A route-table test verifies the extracted public
+  routes are registered exactly once.
 
 Remaining Phase 2 work is primarily the extraction of portfolio and metric orchestration from
 `BacktestService`, operational visibility and recovery controls for pending live exits, and broader

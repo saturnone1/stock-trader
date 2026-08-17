@@ -54,13 +54,16 @@ public class ArchitectureDependencyTests
     public void ProgramDelegatesSchemaChangesToVersionedMigrationRunner()
     {
         var repository = FindRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(repository, "Program.cs"));
+        var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
+        var initialization = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ApplicationInitializationExtensions.cs"));
 
-        source.Should().Contain("DatabaseMigrationRunner");
-        source.Should().NotContain("ALTER TABLE");
-        source.Should().NotContain("PRAGMA table_info");
-        source.Should().NotContain("CREATE TABLE");
-        source.Should().NotContain("EnsureCreatedAsync");
+        program.Should().Contain("InitializeStockTraderAsync(");
+        initialization.Should().Contain("DatabaseMigrationRunner");
+        (program + initialization).Should().NotContain("ALTER TABLE");
+        (program + initialization).Should().NotContain("PRAGMA table_info");
+        (program + initialization).Should().NotContain("CREATE TABLE");
+        (program + initialization).Should().NotContain("EnsureCreatedAsync");
     }
 
     [Fact]
@@ -125,13 +128,26 @@ public class ArchitectureDependencyTests
     public void AutomaticAndManualExitPathsUseTheSameSubmissionCoordinator()
     {
         var repository = FindRepositoryRoot();
-        var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
+        var orders = File.ReadAllText(Path.Combine(repository, "Api/OrderEndpoints.cs"));
         var portfolio = File.ReadAllText(Path.Combine(repository, "Components/Pages/Portfolio.razor"));
 
-        program.Should().Contain("exitCoordinator.SubmitAsync(");
+        orders.Should().Contain("exits.SubmitAsync(");
         portfolio.Should().Contain("ExitCoordinator.SubmitAsync(");
-        program.Should().NotContain("broker.ClosePositionAsync(");
+        orders.Should().NotContain("broker.ClosePositionAsync(");
         portfolio.Should().NotContain("broker.ClosePositionAsync(");
+    }
+
+    [Fact]
+    public void ProgramIsAThinCompositionRoot()
+    {
+        var repository = FindRepositoryRoot();
+        var lines = File.ReadAllLines(Path.Combine(repository, "Program.cs"));
+        var source = string.Join('\n', lines);
+
+        lines.Length.Should().BeLessThanOrEqualTo(200);
+        source.Should().Contain("MapStockTraderApi(");
+        source.Should().NotContain("app.MapPost(");
+        source.Should().NotContain("app.MapGet(");
     }
 
     private static string FindRepositoryRoot()

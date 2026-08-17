@@ -10,6 +10,10 @@ public static class ApiEndpointExtensions
     {
         var api = app.MapGroup("/api");
 
+        api.MapHealthApi();
+        api.MapAuthApi();
+        api.MapOrderApi();
+        api.MapBacktestApi();
         api.MapDashboardApi();
         api.MapPortfolioApi();
         api.MapSignalApi();

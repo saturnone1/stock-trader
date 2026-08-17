@@ -34,11 +34,13 @@ The current high-risk files are intentionally decomposed incrementally:
 
 - `Services/Backtest/BacktestService.cs`
 - `Services/Patterns/RuleBasedDetector.cs`
-- `Program.cs`
 - `desktop-app/src/pages/PatternBuilder.svelte`
 - `desktop-app/src/pages/Backtest.svelte`
 
 No phase may change all of these at once. Characterization tests are added before extraction.
+
+`Program.cs` has crossed its target boundary: it now owns only host composition and delegates API
+registration, startup initialization, and middleware configuration to named feature modules.
 
 Historical market-data preparation now crosses a named boundary:
 `Services/Backtest/BacktestDataPreparer.cs` produces the read-only dictionary boundary in
