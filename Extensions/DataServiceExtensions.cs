@@ -27,6 +27,7 @@ public static class DataServiceExtensions
         services.AddScoped<DatabaseMigrationRunner>();
         services.AddScoped<EfBaselineCompatibilityValidator>();
         services.AddScoped<DatabaseSchemaMigrator>();
+        services.AddScoped<DatabaseMigrationStatusProvider>();
 
         // Data Feed - Keyed services for multiple providers
         services.AddKeyedScoped<IDataFeedService, AlpacaDataFeedService>(DataSource.Alpaca);

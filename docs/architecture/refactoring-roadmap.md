@@ -119,6 +119,7 @@
   must pass table/column/index parity, and only then adopt the initial EF history row. A read-only
   `--verify-ef-baseline` mode supports production preflight; tests cover empty creation, row-preserving
   baseline adoption, idempotency, and fail-closed handling of incomplete legacy schemas.
+  `/api/health` reports the applied/latest EF migration, pending count, and synchronization state.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

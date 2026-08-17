@@ -419,6 +419,9 @@ public class ArchitectureDependencyTests
         schemaMigrator.Should().Contain("GetInsertScript(new HistoryRow(");
         program.Should().Contain("--verify-ef-baseline");
         initialization.Should().Contain("VerifyEfBaselineCompatibilityAsync");
+        var health = File.ReadAllText(Path.Combine(repository, "Api/HealthEndpoints.cs"));
+        health.Should().Contain("DatabaseMigrationStatusProvider");
+        health.Should().Contain("databaseMigration");
         File.ReadAllText(efMigration).Should().Contain("migrationBuilder.CreateTable(");
         File.Exists(Path.Combine(
             repository, "Data/EfMigrations/AppDbContextModelSnapshot.cs")).Should().BeTrue();
