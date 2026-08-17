@@ -60,7 +60,7 @@ internal sealed class BacktestPositionExitProcessor
             if (detector is { HasExitRules: true } && detector.ShouldExit(windowBars))
             {
                 tradesBefore = context.Trades.Count;
-                context.Trades.Add(TradeSimulator.CreateTradeRecord(
+                context.Trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
                     symbol,
                     position,
                     data.Bars[barIndex].Close,
@@ -98,7 +98,7 @@ internal sealed class BacktestPositionExitProcessor
             if (sellQuantity <= 0) continue;
 
             tradesBefore = context.Trades.Count;
-            context.Trades.Add(TradeSimulator.CreateTradeRecord(
+            context.Trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
                 symbol,
                 position,
                 data.Bars[barIndex].Close,
@@ -113,7 +113,7 @@ internal sealed class BacktestPositionExitProcessor
 
     private void ClosePositionState(
         string symbol,
-        TradeSimulator.OpenPosition position,
+        BacktestExecutionAdapter.OpenPosition position,
         int barIndex,
         BacktestStrategyRuntime? runtime,
         BacktestPositionExitContext context,
@@ -133,7 +133,7 @@ internal sealed class BacktestPositionExitProcessor
     }
 
     private static void ApplyScaleIn(
-        TradeSimulator.OpenPosition position,
+        BacktestExecutionAdapter.OpenPosition position,
         decimal close,
         int requestedQuantity,
         BacktestStrategyRuntime? runtime,
@@ -160,7 +160,7 @@ internal sealed class BacktestPositionExitProcessor
         position.EntryPrice = newTotalCost / newQuantity;
     }
 
-    private static int CurrentQuantity(TradeSimulator.OpenPosition position) =>
+    private static int CurrentQuantity(BacktestExecutionAdapter.OpenPosition position) =>
         position.CurrentQuantity > 0 ? position.CurrentQuantity : position.Quantity;
 }
 
@@ -171,12 +171,12 @@ internal sealed record BacktestPositionExitContext(
     int MaxWindow,
     int MaxTotalPositions,
     CumulativeRsi2Config CumulativeRsi2Config,
-    Dictionary<PatternType, TradeSimulator.PatternExitProfile> PatternExitProfiles,
+    Dictionary<PatternType, BacktestExecutionAdapter.PatternExitProfile> PatternExitProfiles,
     PatternParameterOverrides? ExitOverrides,
     BacktestPortfolioState Portfolio,
     IReadOnlyDictionary<string, RuleBasedDetector> DetectorsByName,
     IReadOnlyDictionary<string, BacktestStrategyRuntime> StrategyRuntimes,
     Dictionary<string, int> ReentryCooldowns,
     List<TradeRecord> Trades,
-    TradeSimulator Simulator,
+    BacktestExecutionAdapter Simulator,
     Action<int> ApplyNewTradeCosts);

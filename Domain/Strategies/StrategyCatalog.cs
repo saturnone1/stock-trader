@@ -13,6 +13,8 @@ public sealed record ExitMethodDescriptor(
 /// </summary>
 public static class StrategyCatalog
 {
+    public const string CurrentCloseEntryMode = "CurrentClose";
+    public const string NextOpenEntryMode = "NextOpen";
     public const string FixedRiskSizingMode = "FixedRisk";
     public const string KellySizingMode = "Kelly";
     public const string HalfKellySizingMode = "HalfKelly";
@@ -24,8 +26,8 @@ public static class StrategyCatalog
 
     public static IReadOnlyList<StrategyOptionDescriptor> EntryModes { get; } =
     [
-        new("CurrentClose", "신호 봉의 종가에 매수"),
-        new("NextOpen", "다음 봉의 시가에 매수")
+        new(CurrentCloseEntryMode, "신호 봉의 종가에 매수"),
+        new(NextOpenEntryMode, "다음 봉의 시가에 매수")
     ];
 
     public static IReadOnlyList<StrategyOptionDescriptor> SizingModes { get; } =

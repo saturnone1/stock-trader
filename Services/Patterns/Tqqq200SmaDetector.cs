@@ -16,7 +16,7 @@ namespace StockTrader.Services.Patterns;
 ///   3. 20일 수익률 표본표준편차 >= 5.9% -> 진입 차단 (변동성 과다)
 ///   4. 과열 감량: 이격도 139%~146% -> 신뢰도 감소, 146% 이상 -> 진입 차단
 ///   5. 손절: 진입가 -5.9% 또는 SMA200*0.99 중 높은 쪽
-///   6. 목표가: SMA200*1.50 (넓게 설정, TradeSimulator 동적 스탑에 위임)
+///   6. 목표가: SMA200*1.50 (넓게 설정, BacktestExecutionAdapter 동적 스탑에 위임)
 ///
 /// 기존 구현 대비 변경점:
 ///   - EMA50 골든크로스 필터 제거 (이격도 기반으로 단순화)
@@ -129,7 +129,7 @@ public class Tqqq200SmaDetector : IPatternDetector
         var smaStop = smaValue * 0.99m;
         var stopLoss = Math.Max(fixedStop, smaStop);
 
-        // ── 9. 목표가: SMA200 * 1.50 (넓게 설정 — TradeSimulator가 동적 스탑으로 관리) ──
+        // ── 9. 목표가: SMA200 * 1.50 (넓게 설정 — BacktestExecutionAdapter가 동적 스탑으로 관리) ──
         var target = smaValue * 1.50m;
 
         // 목표가가 진입가보다 낮으면 보정 (이격도가 이미 높을 때)

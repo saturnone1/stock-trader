@@ -348,7 +348,10 @@ public static class PatternPreviewEndpoints
             var entryIndex = index;
             var entryPrice = current.Close;
             var entryDate = current.Timestamp;
-            if (string.Equals(request.Pattern.EntryMode, "NextOpen", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(
+                    request.Pattern.EntryMode,
+                    StrategyCatalog.NextOpenEntryMode,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 if (index + 1 >= allBars.Length)
                     continue;

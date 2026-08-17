@@ -42,7 +42,7 @@ public class BacktestPositionExitProcessorTests
         };
         var detector = new RuleBasedDetector(new IndicatorService(), definition);
         var portfolio = new BacktestPortfolioState(100_000m, bars[0].Timestamp);
-        portfolio.OpenPositions["AAA"] = new TradeSimulator.OpenPosition
+        portfolio.OpenPositions["AAA"] = new BacktestExecutionAdapter.OpenPosition
         {
             PatternType = PatternType.Custom,
             CustomPatternName = definition.Name,
@@ -59,7 +59,7 @@ public class BacktestPositionExitProcessorTests
             HighestHighSinceEntry = 100m,
             LowestLowSinceEntry = 100m,
             RiskDistance = 50m,
-            CustomExitProfile = new TradeSimulator.PatternExitProfile(
+            CustomExitProfile = new BacktestExecutionAdapter.PatternExitProfile(
                 999, false, 0m, 0m, false, 0m, false, false)
         };
         var trades = new List<TradeRecord>();
@@ -79,7 +79,7 @@ public class BacktestPositionExitProcessorTests
             new Dictionary<string, BacktestStrategyRuntime>(),
             [],
             trades,
-            new TradeSimulator(),
+            new BacktestExecutionAdapter(),
             _ => { }));
 
         trades.Should().ContainSingle(trade =>

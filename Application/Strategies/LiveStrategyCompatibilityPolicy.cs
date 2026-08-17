@@ -1,3 +1,4 @@
+using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
 
 namespace StockTrader.Application.Strategies;
@@ -6,7 +7,8 @@ namespace StockTrader.Application.Strategies;
 public static class LiveStrategyCompatibilityPolicy
 {
     public static IReadOnlyList<TimeFrame> SupportedTimeFrames { get; } = [TimeFrame.Daily];
-    public static IReadOnlyList<string> SupportedEntryModes { get; } = ["NextOpen"];
+    public static IReadOnlyList<string> SupportedEntryModes { get; } =
+        [StrategyCatalog.NextOpenEntryMode];
     public const bool SupportsPartialExit = false;
     public const bool SupportsScaling = false;
 

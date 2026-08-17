@@ -127,16 +127,20 @@ public class ArchitectureDependencyTests
         var engine = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestSimulationEngine.cs"));
         var executionAdapter = File.ReadAllText(Path.Combine(
-            repository, "Services/Backtest/TradeSimulator.cs"));
+            repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
         var preview = File.ReadAllText(Path.Combine(
             repository, "Api/PatternPreviewEndpoints.cs"));
 
         engine.Should().Contain("positionExitProcessor.Process(");
+        engine.Should().Contain("pendingEntryProcessor.Process(");
+        engine.Should().Contain("BacktestOpenPositionFactory.CreateCurrentClose(");
         File.ReadAllLines(Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs"))
-            .Length.Should().BeLessThanOrEqualTo(650);
-        File.ReadAllLines(Path.Combine(repository, "Services/Backtest/TradeSimulator.cs"))
+            .Length.Should().BeLessThanOrEqualTo(550);
+        File.ReadAllLines(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"))
             .Length.Should().BeLessThanOrEqualTo(400);
         engine.Should().NotContain("positionDetector.CheckScaling(");
+        engine.Should().NotContain("new BacktestExecutionAdapter.OpenPosition");
+        engine.Should().NotContain("LongEntryFillPolicy.Reprice(");
         executionAdapter.Should().NotContain("SimulateSymbolAsync(");
         executionAdapter.Should().NotContain("DetectAsync(");
         preview.Should().Contain("StrategyCatalog.ScalingInDirection");
@@ -160,7 +164,7 @@ public class ArchitectureDependencyTests
     {
         var repository = FindRepositoryRoot();
         var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
-        var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/TradeSimulator.cs"));
+        var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
 
         preview.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
         backtest.Should().Contain("LongPositionExecutionPolicy.Evaluate(");

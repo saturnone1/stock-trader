@@ -21,7 +21,7 @@ namespace StockTrader.BackgroundServices;
 /// <summary>
 /// 실시간 포지션 청산 관리 서비스.
 ///
-/// 백테스트의 TradeSimulator와 동일한 청산 로직을 실거래에 적용:
+/// 백테스트의 BacktestExecutionAdapter와 동일한 청산 로직을 실거래에 적용:
 /// - 트레일링 스탑 (Chandelier exit)
 /// - 손익분기 스탑 (breakeven)
 /// - 시간 기반 청산 (최대 보유 봉수)
@@ -297,8 +297,8 @@ public class PositionExitManagerService : BackgroundService
     {
         var customPattern = customStrategy?.Source;
         var pep = customPattern == null
-            ? TradeSimulator.PatternExitProfile.For(position.PatternType, _liveExitOverrides)
-            : new TradeSimulator.PatternExitProfile(
+            ? BacktestExecutionAdapter.PatternExitProfile.For(position.PatternType, _liveExitOverrides)
+            : new BacktestExecutionAdapter.PatternExitProfile(
                 customPattern.MaxHoldingBars,
                 customPattern.TrailingAtr > 0,
                 customPattern.TrailingAtr,

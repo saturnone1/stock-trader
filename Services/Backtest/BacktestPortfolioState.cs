@@ -14,7 +14,7 @@ internal sealed class BacktestPortfolioState(decimal initialCapital, DateTime st
     private DateOnly _dailyLossDate = DateOnly.MinValue;
     private decimal _peakMarkedEquity = initialCapital;
 
-    public Dictionary<string, TradeSimulator.OpenPosition> OpenPositions { get; } =
+    public Dictionary<string, BacktestExecutionAdapter.OpenPosition> OpenPositions { get; } =
         new(StringComparer.OrdinalIgnoreCase);
     public List<EquityPoint> EquityCurve { get; } = [new(startedAt, initialCapital)];
     public decimal CurrentEquity { get; private set; } = initialCapital;

@@ -12,7 +12,7 @@ public class BacktestPortfolioStateTests
     {
         var startedAt = new DateTime(2025, 1, 1);
         var state = new BacktestPortfolioState(1_000m, startedAt);
-        state.OpenPositions["AAA"] = new TradeSimulator.OpenPosition
+        state.OpenPositions["AAA"] = new BacktestExecutionAdapter.OpenPosition
         {
             EntryPrice = 100m,
             Quantity = 10,

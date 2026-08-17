@@ -42,13 +42,19 @@
 - `BacktestPositionExitProcessor` owns the invariant order of intrabar fills, close-based strategy
   exits, scale-ins, and scale-outs. Strategy cooldown/circuit-breaker transitions are isolated in
   `BacktestStrategyTransitionPolicy`, and NextOpen fills re-run the central sizing cap after repricing.
-  The unused `TradeSimulator.SimulateSymbolAsync` second simulation loop has been removed; the
+  The unused legacy `SimulateSymbolAsync` second simulation loop has been removed; the
   remaining adapter only maps the shared long-position execution policy into backtest trade records.
   Live recommendations now use the same capital-cap and whole-share floor helpers. Golden fixtures
   cover NextOpen gap repricing/entry-bar exits and close-based scale-outs in addition to the three
   timeframe baseline.
+- `BacktestOpenPositionFactory` is the single backtest position-construction contract for current-close
+  and NextOpen entries. `BacktestPendingEntryProcessor` owns delayed-entry eligibility, gap repricing,
+  sizing, entry-bar execution, and strategy-state updates. The old `TradeSimulator` name is now
+  `BacktestExecutionAdapter`, matching its remaining responsibility instead of implying a second engine.
+  End-to-end golden fixtures also lock same-bar stop priority and partial-profit aggregation without
+  double-counting the remaining position.
 
-Remaining Phase 2 work is primarily the extraction of entry and NextOpen orchestration from
+Remaining Phase 2 work is primarily correlation/weight entry-policy extraction from
 `BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
 and broader preview/backtest/live parity fixtures.
 

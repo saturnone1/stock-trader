@@ -5,7 +5,7 @@ using StockTrader.Services.Backtest;
 
 namespace StockTrader.Tests;
 
-public class TradeSimulatorTests
+public class BacktestExecutionAdapterTests
 {
     [Fact]
     public void ProcessExitLogic_UsesStopWhenStopAndTargetAreBothTouched()
@@ -64,12 +64,12 @@ public class TradeSimulatorTests
         trades.Should().ContainSingle(trade => trade.ExitReason == "부분 익절(1R)" && trade.Quantity == 5);
     }
 
-    private static (TradeSimulator simulator, TradeSimulator.OpenPosition position, List<TradeRecord> trades) Setup(
+    private static (BacktestExecutionAdapter simulator, BacktestExecutionAdapter.OpenPosition position, List<TradeRecord> trades) Setup(
         bool trailing = false,
         bool partial = false,
         decimal equityAtEntry = 0m)
     {
-        var profile = new TradeSimulator.PatternExitProfile(
+        var profile = new BacktestExecutionAdapter.PatternExitProfile(
             MaxHoldingBars: 20,
             EnableTrailingStop: trailing,
             TrailingStopAtrMultiplier: 2m,
@@ -79,7 +79,7 @@ public class TradeSimulatorTests
             EnableTargetExit: true,
             EnableTimeExit: false,
             BreakevenAtrMultiplier: 0m);
-        var position = new TradeSimulator.OpenPosition
+        var position = new BacktestExecutionAdapter.OpenPosition
         {
             PatternType = PatternType.Custom,
             EntryPrice = 100m,
@@ -97,14 +97,14 @@ public class TradeSimulatorTests
             EquityAtEntry = equityAtEntry,
             CustomExitProfile = profile
         };
-        return (new TradeSimulator(), position, []);
+        return (new BacktestExecutionAdapter(), position, []);
     }
 
-    private static TradeSimulator.OpenPosition? Process(
-        TradeSimulator simulator, TradeSimulator.OpenPosition position, OhlcvBar bar,
+    private static BacktestExecutionAdapter.OpenPosition? Process(
+        BacktestExecutionAdapter simulator, BacktestExecutionAdapter.OpenPosition position, OhlcvBar bar,
         List<TradeRecord> trades, int barIndex = 1) => simulator.ProcessExitLogic(
             position, bar, barIndex, 5m, 0m, 0m, 0m, new CumulativeRsi2Config(),
-            new Dictionary<PatternType, TradeSimulator.PatternExitProfile>(), null, "TQQQ", trades);
+            new Dictionary<PatternType, BacktestExecutionAdapter.PatternExitProfile>(), null, "TQQQ", trades);
 
     private static OhlcvBar Bar(decimal open, decimal high, decimal low, decimal close, int day = 1) => new()
     {

@@ -2,6 +2,7 @@ using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Domain.MarketData;
+using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Patterns;
@@ -35,7 +36,7 @@ public sealed class BacktestSimulationEngine
         SlippageModel slippageModel,
         List<string> warnings,
         DateTime? actualDataFrom,
-        TradeSimulator simulator,
+        BacktestExecutionAdapter simulator,
         WeightStrategy? weightStrategy,
         CumulativeRsi2Config cumulativeRsi2Config,
         CancellationToken ct)
@@ -46,7 +47,7 @@ public sealed class BacktestSimulationEngine
         var portfolio = new BacktestPortfolioState(initialCapital, from);
         var openPositions = portfolio.OpenPositions;
         var trades = new List<TradeRecord>();
-        var pepCache = new Dictionary<PatternType, TradeSimulator.PatternExitProfile>();
+        var pepCache = new Dictionary<PatternType, BacktestExecutionAdapter.PatternExitProfile>();
         var maxTotalPositions = riskParams.MaxTotalPositions;
         var riskPerTrade = riskParams.RiskPerTradePercent;
         var dailyLossLimitPercent = riskParams.DailyLossLimitPercent;
@@ -77,8 +78,7 @@ public sealed class BacktestSimulationEngine
                 }
             });
         }
-        // [A-1] NextOpen 진입 대기 시그널: (symbol → pending signal 정보)
-        var pendingNextOpenSignals = new Dictionary<string, (decimal entryPrice, decimal stopLoss, decimal target, decimal stopDistance, decimal entryAtr, long entryVolume, decimal equityAtEntry, TradeSimulator.PatternExitProfile? customExit, decimal riskPerTradeSnap, decimal effectiveMaxPosSnap, string? customPatternName)>();
+        var pendingEntryProcessor = new BacktestPendingEntryProcessor();
         var maxWindow = BacktestTimeFramePolicy.Get(timeFrame).SimulationWindowBars;
 
         // ── 커스텀 패턴 고급 기능: 상태 추적 ──
@@ -124,7 +124,7 @@ public sealed class BacktestSimulationEngine
                 foreach (var detector in customDetectors)
                     detector.SetReferenceData(referenceData, referenceAsOf);
             }
-            var regime = TradeSimulator.GetRegimeForDate(tradingDay, regimeByDate);
+            var regime = BacktestExecutionAdapter.GetRegimeForDate(tradingDay, regimeByDate);
 
             portfolio.BeginTradingDay(tradingDay);
 
@@ -155,119 +155,27 @@ public sealed class BacktestSimulationEngine
             var dailyLossLimitReached =
                 portfolio.HasReachedDailyLossLimit(dailyLossLimitPercent);
 
-            // ── [A-1] NextOpen 대기 시그널 처리 ──
-            // 이전 봉에서 대기 등록된 시그널을 이번 봉의 Open 가격으로 진입
             if (dailyLossLimitReached)
             {
-                pendingNextOpenSignals.Clear();
+                pendingEntryProcessor.Clear();
             }
             else
             {
-                foreach (var pendingSymbol in pendingNextOpenSignals.Keys.ToList())
-                {
-                    if (openPositions.ContainsKey(pendingSymbol)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-                    if (!symbolDataMap.TryGetValue(pendingSymbol, out var pendingSd)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-                    if (!pendingSd.TimestampToIndex.TryGetValue(date, out var pendingBarIdx)) continue;
-
-                    var pending = pendingNextOpenSignals[pendingSymbol];
-                    var pendingRuntime = pending.customPatternName != null
-                        && strategyRuntimes.TryGetValue(pending.customPatternName, out var resolvedPendingRuntime)
-                            ? resolvedPendingRuntime
-                            : null;
-                    var pendingPositionLimit = pendingRuntime?.Portfolio.MaxTotalPositions > 0
-                        ? Math.Min(maxTotalPositions, pendingRuntime.Portfolio.MaxTotalPositions)
-                        : maxTotalPositions;
-                    if (openPositions.Count >= pendingPositionLimit
-                        || pendingRuntime?.CircuitBreakerTripped == true
-                        || (pendingRuntime != null && pendingRuntime.CircuitBreaker.ConsecutiveLossLimit > 0 && timelineIndex < pendingRuntime.CircuitBreakerUntilStep)
-                        || (pendingRuntime != null && pendingRuntime.Portfolio.MaxEntriesPerDay > 0 && pendingRuntime.DailyEntryCount >= pendingRuntime.Portfolio.MaxEntriesPerDay)
-                        || (pending.customPatternName != null && reentryCooldowns.TryGetValue($"{pending.customPatternName}|{pendingSymbol}", out var pendingCooldown) && pendingBarIdx < pendingCooldown))
-                    {
-                        pendingNextOpenSignals.Remove(pendingSymbol);
-                        continue;
-                    }
-                    var nextOpen = pendingSd.Bars[pendingBarIdx].Open;
-                    if (nextOpen <= 0) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-
-                    // NextOpen에서도 미리보기와 동일하게 원 신호의 위험 거리/R 배수를 보존한다.
-                    var fill = LongEntryFillPolicy.Reprice(
-                        pending.entryPrice,
-                        pending.stopLoss,
-                        pending.target,
-                        nextOpen,
-                        fallbackTargetMultiple: 2m);
-                    if (fill is null)
-                    {
-                        pendingNextOpenSignals.Remove(pendingSymbol);
-                        continue;
-                    }
-
-                    var pendingSizing = LongPositionSizingPolicy.CalculateWithCapFraction(
-                        pending.equityAtEntry,
-                        pending.riskPerTradeSnap,
-                        nextOpen,
-                        fill.StopPrice,
-                        pending.effectiveMaxPosSnap);
-                    if (!pendingSizing.CanEnter)
-                    {
-                        pendingNextOpenSignals.Remove(pendingSymbol);
-                        continue;
-                    }
-                    var pendingQty = pendingSizing.Quantity;
-
-                    var pendingPosition = new TradeSimulator.OpenPosition
-                    {
-                        PatternType           = PatternType.Custom,
-                        CustomPatternName     = pending.customPatternName,
-                        EntryPrice            = nextOpen,
-                        OriginalStop          = fill.StopPrice,
-                        StopLoss              = fill.StopPrice,
-                        Target                = fill.TargetPrice,
-                        Quantity              = pendingQty,
-                        CurrentQuantity       = pendingQty,
-                        TotalCost             = nextOpen * pendingQty,
-                        EntryTime             = pendingSd.Bars[pendingBarIdx].Timestamp,
-                        EntryBarIndex         = pendingBarIdx,
-                        EntryAtr              = pending.entryAtr,
-                        EntryVolume           = pending.entryVolume,
-                        HighestHighSinceEntry = nextOpen,
-                        LowestLowSinceEntry   = nextOpen,
-                        RiskDistance          = fill.RiskDistance,
-                        EquityAtEntry         = pending.equityAtEntry,
-                        CustomExitProfile     = pending.customExit
-                    };
-
-                    // 다음 봉 시가에 진입했으므로 해당 진입 봉의 저가/고가도 실제 보유 구간이다.
-                    // 진입 봉을 건너뛰어 손절을 피하는 낙관적 편향을 방지한다.
-                    var pendingTradesBefore = trades.Count;
-                    var pendingExitResult = simulator.ProcessExitLogic(
-                        pendingPosition, pendingSd.Bars[pendingBarIdx], pendingBarIdx,
-                        pendingSd.Atr[pendingBarIdx], pendingSd.Sma200[pendingBarIdx],
-                        pendingSd.CumulativeRsi2[pendingBarIdx], pendingSd.CumulativeRsi2TrendMa[pendingBarIdx],
-                        cumulativeRsi2Config, pepCache, exitOverrides, pendingSymbol, trades);
-                    ApplyNewTradeCosts(pendingTradesBefore);
-                    if (pendingExitResult != null)
-                    {
-                        openPositions[pendingSymbol] = pendingExitResult;
-                    }
-                    else if (pendingRuntime != null && trades.Count > pendingTradesBefore)
-                    {
-                        BacktestStrategyTransitionPolicy.RegisterClosedTrade(
-                            $"{pending.customPatternName}|{pendingSymbol}",
-                            pendingBarIdx,
-                            timelineIndex,
-                            trades[^1],
-                            pendingRuntime,
-                            reentryCooldowns);
-                    }
-
-                    pendingNextOpenSignals.Remove(pendingSymbol);
-                    if (pendingRuntime != null)
-                    {
-                        pendingRuntime.DailyEntryCount++;
-                        pendingRuntime.LastEntryDate = tradingDay;
-                    }
-                }
+                pendingEntryProcessor.Process(new BacktestPendingEntryContext(
+                    date,
+                    tradingDay,
+                    timelineIndex,
+                    maxTotalPositions,
+                    symbolDataMap,
+                    portfolio,
+                    strategyRuntimes,
+                    reentryCooldowns,
+                    trades,
+                    simulator,
+                    cumulativeRsi2Config,
+                    pepCache,
+                    exitOverrides,
+                    ApplyNewTradeCosts));
             }
 
             // ── 2b. 새 진입 ──
@@ -399,11 +307,11 @@ public sealed class BacktestSimulationEngine
 
                         var entryAtr = sd.Atr[barIdx] > 0 ? sd.Atr[barIdx] : stopDistance;
 
-                        TradeSimulator.PatternExitProfile? customExit = null;
+                        BacktestExecutionAdapter.PatternExitProfile? customExit = null;
                         if (ruleDetector != null)
                         {
                             var def = ruleDetector.Definition;
-                            customExit = new TradeSimulator.PatternExitProfile(
+                            customExit = new BacktestExecutionAdapter.PatternExitProfile(
                                 MaxHoldingBars: def.MaxHoldingBars,
                                 EnableTrailingStop: def.TrailingAtr > 0,
                                 TrailingStopAtrMultiplier: def.TrailingAtr,
@@ -415,51 +323,37 @@ public sealed class BacktestSimulationEngine
                             );
                         }
 
-                        // [A-1] NextOpen 진입 모드 체크
                         var entryDefinition = ruleDetector?.Definition;
-                        bool isNextOpen = entryDefinition?.EntryMode == "NextOpen";
+                        var isNextOpen = entryDefinition?.EntryMode == StrategyCatalog.NextOpenEntryMode;
 
-                        if (isNextOpen && !pendingNextOpenSignals.ContainsKey(symbol))
+                        if (isNextOpen && !pendingEntryProcessor.Contains(symbol))
                         {
-                            // 이번 봉에서 시그널만 저장하고, 다음 봉 Open에서 진입
                             signal.PendingEntry = true;
-                            pendingNextOpenSignals[symbol] = (
+                            pendingEntryProcessor.TryAdd(symbol, new BacktestPendingEntry(
+                                detector.PatternType,
+                                entryDefinition!.Name,
                                 signal.EntryPrice,
                                 signal.StopLossPrice,
                                 signal.TargetPrice,
-                                stopDistance,
                                 entryAtr,
                                 sd.Bars[barIdx].Volume,
                                 effectiveEquity,
-                                customExit,
                                 effectiveRisk,
                                 capRatio,
-                                entryDefinition!.Name
-                            );
+                                customExit));
                         }
                         else if (!isNextOpen)
                         {
-                            openPositions[symbol] = new TradeSimulator.OpenPosition
-                            {
-                                PatternType           = detector.PatternType,
-                                CustomPatternName     = (detector as RuleBasedDetector)?.Definition.Name,
-                                EntryPrice            = signal.EntryPrice,
-                                OriginalStop          = signal.StopLossPrice,
-                                StopLoss              = signal.StopLossPrice,
-                                Target                = signal.TargetPrice,
-                                Quantity              = quantity,
-                                CurrentQuantity       = quantity,
-                                TotalCost             = signal.EntryPrice * quantity,
-                                EntryTime             = sd.Bars[barIdx].Timestamp,
-                                EntryBarIndex         = barIdx,
-                                EntryAtr              = entryAtr,
-                                EntryVolume           = sd.Bars[barIdx].Volume,
-                                HighestHighSinceEntry = signal.EntryPrice,
-                                LowestLowSinceEntry   = signal.EntryPrice,
-                                RiskDistance          = stopDistance,
-                                EquityAtEntry         = effectiveEquity,
-                                CustomExitProfile     = customExit
-                            };
+                            openPositions[symbol] = BacktestOpenPositionFactory.CreateCurrentClose(
+                                signal,
+                                detector.PatternType,
+                                entryDefinition?.Name,
+                                sd.Bars[barIdx],
+                                barIdx,
+                                quantity,
+                                entryAtr,
+                                effectiveEquity,
+                                customExit);
 
                             if (strategyRuntime != null)
                             {
@@ -488,7 +382,7 @@ public sealed class BacktestSimulationEngine
             {
                 var lastBar = sd.Bars[^1];
                 var exitQty = pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity;
-                trades.Add(TradeSimulator.CreateTradeRecord(
+                trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
                     symbol, pos, lastBar.Close, lastBar.Timestamp, "기간 종료", exitQty));
             }
         }

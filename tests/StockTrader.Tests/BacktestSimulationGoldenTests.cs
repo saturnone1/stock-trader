@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Application.Backtesting;
 using StockTrader.Configuration;
+using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Backtest;
@@ -25,7 +26,7 @@ public class BacktestSimulationGoldenTests
         var definition = new CustomPatternDefinition
         {
             Name = "next-open-golden",
-            EntryMode = "NextOpen",
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
             EntryRulesJson = JsonSerializer.Serialize(new[]
             {
                 new EntryRule
@@ -60,7 +61,7 @@ public class BacktestSimulationGoldenTests
             SlippageModel.Fixed,
             [],
             bars[0].Timestamp,
-            new TradeSimulator(),
+            new BacktestExecutionAdapter(),
             null,
             new CumulativeRsi2Config(),
             CancellationToken.None);
@@ -88,31 +89,8 @@ public class BacktestSimulationGoldenTests
         };
         var bars = Bars(timeFrame, interval);
         var entryAt = bars[50].Timestamp;
-        var prepared = Prepared(bars);
-        var simulator = new TradeSimulator();
-        var engine = new BacktestSimulationEngine(
-            NullLogger<BacktestSimulationEngine>.Instance);
-
-        var result = await engine.RunAsync(
-            ["AAA"],
-            new Dictionary<string, PreparedSymbolData> { ["AAA"] = prepared },
-            [new SingleEntryDetector(entryAt)],
-            [],
-            entryAt,
-            bars[^1].Timestamp,
-            initialCapital: 100_000m,
-            slippagePercent: 0m,
-            commissionPerTrade: 0m,
-            timeFrame,
-            new BacktestRiskParameters(0.01m, 0.03m, 10, 2),
-            exitOverrides: null,
-            SlippageModel.Fixed,
-            warnings: [],
-            actualDataFrom: bars[0].Timestamp,
-            simulator,
-            weightStrategy: null,
-            new CumulativeRsi2Config(),
-            CancellationToken.None);
+        var result = await RunBaselineAsync(
+            bars, timeFrame, new SingleEntryDetector(entryAt));
 
         result.TotalTrades.Should().Be(1);
         result.TotalReturn.Should().Be(1_000m);
@@ -122,6 +100,47 @@ public class BacktestSimulationGoldenTests
             && trade.ExitPrice == 110m
             && trade.Quantity == 100
             && trade.ExitReason == "목표 도달");
+    }
+
+    [Fact]
+    public async Task RunAsync_StopWinsWhenStopAndTargetAreBothTouchedInOneBar()
+    {
+        var bars = Bars(TimeFrame.Daily, TimeSpan.FromDays(1));
+        bars[51].Low = 94m;
+        var result = await RunBaselineAsync(
+            bars,
+            TimeFrame.Daily,
+            new SingleEntryDetector(bars[50].Timestamp));
+
+        result.Trades.Should().ContainSingle(trade =>
+            trade.ExitPrice == 95m
+            && trade.ExitReason == "손절"
+            && trade.Quantity == 100);
+        result.TotalReturn.Should().Be(-500m);
+    }
+
+    [Fact]
+    public async Task RunAsync_PartialProfitPrecedesFinalLiquidationWithoutDoubleCounting()
+    {
+        var bars = Bars(TimeFrame.Daily, TimeSpan.FromDays(1));
+        var result = await RunBaselineAsync(
+            bars,
+            TimeFrame.Daily,
+            new SingleEntryDetector(
+                bars[50].Timestamp,
+                PatternType.GapUpPullback,
+                targetPrice: 120m));
+
+        result.Trades.Should().HaveCount(2);
+        result.Trades.Should().ContainSingle(trade =>
+            trade.ExitReason == "부분 익절(2.0R)"
+            && trade.Quantity == 50
+            && trade.ExitPrice == 110m);
+        result.Trades.Should().ContainSingle(trade =>
+            trade.ExitReason == "기간 종료"
+            && trade.Quantity == 50);
+        result.TotalReturn.Should().Be(1_000m);
+        result.TotalTrades.Should().Be(1);
     }
 
     private static OhlcvBar[] Bars(TimeFrame timeFrame, TimeSpan interval)
@@ -158,9 +177,41 @@ public class BacktestSimulationGoldenTests
                 .ToDictionary(pair => pair.Timestamp, pair => pair.index));
     }
 
-    private sealed class SingleEntryDetector(DateTime entryAt) : IPatternDetector
+    private static Task<BacktestResult> RunBaselineAsync(
+        OhlcvBar[] bars,
+        TimeFrame timeFrame,
+        IPatternDetector detector)
     {
-        public PatternType PatternType => PatternType.Breakout;
+        var entryAt = bars[50].Timestamp;
+        return new BacktestSimulationEngine(NullLogger<BacktestSimulationEngine>.Instance)
+            .RunAsync(
+                ["AAA"],
+                new Dictionary<string, PreparedSymbolData> { ["AAA"] = Prepared(bars) },
+                [detector],
+                [],
+                entryAt,
+                bars[^1].Timestamp,
+                100_000m,
+                0m,
+                0m,
+                timeFrame,
+                new BacktestRiskParameters(0.01m, 0.03m, 10, 2),
+                null,
+                SlippageModel.Fixed,
+                [],
+                bars[0].Timestamp,
+                new BacktestExecutionAdapter(),
+                null,
+                new CumulativeRsi2Config(),
+                CancellationToken.None);
+    }
+
+    private sealed class SingleEntryDetector(
+        DateTime entryAt,
+        PatternType patternType = PatternType.Breakout,
+        decimal targetPrice = 110m) : IPatternDetector
+    {
+        public PatternType PatternType => patternType;
 
         public Task<PatternSignal?> DetectAsync(
             string symbol,
@@ -175,7 +226,7 @@ public class BacktestSimulationGoldenTests
                     PatternType = PatternType,
                     EntryPrice = 100m,
                     StopLossPrice = 95m,
-                    TargetPrice = 110m,
+                    TargetPrice = targetPrice,
                     AllocationScale = 1m
                 }
                 : null;
