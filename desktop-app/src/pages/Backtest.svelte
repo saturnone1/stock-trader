@@ -8,7 +8,9 @@
   import BacktestFactorRanking from '../features/backtest/BacktestFactorRanking.svelte'
   import BacktestPerformanceBreakdown from '../features/backtest/BacktestPerformanceBreakdown.svelte'
   import BacktestResultSummary from '../features/backtest/BacktestResultSummary.svelte'
+  import BacktestScenarioComparison from '../features/backtest/BacktestScenarioComparison.svelte'
   import BacktestTradeHistory from '../features/backtest/BacktestTradeHistory.svelte'
+  import BacktestTimingOptions from '../features/backtest/BacktestTimingOptions.svelte'
   import BacktestValidationResults from '../features/backtest/BacktestValidationResults.svelte'
   import {
     factorExperimentPresets,
@@ -895,6 +897,13 @@
     result = next.data
   }
 
+  function getScenarioComparisonRows() {
+    return comparisonResults.map((entry) => ({
+      ...entry,
+      delta: getComparisonDelta(entry)
+    }))
+  }
+
   async function runBacktest() {
     const symbols = parseSymbols()
     const customPatterns = selectedPatterns()
@@ -1178,31 +1187,13 @@
         onRemoveCustom={removeCustomFactorExperiment}
       />
 
-      <div class="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
-          <div class="mb-3 text-sm font-semibold text-white">비교 구조</div>
-          <div class="space-y-3">
-            {#each timingStructureOptions as option}
-              <label class="flex items-center gap-3 rounded border border-gray-800 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-                <input type="checkbox" checked={timingLab.selectedStructures.includes(option.id)} on:change={() => toggleTimingStructure(option.id)} disabled={!timingLab.enabled} />
-                {option.label}
-              </label>
-            {/each}
-          </div>
-        </div>
-
-        <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
-          <div class="mb-3 text-sm font-semibold text-white">비교 기간 조합</div>
-          <div class="grid grid-cols-2 gap-3">
-            {#each timingWindowOptions as option}
-              <label class="flex items-center gap-3 rounded border border-gray-800 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-                <input type="checkbox" checked={timingLab.selectedWindows.includes(option.id)} on:change={() => toggleTimingWindow(option.id)} disabled={!timingLab.enabled} />
-                {option.label}
-              </label>
-            {/each}
-          </div>
-        </div>
-      </div>
+      <BacktestTimingOptions
+        {timingLab}
+        structureOptions={timingStructureOptions}
+        windowOptions={timingWindowOptions}
+        onToggleStructure={toggleTimingStructure}
+        onToggleWindow={toggleTimingWindow}
+      />
 
       <div class="mt-4 rounded-xl border border-amber-700 bg-amber-900/10 p-4 text-sm text-amber-100">
         이 연구실은 선택한 패턴을 저장하지 않고 실행 시점에만 복제해서 타이밍 오버레이를 붙입니다. 빠른 청산 비교를 위해 타이밍 청산은 기존 청산 규칙과 <span class="font-semibold text-white">OR</span>로 합쳐집니다.
@@ -1420,65 +1411,12 @@
         />
       {/if}
 
-      <section class="rounded-2xl border border-gray-800 bg-gray-950 p-5">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <div class="text-xl font-semibold text-white">타이밍·팩터 비교 결과</div>
-            <div class="mt-2 text-sm text-gray-400">행을 클릭하면 아래 상세 결과가 해당 시나리오와 유니버스로 바뀝니다.</div>
-          </div>
-          {#if runStatus}
-            <div class="rounded bg-blue-950/40 px-3 py-2 text-sm text-blue-200">{runStatus}</div>
-          {/if}
-        </div>
-
-        <div class="mt-4 overflow-auto">
-          <table class="min-w-full text-sm">
-            <thead class="text-left text-gray-500">
-              <tr>
-                <th class="px-3 py-2">유니버스</th>
-                <th class="px-3 py-2">종목 수</th>
-                <th class="px-3 py-2">시나리오</th>
-                <th class="px-3 py-2">총 수익률</th>
-                <th class="px-3 py-2">최대 낙폭</th>
-                <th class="px-3 py-2">샤프</th>
-                <th class="px-3 py-2">거래 수</th>
-                <th class="px-3 py-2">낙폭 개선</th>
-                <th class="px-3 py-2">거래 감소</th>
-                <th class="px-3 py-2">휩소 감소</th>
-                <th class="px-3 py-2">곡선 안정</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each comparisonResults as entry}
-                {@const delta = getComparisonDelta(entry)}
-                <tr class={`cursor-pointer border-t border-gray-800 transition ${activeScenarioKey === entry.key ? 'bg-blue-950/20' : 'hover:bg-gray-900'}`} on:click={() => selectScenarioResult(entry.key)}>
-                  <td class="px-3 py-2">
-                    <div class="font-medium text-white">{entry.comparisonGroupLabel}</div>
-                    {#if entry.isBaseline}
-                      <div class="text-xs text-emerald-300">이 유니버스의 기준선</div>
-                    {/if}
-                  </td>
-                  <td class="px-3 py-2 text-gray-300">{entry.symbolCount}</td>
-                  <td class="px-3 py-2">
-                    <div class="font-medium text-white">{entry.label}</div>
-                    {#if entry.isBaseline}
-                      <div class="text-xs text-blue-300">기본 패턴 시나리오</div>
-                    {/if}
-                  </td>
-                  <td class={`px-3 py-2 ${Number(entry.data.totalReturn ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}`}>{formatPercent(entry.data.totalReturn)}</td>
-                  <td class="px-3 py-2 text-red-300">{formatPercent(entry.data.maxDrawdown)}</td>
-                  <td class="px-3 py-2">{Number(entry.data.sharpeRatio ?? 0).toFixed(2)}</td>
-                  <td class="px-3 py-2">{entry.data.totalTrades ?? 0}</td>
-                  <td class={`px-3 py-2 ${delta && Number(delta.drawdownImprovement) >= 0 ? 'text-green-300' : 'text-red-300'}`}>{delta ? formatSignedPercent(delta.drawdownImprovement) : '-'}</td>
-                  <td class={`px-3 py-2 ${delta && Number(delta.tradeReduction) >= 0 ? 'text-blue-200' : 'text-red-300'}`}>{delta ? `${delta.tradeReduction > 0 ? '+' : ''}${delta.tradeReduction}` : '-'}</td>
-                  <td class={`px-3 py-2 ${delta && Number(delta.whipsawReduction) >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{delta ? `${delta.whipsawReduction > 0 ? '+' : ''}${delta.whipsawReduction}` : '-'}</td>
-                  <td class={`px-3 py-2 ${delta && Number(delta.stabilityImprovement ?? -1) >= 0 ? 'text-cyan-300' : 'text-red-300'}`}>{delta && delta.stabilityImprovement != null ? formatSignedPercent(delta.stabilityImprovement) : '-'}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <BacktestScenarioComparison
+        rows={getScenarioComparisonRows()}
+        {activeScenarioKey}
+        {runStatus}
+        onSelect={selectScenarioResult}
+      />
     {/if}
 
     {#if result}

@@ -36,8 +36,12 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/BacktestFactorExperimentEditor.svelte"));
         var factorCandidates = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/BacktestFactorCandidates.svelte"));
+        var timingOptions = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestTimingOptions.svelte"));
+        var scenarioComparison = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestScenarioComparison.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_500);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_440);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
@@ -46,6 +50,8 @@ public class ArchitectureDependencyTests
         page.Should().Contain("<BacktestTradeHistory");
         page.Should().Contain("<BacktestFactorRanking");
         page.Should().Contain("<BacktestFactorLabPanel");
+        page.Should().Contain("<BacktestTimingOptions");
+        page.Should().Contain("<BacktestScenarioComparison");
         page.Should().NotContain("백테스트 실패:");
         page.Should().NotContain("타이밍 리포트");
         page.Should().NotContain("종목별 성과");
@@ -54,6 +60,8 @@ public class ArchitectureDependencyTests
         page.Should().NotContain(">팩터 실험실 랭킹</div>");
         page.Should().NotContain(">커스텀 팩터 조합</div>");
         page.Should().NotContain(">실행 가능한 프리셋</div>");
+        page.Should().NotContain(">비교 기간 조합</div>");
+        page.Should().NotContain(">타이밍·팩터 비교 결과</div>");
         page.Should().NotContain("function getWhipsawStats(");
         page.Should().NotContain("const factorExperimentPresets = [");
         research.Should().Contain("export function getWhipsawStats(");
@@ -72,6 +80,9 @@ public class ArchitectureDependencyTests
         factorLabPanel.Should().Contain("<BacktestFactorCandidates");
         factorEditor.Should().Contain("커스텀 팩터 조합");
         factorCandidates.Should().Contain("실행 여부");
+        timingOptions.Should().Contain("비교 기간 조합");
+        scenarioComparison.Should().Contain("타이밍·팩터 비교 결과");
+        scenarioComparison.Should().Contain("onSelect(row.key)");
     }
 
     [Theory]
