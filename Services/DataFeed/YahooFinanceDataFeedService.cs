@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Domain.MarketData;
 
 namespace StockTrader.Services.DataFeed;
 
@@ -40,13 +41,6 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
     ///   15m → 최근 60일
     ///   일봉/주봉 → 제한 없음
     /// </summary>
-    private static readonly Dictionary<TimeFrame, int> IntradayMaxDays = new()
-    {
-        { TimeFrame.OneMinute,     7  },
-        { TimeFrame.FiveMinute,    60 },
-        { TimeFrame.FifteenMinute, 60 }
-    };
-
     public async Task<List<OhlcvBar>> GetHistoricalBarsAsync(string symbol, TimeFrame timeFrame,
         DateTime from, DateTime to, CancellationToken ct = default)
     {
@@ -54,7 +48,7 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
         {
             // Yahoo Finance는 분봉 데이터에 기간 제한이 있음.
             // 요청 기간이 제한을 초과하면 API가 빈 배열을 반환하므로 자동 클램핑.
-            if (IntradayMaxDays.TryGetValue(timeFrame, out var maxDays))
+            if (DataProviderCatalog.MaximumLookbackDays(DataSource.Yahoo, timeFrame) is { } maxDays)
             {
                 var earliest = to.AddDays(-maxDays);
                 if (from < earliest)

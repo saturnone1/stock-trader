@@ -1,6 +1,7 @@
 using System.Text.Json;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Domain.Strategies;
 using StockTrader.Domain.MarketData;
 using StockTrader.Services.Indicators;
 
@@ -474,36 +475,7 @@ public class RuleBasedDetector : IPatternDetector
     }
 
     private static int GetRequiredBars(string? indicator, Dictionary<string, decimal>? prms)
-    {
-        if (string.IsNullOrWhiteSpace(indicator))
-            return 3;
-
-        prms ??= new Dictionary<string, decimal>();
-
-        int GetInt(string key, int def) =>
-            prms.TryGetValue(key, out var v) ? (int)v : def;
-
-        return indicator.ToUpperInvariant() switch
-        {
-            "RSI" or "PRICE_VS_SMA" or "PRICE_VS_EMA" or "BOLLINGER_POS" or "VOLUME_RATIO"
-                or "ATR" or "ATR_PERCENT" or "VOLATILITY_20D" or "PRICE_VS_VWAP"
-                or "CCI" or "ROC" or "WILLIAMS_R" or "CMF"
-                => GetInt("period", 14) + 2,
-
-            "CUMULATIVE_RSI" => GetInt("period", 2) + GetInt("cumulativePeriod", 2) + 2,
-
-            "MACD_HIST" => GetInt("slow", 26) + GetInt("signal", 9) + 2,
-            "PRICE_CHANGE" => GetInt("bars", 1) + 2,
-            "SMA_SLOPE" => GetInt("period", 20) + GetInt("lookback", 5) + 2,
-            "DIST_FROM_HIGH" or "DIST_FROM_LOW" or "BREAKOUT_HIGH" or "BREAKOUT_LOW"
-                => GetInt("period", 20) + 2,
-            "ADX" => GetInt("period", 14) * 2 + 1,
-            "STOCHASTIC_K" => GetInt("period", 14) + 2,
-            "STOCHASTIC_D" => GetInt("period", 14) + GetInt("smooth", 3) + 2,
-            "OBV_SLOPE" => GetInt("lookback", 5) + 2,
-            _ => 3
-        };
-    }
+        => IndicatorCatalog.RequiredBars(indicator, prms);
 
     /// <summary>
     /// offset=0 → 현재 봉, offset=1 → 1봉 전, ...
@@ -513,9 +485,9 @@ public class RuleBasedDetector : IPatternDetector
         string indicator, Dictionary<string, decimal> prms, EvalContext ctx, int offset)
     {
         int GetInt(string key, int def) =>
-            prms.TryGetValue(key, out var v) ? (int)v : def;
+            prms.TryGetValue(key, out var v) ? (int)v : (int)IndicatorCatalog.ParameterDefault(indicator, key, def);
         decimal GetDec(string key, decimal def) =>
-            prms.TryGetValue(key, out var v) ? v : def;
+            prms.TryGetValue(key, out var v) ? v : IndicatorCatalog.ParameterDefault(indicator, key, def);
 
         var bars = ctx.Bars;
         var closes = ctx.Closes;

@@ -262,6 +262,22 @@ export const patternApi = {
     api.post('/api/custom-patterns/preview', { symbol, pattern, ...options }),
 };
 
+let strategyBuilderMetadataPromise: Promise<any> | null = null;
+
+export const metadataApi = {
+  getStrategyBuilder: () => {
+    if (!strategyBuilderMetadataPromise) {
+      strategyBuilderMetadataPromise = api.get('/api/metadata/strategy-builder')
+        .then(response => response.data)
+        .catch(error => {
+          strategyBuilderMetadataPromise = null;
+          throw error;
+        });
+    }
+    return strategyBuilderMetadataPromise;
+  },
+};
+
 export const optimizationApi = {
   normalizeResult: (result: any) => ({
     id: result.id,

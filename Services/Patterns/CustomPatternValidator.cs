@@ -1,23 +1,13 @@
 using System.Text.Json;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Domain.Strategies;
 
 namespace StockTrader.Services.Patterns;
 
 public static class CustomPatternValidator
 {
     private static readonly HashSet<string> Logics = new(StringComparer.OrdinalIgnoreCase) { "AND", "OR" };
-    private static readonly HashSet<string> Operators = new(StringComparer.OrdinalIgnoreCase)
-        { ">", "<", ">=", "<=", "crosses_above", "crosses_below" };
-    private static readonly HashSet<string> Indicators = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "RSI", "CUMULATIVE_RSI", "PRICE_VS_SMA", "PRICE_VS_EMA", "MACD_HIST", "BOLLINGER_POS",
-        "VOLUME_RATIO", "PRICE_CHANGE", "ATR", "SMA_SLOPE", "CANDLE_BODY", "DIST_FROM_HIGH",
-        "DIST_FROM_LOW", "GAP", "HIGHER_LOW", "LOWER_HIGH", "INSIDE_BAR", "ENGULFING",
-        "BREAKOUT_HIGH", "BREAKOUT_LOW", "CONSECUTIVE_UP", "CONSECUTIVE_DOWN", "ADX",
-        "STOCHASTIC_K", "STOCHASTIC_D", "ATR_PERCENT", "VOLATILITY_20D", "OBV",
-        "PRICE_VS_VWAP", "OBV_SLOPE", "CCI", "ROC", "WILLIAMS_R", "CMF"
-    };
     private static readonly HashSet<string> EntryModes = new(StringComparer.OrdinalIgnoreCase) { "CurrentClose", "NextOpen" };
     private static readonly HashSet<string> SizingModes = new(StringComparer.OrdinalIgnoreCase) { "FixedRisk", "Kelly", "HalfKelly" };
     private static readonly HashSet<string> StopTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -131,10 +121,10 @@ public static class CustomPatternValidator
         {
             var prefix = $"{scope} / 조건 {index + 1}";
             if (string.IsNullOrWhiteSpace(rule.Indicator)) errors.Add($"{prefix}: 지표를 선택하세요.");
-            else if (!Indicators.Contains(rule.Indicator)) errors.Add($"{prefix}: 지원하지 않는 지표입니다.");
-            if (!string.IsNullOrWhiteSpace(rule.CompareIndicator) && !Indicators.Contains(rule.CompareIndicator))
+            else if (!IndicatorCatalog.Contains(rule.Indicator)) errors.Add($"{prefix}: 지원하지 않는 지표입니다.");
+            if (!string.IsNullOrWhiteSpace(rule.CompareIndicator) && !IndicatorCatalog.Contains(rule.CompareIndicator))
                 errors.Add($"{prefix}: 비교 지표가 올바르지 않습니다.");
-            if (!Operators.Contains(rule.Operator)) errors.Add($"{prefix}: 비교 방식이 올바르지 않습니다.");
+            if (!RuleOperatorCatalog.Contains(rule.Operator)) errors.Add($"{prefix}: 비교 방식이 올바르지 않습니다.");
             if (rule.WithinBars < 0 || rule.ConsecutiveBars < 0) errors.Add($"{prefix}: 봉 수는 0 이상이어야 합니다.");
             if (rule.WithinBars > 0 && rule.ConsecutiveBars > 0) errors.Add($"{prefix}: 최근 N봉과 연속 봉은 동시에 사용할 수 없습니다.");
             if (rule.Weight <= 0) errors.Add($"{prefix}: 가중치는 0보다 커야 합니다.");

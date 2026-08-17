@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { ChevronDown, Pause, Play, RotateCcw, Save, Trash2, Zap } from 'lucide-svelte'
-  import { optimizationApi, patternApi } from '../api/endpoints'
+  import { metadataApi, optimizationApi, patternApi } from '../api/endpoints'
   import FinancialFactorBuilder from '../lib/FinancialFactorBuilder.svelte'
   import UniverseBuilder from '../lib/UniverseBuilder.svelte'
 
@@ -14,20 +14,8 @@
     ['winRate', '승률']
   ]
 
-  const timeFrameOptions = [
-    ['Daily', '일봉'],
-    ['FifteenMinute', '15분봉'],
-    ['FiveMinute', '5분봉'],
-    ['OneMinute', '1분봉'],
-    ['Weekly', '주봉']
-  ]
-
-  const dataSourceOptions = [
-    ['', '기본 설정'],
-    ['Alpaca', 'Alpaca'],
-    ['Yahoo', 'Yahoo Finance'],
-    ['LsSecurities', 'LS증권']
-  ]
+  let timeFrameOptions = []
+  let dataSourceOptions = [['', '기본 설정']]
 
   const entryModeLabelMap = {
     CurrentClose: '현재 봉 종가',
@@ -125,8 +113,18 @@
 
   async function initialize() {
     loading = true
-    await Promise.all([loadPatterns(), loadJobs()])
+    await Promise.all([loadMetadata(), loadPatterns(), loadJobs()])
     loading = false
+  }
+
+  async function loadMetadata() {
+    try {
+      const metadata = await metadataApi.getStrategyBuilder()
+      timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => [item.value, item.displayName])
+      dataSourceOptions = [['', '기본 설정'], ...(metadata?.dataProviders ?? []).map((item) => [item.value, item.displayName])]
+    } catch (e) {
+      error = e?.response?.data?.error || e?.message || '시간축·데이터 공급자 정보를 불러오지 못했습니다.'
+    }
   }
 
   async function loadPatterns() {

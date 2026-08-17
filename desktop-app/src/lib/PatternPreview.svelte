@@ -1,24 +1,19 @@
 <script>
-  import { createEventDispatcher, onDestroy } from 'svelte'
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte'
   import { Activity, AlertTriangle, CalendarDays, RefreshCw, Search, TrendingUp } from 'lucide-svelte'
-  import { patternApi } from '../api/endpoints'
+  import { metadataApi, patternApi } from '../api/endpoints'
 
   export let pattern = null
   export let selectedRuleSummary = ''
   export let timeFrame = 'Daily'
   const dispatch = createEventDispatcher()
 
-  const timeFrames = [
-    { value: 'OneMinute', label: '1분봉' },
-    { value: 'FiveMinute', label: '5분봉' },
-    { value: 'FifteenMinute', label: '15분봉' },
-    { value: 'Daily', label: '일봉' },
-    { value: 'Weekly', label: '주봉' }
-  ]
+  let timeFrames = []
+  let timeFrameByValue = {}
 
   let symbol = 'TQQQ'
   let toDate = isoDate(new Date())
-  let fromDate = defaultFromDate(timeFrame, toDate)
+  let fromDate = ''
   let loading = false
   let error = ''
   let result = null
@@ -57,7 +52,21 @@
     scheduleRefresh('filters', 0)
   }
 
+  onMount(loadMetadata)
   onDestroy(() => clearTimeout(refreshTimer))
+
+  async function loadMetadata() {
+    try {
+      const metadata = await metadataApi.getStrategyBuilder()
+      timeFrames = (metadata?.timeFrames ?? []).map((item) => ({ value: item.value, label: item.displayName }))
+      timeFrameByValue = Object.fromEntries((metadata?.timeFrames ?? []).map((item) => [item.value, item]))
+      fromDate = defaultFromDate(timeFrame, toDate)
+      if (isIntraday(timeFrame)) fromDate = `${fromDate}T09:30`
+      if (pattern) scheduleRefresh('filters', 0)
+    } catch (e) {
+      error = e?.response?.data?.error || e?.message || '시간축 정보를 불러오지 못했습니다.'
+    }
+  }
 
   function scheduleRefresh(reason = 'pattern', delay = 500) {
     clearTimeout(refreshTimer)
@@ -128,20 +137,25 @@
   }
 
   function presetsFor(value) {
-    if (value === 'OneMinute') return [{ label: '1일', days: 1 }, { label: '3일', days: 3 }, { label: '7일', days: 7 }]
-    if (value === 'FiveMinute') return [{ label: '5일', days: 5 }, { label: '2주', days: 14 }, { label: '1개월', days: 30 }]
-    if (value === 'FifteenMinute') return [{ label: '1개월', days: 30 }, { label: '3개월', days: 90 }, { label: '4개월', days: 120 }]
-    if (value === 'Weekly') return [{ label: '1년', days: 365 }, { label: '3년', days: 1095 }, { label: '5년', days: 1825 }]
-    return [{ label: '3개월', days: 90 }, { label: '6개월', days: 180 }, { label: '1년', days: 365 }, { label: '3년', days: 1095 }]
+    return (timeFrameByValue[value]?.preview?.suggestedRangeDays ?? [])
+      .map((days) => ({ label: rangeLabel(days), days }))
   }
 
   function defaultFromDate(value, endDate) {
-    const preset = value === 'OneMinute' ? 1 : value === 'FiveMinute' ? 5 : value === 'FifteenMinute' ? 20 : value === 'Weekly' ? 1095 : 365
+    const preset = timeFrameByValue[value]?.preview?.defaultLookbackDays
+    if (!preset) return ''
     return shiftDate(endDate.slice(0, 10), -(preset - 1))
   }
 
   function isIntraday(value) {
-    return ['OneMinute', 'FiveMinute', 'FifteenMinute'].includes(value)
+    return timeFrameByValue[value]?.isIntraday ?? false
+  }
+
+  function rangeLabel(days) {
+    if (days >= 365 && days % 365 === 0) return `${days / 365}년`
+    if (days >= 30 && days % 30 === 0) return `${days / 30}개월`
+    if (days >= 7 && days % 7 === 0) return `${days / 7}주`
+    return `${days}일`
   }
 
   // datetime-local에는 시간대가 없으므로 입력값을 미국 동부시간으로 해석해 UTC로 보낸다.

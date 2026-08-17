@@ -1,96 +1,29 @@
 <script>
   import { onMount } from 'svelte'
   import { ArrowDown, ArrowUp, ChevronRight, CircleHelp, Copy, FolderTree, Plus, Save, Trash2 } from 'lucide-svelte'
-  import { patternApi } from '../api/endpoints'
+  import { metadataApi, patternApi } from '../api/endpoints'
   import PatternPreview from '../lib/PatternPreview.svelte'
 
-  const indicatorPalette = [
-    {
-      title: '가격 구조',
-      items: [
-        { label: '돌파 고점', indicator: 'BREAKOUT_HIGH', operator: '>=', value: 1, params: { period: 20 } },
-        { label: '돌파 저점', indicator: 'BREAKOUT_LOW', operator: '>=', value: 1, params: { period: 20 } },
-        { label: '고점 대비 거리', indicator: 'DIST_FROM_HIGH', operator: '<=', value: 2, params: { period: 20 } },
-        { label: '저점 대비 거리', indicator: 'DIST_FROM_LOW', operator: '>=', value: 5, params: { period: 20 } },
-        { label: '갭 상승', indicator: 'GAP', operator: '>=', value: 1.5, params: {} },
-        { label: '저점 상승 지속', indicator: 'HIGHER_LOW', operator: '>=', value: 2, params: {} },
-        { label: '고점 하락 지속', indicator: 'LOWER_HIGH', operator: '>=', value: 2, params: {} },
-        { label: '인사이드 바', indicator: 'INSIDE_BAR', operator: '>=', value: 1, params: {} },
-        { label: '장악형 캔들', indicator: 'ENGULFING', operator: '>=', value: 1, params: {} },
-      ]
-    },
-    {
-      title: '모멘텀',
-      items: [
-        { label: 'RSI 과매도', indicator: 'RSI', operator: '<=', value: 30, params: { period: 14 } },
-        { label: '누적 RSI', indicator: 'CUMULATIVE_RSI', operator: '<=', value: 10, params: { period: 2, cumulativePeriod: 2 } },
-        { label: '스토캐스틱 K', indicator: 'STOCHASTIC_K', operator: '<=', value: 20, params: { period: 14 } },
-        { label: '스토캐스틱 D', indicator: 'STOCHASTIC_D', operator: '<=', value: 20, params: { period: 14, smooth: 3 } },
-        { label: 'MACD 히스토그램', indicator: 'MACD_HIST', operator: '>', value: 0, params: {} },
-        { label: '연속 상승', indicator: 'CONSECUTIVE_UP', operator: '>=', value: 3, params: {} },
-        { label: '연속 하락', indicator: 'CONSECUTIVE_DOWN', operator: '>=', value: 3, params: {} },
-        { label: 'ADX 추세', indicator: 'ADX', operator: '>=', value: 25, params: { period: 14 } },
-        { label: 'ROC 모멘텀', indicator: 'ROC', operator: '>=', value: 5, params: { period: 14 } },
-        { label: 'CCI', indicator: 'CCI', operator: '<=', value: -100, params: { period: 20 } },
-        { label: '윌리엄스 %R', indicator: 'WILLIAMS_R', operator: '<=', value: -80, params: { period: 14 } },
-      ]
-    },
-    {
-      title: '추세/평균',
-      items: [
-        { label: '가격 vs SMA', indicator: 'PRICE_VS_SMA', operator: '>', value: 0, params: { period: 20 } },
-        { label: '가격 vs EMA', indicator: 'PRICE_VS_EMA', operator: '>', value: 0, params: { period: 20 } },
-        { label: '가격 vs VWAP', indicator: 'PRICE_VS_VWAP', operator: '>', value: 0, params: { period: 20 } },
-        { label: 'SMA 기울기', indicator: 'SMA_SLOPE', operator: '>', value: 0, params: { period: 20, lookback: 5 } },
-        { label: 'OBV 누적거래량', indicator: 'OBV', operator: '>', value: 0, params: {} },
-        { label: 'OBV 기울기', indicator: 'OBV_SLOPE', operator: '>', value: 0, params: { lookback: 5 } },
-        { label: '거래량 비율', indicator: 'VOLUME_RATIO', operator: '>=', value: 1.5, params: { period: 20 } },
-        { label: 'CMF', indicator: 'CMF', operator: '>', value: 0, params: { period: 20 } },
-      ]
-    },
-    {
-      title: '변동성/기타',
-      items: [
-        { label: '볼린저 위치', indicator: 'BOLLINGER_POS', operator: '<=', value: 0.1, params: { period: 20, stddev: 2 } },
-        { label: 'ATR', indicator: 'ATR', operator: '>=', value: 1, params: { period: 14 } },
-        { label: 'ATR %', indicator: 'ATR_PERCENT', operator: '>=', value: 2, params: { period: 14 } },
-        { label: '가격 변화율', indicator: 'PRICE_CHANGE', operator: '>=', value: 3, params: { bars: 5 } },
-        { label: '20일 변동성', indicator: 'VOLATILITY_20D', operator: '>=', value: 30, params: { period: 20 } },
-        { label: '캔들 몸통 비율', indicator: 'CANDLE_BODY', operator: '>=', value: 0.6, params: {} },
-      ]
-    }
-  ]
-
-  const operatorOptions = ['>', '<', '>=', '<=', 'crosses_above', 'crosses_below']
+  let indicatorPalette = []
+  let operatorOptions = []
   const entryModeOptions = ['CurrentClose', 'NextOpen']
-  const timeFrameOptions = [
-    { value: 'OneMinute', label: '1분봉' },
-    { value: 'FiveMinute', label: '5분봉' },
-    { value: 'FifteenMinute', label: '15분봉' },
-    { value: 'Daily', label: '일봉' },
-    { value: 'Weekly', label: '주봉' }
-  ]
+  let timeFrameOptions = []
   const sizingModeOptions = ['FixedRisk', 'Kelly', 'HalfKelly']
   const logicOptions = ['AND', 'OR']
   const scalingDirectionOptions = ['SCALE_IN', 'SCALE_OUT']
   const stopTypeOptions = ['ATR', 'BOLLINGER_LOWER', 'SMA', 'EMA', 'PREV_LOW', 'PERCENT']
   const targetTypeOptions = ['ATR', 'BOLLINGER_UPPER', 'SMA', 'EMA', 'PREV_HIGH', 'R_MULTIPLE', 'PERCENT']
-  const indicatorOptions = indicatorPalette.flatMap((section) => section.items)
-  const indicatorSet = new Set(indicatorOptions.map((item) => item.indicator))
-  const positiveParamKeys = new Set(['period', 'cumulativePeriod', 'bars', 'lookback', 'stddev', 'smooth', 'slow', 'fast', 'signal', 'multiplier', 'multiple', 'percent'])
+  let indicatorOptions = []
+  let indicatorSet = new Set()
+  let positiveParamKeys = new Set(['multiplier', 'multiple', 'percent'])
   const dayOptions = [
     { value: 1, label: '월' }, { value: 2, label: '화' }, { value: 3, label: '수' },
     { value: 4, label: '목' }, { value: 5, label: '금' }, { value: 6, label: '토' }, { value: 0, label: '일' }
   ]
   const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1)
-  const indicatorLabels = Object.fromEntries(indicatorOptions.map((item) => [item.indicator, item.label]))
-  const indicatorValueGuides = {
-    RSI: '0~100', CUMULATIVE_RSI: 'RSI 합계', STOCHASTIC_K: '0~100', STOCHASTIC_D: '0~100',
-    BOLLINGER_POS: '0=하단, 1=상단', VOLUME_RATIO: '평균 대비 배수', PRICE_CHANGE: '%',
-    SMA_SLOPE: '%', CANDLE_BODY: '0~1 비율', DIST_FROM_HIGH: '고점 아래 거리 %', DIST_FROM_LOW: '저점 위 거리 %',
-    GAP: '%', ATR_PERCENT: '%', VOLATILITY_20D: '연환산 %', PRICE_VS_SMA: '%', PRICE_VS_EMA: '%',
-    PRICE_VS_VWAP: '%', ROC: '%', WILLIAMS_R: '-100~0', CMF: '-1~1', INSIDE_BAR: '참=1', ENGULFING: '강세=1, 약세=-1'
-  }
+  let indicatorLabels = {}
+  let indicatorValueGuides = {}
+  let indicatorFieldConfigs = {}
   const operatorLabels = {
     '>': '초과',
     '<': '미만',
@@ -193,59 +126,6 @@
       PERCENT: [{ key: 'percent', label: '퍼센트', step: '0.1', defaultValue: 5 }]
     }
   }
-  const indicatorFieldConfigs = {
-    BREAKOUT_HIGH: [{ key: 'period', label: '돌파 기준 기간', step: '1', defaultValue: 20 }],
-    BREAKOUT_LOW: [{ key: 'period', label: '돌파 기준 기간', step: '1', defaultValue: 20 }],
-    DIST_FROM_HIGH: [{ key: 'period', label: '기준 고점 기간', step: '1', defaultValue: 20 }],
-    DIST_FROM_LOW: [{ key: 'period', label: '기준 저점 기간', step: '1', defaultValue: 20 }],
-    GAP: [],
-    HIGHER_LOW: [],
-    LOWER_HIGH: [],
-    INSIDE_BAR: [],
-    ENGULFING: [],
-    RSI: [{ key: 'period', label: 'RSI 기간', step: '1', defaultValue: 14 }],
-    CUMULATIVE_RSI: [
-      { key: 'period', label: 'RSI 기간', step: '1', defaultValue: 2 },
-      { key: 'cumulativePeriod', label: '누적 기간', step: '1', defaultValue: 2 }
-    ],
-    STOCHASTIC_K: [{ key: 'period', label: '스토캐스틱 기간', step: '1', defaultValue: 14 }],
-    STOCHASTIC_D: [
-      { key: 'period', label: '스토캐스틱 기간', step: '1', defaultValue: 14 },
-      { key: 'smooth', label: '평활 기간', step: '1', defaultValue: 3 }
-    ],
-    MACD_HIST: [
-      { key: 'fast', label: '빠른 EMA', step: '1', defaultValue: 12 },
-      { key: 'slow', label: '느린 EMA', step: '1', defaultValue: 26 },
-      { key: 'signal', label: '시그널 기간', step: '1', defaultValue: 9 }
-    ],
-    CONSECUTIVE_UP: [],
-    CONSECUTIVE_DOWN: [],
-    ADX: [{ key: 'period', label: 'ADX 기간', step: '1', defaultValue: 14 }],
-    ROC: [{ key: 'period', label: 'ROC 기간', step: '1', defaultValue: 14 }],
-    CCI: [{ key: 'period', label: 'CCI 기간', step: '1', defaultValue: 20 }],
-    WILLIAMS_R: [{ key: 'period', label: '윌리엄스 %R 기간', step: '1', defaultValue: 14 }],
-    PRICE_VS_SMA: [{ key: 'period', label: 'SMA 기간', step: '1', defaultValue: 20 }],
-    PRICE_VS_EMA: [{ key: 'period', label: 'EMA 기간', step: '1', defaultValue: 20 }],
-    PRICE_VS_VWAP: [{ key: 'period', label: 'VWAP 기준 기간', step: '1', defaultValue: 20 }],
-    SMA_SLOPE: [
-      { key: 'period', label: 'SMA 기간', step: '1', defaultValue: 20 },
-      { key: 'lookback', label: '기울기 비교 봉 수', step: '1', defaultValue: 5 }
-    ],
-    OBV: [],
-    OBV_SLOPE: [{ key: 'lookback', label: '기울기 비교 봉 수', step: '1', defaultValue: 5 }],
-    VOLUME_RATIO: [{ key: 'period', label: '평균 거래량 기간', step: '1', defaultValue: 20 }],
-    CMF: [{ key: 'period', label: 'CMF 기간', step: '1', defaultValue: 20 }],
-    BOLLINGER_POS: [
-      { key: 'period', label: '볼린저 기간', step: '1', defaultValue: 20 },
-      { key: 'stddev', label: '표준편차', step: '0.1', defaultValue: 2 }
-    ],
-    ATR: [{ key: 'period', label: 'ATR 기간', step: '1', defaultValue: 14 }],
-    ATR_PERCENT: [{ key: 'period', label: 'ATR 기간', step: '1', defaultValue: 14 }],
-    PRICE_CHANGE: [{ key: 'bars', label: '비교 봉 수', step: '1', defaultValue: 5 }],
-    VOLATILITY_20D: [{ key: 'period', label: '변동성 기간', step: '1', defaultValue: 20 }],
-    CANDLE_BODY: []
-  }
-
   let patterns = []
   let selectedPattern = null
   let workspace = null
@@ -258,7 +138,61 @@
   let showNewPattern = false
   let newPatternName = ''
   let validationIssues = []
-  onMount(loadPatterns)
+  onMount(initialize)
+
+  async function initialize() {
+    loading = true
+    try {
+      const metadata = await metadataApi.getStrategyBuilder()
+      applyMetadata(metadata)
+      await loadPatterns()
+    } catch (e) {
+      error = e?.response?.data?.error ?? e?.message ?? '전략 구성 정보를 불러오지 못했습니다.'
+    } finally {
+      loading = false
+    }
+  }
+
+  function applyMetadata(metadata) {
+    const indicators = metadata?.indicators ?? []
+    const categories = []
+    const grouped = new Map()
+
+    indicatorOptions = indicators.map((item) => ({
+      label: item.displayName,
+      indicator: item.code,
+      operator: item.defaultOperator,
+      value: item.defaultThreshold,
+      params: Object.fromEntries((item.parameters ?? []).map((parameter) => [parameter.key, parameter.defaultValue]))
+    }))
+    indicators.forEach((item) => {
+      if (!grouped.has(item.category)) {
+        grouped.set(item.category, [])
+        categories.push(item.category)
+      }
+      grouped.get(item.category).push(indicatorOptions.find((option) => option.indicator === item.code))
+    })
+    indicatorPalette = categories.map((title) => ({ title, items: grouped.get(title) }))
+    indicatorSet = new Set(indicators.map((item) => item.code))
+    indicatorLabels = Object.fromEntries(indicators.map((item) => [item.code, item.displayName]))
+    indicatorValueGuides = Object.fromEntries(indicators.filter((item) => item.valueGuide).map((item) => [item.code, item.valueGuide]))
+    indicatorFieldConfigs = Object.fromEntries(indicators.map((item) => [item.code, (item.parameters ?? []).map((parameter) => ({
+      key: parameter.key,
+      label: parameter.displayName,
+      step: String(parameter.step),
+      defaultValue: parameter.defaultValue
+    }))]))
+    positiveParamKeys = new Set([
+      'multiplier', 'multiple', 'percent',
+      ...indicators.flatMap((item) => (item.parameters ?? []).filter((parameter) => parameter.mustBePositive).map((parameter) => parameter.key))
+    ])
+    operatorOptions = metadata?.ruleOperators ?? []
+    timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => ({ value: item.value, label: item.displayName }))
+
+    if (!indicatorOptions.length || !timeFrameOptions.length || !operatorOptions.length) {
+      throw new Error('서버의 전략 구성 메타데이터가 비어 있습니다.')
+    }
+  }
 
   function safeParse(value, fallback) {
     try {

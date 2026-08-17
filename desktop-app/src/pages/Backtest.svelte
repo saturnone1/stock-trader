@@ -1,24 +1,13 @@
 <script>
   import { onMount } from 'svelte'
   import { Play, RotateCcw, TriangleAlert } from 'lucide-svelte'
-  import { backtestApi, financialFactorApi, patternApi } from '../api/endpoints'
+  import { backtestApi, financialFactorApi, metadataApi, patternApi } from '../api/endpoints'
   import FinancialFactorBuilder from '../lib/FinancialFactorBuilder.svelte'
   import UniverseBuilder from '../lib/UniverseBuilder.svelte'
 
-  const timeFrameOptions = [
-    ['OneMinute', '1분봉'],
-    ['FiveMinute', '5분봉'],
-    ['FifteenMinute', '15분봉'],
-    ['Daily', '일봉'],
-    ['Weekly', '주봉']
-  ]
-
-  const dataSourceOptions = [
-    ['', '기본 설정'],
-    ['Alpaca', 'Alpaca'],
-    ['Yahoo', 'Yahoo Finance'],
-    ['LsSecurities', 'LS증권']
-  ]
+  let timeFrameOptions = []
+  let dataSourceOptions = [['', '기본 설정']]
+  let dataProviders = []
 
   const slippageOptions = [
     ['Adaptive', '적응형'],
@@ -172,9 +161,20 @@
   }
 
   onMount(async () => {
-    await loadPatterns()
+    await Promise.all([loadMetadata(), loadPatterns()])
     loading = false
   })
+
+  async function loadMetadata() {
+    try {
+      const metadata = await metadataApi.getStrategyBuilder()
+      timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => [item.value, item.displayName])
+      dataProviders = metadata?.dataProviders ?? []
+      dataSourceOptions = [['', '기본 설정'], ...dataProviders.map((item) => [item.value, item.displayName])]
+    } catch (e) {
+      error = e?.response?.data?.error || e?.message || '시간축·데이터 공급자 정보를 불러오지 못했습니다.'
+    }
+  }
 
   async function loadPatterns() {
     try {
@@ -282,11 +282,14 @@
   }
 
   function timeframeWarning() {
-    const days = Math.max(0, Math.round((new Date(form.to).getTime() - new Date(form.from).getTime()) / 86400000))
     if (!form.from || !form.to) return ''
-    if (form.timeFrame === 'OneMinute' && days > 30) return '1분봉은 기간을 30일 이내로 줄이는 편이 좋습니다.'
-    if (form.timeFrame === 'FiveMinute' && days > 90) return '5분봉은 기간을 90일 이내로 줄이는 편이 좋습니다.'
-    if (form.timeFrame === 'FifteenMinute' && days > 180) return '15분봉은 기간을 180일 이내로 줄이는 편이 좋습니다.'
+    const provider = dataProviders.find((item) => item.value === form.dataSource)
+    const maxDays = provider?.maximumLookbackDays?.[form.timeFrame]
+    const days = Math.max(0, Math.ceil((new Date(form.to).getTime() - new Date(form.from).getTime()) / 86400000))
+    if (maxDays && days > maxDays) {
+      const frameLabel = timeFrameOptions.find(([value]) => value === form.timeFrame)?.[1] ?? form.timeFrame
+      return `${provider.displayName}의 ${frameLabel} 조회 한도는 최대 ${maxDays}일입니다.`
+    }
     return ''
   }
 

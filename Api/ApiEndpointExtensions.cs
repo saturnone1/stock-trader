@@ -27,6 +27,7 @@ public static class ApiEndpointExtensions
         api.MapPatternPreviewApi();
         api.MapOptimizeApi();
         api.MapOptimizeJobApi();
+        api.MapMetadataApi();
 
         return app;
     }
