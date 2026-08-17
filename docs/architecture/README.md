@@ -141,6 +141,11 @@ the translation used by create, update, list, detail, backtest-apply, and previe
 defaults are shared by persistence and API contracts through `StrategyDocumentDefaults`.
 The current document version is emitted by strategy-builder metadata, so even the desktop's local
 preset uses the Domain-owned value instead of copying a version literal.
+`CustomPatternManagementService` is the application boundary for strategy CRUD and optimization
+promotion. It validates every candidate with `StrategyCompiler`, owns identity/version/timestamps and
+case-insensitive name conflicts, and persists through `ICustomPatternStore`. HTTP endpoints and the
+automatic optimizer cannot write strategy rows directly. Invalid optimization output is rejected
+without changing the stored strategy or incrementing its applied-result count.
 
 ## Decision records
 
@@ -153,4 +158,6 @@ preset uses the Domain-owned value instead of copying a version literal.
   schema writer after production baseline adoption.
 - `adr/0005-version-strategy-documents.md`: version persisted strategy definitions independently
   from compiled-engine semantics and fail closed on unknown future documents.
+- `adr/0006-strategy-management-use-case.md`: route every persisted strategy mutation through one
+  validated application use case and a purpose-specific persistence port.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

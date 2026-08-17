@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.Strategies;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -24,13 +25,16 @@ public class OptimizationAutoTuneService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OptimizationAutoTuneService> _logger;
+    private readonly TimeProvider _clock;
 
     public OptimizationAutoTuneService(
         IServiceScopeFactory scopeFactory,
-        ILogger<OptimizationAutoTuneService> logger)
+        ILogger<OptimizationAutoTuneService> logger,
+        TimeProvider clock)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _clock = clock;
     }
 
     public async Task HandleCompletedJobAsync(int jobId, CancellationToken ct = default)
@@ -100,6 +104,7 @@ public class OptimizationAutoTuneService
         await using var scope = _scopeFactory.CreateAsyncScope();
         var repo = scope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var patternManagement = scope.ServiceProvider.GetRequiredService<CustomPatternManagementService>();
 
         var job = await repo.GetJobSummaryAsync(jobId);
         if (job == null)
@@ -143,7 +148,7 @@ public class OptimizationAutoTuneService
             return new ApplyResultOutcome(false, message, null, job.AppliedResultCount);
         }
 
-        var targetPattern = await ResolveTargetPatternAsync(db, request.BasePattern, ct);
+        var targetPattern = await ResolveTargetPatternAsync(patternManagement, request.BasePattern, ct);
         if (targetPattern == null)
         {
             const string message = "반영 실패: 저장된 커스텀 패턴을 찾을 수 없습니다.";
@@ -153,10 +158,14 @@ public class OptimizationAutoTuneService
 
         var promoted = StrategyVariantFactory.ClonePatternDefinition(targetPattern);
         StrategyVariantFactory.ApplyOptimizeOverrides(promoted, snapshot);
-
-        CopyPatternValues(promoted, targetPattern);
-        targetPattern.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        var promotion = await patternManagement.UpdateAsync(targetPattern.Id, promoted, ct);
+        if (promotion.Kind != CustomPatternOperationKind.Success)
+        {
+            var message = $"반영 실패: {promotion.Error ?? "전략 검증 또는 저장에 실패했습니다."}";
+            await SaveApplyStatusAsync(repo, job.Id, null, message);
+            return new ApplyResultOutcome(false, message, null, job.AppliedResultCount);
+        }
+        targetPattern = promotion.Definition!;
 
         var metricSource = candidate.OosTotalReturn.HasValue ? "OOS" : "IS";
         var metricValue = candidate.OosTotalReturn ?? candidate.TotalReturn;
@@ -186,10 +195,10 @@ public class OptimizationAutoTuneService
         CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var patternManagement = scope.ServiceProvider.GetRequiredService<CustomPatternManagementService>();
 
-        var latestPattern = await ResolveTargetPatternAsync(db, request.BasePattern, ct) ?? request.BasePattern;
-        var nextRequest = BuildNextRequest(request, latestPattern, DateTime.UtcNow);
+        var latestPattern = await ResolveTargetPatternAsync(patternManagement, request.BasePattern, ct) ?? request.BasePattern;
+        var nextRequest = BuildNextRequest(request, latestPattern, _clock.GetUtcNow().UtcDateTime);
         await repo.RequeueContinuousJobAsync(
             completedJob.Id,
             JsonSerializer.Serialize(nextRequest));
@@ -210,7 +219,7 @@ public class OptimizationAutoTuneService
         if (job == null)
             return 0;
 
-        job.LastAutoAppliedAt = DateTime.UtcNow;
+        job.LastAutoAppliedAt = _clock.GetUtcNow().UtcDateTime;
         job.LastAutoAppliedResultId = resultId;
         job.LastAutoApplyMessage = message;
         if (incrementAppliedCount)
@@ -220,15 +229,15 @@ public class OptimizationAutoTuneService
     }
 
     private static async Task<CustomPatternDefinition?> ResolveTargetPatternAsync(
-        AppDbContext db,
+        CustomPatternManagementService management,
         CustomPatternDefinition basePattern,
         CancellationToken ct)
     {
         if (basePattern.Id > 0)
-            return await db.CustomPatterns.FirstOrDefaultAsync(p => p.Id == basePattern.Id, ct);
+            return await management.FindAsync(basePattern.Id, ct);
 
         if (!string.IsNullOrWhiteSpace(basePattern.Name))
-            return await db.CustomPatterns.FirstOrDefaultAsync(p => p.Name == basePattern.Name, ct);
+            return await management.FindByNameAsync(basePattern.Name, ct);
 
         return null;
     }
@@ -249,39 +258,6 @@ public class OptimizationAutoTuneService
     {
         var json = JsonSerializer.Serialize(src);
         return JsonSerializer.Deserialize<OptimizeRequest>(json, JsonOpts) ?? new OptimizeRequest();
-    }
-
-    private static void CopyPatternValues(CustomPatternDefinition source, CustomPatternDefinition target)
-    {
-        target.Name = source.Name;
-        target.Description = source.Description;
-        target.EntryRulesJson = source.EntryRulesJson;
-        target.EntryLogic = source.EntryLogic;
-        target.RequireBullRegime = source.RequireBullRegime;
-        target.AtrStopMultiplier = source.AtrStopMultiplier;
-        target.AtrTargetMultiplier = source.AtrTargetMultiplier;
-        target.MaxHoldingBars = source.MaxHoldingBars;
-        target.TrailingAtr = source.TrailingAtr;
-        target.PartialProfitR = source.PartialProfitR;
-        target.UseWeightTiers = source.UseWeightTiers;
-        target.WeightTiersJson = source.WeightTiersJson;
-        target.DefaultAllocationPercent = source.DefaultAllocationPercent;
-        target.ExitRulesJson = source.ExitRulesJson;
-        target.ExitRulesLogic = source.ExitRulesLogic;
-        target.ExitGroupsJson = source.ExitGroupsJson;
-        target.ExitGroupsLogic = source.ExitGroupsLogic;
-        target.ScalingRulesJson = source.ScalingRulesJson;
-        target.TimeFilterJson = source.TimeFilterJson;
-        target.CircuitBreakerJson = source.CircuitBreakerJson;
-        target.ReentryJson = source.ReentryJson;
-        target.PortfolioRulesJson = source.PortfolioRulesJson;
-        target.EntryGroupsJson = source.EntryGroupsJson;
-        target.EntryGroupsLogic = source.EntryGroupsLogic;
-        target.DynamicExitJson = source.DynamicExitJson;
-        target.EntryMode = source.EntryMode;
-        target.SizingMode = source.SizingMode;
-        target.IsActive = source.IsActive;
-        target.EnableLiveTrading = source.EnableLiveTrading;
     }
 
     private static int GetTradeCount(OptimizationResult result, bool useOos)

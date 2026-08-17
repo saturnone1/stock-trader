@@ -14,6 +14,7 @@ using StockTrader.Services.Statistics;
 using StockTrader.Services.Financial;
 using StockTrader.Services.StrategyPreview;
 using StockTrader.Application.StrategyPreview;
+using StockTrader.Application.Strategies;
 
 namespace StockTrader.Extensions;
 
@@ -64,6 +65,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ILivePositionExitCoordinator, LivePositionExitCoordinator>();
         services.AddScoped<LivePositionExitEvaluator>();
+        services.AddScoped<CustomPatternManagementService>();
         services.AddSingleton<FinancialSnapshotImportService>();
         services.AddSingleton<FinancialSnapshotFileParser>();
         services.AddScoped<BacktestDataPreparer>();

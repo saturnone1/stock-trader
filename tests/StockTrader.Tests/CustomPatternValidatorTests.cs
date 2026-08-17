@@ -1,12 +1,12 @@
 using System.Text.Json;
 using FluentAssertions;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
-using StockTrader.Services.Patterns;
 using StockTrader.Models.Enums;
 
 namespace StockTrader.Tests;
 
-public class CustomPatternValidatorTests
+public class StrategyCompilerValidationTests
 {
     [Fact]
     public void Validate_RejectsInvalidRiskAndEmptyScalingConditions()
@@ -18,7 +18,7 @@ public class CustomPatternValidatorTests
             new ScalingRule { Percent = 0m, MaxCount = 0, Conditions = [] }
         });
 
-        var errors = CustomPatternValidator.Validate(pattern);
+        var errors = StrategyCompiler.Compile(pattern).Errors;
 
         errors.Should().Contain(error => error.Contains("0~100%"));
         errors.Should().Contain(error => error.Contains("실행 조건이 비어"));
@@ -33,7 +33,7 @@ public class CustomPatternValidatorTests
             new ConditionGroup { Label = "청산", Logic = "OR", Rules = [Rule()] }
         });
 
-        CustomPatternValidator.Validate(pattern).Should().BeEmpty();
+        StrategyCompiler.Compile(pattern).Errors.Should().BeEmpty();
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class CustomPatternValidatorTests
             }
         });
 
-        var errors = CustomPatternValidator.Validate(pattern);
+        var errors = StrategyCompiler.Compile(pattern).Errors;
 
         errors.Should().Contain(error => error.Contains("지원하지 않는 지표"));
         errors.Should().Contain(error => error.Contains("0보다 커야"));
@@ -70,7 +70,7 @@ public class CustomPatternValidatorTests
             new WeightTier { Label = "사용 안 함", Conditions = [], AllocationPercent = 200m }
         });
 
-        CustomPatternValidator.Validate(pattern).Should().BeEmpty();
+        StrategyCompiler.Compile(pattern).Errors.Should().BeEmpty();
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class CustomPatternValidatorTests
         pattern.EntryMode = "CurrentClose";
         pattern.PartialProfitR = 1.5m;
 
-        var errors = CustomPatternValidator.Validate(pattern);
+        var errors = StrategyCompiler.Compile(pattern).Errors;
 
         errors.Should().Contain(error => error.Contains("일봉"));
         errors.Should().Contain(error => error.Contains("다음 봉 시가"));

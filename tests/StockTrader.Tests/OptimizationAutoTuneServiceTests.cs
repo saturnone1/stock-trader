@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.Strategies;
 using StockTrader.BackgroundServices;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
@@ -58,7 +59,10 @@ public class OptimizationAutoTuneServiceTests
         services.AddMemoryCache();
         services.AddDbContextFactory<AppDbContext>(options => options.UseInMemoryDatabase(dbName));
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
+        services.AddScoped<ICustomPatternStore, CustomPatternStore>();
+        services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<AppDbContext>(sp => sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<OptimizationAutoTuneService>();
 
         await using var provider = services.BuildServiceProvider();
@@ -69,6 +73,7 @@ public class OptimizationAutoTuneServiceTests
         var pattern = new CustomPatternDefinition
         {
             Name = "AutoTune Pattern",
+            EntryGroupsJson = ValidEntryGroupsJson(),
             AtrStopMultiplier = 2.0m,
             AtrTargetMultiplier = 3.0m,
             MaxHoldingBars = 10,
@@ -173,7 +178,10 @@ public class OptimizationAutoTuneServiceTests
         services.AddMemoryCache();
         services.AddDbContextFactory<AppDbContext>(options => options.UseInMemoryDatabase(dbName));
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
+        services.AddScoped<ICustomPatternStore, CustomPatternStore>();
+        services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<AppDbContext>(sp => sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<OptimizationAutoTuneService>();
 
         await using var provider = services.BuildServiceProvider();
@@ -184,6 +192,7 @@ public class OptimizationAutoTuneServiceTests
         var pattern = new CustomPatternDefinition
         {
             Name = "Manual Apply Pattern",
+            EntryGroupsJson = ValidEntryGroupsJson(),
             AtrStopMultiplier = 2.0m,
             AtrTargetMultiplier = 3.0m,
             MaxHoldingBars = 10,
@@ -229,7 +238,28 @@ public class OptimizationAutoTuneServiceTests
         };
         await repo.UpsertResultAsync(selectedResult);
 
+        var invalidResult = new OptimizationResult
+        {
+            JobId = job.Id,
+            Rank = 2,
+            ParamsJson = JsonSerializer.Serialize(new OptimizeParamSnapshot
+            {
+                AtrStopMultiplier = -1m
+            }),
+            TotalReturn = 20m,
+            SortinoRatio = 1.5m,
+            TotalTrades = 20
+        };
+        await repo.UpsertResultAsync(invalidResult);
+
         var sut = provider.GetRequiredService<OptimizationAutoTuneService>();
+        var rejected = await sut.ApplyResultAsync(job.Id, invalidResult.Id, isAutoApply: false);
+
+        rejected.Success.Should().BeFalse();
+        rejected.Message.Should().Contain("ATR 손절 배수");
+        (await db.CustomPatterns.AsNoTracking().SingleAsync()).AtrStopMultiplier.Should().Be(2m);
+        (await repo.GetJobSummaryAsync(job.Id))!.AppliedResultCount.Should().Be(0);
+
         var outcome = await sut.ApplyResultAsync(job.Id, selectedResult.Id, isAutoApply: false);
 
         outcome.Success.Should().BeTrue();
@@ -251,4 +281,21 @@ public class OptimizationAutoTuneServiceTests
         updatedJob.LastAutoAppliedResultId.Should().Be(selectedResult.Id);
         updatedJob.LastAutoApplyMessage.Should().Contain("수동 반영 완료");
     }
+
+    private static string ValidEntryGroupsJson() => JsonSerializer.Serialize(new[]
+    {
+        new ConditionGroup
+        {
+            Rules =
+            [
+                new EntryRule
+                {
+                    Indicator = "RSI",
+                    Operator = "<=",
+                    Value = 30m,
+                    Params = new() { ["period"] = 14m }
+                }
+            ]
+        }
+    });
 }

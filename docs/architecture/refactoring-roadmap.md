@@ -148,6 +148,10 @@
   contracts instead of accepting or returning the EF entity. Server-owned identity and audit fields
   cannot be written by clients, and a single mapper plus central document defaults preserves the
   existing JSON wire shape without coupling it to future database columns.
+- Strategy CRUD and optimization promotion now delegate to `CustomPatternManagementService` through
+  `ICustomPatternStore`. The application boundary owns compilation validation, server fields,
+  duplicate names, and clock access. Invalid optimized parameters can no longer bypass the compiler
+  and corrupt a stored strategy, and the 63-line HTTP module contains no EF or business validation.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

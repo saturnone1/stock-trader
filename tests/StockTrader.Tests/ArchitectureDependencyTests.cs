@@ -494,7 +494,8 @@ public class ArchitectureDependencyTests
             repository, "Application/Strategies/StrategyDocumentVersionPolicy.cs"));
         var compiler = File.ReadAllText(Path.Combine(
             repository, "Application/Strategies/StrategyCompiler.cs"));
-        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/CustomPatternEndpoints.cs"));
+        var management = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/CustomPatternManagementService.cs"));
         var migration = Directory.EnumerateFiles(
                 Path.Combine(repository, "Data/EfMigrations"), "*_AddStrategyDocumentVersion.cs")
             .Single(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal));
@@ -504,8 +505,8 @@ public class ArchitectureDependencyTests
         versions.Should().Contain("public const int Current = 1;");
         policy.Should().Contain("StrategyDocumentVersions.LegacyUnversioned or StrategyDocumentVersions.Current");
         compiler.Should().Contain("StrategyDocumentVersionPolicy.Validate(pattern.DocumentVersion)");
-        endpoints.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(input)");
-        endpoints.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(existing)");
+        management.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(input)");
+        management.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(pattern)");
         File.ReadAllText(migration).Should().Contain(
             "defaultValue: StockTrader.Domain.Strategies.StrategyDocumentVersions.Current");
     }
@@ -542,6 +543,42 @@ public class ArchitectureDependencyTests
         metadata.Should().Contain("DocumentVersion: StrategyDocumentVersions.Current");
         desktop.Should().Contain("metadata.documentVersion");
         desktop.Should().NotContain("documentVersion: 1");
+    }
+
+    [Fact]
+    public void CustomPatternHttpBoundaryDelegatesPersistenceAndValidationToApplication()
+    {
+        var repository = FindRepositoryRoot();
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/CustomPatternEndpoints.cs"));
+        var management = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/CustomPatternManagementService.cs"));
+        var port = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/ICustomPatternStore.cs"));
+        var adapter = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/CustomPatternStore.cs"));
+
+        File.ReadAllLines(Path.Combine(repository, "Api/CustomPatternEndpoints.cs"))
+            .Length.Should().BeLessThanOrEqualTo(80);
+        endpoints.Should().Contain("CustomPatternManagementService service");
+        endpoints.Should().NotContain("AppDbContext");
+        endpoints.Should().NotContain("Microsoft.EntityFrameworkCore");
+        endpoints.Should().NotContain("StrategyCompiler.Compile");
+        endpoints.Should().NotContain("TimeProvider");
+        management.Should().Contain("StrategyCompiler.Compile(input)");
+        management.Should().Contain("_store.NameExistsAsync(");
+        management.Should().Contain("_clock.GetUtcNow()");
+        management.Should().Contain("ApplyBacktestAsync(");
+        port.Should().Contain("public interface ICustomPatternStore");
+        port.Should().NotContain("Microsoft.EntityFrameworkCore");
+        adapter.Should().Contain("class CustomPatternStore : ICustomPatternStore");
+        adapter.Should().Contain("ExecuteDeleteAsync");
+        var autoTune = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/OptimizationAutoTuneService.cs"));
+        autoTune.Should().Contain("CustomPatternManagementService");
+        autoTune.Should().Contain("patternManagement.UpdateAsync(");
+        autoTune.Should().NotContain("db.CustomPatterns");
+        autoTune.Should().NotContain("CopyPatternValues(");
+        autoTune.Should().NotContain("DateTime.UtcNow");
     }
 
     [Fact]
