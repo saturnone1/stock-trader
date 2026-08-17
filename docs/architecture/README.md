@@ -143,8 +143,10 @@ The current document version is emitted by strategy-builder metadata, so even th
 preset uses the Domain-owned value instead of copying a version literal.
 Build-time OpenAPI generation now produces the committed desktop schema and TypeScript components
 without reading secrets, migrating the database, or starting hosted workers. Strategy CRUD desktop
-types consume those generated components. Backtest and optimization still expose their inline
-strategy through the persistence model and remain the next contract-separation target.
+types consume those generated components. Backtest, optimization, preview, and runtime compilation
+use `StrategyDocument`, which carries strategy semantics and an optional stored-strategy reference
+without EF-only keys or audit timestamps. The desktop performs the stored-response conversion
+explicitly before research requests, and OpenAPI no longer exposes the EF entity.
 `CustomPatternManagementService` is the application boundary for strategy CRUD and optimization
 promotion. It validates every candidate with `StrategyCompiler`, owns identity/version/timestamps and
 case-insensitive name conflicts, and persists through `ICustomPatternStore`. HTTP endpoints and the
@@ -169,4 +171,6 @@ the remaining concurrent-write race to the same typed conflict result.
   validated application use case and a purpose-specific persistence port.
 - `adr/0007-generate-desktop-api-contracts.md`: generate committed desktop TypeScript contracts from
   side-effect-free build-time OpenAPI metadata and reject drift in CI.
+- `adr/0008-separate-strategy-document-from-storage.md`: keep preview, backtest, optimization, and
+  runtime compilation independent from the EF storage entity.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -1,5 +1,4 @@
 using StockTrader.Application.Strategies;
-using StockTrader.Models;
 using StockTrader.Services.Indicators;
 
 namespace StockTrader.Services.Patterns;
@@ -18,7 +17,7 @@ public sealed class CustomStrategyDetectorFactory : ICustomStrategyDetectorFacto
         _timeProvider = timeProvider;
     }
 
-    public ICustomStrategyDetector Create(CustomPatternDefinition definition) =>
+    public ICustomStrategyDetector Create(StrategyDocument definition) =>
         new RuleBasedDetector(_indicators, definition, _timeProvider);
 
     public ICustomStrategyDetector Create(CompiledStrategy strategy) =>

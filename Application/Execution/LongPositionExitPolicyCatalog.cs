@@ -1,4 +1,5 @@
 using StockTrader.Configuration;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -10,7 +11,7 @@ namespace StockTrader.Application.Execution;
 /// </summary>
 public static class LongPositionExitPolicyCatalog
 {
-    public static LongPositionExitPolicy ForCustom(CustomPatternDefinition definition) => new(
+    public static LongPositionExitPolicy ForCustom(StrategyDocument definition) => new(
         definition.MaxHoldingBars,
         EnableTrailingStop: definition.TrailingAtr > 0,
         TrailingStopAtrMultiplier: definition.TrailingAtr,

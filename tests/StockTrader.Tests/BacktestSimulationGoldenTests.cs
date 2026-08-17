@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
@@ -23,7 +24,7 @@ public class BacktestSimulationGoldenTests
         bars[51].Low = 104m;
         bars[51].Close = 109m;
         var entryAt = bars[50].Timestamp;
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "next-open-golden",
             EntryMode = StrategyCatalog.NextOpenEntryMode,
@@ -179,7 +180,7 @@ public class BacktestSimulationGoldenTests
         var firstBars = CorrelatedBars("FIRST");
         var secondBars = CorrelatedBars("SECOND");
         var entryAt = firstBars[50].Timestamp;
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "correlation-golden",
             EntryRulesJson = JsonSerializer.Serialize(new[]

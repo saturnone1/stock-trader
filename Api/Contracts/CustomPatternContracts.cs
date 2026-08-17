@@ -1,4 +1,5 @@
 using StockTrader.Domain.Strategies;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -86,6 +87,9 @@ public sealed record BacktestApplyRequest(
 
 internal static class CustomPatternContractMapper
 {
+    public static StrategyDocument ToStrategyDocument(this CustomPatternWriteRequest request) =>
+        request.ToDefinition().ToStrategyDocument();
+
     public static CustomPatternDefinition ToDefinition(this CustomPatternWriteRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

@@ -19,7 +19,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
     private readonly RuleGroupEvaluator _groupEvaluator;
     private readonly TimeProvider _timeProvider;
     private readonly CompiledStrategy _strategy;
-    private readonly CustomPatternDefinition _definition;
+    private readonly StrategyDocument _definition;
     private readonly List<EntryRule> _rules;
     private readonly List<ConditionGroup> _entryGroups;
     private readonly string _entryGroupsLogic;
@@ -37,12 +37,12 @@ public class RuleBasedDetector : ICustomStrategyDetector
 
     public PatternType PatternType => PatternType.Custom;
     public string CustomPatternName => _definition.Name;
-    public CustomPatternDefinition Definition => _definition;
+    public StrategyDocument Definition => _definition;
     public CompiledStrategy Strategy => _strategy;
 
     internal RuleBasedDetector(
         IIndicatorService indicators,
-        CustomPatternDefinition definition,
+        StrategyDocument definition,
         TimeProvider timeProvider)
         : this(indicators, Compile(definition), timeProvider)
     {
@@ -71,7 +71,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
         _dynamicExit = strategy.DynamicExit;
     }
 
-    private static CompiledStrategy Compile(CustomPatternDefinition definition)
+    private static CompiledStrategy Compile(StrategyDocument definition)
     {
         var result = StrategyCompiler.Compile(definition);
         return result.Strategy ?? throw new ArgumentException(string.Join(" ", result.Errors), nameof(definition));

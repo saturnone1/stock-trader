@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 
 namespace StockTrader.Tests;
@@ -10,7 +11,7 @@ public class BacktestOptimizeOverrideTests
     [Fact]
     public void ApplyOptimizeOverrides_UpdatesCompareIndicatorAndCompareParams()
     {
-        var pattern = new CustomPatternDefinition
+        var pattern = new StrategyDocument
         {
             Name = "compare-sync",
             EntryRulesJson = JsonSerializer.Serialize(new[]

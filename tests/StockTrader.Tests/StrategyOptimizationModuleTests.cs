@@ -1,5 +1,6 @@
 using FluentAssertions;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -8,11 +9,35 @@ namespace StockTrader.Tests;
 public class StrategyOptimizationModuleTests
 {
     [Fact]
-    public void ClonePatternDefinition_PreservesEveryStrategySetting()
+    public void OptimizeRequestCodecPromotesLegacyEntityIdAndWritesOnlyDocumentReference()
     {
-        var source = new CustomPatternDefinition
+        const string legacy = """
+            {
+              "BasePattern": { "Id": 42, "Name": "기존 작업", "CreatedAt": "2025-01-01T00:00:00Z" },
+              "Symbols": ["TQQQ"],
+              "From": "2024-01-01T00:00:00Z",
+              "To": "2025-01-01T00:00:00Z",
+              "OptimizeParams": {}
+            }
+            """;
+
+        var request = OptimizeRequestJsonCodec.Deserialize(legacy);
+
+        request.Should().NotBeNull();
+        request!.BasePattern.StoredStrategyId.Should().Be(42);
+        var current = OptimizeRequestJsonCodec.Serialize(request);
+        current.Should().Contain("\"storedStrategyId\":42");
+        current.Should().NotContain("\"createdAt\"");
+        current.Should().NotContain("\"id\":42");
+        OptimizeRequestJsonCodec.Deserialize("not-json").Should().BeNull();
+    }
+
+    [Fact]
+    public void CloneStrategyDocument_PreservesEveryStrategySetting()
+    {
+        var source = new StrategyDocument
         {
-            Id = 42,
+            StoredStrategyId = 42,
             Name = "clone-golden",
             Description = "all fields",
             EntryRulesJson = "[{\"indicator\":\"RSI\"}]",
@@ -43,11 +68,9 @@ public class StrategyOptimizationModuleTests
             SizingMode = "HalfKelly",
             IsActive = false,
             EnableLiveTrading = true,
-            CreatedAt = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc),
-            UpdatedAt = new DateTime(2026, 2, 3, 4, 5, 6, DateTimeKind.Utc),
         };
 
-        var clone = StrategyVariantFactory.ClonePatternDefinition(source);
+        var clone = StrategyVariantFactory.CloneStrategyDocument(source);
 
         clone.Should().BeEquivalentTo(source);
         clone.Should().NotBeSameAs(source);
@@ -118,7 +141,7 @@ public class StrategyOptimizationModuleTests
     [Fact]
     public void ApplyOptimizeOverrides_UpdatesStrategyAndDetectorTimeFrameTogether()
     {
-        var pattern = new CustomPatternDefinition { TimeFrame = TimeFrame.Daily };
+        var pattern = new StrategyDocument { TimeFrame = TimeFrame.Daily };
 
         StrategyVariantFactory.ApplyOptimizeOverrides(pattern, new OptimizeParamSnapshot
         {

@@ -529,7 +529,7 @@ public class ArchitectureDependencyTests
         endpoints.Should().NotContain("CustomPatternDefinition input");
         endpoints.Should().NotContain("Results.Ok(pattern);");
         preview.Should().Contain("CustomPatternWriteRequest Pattern");
-        preview.Should().Contain("request.Pattern.ToDefinition()");
+        preview.Should().Contain("request.Pattern.ToStrategyDocument()");
         contracts.Should().Contain("public sealed record CustomPatternResponse(");
         contracts.Should().Contain("internal static class CustomPatternContractMapper");
         contracts.Should().NotContain("public int Id { get; init;");
@@ -568,7 +568,7 @@ public class ArchitectureDependencyTests
         endpoints.Should().NotContain("Microsoft.EntityFrameworkCore");
         endpoints.Should().NotContain("StrategyCompiler.Compile");
         endpoints.Should().NotContain("TimeProvider");
-        management.Should().Contain("StrategyCompiler.Compile(input)");
+        management.Should().Contain("StrategyCompiler.Compile(input.ToStrategyDocument())");
         management.Should().Contain("_store.NameExistsAsync(");
         management.Should().Contain("CustomPatternWriteResult.NameConflict");
         management.Should().Contain("_clock.GetUtcNow()");
@@ -626,6 +626,60 @@ public class ArchitectureDependencyTests
             .Should().NotContain("normalizedName");
         schemas.GetProperty("CustomPatternWriteRequest").GetRawText()
             .Should().NotContain("normalizedName");
+        schemas.TryGetProperty("CustomPatternDefinition", out _).Should().BeFalse();
+        var strategyDocument = schemas.GetProperty("StrategyDocument").GetRawText();
+        strategyDocument.Should().Contain("storedStrategyId");
+        strategyDocument.Should().NotContain("normalizedName");
+        strategyDocument.Should().NotContain("createdAt");
+        strategyDocument.Should().NotContain("updatedAt");
+        schemas.GetProperty("BacktestRequest").GetRawText()
+            .Should().Contain("#/components/schemas/StrategyDocument");
+        schemas.GetProperty("OptimizeRequest").GetRawText()
+            .Should().Contain("#/components/schemas/StrategyDocument");
+    }
+
+    [Fact]
+    public void StrategyExecutionAndResearchUseAStorageIndependentDocument()
+    {
+        var repository = FindRepositoryRoot();
+        var document = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/StrategyDocument.cs"));
+        var compiled = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/CompiledStrategy.cs"));
+        var compiler = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/StrategyCompiler.cs"));
+        var detector = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/ICustomStrategyDetector.cs"));
+        var backtest = File.ReadAllText(Path.Combine(repository, "Models/BacktestResult.cs"));
+        var optimization = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationModels.cs"));
+        var codec = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizeRequestJsonCodec.cs"));
+        var jobEndpoints = File.ReadAllText(Path.Combine(repository, "Api/OptimizeJobEndpoints.cs"));
+        var jobExecutor = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/OptimizationJobExecutor.cs"));
+        var autoTune = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/OptimizationAutoTuneService.cs"));
+
+        document.Should().Contain("public sealed class StrategyDocument");
+        document.Should().Contain("public int? StoredStrategyId { get; set; }");
+        document.Should().NotContain("NormalizedName");
+        document.Should().NotContain("CreatedAt");
+        document.Should().NotContain("UpdatedAt");
+        compiled.Should().Contain("StrategyDocument Source");
+        compiled.Should().NotContain("CustomPatternDefinition Source");
+        compiler.Should().Contain("Compile(StrategyDocument pattern)");
+        compiler.Should().NotContain("Compile(CustomPatternDefinition pattern)");
+        detector.Should().Contain("StrategyDocument Definition");
+        detector.Should().NotContain("CustomPatternDefinition Definition");
+        backtest.Should().Contain("List<StrategyDocument>? CustomPatterns");
+        optimization.Should().Contain("StrategyDocument BasePattern");
+        codec.Should().Contain("TryGetProperty(basePattern, \"id\"");
+        codec.Should().Contain("request.BasePattern.StoredStrategyId = id");
+        jobEndpoints.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
+        jobExecutor.Should().Contain("OptimizeRequestJsonCodec.Deserialize(");
+        autoTune.Should().Contain("OptimizeRequestJsonCodec.Deserialize(");
+        autoTune.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
     }
 
     [Fact]
@@ -697,12 +751,12 @@ public class ArchitectureDependencyTests
 
         service.Should().NotContain("using StockTrader.Api");
         service.Should().Contain("_optimization.RunAsync(");
-        service.Should().NotContain("StrategyVariantFactory.ClonePatternDefinition(");
+        service.Should().NotContain("StrategyVariantFactory.CloneStrategyDocument(");
         service.Should().NotContain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
-        optimization.Should().NotContain("private static CustomPatternDefinition ClonePatternDefinition(");
+        optimization.Should().NotContain("private static StrategyDocument CloneStrategyDocument(");
         optimization.Should().NotContain("private static void ApplyOptimizeOverrides(");
         optimization.Should().NotContain("private static List<OptimizeParamSnapshot> GenerateOptimizeCombinations(");
-        optimization.Should().Contain("StrategyVariantFactory.ClonePatternDefinition(");
+        optimization.Should().Contain("StrategyVariantFactory.CloneStrategyDocument(");
         optimization.Should().Contain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
         File.ReadAllLines(Path.Combine(
             repository, "Services/Backtest/BacktestOptimizationService.cs"))

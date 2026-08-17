@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
@@ -27,7 +28,7 @@ public class BacktestPositionExitProcessorTests
             Close = index == 59 ? 110m : 100m,
             Volume = 1_000_000
         }).ToArray();
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "scale-out-test",
             EntryRulesJson = JsonSerializer.Serialize(new[] { PassingRule() }),

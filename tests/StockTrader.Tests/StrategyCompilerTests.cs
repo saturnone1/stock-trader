@@ -78,7 +78,7 @@ public class StrategyCompilerTests
         result.Errors.Should().ContainSingle(error => error.Contains("지원하지 않는 전략 문서 버전"));
     }
 
-    private static CustomPatternDefinition ValidPattern() => new()
+    private static StrategyDocument ValidPattern() => new()
     {
         Name = "컴파일 전략",
         EntryGroupsJson = JsonSerializer.Serialize(new[] { new ConditionGroup { Rules = [Rule()] } })

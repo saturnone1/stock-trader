@@ -46,7 +46,7 @@ public class OptimizationAutoTuneService
         if (job == null)
             return;
 
-        var request = DeserializeRequest(job.RequestJson);
+        var request = OptimizeRequestJsonCodec.Deserialize(job.RequestJson);
         if (request == null)
             return;
 
@@ -79,11 +79,11 @@ public class OptimizationAutoTuneService
 
     internal static OptimizeRequest BuildNextRequest(
         OptimizeRequest currentRequest,
-        CustomPatternDefinition basePattern,
+        StrategyDocument basePattern,
         DateTime utcNow)
     {
         var next = CloneOptimizeRequest(currentRequest);
-        next.BasePattern = StrategyVariantFactory.ClonePatternDefinition(basePattern);
+        next.BasePattern = StrategyVariantFactory.CloneStrategyDocument(basePattern);
 
         var span = currentRequest.To - currentRequest.From;
         if (span <= TimeSpan.Zero)
@@ -110,7 +110,7 @@ public class OptimizationAutoTuneService
         if (job == null)
             return new ApplyResultOutcome(false, "최적화 Job을 찾을 수 없습니다.", null, 0);
 
-        var request = DeserializeRequest(job.RequestJson);
+        var request = OptimizeRequestJsonCodec.Deserialize(job.RequestJson);
         if (request == null)
             return new ApplyResultOutcome(false, "최적화 요청 정보를 읽지 못했습니다.", null, job.AppliedResultCount);
 
@@ -156,9 +156,10 @@ public class OptimizationAutoTuneService
             return new ApplyResultOutcome(false, message, null, job.AppliedResultCount);
         }
 
-        var promoted = StrategyVariantFactory.ClonePatternDefinition(targetPattern);
+        var promoted = StrategyVariantFactory.CloneStrategyDocument(targetPattern.ToStrategyDocument());
         StrategyVariantFactory.ApplyOptimizeOverrides(promoted, snapshot);
-        var promotion = await patternManagement.UpdateAsync(targetPattern.Id, promoted, ct);
+        promoted.ApplyToStoredDefinition(targetPattern);
+        var promotion = await patternManagement.UpdateAsync(targetPattern.Id, targetPattern, ct);
         if (promotion.Kind != CustomPatternOperationKind.Success)
         {
             var message = $"반영 실패: {promotion.Error ?? "전략 검증 또는 저장에 실패했습니다."}";
@@ -197,11 +198,12 @@ public class OptimizationAutoTuneService
         await using var scope = _scopeFactory.CreateAsyncScope();
         var patternManagement = scope.ServiceProvider.GetRequiredService<CustomPatternManagementService>();
 
-        var latestPattern = await ResolveTargetPatternAsync(patternManagement, request.BasePattern, ct) ?? request.BasePattern;
+        var latestPattern = (await ResolveTargetPatternAsync(patternManagement, request.BasePattern, ct))?.ToStrategyDocument()
+            ?? request.BasePattern;
         var nextRequest = BuildNextRequest(request, latestPattern, _clock.GetUtcNow().UtcDateTime);
         await repo.RequeueContinuousJobAsync(
             completedJob.Id,
-            JsonSerializer.Serialize(nextRequest));
+            OptimizeRequestJsonCodec.Serialize(nextRequest));
 
         _logger.LogInformation(
             "Optimization job {JobId}: recycled for next continuous cycle",
@@ -230,11 +232,11 @@ public class OptimizationAutoTuneService
 
     private static async Task<CustomPatternDefinition?> ResolveTargetPatternAsync(
         CustomPatternManagementService management,
-        CustomPatternDefinition basePattern,
+        StrategyDocument basePattern,
         CancellationToken ct)
     {
-        if (basePattern.Id > 0)
-            return await management.FindAsync(basePattern.Id, ct);
+        if (basePattern.StoredStrategyId is > 0)
+            return await management.FindAsync(basePattern.StoredStrategyId.Value, ct);
 
         if (!string.IsNullOrWhiteSpace(basePattern.Name))
             return await management.FindByNameAsync(basePattern.Name, ct);
@@ -242,23 +244,8 @@ public class OptimizationAutoTuneService
         return null;
     }
 
-    private static OptimizeRequest? DeserializeRequest(string requestJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<OptimizeRequest>(requestJson, JsonOpts);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static OptimizeRequest CloneOptimizeRequest(OptimizeRequest src)
-    {
-        var json = JsonSerializer.Serialize(src);
-        return JsonSerializer.Deserialize<OptimizeRequest>(json, JsonOpts) ?? new OptimizeRequest();
-    }
+    private static OptimizeRequest CloneOptimizeRequest(OptimizeRequest src) =>
+        OptimizeRequestJsonCodec.Clone(src);
 
     private static int GetTradeCount(OptimizationResult result, bool useOos)
         => useOos ? result.OosTotalTrades ?? 0 : result.TotalTrades;

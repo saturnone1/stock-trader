@@ -1,6 +1,5 @@
 using StockTrader.Application.Strategies;
 using StockTrader.Domain.MarketData;
-using StockTrader.Models;
 
 namespace StockTrader.Services.Patterns;
 
@@ -11,11 +10,11 @@ namespace StockTrader.Services.Patterns;
 public interface ICustomStrategyDetector : IPatternDetector, ICompiledStrategyRuntime
 {
     string CustomPatternName { get; }
-    CustomPatternDefinition Definition { get; }
+    StrategyDocument Definition { get; }
 }
 
 public interface ICustomStrategyDetectorFactory
 {
-    ICustomStrategyDetector Create(CustomPatternDefinition definition);
+    ICustomStrategyDetector Create(StrategyDocument definition);
     ICustomStrategyDetector Create(CompiledStrategy strategy);
 }

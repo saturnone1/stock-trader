@@ -67,7 +67,7 @@ public class OptimizationJobExecutor
         OptimizeRequest request;
         try
         {
-            request = JsonSerializer.Deserialize<OptimizeRequest>(job.RequestJson, JsonOpts)
+            request = OptimizeRequestJsonCodec.Deserialize(job.RequestJson)
                       ?? throw new InvalidOperationException("RequestJson 역직렬화 결과가 null입니다");
         }
         catch (Exception ex)
@@ -318,7 +318,7 @@ public class OptimizationJobExecutor
                 }
                 catch { continue; }
 
-                var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+                var patternCopy = StrategyVariantFactory.CloneStrategyDocument(request.BasePattern);
                 StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, snap);
                 var oosDetectors = new List<IPatternDetector>
                 {
@@ -386,7 +386,7 @@ public class OptimizationJobExecutor
         {
             ct.ThrowIfCancellationRequested();
 
-            var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+            var patternCopy = StrategyVariantFactory.CloneStrategyDocument(request.BasePattern);
             StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, combo);
 
             var detectors = new List<IPatternDetector>

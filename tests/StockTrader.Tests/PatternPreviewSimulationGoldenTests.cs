@@ -19,7 +19,7 @@ public class PatternPreviewSimulationGoldenTests
         bars[51].High = 116m;
         bars[51].Low = 104m;
         bars[51].Close = 115m;
-        var strategy = Compile(new CustomPatternDefinition
+        var strategy = Compile(new StrategyDocument
         {
             Name = "preview-next-open-golden",
             EntryMode = StrategyCatalog.NextOpenEntryMode,
@@ -72,7 +72,7 @@ public class PatternPreviewSimulationGoldenTests
     public async Task RunAsync_RejectsMismatchedPreparedIndicatorLength()
     {
         var bars = Bars();
-        var strategy = Compile(new CustomPatternDefinition
+        var strategy = Compile(new StrategyDocument
         {
             Name = "indicator-boundary",
             EntryRulesJson = """[{"indicator":"PRICE_CHANGE","operator":">","value":0,"params":{"bars":1}}]"""
@@ -119,7 +119,7 @@ public class PatternPreviewSimulationGoldenTests
     {
         var bars = Bars();
         bars[51].Low = 90m;
-        var strategy = Compile(new CustomPatternDefinition
+        var strategy = Compile(new StrategyDocument
         {
             Name = "exclusive-preview-end",
             EntryRulesJson = """[{"indicator":"PRICE_CHANGE","operator":">","value":0,"params":{"bars":1}}]""",
@@ -147,7 +147,7 @@ public class PatternPreviewSimulationGoldenTests
             "the bar exactly at DataTo is outside the requested interval even when the repository returns it");
     }
 
-    private static CompiledStrategy Compile(CustomPatternDefinition definition)
+    private static CompiledStrategy Compile(StrategyDocument definition)
     {
         var result = StrategyCompiler.Compile(definition);
         result.Errors.Should().BeEmpty();

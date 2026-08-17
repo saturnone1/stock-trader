@@ -1704,7 +1704,7 @@
               "array"
             ],
             "items": {
-              "$ref": "#/components/schemas/CustomPatternDefinition"
+              "$ref": "#/components/schemas/StrategyDocument"
             }
           }
         }
@@ -1756,129 +1756,6 @@
           },
           "optimizeRequest": {
             "$ref": "#/components/schemas/OptimizeRequest"
-          }
-        }
-      },
-      "CustomPatternDefinition": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "documentVersion": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "name": {
-            "type": "string"
-          },
-          "normalizedName": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "entryRulesJson": {
-            "type": "string"
-          },
-          "entryLogic": {
-            "type": "string"
-          },
-          "requireBullRegime": {
-            "type": "boolean"
-          },
-          "atrStopMultiplier": {
-            "type": "number",
-            "format": "double"
-          },
-          "atrTargetMultiplier": {
-            "type": "number",
-            "format": "double"
-          },
-          "maxHoldingBars": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "trailingAtr": {
-            "type": "number",
-            "format": "double"
-          },
-          "partialProfitR": {
-            "type": "number",
-            "format": "double"
-          },
-          "useWeightTiers": {
-            "type": "boolean"
-          },
-          "weightTiersJson": {
-            "type": "string"
-          },
-          "defaultAllocationPercent": {
-            "type": "number",
-            "format": "double"
-          },
-          "exitRulesJson": {
-            "type": "string"
-          },
-          "exitRulesLogic": {
-            "type": "string"
-          },
-          "exitGroupsJson": {
-            "type": "string"
-          },
-          "exitGroupsLogic": {
-            "type": "string"
-          },
-          "scalingRulesJson": {
-            "type": "string"
-          },
-          "timeFilterJson": {
-            "type": "string"
-          },
-          "circuitBreakerJson": {
-            "type": "string"
-          },
-          "reentryJson": {
-            "type": "string"
-          },
-          "portfolioRulesJson": {
-            "type": "string"
-          },
-          "entryGroupsJson": {
-            "type": "string"
-          },
-          "entryGroupsLogic": {
-            "type": "string"
-          },
-          "dynamicExitJson": {
-            "type": "string"
-          },
-          "entryMode": {
-            "type": "string"
-          },
-          "timeFrame": {
-            "$ref": "#/components/schemas/TimeFrame"
-          },
-          "sizingMode": {
-            "type": "string"
-          },
-          "isActive": {
-            "type": "boolean"
-          },
-          "enableLiveTrading": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
           }
         }
       },
@@ -2488,7 +2365,7 @@
         "type": "object",
         "properties": {
           "basePattern": {
-            "$ref": "#/components/schemas/CustomPatternDefinition"
+            "$ref": "#/components/schemas/StrategyDocument"
           },
           "symbols": {
             "type": "array",
@@ -3697,6 +3574,121 @@
           "Fixed",
           "Adaptive"
         ]
+      },
+      "StrategyDocument": {
+        "type": "object",
+        "properties": {
+          "storedStrategyId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "documentVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "entryRulesJson": {
+            "type": "string"
+          },
+          "entryLogic": {
+            "type": "string"
+          },
+          "requireBullRegime": {
+            "type": "boolean"
+          },
+          "atrStopMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "atrTargetMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxHoldingBars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trailingAtr": {
+            "type": "number",
+            "format": "double"
+          },
+          "partialProfitR": {
+            "type": "number",
+            "format": "double"
+          },
+          "useWeightTiers": {
+            "type": "boolean"
+          },
+          "weightTiersJson": {
+            "type": "string"
+          },
+          "defaultAllocationPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitRulesJson": {
+            "type": "string"
+          },
+          "exitRulesLogic": {
+            "type": "string"
+          },
+          "exitGroupsJson": {
+            "type": "string"
+          },
+          "exitGroupsLogic": {
+            "type": "string"
+          },
+          "scalingRulesJson": {
+            "type": "string"
+          },
+          "timeFilterJson": {
+            "type": "string"
+          },
+          "circuitBreakerJson": {
+            "type": "string"
+          },
+          "reentryJson": {
+            "type": "string"
+          },
+          "portfolioRulesJson": {
+            "type": "string"
+          },
+          "entryGroupsJson": {
+            "type": "string"
+          },
+          "entryGroupsLogic": {
+            "type": "string"
+          },
+          "dynamicExitJson": {
+            "type": "string"
+          },
+          "entryMode": {
+            "type": "string"
+          },
+          "timeFrame": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "sizingMode": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "enableLiveTrading": {
+            "type": "boolean"
+          }
+        }
       },
       "TimeFrame": {
         "enum": [

@@ -144,7 +144,7 @@ public sealed class CustomPatternManagementService
     private static CustomPatternOperationResult? Validate(CustomPatternDefinition input)
     {
         ArgumentNullException.ThrowIfNull(input);
-        var errors = StrategyCompiler.Compile(input).Errors;
+        var errors = StrategyCompiler.Compile(input.ToStrategyDocument()).Errors;
         return errors.Count == 0 ? null : CustomPatternOperationResult.Invalid(errors);
     }
 }

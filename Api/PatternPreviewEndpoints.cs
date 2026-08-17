@@ -30,7 +30,7 @@ public static class PatternPreviewEndpoints
         var outcome = await preview.PreviewAsync(
             new PatternPreviewQuery(
                 request.Symbol,
-                request.Pattern.ToDefinition(),
+                request.Pattern.ToStrategyDocument(),
                 request.TimeFrame,
                 request.From,
                 request.To),

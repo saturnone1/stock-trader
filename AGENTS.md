@@ -30,6 +30,8 @@ compile into one project:
 ## Trading invariants
 
 - Preview, backtest, and live trading must use the same compiled strategy semantics.
+- Compiler and execution contracts accept `StrategyDocument`; EF strategy entities stay behind the
+  persistence boundary and must never appear in generated OpenAPI.
 - Completed-bar strategies cannot read future bars. Next-open orders cannot skip their entry bar.
 - If intrabar price order is unknowable, simulation chooses the conservative fill.
 - Costs affect portfolio equity when the execution occurs.

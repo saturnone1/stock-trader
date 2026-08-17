@@ -2277,7 +2277,7 @@ export interface components {
             dataSource?: null | components["schemas"]["DataSource"];
             weightStrategy?: null | components["schemas"]["WeightStrategy"];
             backtestMode?: string;
-            customPatterns?: null | components["schemas"]["CustomPatternDefinition"][];
+            customPatterns?: null | components["schemas"]["StrategyDocument"][];
         };
         CreateOptimizeJobRequest: {
             name?: string;
@@ -2297,53 +2297,6 @@ export interface components {
             /** Format: int32 */
             autoApplyMinTrades?: number;
             optimizeRequest?: components["schemas"]["OptimizeRequest"];
-        };
-        CustomPatternDefinition: {
-            /** Format: int32 */
-            id?: number;
-            /** Format: int32 */
-            documentVersion?: number;
-            name?: string;
-            normalizedName?: string;
-            description?: null | string;
-            entryRulesJson?: string;
-            entryLogic?: string;
-            requireBullRegime?: boolean;
-            /** Format: double */
-            atrStopMultiplier?: number;
-            /** Format: double */
-            atrTargetMultiplier?: number;
-            /** Format: int32 */
-            maxHoldingBars?: number;
-            /** Format: double */
-            trailingAtr?: number;
-            /** Format: double */
-            partialProfitR?: number;
-            useWeightTiers?: boolean;
-            weightTiersJson?: string;
-            /** Format: double */
-            defaultAllocationPercent?: number;
-            exitRulesJson?: string;
-            exitRulesLogic?: string;
-            exitGroupsJson?: string;
-            exitGroupsLogic?: string;
-            scalingRulesJson?: string;
-            timeFilterJson?: string;
-            circuitBreakerJson?: string;
-            reentryJson?: string;
-            portfolioRulesJson?: string;
-            entryGroupsJson?: string;
-            entryGroupsLogic?: string;
-            dynamicExitJson?: string;
-            entryMode?: string;
-            timeFrame?: components["schemas"]["TimeFrame"];
-            sizingMode?: string;
-            isActive?: boolean;
-            enableLiveTrading?: boolean;
-            /** Format: date-time */
-            createdAt?: string;
-            /** Format: date-time */
-            updatedAt?: string;
         };
         CustomPatternResponse: {
             /** Format: int32 */
@@ -2488,7 +2441,7 @@ export interface components {
             ruleFieldOverrides?: null | components["schemas"]["RuleFieldRange"][];
         };
         OptimizeRequest: {
-            basePattern?: components["schemas"]["CustomPatternDefinition"];
+            basePattern?: components["schemas"]["StrategyDocument"];
             symbols?: string[];
             /** Format: date-time */
             from?: string;
@@ -2831,6 +2784,48 @@ export interface components {
         };
         /** @enum {unknown} */
         SlippageModel: "Fixed" | "Adaptive";
+        StrategyDocument: {
+            /** Format: int32 */
+            storedStrategyId?: null | number;
+            /** Format: int32 */
+            documentVersion?: number;
+            name?: string;
+            description?: null | string;
+            entryRulesJson?: string;
+            entryLogic?: string;
+            requireBullRegime?: boolean;
+            /** Format: double */
+            atrStopMultiplier?: number;
+            /** Format: double */
+            atrTargetMultiplier?: number;
+            /** Format: int32 */
+            maxHoldingBars?: number;
+            /** Format: double */
+            trailingAtr?: number;
+            /** Format: double */
+            partialProfitR?: number;
+            useWeightTiers?: boolean;
+            weightTiersJson?: string;
+            /** Format: double */
+            defaultAllocationPercent?: number;
+            exitRulesJson?: string;
+            exitRulesLogic?: string;
+            exitGroupsJson?: string;
+            exitGroupsLogic?: string;
+            scalingRulesJson?: string;
+            timeFilterJson?: string;
+            circuitBreakerJson?: string;
+            reentryJson?: string;
+            portfolioRulesJson?: string;
+            entryGroupsJson?: string;
+            entryGroupsLogic?: string;
+            dynamicExitJson?: string;
+            entryMode?: string;
+            timeFrame?: components["schemas"]["TimeFrame"];
+            sizingMode?: string;
+            isActive?: boolean;
+            enableLiveTrading?: boolean;
+        };
         /** @enum {unknown} */
         TimeFrame: "OneMinute" | "FiveMinute" | "FifteenMinute" | "Daily" | "Weekly";
         UpdateOptimizeJobSettingsRequest: {

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
 using StockTrader.Api.Contracts;
+using StockTrader.Application.Strategies;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -126,6 +127,52 @@ public class CustomPatternContractTests
         contractShape.Should().NotContainKey("normalizedName");
         contractShape.Should().BeEquivalentTo(entityShape,
             "separating persistence must not silently rename or remove the desktop wire fields");
+    }
+
+    [Fact]
+    public void ExecutionDocumentMapsEveryStrategyFieldWithoutPersistenceMetadata()
+    {
+        var stored = new CustomPatternWriteRequest
+        {
+            Name = "실행 문서",
+            Description = "저장 독립",
+            EntryGroupsJson = "[1]",
+            ExitGroupsJson = "[2]",
+            TimeFrame = TimeFrame.Weekly,
+            EnableLiveTrading = true
+        }.ToDefinition();
+        stored.Id = 73;
+        stored.NormalizedName = "EXECUTION DOCUMENT";
+        stored.CreatedAt = new DateTime(2026, 8, 18, 1, 0, 0, DateTimeKind.Utc);
+        stored.UpdatedAt = new DateTime(2026, 8, 18, 2, 0, 0, DateTimeKind.Utc);
+
+        var document = stored.ToStrategyDocument();
+
+        document.StoredStrategyId.Should().Be(73);
+        typeof(StrategyDocument).GetProperty("NormalizedName").Should().BeNull();
+        typeof(StrategyDocument).GetProperty("CreatedAt").Should().BeNull();
+        typeof(StrategyDocument).GetProperty("UpdatedAt").Should().BeNull();
+        foreach (var property in typeof(CustomPatternWriteRequest).GetProperties())
+        {
+            typeof(StrategyDocument).GetProperty(property.Name)!.GetValue(document)
+                .Should().Be(typeof(CustomPatternDefinition).GetProperty(property.Name)!.GetValue(stored));
+        }
+
+        var target = new CustomPatternDefinition
+        {
+            Id = 91,
+            NormalizedName = "KEEP",
+            CreatedAt = stored.CreatedAt,
+            UpdatedAt = stored.UpdatedAt
+        };
+        document.ApplyToStoredDefinition(target);
+        target.Id.Should().Be(91);
+        target.NormalizedName.Should().Be("KEEP");
+        target.CreatedAt.Should().Be(stored.CreatedAt);
+        target.UpdatedAt.Should().Be(stored.UpdatedAt);
+        target.Name.Should().Be(document.Name);
+        target.EntryGroupsJson.Should().Be(document.EntryGroupsJson);
+        target.ExitGroupsJson.Should().Be(document.ExitGroupsJson);
     }
 
     private static IReadOnlyDictionary<string, string> Properties(JsonElement element) =>

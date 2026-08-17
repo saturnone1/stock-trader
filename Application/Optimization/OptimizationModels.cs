@@ -1,5 +1,6 @@
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Application.Strategies;
 
 namespace StockTrader.Application.Optimization;
 
@@ -129,7 +130,7 @@ public class OptimizeParams
 public class OptimizeRequest
 {
     /// <summary>최적화할 기반 커스텀 패턴</summary>
-    public CustomPatternDefinition BasePattern { get; set; } = new();
+    public StrategyDocument BasePattern { get; set; } = new();
     public List<string> Symbols { get; set; } = new();
     public DateTime From { get; set; }
     public DateTime To { get; set; }

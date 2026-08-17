@@ -89,7 +89,7 @@ public class StrategyCompilerValidationTests
         errors.Should().Contain(error => error.Contains("부분 익절"));
     }
 
-    private static CustomPatternDefinition ValidPattern() => new()
+    private static StrategyDocument ValidPattern() => new()
     {
         Name = "검증 전략",
         EntryGroupsJson = JsonSerializer.Serialize(new[]

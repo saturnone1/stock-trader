@@ -52,7 +52,7 @@ public sealed class CompiledStrategyRepository : ICompiledStrategyRepository
         var strategies = new List<CompiledStrategy>();
         foreach (var definition in definitions)
         {
-            var result = StrategyCompiler.Compile(definition);
+            var result = StrategyCompiler.Compile(definition.ToStrategyDocument());
             if (result.Strategy is not null)
             {
                 strategies.Add(result.Strategy);

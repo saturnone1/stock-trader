@@ -1,3 +1,5 @@
+import { toStrategyDocument } from '../strategies/strategyDocument.js'
+
 export function toNumber(value, fallback = 0) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
@@ -128,7 +130,7 @@ export function buildOptimizationJob(form, pattern) {
     autoApplyBestResult: form.autoApplyBestResult,
     autoApplyMinTrades: toNumber(form.autoApplyMinTrades, 10),
     optimizeRequest: {
-      basePattern: pattern.raw, symbols, from: form.from, to: form.to,
+      basePattern: toStrategyDocument(pattern.raw), symbols, from: form.from, to: form.to,
       initialCapital: 100000, dataSource: form.dataSource || null,
       timeFrame: form.timeFrame, rankBy: form.rankBy,
       maxResults: toNumber(form.maxResults, 10),

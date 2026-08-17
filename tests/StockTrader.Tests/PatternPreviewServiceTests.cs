@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using StockTrader.Application.StrategyPreview;
+using StockTrader.Application.Strategies;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -95,7 +96,7 @@ public class PatternPreviewServiceTests
         outcome.Error.Should().Contain("현재 데이터 제공자");
     }
 
-    private static CustomPatternDefinition Pattern() => new()
+    private static StrategyDocument Pattern() => new()
     {
         Name = "preview-use-case",
         EntryRulesJson = JsonSerializer.Serialize(new[]

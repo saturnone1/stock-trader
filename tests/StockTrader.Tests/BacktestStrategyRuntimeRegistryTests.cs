@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Services.Backtest;
 using StockTrader.Services.Indicators;
@@ -54,7 +55,7 @@ public class BacktestStrategyRuntimeRegistryTests
         CircuitBreakerConfig circuitBreaker,
         ReentryConfig? reentry = null)
     {
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "strategy-a",
             EntryRulesJson = JsonSerializer.Serialize(new[]

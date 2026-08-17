@@ -1,4 +1,5 @@
 using System.Text.Json;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -11,11 +12,11 @@ public static class StrategyVariantFactory
     /// 패턴 정의를 얕은 복사(JSON 필드는 문자열 복사)합니다.
     /// 최적화 루프에서 basePattern을 오염시키지 않기 위해 사용합니다.
     /// </summary>
-    public static CustomPatternDefinition ClonePatternDefinition(CustomPatternDefinition src)
+    public static StrategyDocument CloneStrategyDocument(StrategyDocument src)
     {
-        return new CustomPatternDefinition
+        return new StrategyDocument
         {
-            Id = src.Id,
+            StoredStrategyId = src.StoredStrategyId,
             DocumentVersion = src.DocumentVersion,
             Name = src.Name,
             Description = src.Description,
@@ -47,8 +48,6 @@ public static class StrategyVariantFactory
             SizingMode = src.SizingMode,
             IsActive = src.IsActive,
             EnableLiveTrading = src.EnableLiveTrading,
-            CreatedAt = src.CreatedAt,
-            UpdatedAt = src.UpdatedAt,
         };
     }
 
@@ -57,13 +56,13 @@ public static class StrategyVariantFactory
     /// null인 필드는 기존 값을 유지합니다.
     /// JSON 필드(CircuitBreaker, Reentry, PortfolioRules)는 파싱 후 필드를 수정하여 재직렬화합니다.
     /// </summary>
-    public static void ApplyOptimizeOverrides(CustomPatternDefinition pattern, OptimizeParamSnapshot snap)
+    public static void ApplyOptimizeOverrides(StrategyDocument pattern, OptimizeParamSnapshot snap)
     {
         var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         static string NormalizeRuleScope(string? scope) =>
         string.Equals(scope, "Exit", StringComparison.OrdinalIgnoreCase) ? "Exit" : "Entry";
 
-        static List<EntryRule>? GetOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts, out bool fromGroups)
+        static List<EntryRule>? GetOverrideTargets(StrategyDocument pattern, JsonSerializerOptions jsonOpts, out bool fromGroups)
         {
             try
             {
@@ -91,7 +90,7 @@ public static class StrategyVariantFactory
             }
         }
 
-        static void SaveOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts, bool fromGroups, List<EntryRule> flattenedRules)
+        static void SaveOverrideTargets(StrategyDocument pattern, JsonSerializerOptions jsonOpts, bool fromGroups, List<EntryRule> flattenedRules)
         {
             if (fromGroups)
             {
@@ -121,7 +120,7 @@ public static class StrategyVariantFactory
             pattern.EntryRulesJson = JsonSerializer.Serialize(flattenedRules);
         }
 
-        static List<EntryRule>? GetExitOverrideTargets(CustomPatternDefinition pattern, JsonSerializerOptions jsonOpts)
+        static List<EntryRule>? GetExitOverrideTargets(StrategyDocument pattern, JsonSerializerOptions jsonOpts)
         {
             try
             {
@@ -133,7 +132,7 @@ public static class StrategyVariantFactory
             }
         }
 
-        static void SaveExitOverrideTargets(CustomPatternDefinition pattern, List<EntryRule> rules)
+        static void SaveExitOverrideTargets(StrategyDocument pattern, List<EntryRule> rules)
         {
             pattern.ExitRulesJson = JsonSerializer.Serialize(rules);
         }

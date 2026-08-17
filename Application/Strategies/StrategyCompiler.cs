@@ -12,7 +12,7 @@ public static class StrategyCompiler
     private static readonly HashSet<string> PositiveParameterKeys = new(StringComparer.OrdinalIgnoreCase)
         { "period", "cumulativePeriod", "bars", "lookback", "stddev", "smooth", "slow", "fast", "signal" };
 
-    public static StrategyCompilationResult Compile(CustomPatternDefinition pattern)
+    public static StrategyCompilationResult Compile(StrategyDocument pattern)
     {
         ArgumentNullException.ThrowIfNull(pattern);
         var errors = new List<string>();

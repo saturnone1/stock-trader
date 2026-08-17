@@ -85,7 +85,7 @@ public class OptimizationAutoTuneServiceTests
 
         var request = new OptimizeRequest
         {
-            BasePattern = StrategyVariantFactory.ClonePatternDefinition(pattern),
+            BasePattern = StrategyVariantFactory.CloneStrategyDocument(pattern.ToStrategyDocument()),
             Symbols = ["TQQQ"],
             From = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             To = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -159,9 +159,9 @@ public class OptimizationAutoTuneServiceTests
         var recycledResults = await assertRepo.GetResultsAsync(job.Id, 10);
         recycledResults.Should().BeEmpty();
 
-        var nextRequest = JsonSerializer.Deserialize<OptimizeRequest>(recycledJob.RequestJson);
+        var nextRequest = OptimizeRequestJsonCodec.Deserialize(recycledJob.RequestJson);
         nextRequest.Should().NotBeNull();
-        nextRequest!.BasePattern.Id.Should().Be(pattern.Id);
+        nextRequest!.BasePattern.StoredStrategyId.Should().Be(pattern.Id);
         nextRequest.BasePattern.AtrStopMultiplier.Should().Be(1.25m);
         nextRequest.BasePattern.AtrTargetMultiplier.Should().Be(4.5m);
         nextRequest.BasePattern.MaxHoldingBars.Should().Be(18);
@@ -204,7 +204,7 @@ public class OptimizationAutoTuneServiceTests
 
         var request = new OptimizeRequest
         {
-            BasePattern = StrategyVariantFactory.ClonePatternDefinition(pattern),
+            BasePattern = StrategyVariantFactory.CloneStrategyDocument(pattern.ToStrategyDocument()),
             Symbols = ["QQQ"],
             From = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             To = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),

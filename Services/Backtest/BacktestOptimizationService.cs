@@ -246,7 +246,7 @@ public sealed class BacktestOptimizationService
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var pattern = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
+        var pattern = StrategyVariantFactory.CloneStrategyDocument(request.BasePattern);
         StrategyVariantFactory.ApplyOptimizeOverrides(pattern, combination);
         var timeFrame = combination.TimeFrame.HasValue
             ? (TimeFrame)combination.TimeFrame.Value

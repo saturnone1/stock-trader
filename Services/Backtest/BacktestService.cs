@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -225,7 +226,7 @@ public class BacktestService : IBacktestService
     internal List<IPatternDetector> BuildDetectors(
         List<PatternType> patterns,
         PatternParameterOverrides? overrides,
-        List<CustomPatternDefinition>? customPatterns = null)
+        List<StrategyDocument>? customPatterns = null)
     {
         List<IPatternDetector> result;
         if (overrides is null)

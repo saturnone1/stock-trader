@@ -12,10 +12,7 @@ namespace StockTrader.Api;
 /// </summary>
 public static class OptimizeJobEndpoints
 {
-    private static readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     public static RouteGroupBuilder MapOptimizeJobApi(this RouteGroupBuilder api)
     {
@@ -30,7 +27,7 @@ public static class OptimizeJobEndpoints
             if (string.IsNullOrWhiteSpace(req.Name))
                 return Results.BadRequest(new { error = "Job 이름을 입력하세요." });
 
-            var requestJson = JsonSerializer.Serialize(req.OptimizeRequest, _jsonOptions);
+            var requestJson = OptimizeRequestJsonCodec.Serialize(req.OptimizeRequest);
             var totalCombinations = CalculateTotalCombinations(req.OptimizeRequest.OptimizeParams);
 
             var job = new OptimizationJob

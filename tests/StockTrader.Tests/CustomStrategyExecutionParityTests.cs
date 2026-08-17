@@ -29,7 +29,7 @@ public class CustomStrategyExecutionParityTests
         bars[51].High = 120m;
         bars[51].Low = 104m;
         bars[51].Close = 115m;
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "compiled-strategy-parity",
             EntryMode = StrategyCatalog.NextOpenEntryMode,

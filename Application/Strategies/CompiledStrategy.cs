@@ -9,7 +9,7 @@ namespace StockTrader.Application.Strategies;
 /// </summary>
 public sealed record CompiledStrategy(
     int SchemaVersion,
-    CustomPatternDefinition Source,
+    StrategyDocument Source,
     IReadOnlyList<EntryRule> EntryRules,
     IReadOnlyList<ConditionGroup> EntryGroups,
     IReadOnlyList<EntryRule> ExitRules,

@@ -1,3 +1,4 @@
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -5,7 +6,7 @@ namespace StockTrader.Application.StrategyPreview;
 
 public sealed record PatternPreviewQuery(
     string Symbol,
-    CustomPatternDefinition Pattern,
+    StrategyDocument Pattern,
     TimeFrame TimeFrame,
     DateTime? From,
     DateTime? To);

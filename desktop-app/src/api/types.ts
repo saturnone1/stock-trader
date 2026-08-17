@@ -166,6 +166,7 @@ export type CustomPatternDocument = components['schemas']['CustomPatternResponse
 export type CustomPatternWriteRequest = Required<
   components['schemas']['CustomPatternWriteRequest']
 >;
+export type StrategyDocument = components['schemas']['StrategyDocument'];
 
 export interface Pattern {
   id: string;

@@ -1,5 +1,7 @@
 using StockTrader.Models.Enums;
 
+using StockTrader.Application.Strategies;
+
 namespace StockTrader.Models;
 
 /// <summary>
@@ -305,7 +307,7 @@ public class BacktestRequest
     /// 커스텀 패턴 정의 목록. DB에 저장된 ID 또는 인라인 정의를 전달합니다.
     /// Patterns에 Custom이 포함되어 있으면 이 목록의 패턴들이 사용됩니다.
     /// </summary>
-    public List<CustomPatternDefinition>? CustomPatterns { get; set; }
+    public List<StrategyDocument>? CustomPatterns { get; set; }
 }
 
 /// <summary>

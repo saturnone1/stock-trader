@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
@@ -101,7 +102,7 @@ public class RuleBasedDetectorTests
             Logic = "AND",
             Rules = [new EntryRule { Indicator = "PRICE_CHANGE", Operator = ">", Value = 5m, Params = new() { ["bars"] = 1 } }]
         };
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "grouped-exit",
             EntryRulesJson = JsonSerializer.Serialize(new[] { new EntryRule { Indicator = "PRICE_CHANGE", Operator = ">", Value = -100m } }),
@@ -181,7 +182,7 @@ public class RuleBasedDetectorTests
 
         async Task<PatternSignal?> Detect(params EntryRule[] rules)
         {
-            var definition = new CustomPatternDefinition
+            var definition = new StrategyDocument
             {
                 Name = "or-order",
                 EntryRulesJson = JsonSerializer.Serialize(rules),
@@ -204,7 +205,7 @@ public class RuleBasedDetectorTests
     public async Task DetectAsync_UsesTheExplicitClockForSignalObservationTime()
     {
         var observedAt = new DateTimeOffset(2025, 2, 3, 4, 5, 6, TimeSpan.Zero);
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "deterministic-clock",
             EntryRulesJson = JsonSerializer.Serialize(new[]
@@ -230,7 +231,7 @@ public class RuleBasedDetectorTests
 
     private static RuleBasedDetector CreateSut(EntryRule rule)
     {
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             Name = "history-window-test",
             EntryRulesJson = JsonSerializer.Serialize(new[] { rule }),

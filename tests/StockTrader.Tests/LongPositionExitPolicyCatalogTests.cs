@@ -1,5 +1,6 @@
 using FluentAssertions;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Models;
 
@@ -10,7 +11,7 @@ public class LongPositionExitPolicyCatalogTests
     [Fact]
     public void ForCustom_MapsStrategyExitSettingsWithoutAdapterDefaults()
     {
-        var definition = new CustomPatternDefinition
+        var definition = new StrategyDocument
         {
             MaxHoldingBars = 12,
             TrailingAtr = 2.25m,
@@ -33,7 +34,7 @@ public class LongPositionExitPolicyCatalogTests
     [Fact]
     public void ForCustom_ZeroValuesDisableOptionalExits()
     {
-        var policy = LongPositionExitPolicyCatalog.ForCustom(new CustomPatternDefinition
+        var policy = LongPositionExitPolicyCatalog.ForCustom(new StrategyDocument
         {
             MaxHoldingBars = 0,
             TrailingAtr = 0m,

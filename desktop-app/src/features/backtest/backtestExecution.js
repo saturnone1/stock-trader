@@ -1,4 +1,5 @@
 import { buildScenarioPatterns } from './backtestScenarioPlanning.js'
+import { toStrategyDocument } from '../strategies/strategyDocument.js'
 
 export function buildBacktestRequestPayload(form, symbols, customPatternRaws) {
   return {
@@ -31,7 +32,7 @@ export function buildBacktestRequestPayload(form, symbols, customPatternRaws) {
       smaPeriod: Number(form.smaPeriod)
     } : null,
     backtestMode: 'pattern',
-    customPatterns: customPatternRaws
+    customPatterns: customPatternRaws.map(toStrategyDocument)
   }
 }
 

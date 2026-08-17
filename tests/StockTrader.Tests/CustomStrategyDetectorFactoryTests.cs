@@ -83,7 +83,7 @@ public class CustomStrategyDetectorFactoryTests
         second.Should().BeSameAs(first);
     }
 
-    private static CustomPatternDefinition Definition(string name) => new()
+    private static StrategyDocument Definition(string name) => new()
     {
         Name = name,
         EntryRulesJson = JsonSerializer.Serialize(new[]
