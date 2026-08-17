@@ -152,7 +152,8 @@ public class BacktestService : IBacktestService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var prepared = await _dataPreparer.PrepareAsync(
-            dataFeed, symbolsToLoad, timeFrame, from, to, cumulativeRsi2Config, ct);
+            dataFeed, symbolsToLoad, timeFrame, from, to,
+            cumulativeRsi2Config, effectivePatternSettings.Tqqq200Sma, ct);
 
         if (!prepared.HasData)
         {
@@ -201,7 +202,8 @@ public class BacktestService : IBacktestService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var prepared = _dataPreparer.Slice(
-            fullDataMap, sliceSymbols, timeFrame, from, to, cumulativeRsi2Config);
+            fullDataMap, sliceSymbols, timeFrame, from, to,
+            cumulativeRsi2Config, effectivePatternSettings.Tqqq200Sma);
 
         if (!prepared.HasData)
             return new BacktestResult { Warnings = prepared.Warnings.ToList() };
@@ -238,7 +240,7 @@ public class BacktestService : IBacktestService
             .ToList();
         var walkForwardData = await _dataPreparer.PrepareAsync(
             dataFeed, walkForwardSymbols, request.TimeFrame, request.From, request.To,
-            effectivePatternSettings.CumulativeRsi2, ct);
+            effectivePatternSettings.CumulativeRsi2, effectivePatternSettings.Tqqq200Sma, ct);
         var wfFullDataMap = walkForwardData.Symbols;
 
         _logger.LogInformation("Walk-Forward 사전 데이터 로드 완료: {Count}개 심볼", wfFullDataMap.Count);
@@ -535,7 +537,7 @@ public class BacktestService : IBacktestService
         {
             var prepared = await _dataPreparer.PrepareAsync(
                 dataFeed, optimizationSymbols, tf, request.From, request.To,
-                _basePatternSettings.CumulativeRsi2, ct);
+                _basePatternSettings.CumulativeRsi2, _basePatternSettings.Tqqq200Sma, ct);
             if (prepared.HasData)
                 dataByTimeFrame[tf] = prepared.Symbols;
         }

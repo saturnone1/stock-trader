@@ -113,7 +113,7 @@ public class OptimizationJobExecutor
         {
             var prepared = await dataPreparer.PrepareAsync(
                 dataFeed, optimizationSymbols, tf, request.From, request.To,
-                patternSettings.CumulativeRsi2, ct);
+                patternSettings.CumulativeRsi2, patternSettings.Tqqq200Sma, ct);
             if (prepared.HasData)
                 dataByTimeFrame[tf] = prepared.Symbols;
         }

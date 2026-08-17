@@ -20,7 +20,7 @@ internal sealed class BacktestExecutionAdapter
         OhlcvBar currentBar,
         int barIndex,
         decimal currentAtrRaw,
-        decimal sma200,
+        decimal dynamicStopFloor,
         decimal currentCumulativeRsi2,
         decimal currentCumulativeRsi2TrendMa,
         CumulativeRsi2Config cumulativeRsi2Config,
@@ -65,7 +65,7 @@ internal sealed class BacktestExecutionAdapter
             openPosition.BreakevenApplied,
             openPosition.TrailingStopActivated);
         var tqqqSmaExit = openPosition.PatternType == PatternType.Tqqq200Sma;
-        var stopReason = tqqqSmaExit ? "SMA200 이탈" : "손절";
+        var stopReason = tqqqSmaExit ? "장기 추세선 이탈" : "손절";
         policy = policy with
         {
             StopReason = stopReason,
@@ -78,7 +78,7 @@ internal sealed class BacktestExecutionAdapter
             currentAtr,
             policy,
             strategyExit,
-            tqqqSmaExit && sma200 > 0 ? sma200 * 0.99m : null);
+            tqqqSmaExit && dynamicStopFloor > 0 ? dynamicStopFloor : null);
 
         var positionForFill = openPosition;
         foreach (var executionEvent in result.Events)

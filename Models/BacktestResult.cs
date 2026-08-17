@@ -131,6 +131,15 @@ public class PatternParameterOverrides
 
     // Tqqq200Sma
     public int? Tqqq_SmaPeriod { get; set; }
+    public decimal? Tqqq_EntryDistancePercent { get; set; }
+    public decimal? Tqqq_FixedStopPercent { get; set; }
+    public decimal? Tqqq_SmaStopMultiplier { get; set; }
+    public decimal? Tqqq_TargetSmaMultiplier { get; set; }
+    public decimal? Tqqq_MinimumTargetReturnPercent { get; set; }
+    public decimal? Tqqq_SpyExitDistancePercent { get; set; }
+    public decimal? Tqqq_MaxVolatility20d { get; set; }
+    public decimal? Tqqq_OverheatStage1 { get; set; }
+    public decimal? Tqqq_OverheatStage2 { get; set; }
     public decimal? Tqqq_OverheatPercent { get; set; }
     public int? Tqqq_ConfirmationDays { get; set; }
     public int? Tqqq_ShortTrendEmaPeriod { get; set; }

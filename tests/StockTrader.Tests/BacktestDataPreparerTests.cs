@@ -26,10 +26,11 @@ public class BacktestDataPreparerTests
             CumulativePeriod = 3,
             LongTrendMaPeriod = 7,
         };
+        var tqqqPolicy = new Tqqq200SmaConfig { SmaPeriod = 10, SmaStopMultiplier = 0.98m };
 
         var result = await preparer.PrepareAsync(
             feed, [" tqqq ", "SPY", "TQQQ"], TimeFrame.Daily,
-            bars[60].Timestamp, bars[^1].Timestamp, policy);
+            bars[60].Timestamp, bars[^1].Timestamp, policy, tqqqPolicy);
 
         result.HasData.Should().BeTrue();
         result.Symbols.Keys.Should().BeEquivalentTo(["TQQQ", "SPY"]);
@@ -39,6 +40,9 @@ public class BacktestDataPreparerTests
             indicators.CumulativeRsi(tqqq.Closes, policy.RsiPeriod, policy.CumulativePeriod));
         tqqq.CumulativeRsi2TrendMa.Should().Equal(
             indicators.SMA(tqqq.Closes, policy.LongTrendMaPeriod));
+        tqqq.TqqqProtectiveStopFloor.Should().Equal(
+            indicators.SMA(tqqq.Closes, tqqqPolicy.SmaPeriod)
+                .Select(value => value > 0 ? value * tqqqPolicy.SmaStopMultiplier : 0m));
     }
 
     [Fact]
@@ -56,7 +60,8 @@ public class BacktestDataPreparerTests
             LongTrendMaPeriod = 20,
         };
         var full = await preparer.PrepareAsync(
-            feed, ["TQQQ"], TimeFrame.Daily, bars[450].Timestamp, bars[^1].Timestamp, originalPolicy);
+            feed, ["TQQQ"], TimeFrame.Daily, bars[450].Timestamp, bars[^1].Timestamp,
+            originalPolicy, new Tqqq200SmaConfig());
         var originalCumulative = full.Symbols["TQQQ"].CumulativeRsi2.ToArray();
         var slicePolicy = new CumulativeRsi2Config
         {
@@ -67,7 +72,8 @@ public class BacktestDataPreparerTests
 
         var sliced = preparer.Slice(
             full.Symbols, ["TQQQ"], TimeFrame.Daily,
-            bars[450].Timestamp, bars[^1].Timestamp, slicePolicy);
+            bars[450].Timestamp, bars[^1].Timestamp, slicePolicy,
+            new Tqqq200SmaConfig { SmaPeriod = 25, SmaStopMultiplier = 0.97m });
 
         sliced.HasData.Should().BeTrue();
         sliced.Symbols["TQQQ"].CumulativeRsi2.Should().Equal(
@@ -82,6 +88,24 @@ public class BacktestDataPreparerTests
         sliced.Symbols["TQQQ"].Atr.Should().Equal(
             full.Symbols["TQQQ"].Atr[sliceStart..],
             "워크포워드 슬라이스는 전체 이력에서 계산된 ATR 값을 보존해야 합니다");
+    }
+
+    [Fact]
+    public async Task PrepareAsync_ExtendsDailyWarmupForConfiguredTqqqTrendPeriod()
+    {
+        var bars = BuildBars(80);
+        var feed = new RecordingDataFeed(bars);
+        var from = bars[60].Timestamp;
+        var preparer = new BacktestDataPreparer(
+            new IndicatorService(), NullLogger<BacktestDataPreparer>.Instance);
+
+        await preparer.PrepareAsync(
+            feed, ["TQQQ"], TimeFrame.Daily, from, bars[^1].Timestamp,
+            new CumulativeRsi2Config(),
+            new Tqqq200SmaConfig { SmaPeriod = 300 });
+
+        feed.RequestedFrom.Should().ContainSingle()
+            .Which.Should().Be(from.AddDays(-450));
     }
 
     private static List<OhlcvBar> BuildBars(int count) =>
@@ -102,11 +126,13 @@ public class BacktestDataPreparerTests
     private sealed class RecordingDataFeed(List<OhlcvBar> bars) : IDataFeedService
     {
         public List<string> RequestedSymbols { get; } = [];
+        public List<DateTime> RequestedFrom { get; } = [];
 
         public Task<List<OhlcvBar>> GetHistoricalBarsAsync(
             string symbol, TimeFrame timeFrame, DateTime from, DateTime to, CancellationToken ct = default)
         {
             RequestedSymbols.Add(symbol);
+            RequestedFrom.Add(from);
             return Task.FromResult(bars.Select(bar => new OhlcvBar
             {
                 Symbol = symbol,

@@ -70,6 +70,50 @@ public class LongPositionExecutionParityTests
         }
     }
 
+    [Fact]
+    public void BarAndLivePolicies_AdvanceAndTriggerTheSameTqqqTrendStop()
+    {
+        var noTargetPolicy = Policy with
+        {
+            EnableTrailingStop = false,
+            EnableTargetExit = false,
+            EnableTimeExit = false,
+            BreakevenAtrMultiplier = 0m
+        };
+        var dynamicStopFloor = Tqqq200SmaExecutionPolicy.ResolveProtectiveStopFloor(100m, 0.99m);
+        var state = State();
+        var advanceBar = FlatBar(105m);
+
+        var barAdvance = LongPositionExecutionPolicy.Evaluate(
+            state, advanceBar, 1, 2m, noTargetPolicy, dynamicStopFloor: dynamicStopFloor);
+        var liveAdvance = LiveLongPositionDecisionPolicy.Evaluate(
+            state, 105m, 2m, noTargetPolicy, false, dynamicStopFloor: dynamicStopFloor);
+
+        barAdvance.IsClosed.Should().BeFalse();
+        liveAdvance.ShouldExit.Should().BeFalse();
+        barAdvance.State.StopPrice.Should().Be(99m);
+        liveAdvance.State.Should().Be(barAdvance.State);
+
+        var barExit = LongPositionExecutionPolicy.Evaluate(
+            barAdvance.State, FlatBar(98m), 2, 2m, noTargetPolicy,
+            dynamicStopFloor: dynamicStopFloor);
+        var liveExit = LiveLongPositionDecisionPolicy.Evaluate(
+            liveAdvance.State, 98m, 2m, noTargetPolicy, false,
+            dynamicStopFloor: dynamicStopFloor);
+
+        barExit.IsClosed.Should().BeTrue();
+        liveExit.ShouldExit.Should().BeTrue();
+        liveExit.Reason.Should().Be(barExit.Events.Last().Reason);
+    }
+
+    private static OhlcvBar FlatBar(decimal price) => new()
+    {
+        Open = price,
+        High = price,
+        Low = price,
+        Close = price
+    };
+
     private static LongPositionExecutionState State() => new(
         EntryPrice: 100m,
         StopPrice: 95m,

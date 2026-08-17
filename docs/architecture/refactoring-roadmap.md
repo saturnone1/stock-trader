@@ -77,6 +77,10 @@
 - `CumulativeRsi2ExitDecisionPolicy` now owns the built-in strategy's trend-break-first and cumulative
   RSI threshold semantics. Backtest and live monitoring pass their independently prepared indicator
   snapshots into the same pure decision, including the same invalid-price boundary.
+- `Tqqq200SmaExecutionPolicy` now owns the TQQQ strategy's entry stop/target and rolling long-trend
+  protective-stop calculations. The SMA period and stop/target multipliers are typed settings used
+  by detection, prepared backtest data, and live monitoring. Daily data lookback expands with the
+  configured period, and parity fixtures lock stop advancement and subsequent triggering.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

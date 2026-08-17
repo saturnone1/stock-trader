@@ -7,7 +7,7 @@ public sealed record PreparedSymbolData(
     OhlcvBar[] Bars,
     decimal[] Atr,
     decimal[] Closes,
-    decimal[] Sma200,
+    decimal[] TqqqProtectiveStopFloor,
     decimal[] CumulativeRsi2,
     decimal[] CumulativeRsi2TrendMa,
     Dictionary<DateTime, int> TimestampToIndex);

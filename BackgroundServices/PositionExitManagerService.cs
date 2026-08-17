@@ -252,9 +252,11 @@ public class PositionExitManagerService : BackgroundService
             ? _patternSettings.CurrentValue
             : PatternOverrideMerger.Merge(_patternSettings.CurrentValue, _liveExitOverrides);
         var cumulativeRsi2Config = effectivePatternSettings.CumulativeRsi2;
+        var tqqqConfig = effectivePatternSettings.Tqqq200Sma;
         List<OhlcvBar>? recentBars = null;
         decimal currentCumulativeRsi2 = 0;
         decimal currentCumulativeRsi2TrendMa = 0;
+        decimal? dynamicStopFloor = null;
 
         // ATR 계산: DB에 저장된 EntryAtr 우선 사용, 없으면 최근 봉에서 계산.
         // ATR(14)는 15개 봉(TR 14개 + 이전 종가 1개)이 필요하다.
@@ -263,14 +265,41 @@ public class PositionExitManagerService : BackgroundService
         var atr = position.EntryAtr;
         var needsIndicatorBars = customPattern != null
             || position.PatternType == PatternType.CumulativeRsi2
+            || position.PatternType == PatternType.Tqqq200Sma
             || atr <= 0
             || (exitPolicy.EnableTimeExit && exitPolicy.MaxHoldingBars > 0);
         if (needsIndicatorBars)
         {
+            var lookbackDays = position.PatternType == PatternType.Tqqq200Sma
+                ? Math.Max(400, Tqqq200SmaExecutionPolicy.RequiredCalendarLookbackDays(tqqqConfig.SmaPeriod))
+                : 400;
             recentBars = await ohlcvRepo.GetBarsAsync(position.Symbol, TimeFrame.Daily,
-                UtcNow.AddDays(-400), UtcNow, ct);
+                UtcNow.AddDays(-lookbackDays), UtcNow, ct);
+            recentBars = recentBars.OrderBy(bar => bar.Timestamp).ToList();
             if (atr <= 0 && recentBars.Count >= 15)
                 atr = CalculateSimpleAtr(recentBars, 14);
+        }
+
+        if (position.PatternType == PatternType.Tqqq200Sma
+            && recentBars is { Count: > 0 }
+            && tqqqConfig.SmaPeriod > 0)
+        {
+            var closes = IndicatorService.ExtractCloses(recentBars.ToArray());
+            var trendSma = _indicators.SMA(closes, tqqqConfig.SmaPeriod);
+            if (trendSma.Length > 0)
+            {
+                dynamicStopFloor = Tqqq200SmaExecutionPolicy.ResolveProtectiveStopFloor(
+                    trendSma[^1], tqqqConfig.SmaStopMultiplier);
+            }
+
+        }
+
+        if (position.PatternType == PatternType.Tqqq200Sma && !dynamicStopFloor.HasValue)
+        {
+            _logger.LogWarning(
+                "[EXIT-MGR] {Symbol}: TQQQ 장기 추세선 보호 손절을 계산하지 못했습니다. " +
+                "기존 손절가를 유지합니다. bars={BarCount}, period={Period}",
+                position.Symbol, recentBars?.Count ?? 0, tqqqConfig.SmaPeriod);
         }
 
         if (position.PatternType == PatternType.CumulativeRsi2 && recentBars is { Count: > 0 })
@@ -338,7 +367,8 @@ public class PositionExitManagerService : BackgroundService
             atr,
             policy,
             timeExitReached,
-            strategyExit);
+            strategyExit,
+            dynamicStopFloor);
 
         position.HighSinceEntry = decision.State.HighestPrice;
         position.StopLossPrice = decision.State.StopPrice;

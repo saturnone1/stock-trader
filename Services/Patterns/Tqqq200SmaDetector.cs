@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -15,8 +16,8 @@ namespace StockTrader.Services.Patterns;
 ///   2. SPY가 200일선 대비 97.75% 이하 -> 진입 차단 (전량 청산 시그널)
 ///   3. 20일 수익률 표본표준편차 >= 5.9% -> 진입 차단 (변동성 과다)
 ///   4. 과열 감량: 이격도 139%~146% -> 신뢰도 감소, 146% 이상 -> 진입 차단
-///   5. 손절: 진입가 -5.9% 또는 SMA200*0.99 중 높은 쪽
-///   6. 목표가: SMA200*1.50 (넓게 설정, BacktestExecutionAdapter 동적 스탑에 위임)
+///   5. 손절: 설정된 고정 손절 또는 장기 추세선 보호 손절 중 높은 쪽
+///   6. 목표가: 설정된 장기 추세선 배수 (넓게 설정, 공유 체결 정책의 동적 스탑에 위임)
 ///
 /// 기존 구현 대비 변경점:
 ///   - EMA50 골든크로스 필터 제거 (이격도 기반으로 단순화)
@@ -45,6 +46,14 @@ public class Tqqq200SmaDetector : IPatternDetector
     public async Task<PatternSignal?> DetectAsync(string symbol, OhlcvBar[] bars,
         MarketRegime regime, CancellationToken ct = default)
     {
+        if (!Tqqq200SmaExecutionPolicy.IsValidTrendStopConfiguration(
+                _config.SmaPeriod, _config.SmaStopMultiplier)
+            || !Tqqq200SmaExecutionPolicy.IsValidExecutionConfiguration(
+                _config.SmaStopMultiplier,
+                _config.TargetSmaMultiplier,
+                _config.MinimumTargetReturnPercent))
+            return null;
+
         // ── 1. 심볼 체크: TQQQ 전용 (사용자 DB 설정 우선, 없으면 appsettings.json 기본값) ──
         var userSettings = await _settingsRepo.GetAsync(ct);
         var allowed = !string.IsNullOrWhiteSpace(userSettings.Tqqq200SmaAllowedSymbols)
@@ -57,7 +66,7 @@ public class Tqqq200SmaDetector : IPatternDetector
             return null;
 
         // ── 2. 바 수 체크: SMA200 계산 + 변동성 계산(20일)에 충분한 데이터 필요 ──
-        var minBars = _config.SmaPeriod + 25; // SMA200 + 여유분
+        var minBars = _config.SmaPeriod + 25; // 장기 SMA 계산 + 지표 안정화 여유분
         if (bars.Length < minBars)
             return null;
 
@@ -124,17 +133,15 @@ public class Tqqq200SmaDetector : IPatternDetector
                 return null;
         }
 
-        // ── 8. 손절가: Max(진입가 * (1 - 5.9%), SMA200 * 0.99) ──
-        var fixedStop = curr.Close * (1m - _config.FixedStopPercent);
-        var smaStop = smaValue * 0.99m;
-        var stopLoss = Math.Max(fixedStop, smaStop);
-
-        // ── 9. 목표가: SMA200 * 1.50 (넓게 설정 — BacktestExecutionAdapter가 동적 스탑으로 관리) ──
-        var target = smaValue * 1.50m;
-
-        // 목표가가 진입가보다 낮으면 보정 (이격도가 이미 높을 때)
-        if (target <= curr.Close)
-            target = curr.Close * 1.10m;
+        var entryLevels = Tqqq200SmaExecutionPolicy.ResolveEntryLevels(
+            curr.Close,
+            smaValue,
+            _config.FixedStopPercent,
+            _config.SmaStopMultiplier,
+            _config.TargetSmaMultiplier,
+            _config.MinimumTargetReturnPercent);
+        if (entryLevels == null)
+            return null;
 
         confidence = Math.Round(Math.Min(1.0m, Math.Max(0.30m, confidence)), 2);
 
@@ -144,10 +151,10 @@ public class Tqqq200SmaDetector : IPatternDetector
             PatternType = PatternType.Tqqq200Sma,
             DetectedAt = DateTime.UtcNow,
             EntryPrice = curr.Close,
-            StopLossPrice = Math.Round(stopLoss, 2),
-            TargetPrice = Math.Round(target, 2),
+            StopLossPrice = Math.Round(entryLevels.StopPrice, 2),
+            TargetPrice = Math.Round(entryLevels.TargetPrice, 2),
             Confidence = confidence,
-            Details = $"[이격도진입] SMA200=${smaValue:F2}, 이격도={distance:P1}, " +
+            Details = $"[이격도진입] SMA({_config.SmaPeriod})=${smaValue:F2}, 이격도={distance:P1}, " +
                       $"SPY이격도={spyDistance:P1}, 변동성20d={volatility:P2}, ATR=${currentAtr:F2}",
             IsActive = true
         };

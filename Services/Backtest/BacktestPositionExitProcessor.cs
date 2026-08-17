@@ -36,7 +36,7 @@ internal sealed class BacktestPositionExitProcessor
             var tradesBefore = context.Trades.Count;
             var exitResult = context.Simulator.ProcessExitLogic(
                 position, data.Bars[barIndex], barIndex,
-                data.Atr[barIndex], data.Sma200[barIndex],
+                data.Atr[barIndex], data.TqqqProtectiveStopFloor[barIndex],
                 data.CumulativeRsi2[barIndex], data.CumulativeRsi2TrendMa[barIndex],
                 context.CumulativeRsi2Config,
                 context.ExitPolicies,

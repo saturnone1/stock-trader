@@ -60,6 +60,9 @@ same state, `LongPositionCloseDecisionPolicy` target/strategy/time priority, and
 calculation. Snapshot parity fixtures compare bar-based and live decisions where price ordering is
 fully observable. Built-in close rules such as cumulative RSI2 trend-break/threshold decisions also
 live in pure execution policies rather than in backtest or worker adapters.
+The TQQQ long-trend strategy likewise owns its entry stop/target and rolling SMA stop-floor math in
+`Tqqq200SmaExecutionPolicy`. Its configured SMA period and multipliers feed detection, prepared
+backtest data, and live monitoring; adapters must not embed their own 200-day or multiplier values.
 
 Live execution state belongs to the persisted `Position`, not a background worker's memory. Its
 original risk distance and protective-stop flags survive restarts through an ordered database

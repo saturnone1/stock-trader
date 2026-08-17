@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 using StockTrader.Configuration;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
@@ -32,12 +33,14 @@ public sealed class BacktestDataPreparer
         DateTime from,
         DateTime to,
         CumulativeRsi2Config cumulativeRsi2,
+        Tqqq200SmaConfig tqqq200Sma,
         CancellationToken ct = default)
     {
         var prepared = new Dictionary<string, PreparedSymbolData>(StringComparer.OrdinalIgnoreCase);
         var warnings = new List<string>();
         DateTime? actualDataFrom = null;
-        var fetchFrom = from.AddDays(-BacktestTimeFramePolicy.Get(timeFrame).WarmupCalendarDays);
+        var warmupCalendarDays = ResolveWarmupCalendarDays(timeFrame, tqqq200Sma);
+        var fetchFrom = from.AddDays(-warmupCalendarDays);
 
         foreach (var symbol in symbols
                      .Select(symbol => symbol.Trim().ToUpperInvariant())
@@ -57,7 +60,7 @@ public sealed class BacktestDataPreparer
                     continue;
                 }
 
-                var value = Prepare(bars.ToArray(), cumulativeRsi2);
+                var value = Prepare(bars.ToArray(), cumulativeRsi2, tqqq200Sma);
                 prepared[symbol] = value;
                 var firstTimestamp = value.Bars[0].Timestamp;
                 if (!actualDataFrom.HasValue || firstTimestamp < actualDataFrom.Value)
@@ -82,13 +85,14 @@ public sealed class BacktestDataPreparer
         TimeFrame timeFrame,
         DateTime from,
         DateTime to,
-        CumulativeRsi2Config cumulativeRsi2)
+        CumulativeRsi2Config cumulativeRsi2,
+        Tqqq200SmaConfig tqqq200Sma)
     {
         var prepared = new Dictionary<string, PreparedSymbolData>(StringComparer.OrdinalIgnoreCase);
         var warnings = new List<string>();
         DateTime? actualDataFrom = null;
         var fetchFrom = DateOnly.FromDateTime(
-            from.AddDays(-BacktestTimeFramePolicy.Get(timeFrame).WarmupCalendarDays));
+            from.AddDays(-ResolveWarmupCalendarDays(timeFrame, tqqq200Sma)));
         var toDate = DateOnly.FromDateTime(to);
 
         foreach (var symbol in symbols.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -125,7 +129,7 @@ public sealed class BacktestDataPreparer
                 bars,
                 full.Atr[startIndex..(endIndex + 1)],
                 closes,
-                full.Sma200[startIndex..(endIndex + 1)],
+                PrepareTqqqProtectiveStopFloors(closes, tqqq200Sma),
                 _indicators.CumulativeRsi(
                     closes, cumulativeRsi2.RsiPeriod, cumulativeRsi2.CumulativePeriod),
                 _indicators.SMA(closes, cumulativeRsi2.LongTrendMaPeriod),
@@ -142,7 +146,10 @@ public sealed class BacktestDataPreparer
             actualDataFrom);
     }
 
-    private PreparedSymbolData Prepare(OhlcvBar[] bars, CumulativeRsi2Config cumulativeRsi2)
+    private PreparedSymbolData Prepare(
+        OhlcvBar[] bars,
+        CumulativeRsi2Config cumulativeRsi2,
+        Tqqq200SmaConfig tqqq200Sma)
     {
         var closes = IndicatorService.ExtractCloses(bars);
         var timestampToIndex = new Dictionary<DateTime, int>(bars.Length);
@@ -153,9 +160,34 @@ public sealed class BacktestDataPreparer
             bars,
             _indicators.ATR(bars, 14),
             closes,
-            _indicators.SMA(closes, 200),
+            PrepareTqqqProtectiveStopFloors(closes, tqqq200Sma),
             _indicators.CumulativeRsi(closes, cumulativeRsi2.RsiPeriod, cumulativeRsi2.CumulativePeriod),
             _indicators.SMA(closes, cumulativeRsi2.LongTrendMaPeriod),
             timestampToIndex);
+    }
+
+    private static int ResolveWarmupCalendarDays(TimeFrame timeFrame, Tqqq200SmaConfig tqqq200Sma)
+    {
+        var configured = BacktestTimeFramePolicy.Get(timeFrame).WarmupCalendarDays;
+        if (timeFrame != TimeFrame.Daily)
+            return configured;
+
+        return Math.Max(
+            configured,
+            Tqqq200SmaExecutionPolicy.RequiredCalendarLookbackDays(tqqq200Sma.SmaPeriod));
+    }
+
+    private decimal[] PrepareTqqqProtectiveStopFloors(
+        decimal[] closes,
+        Tqqq200SmaConfig config)
+    {
+        if (!Tqqq200SmaExecutionPolicy.IsValidTrendStopConfiguration(
+                config.SmaPeriod, config.SmaStopMultiplier))
+            return new decimal[closes.Length];
+
+        return _indicators.SMA(closes, config.SmaPeriod)
+            .Select(value => Tqqq200SmaExecutionPolicy.ResolveProtectiveStopFloor(
+                value, config.SmaStopMultiplier) ?? 0m)
+            .ToArray();
     }
 }

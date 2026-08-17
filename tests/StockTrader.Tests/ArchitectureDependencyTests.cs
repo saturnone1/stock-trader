@@ -237,6 +237,24 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void TqqqEntryBacktestAndLiveShareTheTrendStopPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var detector = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/Tqqq200SmaDetector.cs"));
+        var preparer = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestDataPreparer.cs"));
+        var live = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/PositionExitManagerService.cs"));
+
+        detector.Should().Contain("Tqqq200SmaExecutionPolicy.ResolveEntryLevels(");
+        preparer.Should().Contain("Tqqq200SmaExecutionPolicy.ResolveProtectiveStopFloor(");
+        live.Should().Contain("Tqqq200SmaExecutionPolicy.ResolveProtectiveStopFloor(");
+        detector.Should().NotContain("smaValue * 0.99m");
+        detector.Should().NotContain("smaValue * 1.50m");
+    }
+
+    [Fact]
     public void PreviewBacktestAndLiveShareTheExitPolicyCatalog()
     {
         var repository = FindRepositoryRoot();

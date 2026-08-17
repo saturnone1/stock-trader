@@ -229,8 +229,8 @@ public class VolatilityBreakoutConfig
 ///   2. SPY가 200일선 대비 97.75% 이하 → 전량 청산 (진입 차단)
 ///   3. 20일 수익률 표준편차 >= 5.9% → 전량 청산 (진입 차단)
 ///   4. 과열 감량: 139%→신뢰도 하락, 146%→진입 차단
-///   5. 손절: 진입가 -5.9% 고정 또는 SMA200×0.99 중 높은 쪽
-///   6. 목표가: SMA200×1.50 (넓게 설정, BacktestExecutionAdapter 동적 스탑에 위임)
+///   5. 손절: 고정 손절 또는 설정된 장기 추세선 보호 손절 중 높은 쪽
+///   6. 목표가: 설정된 장기 추세선 배수 (공유 체결 정책의 동적 스탑에 위임)
 ///
 /// 백테스트 기준: 추세추종 장기 홀딩, 조건부 청산 방식.
 /// </summary>
@@ -244,6 +244,15 @@ public class Tqqq200SmaConfig
 
     /// <summary>고정 손절 비율. 진입가 × (1 - 이 값). 0.059 = -5.9%.</summary>
     public decimal FixedStopPercent { get; set; } = 0.059m;
+
+    /// <summary>보유 중 장기 추세선 보호 손절 배수. 0.99 = SMA보다 1% 아래.</summary>
+    public decimal SmaStopMultiplier { get; set; } = 0.99m;
+
+    /// <summary>목표가의 장기 추세선 배수. 1.50 = SMA의 150%.</summary>
+    public decimal TargetSmaMultiplier { get; set; } = 1.50m;
+
+    /// <summary>추세선 기준 목표가가 진입가 이하일 때 적용할 최소 목표 수익률.</summary>
+    public decimal MinimumTargetReturnPercent { get; set; } = 0.10m;
 
     /// <summary>SPY 청산 이격도 임계값. SPY가 200MA 대비 이 비율 이하면 진입 차단. 0.9775 = 97.75%.</summary>
     public decimal SpyExitDistancePercent { get; set; } = 0.9775m;

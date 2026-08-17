@@ -95,7 +95,7 @@ internal sealed class BacktestPendingEntryProcessor
                 entryBar,
                 barIndex,
                 data.Atr[barIndex],
-                data.Sma200[barIndex],
+                data.TqqqProtectiveStopFloor[barIndex],
                 data.CumulativeRsi2[barIndex],
                 data.CumulativeRsi2TrendMa[barIndex],
                 context.CumulativeRsi2Config,
