@@ -16,6 +16,7 @@ public static class StrategyVariantFactory
         return new CustomPatternDefinition
         {
             Id = src.Id,
+            DocumentVersion = src.DocumentVersion,
             Name = src.Name,
             Description = src.Description,
             EntryRulesJson = src.EntryRulesJson,

@@ -18,7 +18,7 @@ public class DatabaseMigrationStatusProviderTests
 
         var status = await new DatabaseMigrationStatusProvider(db).GetAsync();
 
-        status.Current.Should().EndWith(DatabaseSchemaMigrator.InitialMigrationSuffix);
+        status.Current.Should().EndWith("_AddStrategyDocumentVersion");
         status.Latest.Should().Be(status.Current);
         status.PendingCount.Should().Be(0);
         status.IsSynchronized.Should().BeTrue();
@@ -34,8 +34,8 @@ public class DatabaseMigrationStatusProviderTests
         var status = await new DatabaseMigrationStatusProvider(db).GetAsync();
 
         status.Current.Should().BeNull();
-        status.Latest.Should().EndWith(DatabaseSchemaMigrator.InitialMigrationSuffix);
-        status.PendingCount.Should().Be(1);
+        status.Latest.Should().EndWith("_AddStrategyDocumentVersion");
+        status.PendingCount.Should().Be(2);
         status.IsSynchronized.Should().BeFalse();
     }
 

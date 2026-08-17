@@ -1,3 +1,4 @@
+using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
 
 namespace StockTrader.Models;
@@ -8,6 +9,12 @@ namespace StockTrader.Models;
 public class CustomPatternDefinition
 {
     public int Id { get; set; }
+
+    /// <summary>
+    /// 저장 전략 문서 형식 버전. 실행 엔진 버전과 독립적으로 호환 읽기와 향후 업그레이드를 결정한다.
+    /// </summary>
+    public int DocumentVersion { get; set; } = StrategyDocumentVersions.Current;
+
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
 

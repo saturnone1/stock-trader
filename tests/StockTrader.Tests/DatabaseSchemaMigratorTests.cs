@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Data;
 using StockTrader.Data.Migrations;
@@ -23,8 +25,44 @@ public class DatabaseSchemaMigratorTests
         (await TableExistsAsync(connection, "CustomPatterns")).Should().BeTrue();
         (await TableExistsAsync(connection, "__EFMigrationsHistory")).Should().BeTrue();
         (await ScalarAsync<long>(connection,
-            "SELECT COUNT(*) FROM __EFMigrationsHistory")).Should().Be(1);
+            "SELECT COUNT(*) FROM __EFMigrationsHistory")).Should().Be(2);
         (await TableExistsAsync(connection, "__StockTraderMigrations")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ExistingStrategyDocumentsReceiveTheCurrentVersionThroughEfMigration()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+
+        var initialMigration = db.Database.GetMigrations()
+            .Single(value => value.EndsWith(DatabaseSchemaMigrator.InitialMigrationSuffix, StringComparison.Ordinal));
+        await db.GetService<IMigrator>().MigrateAsync(initialMigration);
+        await ExecuteAsync(connection, """
+            INSERT INTO CustomPatterns (
+                Name, EntryRulesJson, EntryLogic, RequireBullRegime,
+                AtrStopMultiplier, AtrTargetMultiplier, MaxHoldingBars, TrailingAtr, PartialProfitR,
+                UseWeightTiers, WeightTiersJson, DefaultAllocationPercent,
+                ExitRulesJson, ExitRulesLogic, ExitGroupsJson, ExitGroupsLogic,
+                ScalingRulesJson, TimeFilterJson, CircuitBreakerJson, ReentryJson,
+                PortfolioRulesJson, EntryGroupsJson, EntryGroupsLogic, DynamicExitJson,
+                EntryMode, TimeFrame, SizingMode, IsActive, EnableLiveTrading, CreatedAt, UpdatedAt)
+            VALUES (
+                '버전 전략', '[]', 'AND', 0,
+                2, 3, 10, 0, 0,
+                0, '[]', 100,
+                '[]', 'OR', '[]', 'OR',
+                '[]', '{}', '{}', '{}',
+                '{}', '[]', 'AND', '{}',
+                'CurrentClose', 0, 'FixedRisk', 1, 0,
+                '2026-08-18T00:00:00Z', '2026-08-18T00:00:00Z');
+            """);
+
+        await CreateMigrator(db).MigrateAsync();
+
+        var storedVersion = await ScalarAsync<long>(connection,
+            "SELECT DocumentVersion FROM CustomPatterns WHERE Name = '버전 전략'");
+        storedVersion.Should().Be(1);
     }
 
     [Fact]

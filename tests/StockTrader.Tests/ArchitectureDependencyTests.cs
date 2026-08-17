@@ -467,6 +467,33 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void StoredStrategiesHaveAnExplicitFailClosedDocumentVersionBoundary()
+    {
+        var repository = FindRepositoryRoot();
+        var model = File.ReadAllText(Path.Combine(repository, "Models/CustomPatternDefinition.cs"));
+        var versions = File.ReadAllText(Path.Combine(
+            repository, "Domain/Strategies/StrategyDocumentVersions.cs"));
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/StrategyDocumentVersionPolicy.cs"));
+        var compiler = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/StrategyCompiler.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/CustomPatternEndpoints.cs"));
+        var migration = Directory.EnumerateFiles(
+                Path.Combine(repository, "Data/EfMigrations"), "*_AddStrategyDocumentVersion.cs")
+            .Single(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal));
+
+        model.Should().Contain("DocumentVersion { get; set; } = StrategyDocumentVersions.Current;");
+        versions.Should().Contain("public const int LegacyUnversioned = 0;");
+        versions.Should().Contain("public const int Current = 1;");
+        policy.Should().Contain("StrategyDocumentVersions.LegacyUnversioned or StrategyDocumentVersions.Current");
+        compiler.Should().Contain("StrategyDocumentVersionPolicy.Validate(pattern.DocumentVersion)");
+        endpoints.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(input)");
+        endpoints.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(existing)");
+        File.ReadAllText(migration).Should().Contain(
+            "defaultValue: StockTrader.Domain.Strategies.StrategyDocumentVersions.Current");
+    }
+
+    [Fact]
     public void ApiHostingUsesOneCanonicalContainerListener()
     {
         var repository = FindRepositoryRoot();

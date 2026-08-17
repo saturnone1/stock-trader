@@ -17,6 +17,8 @@ public static class StrategyCompiler
         ArgumentNullException.ThrowIfNull(pattern);
         var errors = new List<string>();
 
+        if (StrategyDocumentVersionPolicy.Validate(pattern.DocumentVersion) is { } versionError)
+            errors.Add(versionError);
         if (string.IsNullOrWhiteSpace(pattern.Name)) errors.Add("전략 이름을 입력하세요.");
         if (pattern.AtrStopMultiplier <= 0) errors.Add("ATR 손절 배수는 0보다 커야 합니다.");
         if (pattern.AtrTargetMultiplier <= 0) errors.Add("ATR 목표 배수는 0보다 커야 합니다.");

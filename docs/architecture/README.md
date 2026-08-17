@@ -128,6 +128,11 @@ from generated migrations and databases with EF history apply only their pending
 temporary legacy baseline writer has completed production adoption and is removed. A database with
 application tables but no EF history is rejected before any schema or row change.
 
+Stored custom strategies now carry a `DocumentVersion` that is independent from the compiled-engine
+schema version. The compatibility policy reads legacy unversioned requests, stamps every successful
+write with the current document version, and rejects unknown future versions rather than guessing
+their semantics. Existing rows are adopted through an ordered EF migration.
+
 ## Decision records
 
 - `adr/0001-modular-monolith.md`: why a modular monolith is the target.
@@ -137,4 +142,6 @@ application tables but no EF history is rejected before any schema or row change
   databases.
 - `adr/0004-retire-handwritten-migrations.md`: fail-closed retirement of the temporary legacy
   schema writer after production baseline adoption.
+- `adr/0005-version-strategy-documents.md`: version persisted strategy definitions independently
+  from compiled-engine semantics and fail closed on unknown future documents.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using StockTrader.Application.Strategies;
+using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 
 namespace StockTrader.Tests;
@@ -50,6 +51,31 @@ public class StrategyCompilerTests
 
         result.IsValid.Should().BeTrue();
         result.Strategy!.DynamicExit.Should().BeNull();
+    }
+
+    [Fact]
+    public void Compile_AcceptsLegacyUnversionedDocumentThroughCompatibilityReader()
+    {
+        var pattern = ValidPattern();
+        pattern.DocumentVersion = StrategyDocumentVersions.LegacyUnversioned;
+
+        var result = StrategyCompiler.Compile(pattern);
+
+        result.IsValid.Should().BeTrue();
+        pattern.DocumentVersion.Should().Be(StrategyDocumentVersions.LegacyUnversioned,
+            "compilation must not mutate a stored compatibility document");
+    }
+
+    [Fact]
+    public void Compile_RejectsUnknownFutureDocumentInsteadOfGuessingItsMeaning()
+    {
+        var pattern = ValidPattern();
+        pattern.DocumentVersion = StrategyDocumentVersions.Current + 1;
+
+        var result = StrategyCompiler.Compile(pattern);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle(error => error.Contains("지원하지 않는 전략 문서 버전"));
     }
 
     private static CustomPatternDefinition ValidPattern() => new()

@@ -141,6 +141,9 @@
   baseline adoption and has been removed; an unbaselined database now fails closed without writes.
   Tests cover empty creation, row preservation, idempotency, and legacy refusal. `/api/health`
   reports the applied/latest EF migration, pending count, and synchronization state.
+- Stored custom strategies now have an explicit `DocumentVersion`. Legacy unversioned API payloads
+  remain readable, successful writes are stamped with the current version, unknown future versions
+  fail compilation, and an ordered EF migration adopts existing rows without rewriting strategy JSON.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

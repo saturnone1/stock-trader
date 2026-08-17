@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using StockTrader.Application.Strategies;
 using StockTrader.Data;
 using StockTrader.Models;
 using StockTrader.Services.Patterns;
@@ -30,7 +31,7 @@ public static class CustomPatternEndpoints
             return pattern is null ? Results.NotFound() : Results.Ok(pattern);
         });
 
-        group.MapPost("/", async (CustomPatternDefinition input, AppDbContext db, CancellationToken ct) =>
+        group.MapPost("/", async (CustomPatternDefinition input, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
             var validationErrors = CustomPatternValidator.Validate(input);
             if (validationErrors.Count > 0)
@@ -42,14 +43,15 @@ public static class CustomPatternEndpoints
 
             input.Name = input.Name.Trim();
             input.Id = 0;
-            input.CreatedAt = DateTime.UtcNow;
-            input.UpdatedAt = DateTime.UtcNow;
+            StrategyDocumentVersionPolicy.StampCurrent(input);
+            input.CreatedAt = clock.GetUtcNow().UtcDateTime;
+            input.UpdatedAt = input.CreatedAt;
             db.CustomPatterns.Add(input);
             await db.SaveChangesAsync(ct);
             return Results.Created($"/api/custom-patterns/{input.Id}", input);
         });
 
-        group.MapPut("/{id:int}", async (int id, CustomPatternDefinition input, AppDbContext db, CancellationToken ct) =>
+        group.MapPut("/{id:int}", async (int id, CustomPatternDefinition input, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
             var validationErrors = CustomPatternValidator.Validate(input);
             if (validationErrors.Count > 0)
@@ -63,8 +65,9 @@ public static class CustomPatternEndpoints
                 return Results.Conflict(new { error = "같은 이름의 전략이 이미 있습니다. 다른 이름을 사용하세요." });
 
             CopyEditableFields(existing, input);
+            StrategyDocumentVersionPolicy.StampCurrent(existing);
             existing.Name = input.Name.Trim();
-            existing.UpdatedAt = DateTime.UtcNow;
+            existing.UpdatedAt = clock.GetUtcNow().UtcDateTime;
             await db.SaveChangesAsync(ct);
             return Results.Ok(existing);
         });
@@ -78,11 +81,12 @@ public static class CustomPatternEndpoints
             return Results.Ok();
         });
 
-        group.MapPost("/{id:int}/apply-backtest", async (int id, BacktestApplyRequest req, AppDbContext db, CancellationToken ct) =>
+        group.MapPost("/{id:int}/apply-backtest", async (int id, BacktestApplyRequest req, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
             var pattern = await db.CustomPatterns.FindAsync([id], ct);
             if (pattern is null) return Results.NotFound();
-            pattern.UpdatedAt = DateTime.UtcNow;
+            StrategyDocumentVersionPolicy.StampCurrent(pattern);
+            pattern.UpdatedAt = clock.GetUtcNow().UtcDateTime;
             // req에서 최적 파라미터 반영 (AtrStop, AtrTarget 등)
             if (req.AtrStopMultiplier.HasValue) pattern.AtrStopMultiplier = req.AtrStopMultiplier.Value;
             if (req.AtrTargetMultiplier.HasValue) pattern.AtrTargetMultiplier = req.AtrTargetMultiplier.Value;
