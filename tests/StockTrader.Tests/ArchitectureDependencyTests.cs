@@ -58,10 +58,14 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/backtestResultAnalysis.js"));
         var resultAnalysisTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/backtestResultAnalysis.test.js"));
+        var execution = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestExecution.js"));
+        var executionTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestExecution.test.js"));
         var researchTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/backtestResearch.test.js"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(790);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(720);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
@@ -99,6 +103,8 @@ public class ArchitectureDependencyTests
         page.Should().NotContain("totalReturn * 140");
         page.Should().NotContain("getWhipsawStats(");
         page.Should().NotContain("getEquityCurveVolatility(");
+        page.Should().NotContain("function buildRequestPayload(");
+        page.Should().NotContain("function runSingleBacktestRequest(");
         research.Should().Contain("export function getWhipsawStats(");
         research.Should().Contain("export function getEquityCurveVolatility(");
         research.Should().Contain("export function factorReturnLift(");
@@ -135,6 +141,11 @@ public class ArchitectureDependencyTests
         resultAnalysis.Should().Contain("export function calculateComparisonDelta(");
         resultAnalysis.Should().Contain("export function buildFactorLabRankingRows(");
         resultAnalysisTests.Should().Contain("matching group baseline");
+        execution.Should().Contain("export function buildBacktestRequestPayload(");
+        execution.Should().Contain("export async function runBacktestScenarios(");
+        execution.Should().Contain("export async function runPlainBacktest(");
+        executionTests.Should().Contain("executes sequentially");
+        executionTests.Should().Contain("portfolio weight strategy only when enabled");
         researchTests.Should().Contain("API returnPct contract");
     }
 

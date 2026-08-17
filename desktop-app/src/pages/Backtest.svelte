@@ -33,6 +33,7 @@
     buildTimingReport,
     buildUniverseComparisonRows
   } from '../features/backtest/backtestResultAnalysis'
+  import { runBacktestScenarios, runPlainBacktest } from '../features/backtest/backtestExecution'
   import {
     factorExperimentPresets,
     factorRankingOptions,
@@ -360,79 +361,6 @@
     return buildScenarioPlans(parseSymbols(), factorLabVariantsFor(parseSymbols())).length
   }
 
-  function buildRequestPayload(symbols, customPatternRaws) {
-    return {
-      symbols,
-      patterns: ['Custom'],
-      from: form.from,
-      to: form.to,
-      initialCapital: Number(form.initialCapital),
-      timeFrame: form.timeFrame,
-      slippagePercent: Number(form.slippagePercent),
-      commissionPerTrade: Number(form.commissionPerTrade),
-      slippageModel: form.slippageModel,
-      enableWalkForward: !!form.enableWalkForward,
-      walkForwardInSampleMonths: Number(form.walkForwardInSampleMonths),
-      walkForwardOutOfSampleMonths: Number(form.walkForwardOutOfSampleMonths),
-      enableMonteCarlo: !!form.enableMonteCarlo,
-      monteCarloSimulations: Number(form.monteCarloSimulations),
-      riskPerTradePercent: Number(form.riskPerTradePercent),
-      dailyLossLimitPercent: Number(form.dailyLossLimitPercent),
-      maxTotalPositions: Number(form.maxTotalPositions),
-      maxPositionsPerSector: Number(form.maxPositionsPerSector),
-      dataSource: form.dataSource || null,
-      weightStrategy: form.useWeightStrategy ? {
-        bullWeight: Number(form.bullWeight),
-        bearWeight: Number(form.bearWeight),
-        overheat1Weight: Number(form.overheat1Weight),
-        overheat2Weight: Number(form.overheat2Weight),
-        overheatStage1Pct: Number(form.overheatStage1Pct),
-        overheatStage2Pct: Number(form.overheatStage2Pct),
-        smaPeriod: Number(form.smaPeriod)
-      } : null,
-      backtestMode: 'pattern',
-      customPatterns: customPatternRaws
-    }
-  }
-
-  async function runSingleBacktestRequest(symbols, basePatterns, scenario, customPatternRaws) {
-    const response = await backtestApi.start(buildRequestPayload(symbols, customPatternRaws))
-    return {
-      key: scenario.key,
-      label: scenario.label,
-      description: scenario.description,
-      structure: scenario.structure ?? 'base',
-      windowId: scenario.windowId ?? 'base',
-      comparisonGroupKey: scenario.comparisonGroupKey ?? 'current',
-      comparisonGroupLabel: scenario.comparisonGroupLabel ?? '현재 입력',
-      comparisonGroupKind: scenario.comparisonGroupKind ?? 'standard',
-      symbolCount: scenario.symbolCount ?? symbols.length,
-      factorPresetId: scenario.factorPresetId ?? null,
-      factorPresetLabel: scenario.factorPresetLabel ?? null,
-      factorPresetNote: scenario.factorPresetNote ?? null,
-      isBaseline: scenario.type === 'base',
-      data: {
-        ...response.data,
-        request: {
-          symbols,
-          patternNames: basePatterns.map((pattern) => pattern.name),
-          universeVariant: {
-            key: scenario.comparisonGroupKey ?? 'current',
-            label: scenario.comparisonGroupLabel ?? '현재 입력',
-            symbolCount: scenario.symbolCount ?? symbols.length,
-            kind: scenario.comparisonGroupKind ?? 'standard',
-            factorPresetLabel: scenario.factorPresetLabel ?? null
-          }
-        },
-        timingScenario: {
-          key: scenario.key,
-          label: scenario.label,
-          description: scenario.description
-        }
-      }
-    }
-  }
-
   function getTimingReport(entry) {
     return buildTimingReport(comparisonResults, entry)
   }
@@ -499,15 +427,16 @@
     try {
       if (timingLab.enabled) {
         const scenarios = buildScenarioPlans(symbols, factorVariants)
-        const nextResults = []
-
-        for (let index = 0; index < scenarios.length; index += 1) {
-          const scenario = scenarios[index]
-          runStatus = `${index + 1} / ${scenarios.length} · ${scenario.label} 실행 중`
-          const scenarioPatterns = buildScenarioPatterns(customPatterns, scenario)
-          const scenarioResult = await runSingleBacktestRequest(scenario.symbols, customPatterns, scenario, scenarioPatterns)
-          nextResults.push(scenarioResult)
-        }
+        const nextResults = await runBacktestScenarios({
+          startBacktest: (payload) => backtestApi.start(payload),
+          form,
+          scenarios,
+          basePatterns: customPatterns,
+          marketSymbol: timingLab.marketSymbol,
+          onProgress: ({ current, total, scenario }) => {
+            runStatus = `${current} / ${total} · ${scenario.label} 실행 중`
+          }
+        })
 
         comparisonResults = nextResults
         const defaultScenario = nextResults.find((item) => item.isBaseline) ?? nextResults[0]
@@ -515,14 +444,12 @@
         result = defaultScenario?.data ?? null
         runStatus = `비교 시나리오 ${nextResults.length}개 실행 완료`
       } else {
-        const response = await backtestApi.start(buildRequestPayload(symbols, customPatterns.map((pattern) => pattern.raw)))
-        result = {
-          ...response.data,
-          request: {
-            symbols,
-            patternNames: customPatterns.map((pattern) => pattern.name)
-          }
-        }
+        result = await runPlainBacktest({
+          startBacktest: (payload) => backtestApi.start(payload),
+          form,
+          symbols,
+          basePatterns: customPatterns
+        })
       }
     } catch (e) {
       error = e?.response?.data?.error || e?.message || '백테스트 실행에 실패했습니다.'

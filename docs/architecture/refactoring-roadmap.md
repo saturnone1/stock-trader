@@ -174,7 +174,11 @@ could execute the same symbol set twice. Baseline selection, scenario deltas, ti
 universe summaries, and factor ranking view models now live in `backtestResultAnalysis.js`, reducing
 the page to 787 lines. Result-analysis and research goldens also fixed two trust defects: API
 `returnPct` losses were excluded from whipsaw counts, and daily/weekly holding bars were derived
-from wall-clock minutes instead of their calendar cadence.
+from wall-clock minutes instead of their calendar cadence. Request payload construction, optional
+portfolio-weight serialization, plain execution, and sequential multi-scenario orchestration now
+live in `backtestExecution.js`. API-contract and orchestration goldens cover numeric normalization,
+data-source defaults, timing overlays, progress ordering, and result metadata. `Backtest.svelte` is
+now a 714-line orchestration shell rather than an API request builder.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 
