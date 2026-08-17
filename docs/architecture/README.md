@@ -146,6 +146,9 @@ promotion. It validates every candidate with `StrategyCompiler`, owns identity/v
 case-insensitive name conflicts, and persists through `ICustomPatternStore`. HTTP endpoints and the
 automatic optimizer cannot write strategy rows directly. Invalid optimization output is rejected
 without changing the stored strategy or incrementing its applied-result count.
+Stored display names have a separate server-owned normalized key with a database unique index.
+The application pre-check provides an early conflict response, while the persistence adapter maps
+the remaining concurrent-write race to the same typed conflict result.
 
 ## Decision records
 

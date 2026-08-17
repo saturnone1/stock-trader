@@ -145,7 +145,7 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<CustomPatternDefinition>(entity =>
         {
-            entity.HasIndex(p => p.Name).IsUnique();
+            entity.HasIndex(p => p.NormalizedName).IsUnique();
             entity.HasIndex(p => p.IsActive);
         });
 

@@ -29,5 +29,7 @@ status codes; background workers translate job outcomes. Neither owns strategy v
   validation and persistence boundary.
 - Invalid optimized candidates leave the strategy and applied-result count unchanged.
 - Application tests can exercise management semantics with an in-memory port and deterministic time.
-- Database uniqueness races remain an infrastructure concern and require a case-insensitive database
-  constraint before concurrent writers are considered fully protected.
+- Display names remain unchanged, while a server-owned normalized name is protected by a database
+  unique index. The persistence adapter translates the SQLite uniqueness violation into the same
+  typed conflict returned by the application pre-check, so concurrent writers cannot create a
+  case-only duplicate or leak an infrastructure exception through HTTP or optimization workers.

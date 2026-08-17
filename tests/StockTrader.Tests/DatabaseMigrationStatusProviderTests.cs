@@ -9,16 +9,17 @@ namespace StockTrader.Tests;
 public class DatabaseMigrationStatusProviderTests
 {
     [Fact]
-    public async Task GetAsync_ReportsTheAppliedInitialSchemaAsSynchronized()
+    public async Task GetAsync_ReportsAllAppliedMigrationsAsSynchronized()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         await using var db = Context(connection);
         await db.Database.MigrateAsync();
+        var latest = db.Database.GetMigrations().Last();
 
         var status = await new DatabaseMigrationStatusProvider(db).GetAsync();
 
-        status.Current.Should().EndWith("_AddStrategyDocumentVersion");
+        status.Current.Should().Be(latest);
         status.Latest.Should().Be(status.Current);
         status.PendingCount.Should().Be(0);
         status.IsSynchronized.Should().BeTrue();
@@ -30,12 +31,13 @@ public class DatabaseMigrationStatusProviderTests
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         await using var db = Context(connection);
+        var migrations = db.Database.GetMigrations().ToArray();
 
         var status = await new DatabaseMigrationStatusProvider(db).GetAsync();
 
         status.Current.Should().BeNull();
-        status.Latest.Should().EndWith("_AddStrategyDocumentVersion");
-        status.PendingCount.Should().Be(2);
+        status.Latest.Should().Be(migrations[^1]);
+        status.PendingCount.Should().Be(migrations.Length);
         status.IsSynchronized.Should().BeFalse();
     }
 

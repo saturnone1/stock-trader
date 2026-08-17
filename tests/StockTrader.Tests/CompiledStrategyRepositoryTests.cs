@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 
 namespace StockTrader.Tests;
@@ -16,7 +17,12 @@ public class CompiledStrategyRepositoryTests
         await using var db = CreateContext();
         db.CustomPatterns.AddRange(
             ValidPattern("정상 전략"),
-            new CustomPatternDefinition { Name = "손상 전략", EntryGroupsJson = "{broken" });
+            new CustomPatternDefinition
+            {
+                Name = "손상 전략",
+                NormalizedName = StoredStrategyName.Normalize("손상 전략"),
+                EntryGroupsJson = "{broken"
+            });
         await db.SaveChangesAsync();
         var repository = new CompiledStrategyRepository(db, NullLogger<CompiledStrategyRepository>.Instance);
 
@@ -55,6 +61,7 @@ public class CompiledStrategyRepositoryTests
     private static CustomPatternDefinition ValidPattern(string name) => new()
     {
         Name = name,
+        NormalizedName = StoredStrategyName.Normalize(name),
         EntryGroupsJson = JsonSerializer.Serialize(new[]
         {
             new ConditionGroup

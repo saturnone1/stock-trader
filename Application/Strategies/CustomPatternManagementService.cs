@@ -1,4 +1,5 @@
 using StockTrader.Models;
+using StockTrader.Domain.Strategies;
 
 namespace StockTrader.Application.Strategies;
 
@@ -59,7 +60,7 @@ public sealed class CustomPatternManagementService
         _store.FindAsync(id, ct);
 
     public Task<CustomPatternDefinition?> FindByNameAsync(string name, CancellationToken ct = default) =>
-        _store.FindByNameAsync(name, ct);
+        _store.FindByNameAsync(StoredStrategyName.Normalize(name), ct);
 
     public async Task<CustomPatternOperationResult> CreateAsync(
         CustomPatternDefinition input,
@@ -69,14 +70,17 @@ public sealed class CustomPatternManagementService
         if (validation is not null) return validation;
 
         input.Name = input.Name.Trim();
-        if (await _store.NameExistsAsync(NormalizeName(input.Name), ct: ct))
+        input.NormalizedName = StoredStrategyName.Normalize(input.Name);
+        if (await _store.NameExistsAsync(input.NormalizedName, ct: ct))
             return CustomPatternOperationResult.Conflict(DuplicateNameError);
 
         input.Id = 0;
         StrategyDocumentVersionPolicy.StampCurrent(input);
         input.CreatedAt = _clock.GetUtcNow().UtcDateTime;
         input.UpdatedAt = input.CreatedAt;
-        await _store.AddAsync(input, ct);
+        if (await _store.AddAsync(input, ct) == CustomPatternWriteResult.NameConflict)
+            return CustomPatternOperationResult.Conflict(DuplicateNameError);
+
         return CustomPatternOperationResult.Success(input);
     }
 
@@ -93,14 +97,17 @@ public sealed class CustomPatternManagementService
             return CustomPatternOperationResult.NotFound("수정할 전략을 찾을 수 없습니다.");
 
         input.Name = input.Name.Trim();
-        if (await _store.NameExistsAsync(NormalizeName(input.Name), id, ct))
+        input.NormalizedName = StoredStrategyName.Normalize(input.Name);
+        if (await _store.NameExistsAsync(input.NormalizedName, id, ct))
             return CustomPatternOperationResult.Conflict(DuplicateNameError);
 
         input.Id = id;
         input.CreatedAt = existing.CreatedAt;
         input.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
         StrategyDocumentVersionPolicy.StampCurrent(input);
-        await _store.UpdateAsync(input, ct);
+        if (await _store.UpdateAsync(input, ct) == CustomPatternWriteResult.NameConflict)
+            return CustomPatternOperationResult.Conflict(DuplicateNameError);
+
         return CustomPatternOperationResult.Success(input);
     }
 
@@ -126,8 +133,11 @@ public sealed class CustomPatternManagementService
         if (validation is not null) return validation;
 
         StrategyDocumentVersionPolicy.StampCurrent(pattern);
+        pattern.NormalizedName = StoredStrategyName.Normalize(pattern.Name);
         pattern.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
-        await _store.UpdateAsync(pattern, ct);
+        if (await _store.UpdateAsync(pattern, ct) == CustomPatternWriteResult.NameConflict)
+            return CustomPatternOperationResult.Conflict(DuplicateNameError);
+
         return CustomPatternOperationResult.Success(pattern);
     }
 
@@ -137,6 +147,4 @@ public sealed class CustomPatternManagementService
         var errors = StrategyCompiler.Compile(input).Errors;
         return errors.Count == 0 ? null : CustomPatternOperationResult.Invalid(errors);
     }
-
-    private static string NormalizeName(string value) => value.ToLowerInvariant();
 }

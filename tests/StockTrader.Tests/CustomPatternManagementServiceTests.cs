@@ -35,6 +35,19 @@ public class CustomPatternManagementServiceTests
     }
 
     [Fact]
+    public async Task CreateTranslatesDatabaseUniquenessRaceToConflict()
+    {
+        var store = new MemoryStore { NextWriteResult = CustomPatternWriteResult.NameConflict };
+        var service = new CustomPatternManagementService(store, new FixedClock(Now));
+
+        var result = await service.CreateAsync(ValidPattern("동시 저장 전략"));
+
+        result.Kind.Should().Be(CustomPatternOperationKind.Conflict);
+        result.Error.Should().Contain("같은 이름");
+        store.AddCount.Should().Be(1);
+    }
+
+    [Fact]
     public async Task UpdatePreservesServerOwnedIdentityAndCreationTime()
     {
         var createdAt = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc);
@@ -132,6 +145,7 @@ public class CustomPatternManagementServiceTests
 
         public int AddCount { get; private set; }
         public int UpdateCount { get; private set; }
+        public CustomPatternWriteResult NextWriteResult { get; set; } = CustomPatternWriteResult.Saved;
         public CustomPatternDefinition? Stored(int id) =>
             _items.TryGetValue(id, out var value) ? Clone(value) : null;
 
@@ -143,7 +157,7 @@ public class CustomPatternManagementServiceTests
 
         public Task<CustomPatternDefinition?> FindByNameAsync(string name, CancellationToken ct = default) =>
             Task.FromResult(_items.Values
-                .FirstOrDefault(value => value.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } value
+                .FirstOrDefault(value => StoredStrategyName.Normalize(value.Name) == name) is { } value
                     ? Clone(value)
                     : null);
 
@@ -151,21 +165,31 @@ public class CustomPatternManagementServiceTests
             string normalizedName,
             int? excludingId = null,
             CancellationToken ct = default) => Task.FromResult(_items.Values.Any(value =>
-                value.Id != excludingId && value.Name.ToLowerInvariant() == normalizedName));
+                value.Id != excludingId && StoredStrategyName.Normalize(value.Name) == normalizedName));
 
-        public Task AddAsync(CustomPatternDefinition definition, CancellationToken ct = default)
+        public Task<CustomPatternWriteResult> AddAsync(
+            CustomPatternDefinition definition,
+            CancellationToken ct = default)
         {
+            var result = NextWriteResult;
+            NextWriteResult = CustomPatternWriteResult.Saved;
             definition.Id = _nextId++;
-            _items[definition.Id] = Clone(definition);
             AddCount++;
-            return Task.CompletedTask;
+            if (result == CustomPatternWriteResult.Saved)
+                _items[definition.Id] = Clone(definition);
+            return Task.FromResult(result);
         }
 
-        public Task UpdateAsync(CustomPatternDefinition definition, CancellationToken ct = default)
+        public Task<CustomPatternWriteResult> UpdateAsync(
+            CustomPatternDefinition definition,
+            CancellationToken ct = default)
         {
-            _items[definition.Id] = Clone(definition);
+            var result = NextWriteResult;
+            NextWriteResult = CustomPatternWriteResult.Saved;
             UpdateCount++;
-            return Task.CompletedTask;
+            if (result == CustomPatternWriteResult.Saved)
+                _items[definition.Id] = Clone(definition);
+            return Task.FromResult(result);
         }
 
         public Task<bool> DeleteAsync(int id, CancellationToken ct = default) =>

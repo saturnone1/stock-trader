@@ -152,6 +152,9 @@
   `ICustomPatternStore`. The application boundary owns compilation validation, server fields,
   duplicate names, and clock access. Invalid optimized parameters can no longer bypass the compiler
   and corrupt a stored strategy, and the 63-line HTTP module contains no EF or business validation.
+- Stored strategy names now use a server-owned normalized comparison key and database unique index.
+  Create/update races that pass the application pre-check are translated by the SQLite adapter into
+  the same typed name-conflict outcome, while the normalized key remains absent from API contracts.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

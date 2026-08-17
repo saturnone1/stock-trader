@@ -556,6 +556,9 @@ public class ArchitectureDependencyTests
             repository, "Application/Strategies/ICustomPatternStore.cs"));
         var adapter = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/CustomPatternStore.cs"));
+        var dbContext = File.ReadAllText(Path.Combine(repository, "Data/AppDbContext.cs"));
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/CustomPatternContracts.cs"));
 
         File.ReadAllLines(Path.Combine(repository, "Api/CustomPatternEndpoints.cs"))
             .Length.Should().BeLessThanOrEqualTo(80);
@@ -566,12 +569,16 @@ public class ArchitectureDependencyTests
         endpoints.Should().NotContain("TimeProvider");
         management.Should().Contain("StrategyCompiler.Compile(input)");
         management.Should().Contain("_store.NameExistsAsync(");
+        management.Should().Contain("CustomPatternWriteResult.NameConflict");
         management.Should().Contain("_clock.GetUtcNow()");
         management.Should().Contain("ApplyBacktestAsync(");
         port.Should().Contain("public interface ICustomPatternStore");
         port.Should().NotContain("Microsoft.EntityFrameworkCore");
         adapter.Should().Contain("class CustomPatternStore : ICustomPatternStore");
         adapter.Should().Contain("ExecuteDeleteAsync");
+        adapter.Should().Contain("IsNormalizedNameConflict");
+        dbContext.Should().Contain("HasIndex(p => p.NormalizedName).IsUnique()");
+        contracts.Should().NotContain("NormalizedName");
         var autoTune = File.ReadAllText(Path.Combine(
             repository, "BackgroundServices/OptimizationAutoTuneService.cs"));
         autoTune.Should().Contain("CustomPatternManagementService");

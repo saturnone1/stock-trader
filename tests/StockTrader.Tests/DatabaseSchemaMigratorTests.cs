@@ -25,12 +25,13 @@ public class DatabaseSchemaMigratorTests
         (await TableExistsAsync(connection, "CustomPatterns")).Should().BeTrue();
         (await TableExistsAsync(connection, "__EFMigrationsHistory")).Should().BeTrue();
         (await ScalarAsync<long>(connection,
-            "SELECT COUNT(*) FROM __EFMigrationsHistory")).Should().Be(2);
+            "SELECT COUNT(*) FROM __EFMigrationsHistory"))
+            .Should().Be(db.Database.GetMigrations().LongCount());
         (await TableExistsAsync(connection, "__StockTraderMigrations")).Should().BeFalse();
     }
 
     [Fact]
-    public async Task ExistingStrategyDocumentsReceiveTheCurrentVersionThroughEfMigration()
+    public async Task ExistingStrategyDocumentsReceiveVersionAndNormalizedNameThroughEfMigrations()
     {
         await using var connection = await OpenConnectionAsync();
         await using var db = CreateContext(connection);
@@ -63,6 +64,40 @@ public class DatabaseSchemaMigratorTests
         var storedVersion = await ScalarAsync<long>(connection,
             "SELECT DocumentVersion FROM CustomPatterns WHERE Name = '버전 전략'");
         storedVersion.Should().Be(1);
+        (await ScalarAsync<string>(connection,
+            "SELECT NormalizedName FROM CustomPatterns WHERE Name = '버전 전략'"))
+            .Should().Be("버전 전략");
+        (await ScalarAsync<long>(connection, """
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'index' AND name = 'IX_CustomPatterns_NormalizedName'
+            """)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CaseOnlyLegacyDuplicatesFailClosedWithoutPartiallyApplyingNameMigration()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+        var versionMigration = db.Database.GetMigrations().Single(value =>
+            value.EndsWith("_AddStrategyDocumentVersion", StringComparison.Ordinal));
+        await db.GetService<IMigrator>().MigrateAsync(versionMigration);
+        await InsertVersionedStrategyAsync(connection, "Momentum");
+        await InsertVersionedStrategyAsync(connection, "momentum");
+
+        var action = () => CreateMigrator(db).MigrateAsync();
+
+        await action.Should().ThrowAsync<SqliteException>()
+            .WithMessage("*UNIQUE constraint failed: CustomPatterns.NormalizedName*");
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM CustomPatterns")).Should().Be(2);
+        (await ScalarAsync<long>(connection, """
+            SELECT COUNT(*) FROM pragma_table_info('CustomPatterns')
+            WHERE name = 'NormalizedName'
+            """)).Should().Be(0);
+        (await ScalarAsync<string>(connection, """
+            SELECT MigrationId FROM __EFMigrationsHistory
+            ORDER BY MigrationId DESC LIMIT 1
+            """)).Should().EndWith("_AddStrategyDocumentVersion");
     }
 
     [Fact]
@@ -159,6 +194,34 @@ public class DatabaseSchemaMigratorTests
     {
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertVersionedStrategyAsync(
+        SqliteConnection connection,
+        string name)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO CustomPatterns (
+                DocumentVersion, Name, EntryRulesJson, EntryLogic, RequireBullRegime,
+                AtrStopMultiplier, AtrTargetMultiplier, MaxHoldingBars, TrailingAtr, PartialProfitR,
+                UseWeightTiers, WeightTiersJson, DefaultAllocationPercent,
+                ExitRulesJson, ExitRulesLogic, ExitGroupsJson, ExitGroupsLogic,
+                ScalingRulesJson, TimeFilterJson, CircuitBreakerJson, ReentryJson,
+                PortfolioRulesJson, EntryGroupsJson, EntryGroupsLogic, DynamicExitJson,
+                EntryMode, TimeFrame, SizingMode, IsActive, EnableLiveTrading, CreatedAt, UpdatedAt)
+            VALUES (
+                1, $name, '[]', 'AND', 0,
+                2, 3, 10, 0, 0,
+                0, '[]', 100,
+                '[]', 'OR', '[]', 'OR',
+                '[]', '{}', '{}', '{}',
+                '{}', '[]', 'AND', '{}',
+                'CurrentClose', 0, 'FixedRisk', 1, 0,
+                '2026-08-18T00:00:00Z', '2026-08-18T00:00:00Z');
+            """;
+        command.Parameters.AddWithValue("$name", name);
         await command.ExecuteNonQueryAsync();
     }
 

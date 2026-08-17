@@ -116,9 +116,14 @@ public class CustomPatternContractTests
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         options.Converters.Add(new JsonStringEnumConverter());
 
-        var entityShape = Properties(JsonSerializer.SerializeToElement(definition, options));
+        var persistenceShape = Properties(JsonSerializer.SerializeToElement(definition, options));
+        var entityShape = persistenceShape
+            .Where(property => property.Key != "normalizedName")
+            .ToDictionary(property => property.Key, property => property.Value, StringComparer.Ordinal);
         var contractShape = Properties(JsonSerializer.SerializeToElement(definition.ToResponse(), options));
 
+        persistenceShape.Should().ContainKey("normalizedName");
+        contractShape.Should().NotContainKey("normalizedName");
         contractShape.Should().BeEquivalentTo(entityShape,
             "separating persistence must not silently rename or remove the desktop wire fields");
     }

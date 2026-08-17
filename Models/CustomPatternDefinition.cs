@@ -16,6 +16,12 @@ public class CustomPatternDefinition
     public int DocumentVersion { get; set; } = StrategyDocumentVersions.Current;
 
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 이름의 서버 관리 비교 키. 동시 저장에서도 대소문자 무시 고유성을 보장한다.
+    /// API 계약에는 노출하지 않는다.
+    /// </summary>
+    public string NormalizedName { get; set; } = string.Empty;
     public string? Description { get; set; }
 
     /// <summary>진입 조건 목록 (JSON: List&lt;EntryRule&gt;)</summary>
