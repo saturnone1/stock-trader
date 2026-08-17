@@ -152,7 +152,7 @@ public static class PatternPreviewEndpoints
         var currentEntryDay = DateOnly.MinValue;
         var entriesToday = 0;
         var safetyBlockedEntries = 0;
-        var exitPolicy = LongPositionExitPolicyCatalog.ForCustom(request.Pattern);
+        var exitPolicy = LongPositionExitPolicyCatalog.ForCustom(strategy.Source);
 
         void Realize(OpenPreviewPosition openPosition, decimal price, int quantity)
         {
@@ -329,10 +329,17 @@ public static class PatternPreviewEndpoints
                 currentEntryDay = signalDay;
                 entriesToday = 0;
             }
-            if (index < reentryUntilIndex
-                || index < circuitBreakerUntilIndex
-                || drawdownTripped
-                || (portfolioRules.MaxEntriesPerDay > 0 && entriesToday >= portfolioRules.MaxEntriesPerDay))
+            var entryEligibility = StrategyEntryEligibilityPolicy.Evaluate(
+                new StrategyEntryEligibilityRequest(
+                    DefaultMaxPositions: 1,
+                    StrategyMaxPositions: portfolioRules.MaxTotalPositions,
+                    OpenPositionCount: 0,
+                    DrawdownBlocked: drawdownTripped,
+                    ConsecutiveLossBlocked: index < circuitBreakerUntilIndex,
+                    MaxEntriesPerSession: portfolioRules.MaxEntriesPerDay,
+                    EntriesThisSession: entriesToday,
+                    ReentryBlocked: index < reentryUntilIndex));
+            if (!entryEligibility.CanEnter)
             {
                 safetyBlockedEntries++;
                 continue;
@@ -342,7 +349,7 @@ public static class PatternPreviewEndpoints
             var entryPrice = current.Close;
             var entryDate = current.Timestamp;
             if (string.Equals(
-                    request.Pattern.EntryMode,
+                    strategy.EntryMode,
                     StrategyCatalog.NextOpenEntryMode,
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -353,8 +360,8 @@ public static class PatternPreviewEndpoints
                 entryDate = allBars[entryIndex].Timestamp;
             }
 
-            var fallbackTargetMultiple = request.Pattern.AtrStopMultiplier > 0
-                ? request.Pattern.AtrTargetMultiplier / request.Pattern.AtrStopMultiplier
+            var fallbackTargetMultiple = strategy.Source.AtrStopMultiplier > 0
+                ? strategy.Source.AtrTargetMultiplier / strategy.Source.AtrStopMultiplier
                 : 1m;
             var fill = LongEntryFillPolicy.Reprice(
                 signal.EntryPrice,

@@ -8,6 +8,7 @@ using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Services.Market;
 using StockTrader.Services.Risk;
 using StockTrader.Services.Signal;
 using StockTrader.Services.Statistics;
@@ -47,9 +48,12 @@ public class SignalServiceTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private SignalService CreateSut(TradingSettings? settings = null)
+    private SignalService CreateSut(
+        TradingSettings? settings = null,
+        TimeProvider? timeProvider = null)
     {
         var opts = Options.Create(settings ?? _defaultSettings);
+        var effectiveTimeProvider = timeProvider ?? TimeProvider.System;
         var strategies = new CompiledStrategyRepository(
             _db,
             NullLogger<CompiledStrategyRepository>.Instance);
@@ -60,6 +64,8 @@ public class SignalServiceTests : IDisposable
             strategies,
             _db,
             opts,
+            effectiveTimeProvider,
+            new MarketCalendar(effectiveTimeProvider),
             NullLogger<SignalService>.Instance);
     }
 
@@ -230,6 +236,102 @@ public class SignalServiceTests : IDisposable
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _riskMock.Verify(service => service.CalculatePositionSize(
             It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_CustomStrategyPositionLimitUsesSharedEntryGate()
+    {
+        const string strategyName = "공통 진입 제한 전략";
+        _db.CustomPatterns.Add(new CustomPatternDefinition
+        {
+            Name = strategyName,
+            EnableLiveTrading = true,
+            EntryMode = "NextOpen",
+            EntryRulesJson = """[{"indicator":"PRICE_CHANGE","operator":">","value":-100,"params":{"bars":1}}]""",
+            PortfolioRulesJson = """{"maxTotalPositions":1}"""
+        });
+        _db.Positions.Add(new Position
+        {
+            Symbol = "MSFT",
+            CustomPatternName = strategyName,
+            Quantity = 1,
+            EntryPrice = 100m,
+            CurrentPrice = 100m,
+            StopLossPrice = 95m,
+            TargetPrice = 110m
+        });
+        await _db.SaveChangesAsync();
+
+        var signal = CreateSignal();
+        signal.CustomPatternName = strategyName;
+        SetupGetAllStats();
+        _settingsRepoMock.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+
+        var result = await CreateSut().EvaluateSignalsAsync([signal]);
+
+        result.Should().BeEmpty();
+        _riskMock.Verify(service => service.CanOpenPositionAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_DailyEntryLimitUsesUsMarketDateInsteadOfUtcDate()
+    {
+        const string strategyName = "미국 거래일 제한 전략";
+        _db.CustomPatterns.Add(new CustomPatternDefinition
+        {
+            Name = strategyName,
+            EnableLiveTrading = true,
+            EntryMode = "NextOpen",
+            EntryRulesJson = """[{"indicator":"PRICE_CHANGE","operator":">","value":-100,"params":{"bars":1}}]""",
+            PortfolioRulesJson = """{"maxEntriesPerDay":1}"""
+        });
+        _db.TradeRecommendations.Add(new TradeRecommendation
+        {
+            Symbol = "MSFT",
+            CustomPatternName = strategyName,
+            GeneratedAt = new DateTime(2026, 8, 17, 15, 0, 0, DateTimeKind.Utc),
+            WasExecuted = true
+        });
+        await _db.SaveChangesAsync();
+
+        var signal = CreateSignal();
+        signal.CustomPatternName = strategyName;
+        SetupGetAllStats();
+        _settingsRepoMock.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+        var now = new DateTimeOffset(2026, 8, 18, 0, 30, 0, TimeSpan.Zero);
+
+        var result = await CreateSut(timeProvider: new FixedTimeProvider(now))
+            .EvaluateSignalsAsync([signal]);
+
+        result.Should().BeEmpty(
+            "00:30 UTC is still August 17 in New York, so the earlier US-session entry counts");
+        _riskMock.Verify(service => service.CanOpenPositionAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EvaluateSignalsAsync_UsesInjectedClockForRecommendationTimestamp()
+    {
+        var expected = new DateTimeOffset(2026, 8, 18, 12, 34, 56, TimeSpan.Zero);
+        var signal = CreateSignal();
+        SetupGetAllStats();
+        _settingsRepoMock.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+        _riskMock.Setup(service => service.CanOpenPositionAsync(
+                signal.Symbol, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, string.Empty));
+        _riskMock.Setup(service => service.CalculatePositionSize(
+                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>()))
+            .Returns(5_000m);
+
+        var result = await CreateSut(timeProvider: new FixedTimeProvider(expected))
+            .EvaluateSignalsAsync([signal]);
+
+        result.Should().ContainSingle();
+        result[0].GeneratedAt.Should().Be(expected.UtcDateTime);
     }
 
     // ────────────────────────────────────────────────────────────
@@ -404,6 +506,11 @@ public class SignalServiceTests : IDisposable
         var result = await sut.EvaluateSignalsAsync(new List<PatternSignal>());
 
         result.Should().BeEmpty();
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
     [Fact]

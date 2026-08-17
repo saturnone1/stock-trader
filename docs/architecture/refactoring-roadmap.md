@@ -86,6 +86,12 @@
   priority after stop/partial processing. Bar-based preview/backtest and live current-price decisions
   delegate to it. Equivalent-price snapshot fixtures lock stop, target, strategy, time, and hold-state
   parity, including invalid zero-price boundary handling.
+- `StrategyEntryEligibilityPolicy` now owns the final custom-strategy entry gate for preview,
+  backtest, and live recommendations. All three paths share the same effective position-limit and
+  block priority for drawdown, consecutive losses, per-session entries, and reentry cooldowns.
+  Backtest bar indexes and live calendar dates remain adapter state; live evaluation now receives
+  its observation time from `TimeProvider` rather than the system clock, and daily entry limits use
+  the US market date rather than resetting early at UTC midnight.
 - `CumulativeRsi2ExitDecisionPolicy` now owns the built-in strategy's trend-break-first and cumulative
   RSI threshold semantics. Backtest and live monitoring pass their independently prepared indicator
   snapshots into the same pure decision, including the same invalid-price boundary.
@@ -133,8 +139,9 @@
   accepts only an empty database or one with EF migration history and fails closed without writes
   for an unbaselined legacy database. EF Core is the sole schema mutation engine.
 
-Remaining Phase 2 work is primarily residual runtime orchestration extraction from
-`BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.
+Remaining Phase 2 work is primarily extracting the calculation-heavy pattern-preview endpoint into
+an application use case, reducing residual runtime orchestration, and broadening full-strategy
+preview/backtest/live parity fixtures beyond the shared entry and exit policy snapshots.
 
 ## Phase 0 — Guardrails and governance
 

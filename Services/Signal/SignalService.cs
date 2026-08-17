@@ -6,6 +6,7 @@ using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
+using StockTrader.Services.Market;
 using StockTrader.Services.Risk;
 using StockTrader.Services.Statistics;
 
@@ -19,6 +20,8 @@ public class SignalService : ISignalService
     private readonly ICompiledStrategyRepository _strategies;
     private readonly AppDbContext _db;
     private readonly TradingSettings _tradingSettings;
+    private readonly TimeProvider _timeProvider;
+    private readonly IMarketCalendar _marketCalendar;
     private readonly ILogger<SignalService> _logger;
 
     public SignalService(
@@ -28,6 +31,8 @@ public class SignalService : ISignalService
         ICompiledStrategyRepository strategies,
         AppDbContext db,
         IOptions<TradingSettings> tradingSettings,
+        TimeProvider timeProvider,
+        IMarketCalendar marketCalendar,
         ILogger<SignalService> logger)
     {
         _statsService = statsService;
@@ -36,6 +41,8 @@ public class SignalService : ISignalService
         _strategies = strategies;
         _db = db;
         _tradingSettings = tradingSettings.Value;
+        _timeProvider = timeProvider;
+        _marketCalendar = marketCalendar;
         _logger = logger;
     }
 
@@ -69,11 +76,17 @@ public class SignalService : ISignalService
             : await _db.Positions.AsNoTracking()
                 .Where(position => position.ClosedAt == null)
                 .ToListAsync(ct);
-        var todayUtc = DateTime.UtcNow.Date;
+        var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        var marketTimeZone = _marketCalendar.GetTimeZone(MarketType.US);
+        var marketDate = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, marketTimeZone).Date;
+        var marketSessionStartUtc = TimeZoneInfo.ConvertTimeToUtc(
+            DateTime.SpecifyKind(marketDate, DateTimeKind.Unspecified), marketTimeZone);
         var executedToday = customNames.Count == 0
             ? []
             : await _db.TradeRecommendations.AsNoTracking()
-                .Where(rec => rec.WasExecuted && rec.GeneratedAt >= todayUtc && rec.CustomPatternName != null)
+                .Where(rec => rec.WasExecuted
+                    && rec.GeneratedAt >= marketSessionStartUtc
+                    && rec.CustomPatternName != null)
                 .ToListAsync(ct);
 
         // 섹터 정보를 일괄 조회하여 N+1 방지 (W02 fix)
@@ -113,30 +126,35 @@ public class SignalService : ISignalService
 
             if (customDefinition != null && (!customDefinition.IsActive || !customDefinition.EnableLiveTrading))
                 continue;
-            if (portfolioRules?.MaxTotalPositions > 0
-                && openCustomPositions.Count + recommendations.Count >= portfolioRules.MaxTotalPositions)
+            if (customStrategy is not null)
             {
-                _logger.LogInformation("Custom strategy {Strategy} blocked: maximum open positions reached", signal.CustomPatternName);
-                continue;
-            }
-            if (portfolioRules?.MaxEntriesPerDay > 0
-                && executedToday.Count(rec => string.Equals(rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase))
-                    + recommendations.Count(rec => string.Equals(rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase))
-                    >= portfolioRules.MaxEntriesPerDay)
-            {
-                _logger.LogInformation("Custom strategy {Strategy} blocked: daily entry limit reached", signal.CustomPatternName);
-                continue;
-            }
-            if (IsInLiveCooldown(strategyTrades, reentryRules, breakerRules, out var cooldownReason))
-            {
-                _logger.LogInformation("Custom strategy {Strategy} blocked: {Reason}", signal.CustomPatternName, cooldownReason);
-                continue;
-            }
-            if (breakerRules?.MaxDrawdownPercent > 0
-                && ComputeStrategyDrawdown(strategyTrades, settings.AccountSize) >= breakerRules.MaxDrawdownPercent)
-            {
-                _logger.LogWarning("Custom strategy {Strategy} blocked: drawdown circuit breaker", signal.CustomPatternName);
-                continue;
+                var cooldowns = EvaluateLiveCooldowns(
+                    strategyTrades, reentryRules, breakerRules, marketDate);
+                var entriesToday = executedToday.Count(rec => string.Equals(
+                        rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase))
+                    + recommendations.Count(rec => string.Equals(
+                        rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase));
+                var drawdownBlocked = breakerRules?.MaxDrawdownPercent > 0
+                    && ComputeStrategyDrawdown(strategyTrades, settings.AccountSize)
+                        >= breakerRules.MaxDrawdownPercent;
+                var entryEligibility = StrategyEntryEligibilityPolicy.Evaluate(
+                    new StrategyEntryEligibilityRequest(
+                        _tradingSettings.MaxTotalPositions,
+                        portfolioRules?.MaxTotalPositions ?? 0,
+                        openCustomPositions.Count + recommendations.Count,
+                        drawdownBlocked,
+                        cooldowns.ConsecutiveLossBlocked,
+                        portfolioRules?.MaxEntriesPerDay ?? 0,
+                        entriesToday,
+                        cooldowns.ReentryBlocked));
+                if (!entryEligibility.CanEnter)
+                {
+                    _logger.LogInformation(
+                        "Custom strategy {Strategy} blocked: {Reason}",
+                        signal.CustomPatternName,
+                        DescribeEntryBlock(entryEligibility.BlockReason));
+                    continue;
+                }
             }
             // ── 1. 신뢰도 필터: 자동매매 실행 최소 기준 ──
             if (signal.Confidence < _tradingSettings.MinConfidence)
@@ -229,7 +247,7 @@ public class SignalService : ISignalService
                 Symbol = signal.Symbol,
                 PatternType = signal.PatternType,
                 CustomPatternName = signal.CustomPatternName,
-                GeneratedAt = DateTime.UtcNow,
+                GeneratedAt = nowUtc,
                 EntryPrice = signal.EntryPrice,
                 StopLossPrice = signal.StopLossPrice,
                 TargetPrice = signal.TargetPrice,
@@ -255,34 +273,37 @@ public class SignalService : ISignalService
         return recommendations;
     }
 
-    private static bool IsInLiveCooldown(
+    private static (bool ReentryBlocked, bool ConsecutiveLossBlocked) EvaluateLiveCooldowns(
         List<TradeRecord> trades,
         ReentryConfig? reentry,
         CircuitBreakerConfig? breaker,
-        out string reason)
+        DateTime todayUtc)
     {
-        reason = string.Empty;
-        if (trades.Count == 0) return false;
+        if (trades.Count == 0) return (false, false);
         var latest = trades[^1];
         var waitDays = latest.PnL < 0 ? reentry?.CooldownBarsAfterLoss ?? 0 : reentry?.CooldownBarsAfterWin ?? 0;
-        if (waitDays > 0 && DateTime.UtcNow.Date < AddTradingDays(latest.ExitTime.Date, waitDays))
-        {
-            reason = $"재매수 대기 {waitDays}봉";
-            return true;
-        }
+        var reentryBlocked = waitDays > 0
+            && todayUtc < AddTradingDays(latest.ExitTime.Date, waitDays);
 
+        var consecutiveLossBlocked = false;
         if (breaker?.ConsecutiveLossLimit > 0)
         {
             var consecutiveLosses = trades.AsEnumerable().Reverse().TakeWhile(trade => trade.PnL < 0).Count();
-            if (consecutiveLosses >= breaker.ConsecutiveLossLimit
-                && DateTime.UtcNow.Date < AddTradingDays(latest.ExitTime.Date, breaker.CooldownBars))
-            {
-                reason = $"연속 손실 후 {breaker.CooldownBars}봉 중단";
-                return true;
-            }
+            consecutiveLossBlocked = consecutiveLosses >= breaker.ConsecutiveLossLimit
+                && todayUtc < AddTradingDays(latest.ExitTime.Date, breaker.CooldownBars);
         }
-        return false;
+        return (reentryBlocked, consecutiveLossBlocked);
     }
+
+    private static string DescribeEntryBlock(StrategyEntryBlockReason reason) => reason switch
+    {
+        StrategyEntryBlockReason.PositionLimit => "보유 한도 도달",
+        StrategyEntryBlockReason.DrawdownCircuitBreaker => "최대 낙폭 중단",
+        StrategyEntryBlockReason.ConsecutiveLossCircuitBreaker => "연속 손실 후 거래 중단",
+        StrategyEntryBlockReason.SessionEntryLimit => "하루 매수 횟수 도달",
+        StrategyEntryBlockReason.ReentryCooldown => "재매수 대기",
+        _ => "진입 제한"
+    };
 
     private static DateTime AddTradingDays(DateTime date, int tradingDays)
     {

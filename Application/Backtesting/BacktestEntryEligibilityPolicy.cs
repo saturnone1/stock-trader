@@ -1,3 +1,5 @@
+using StockTrader.Application.Execution;
+
 namespace StockTrader.Application.Backtesting;
 
 /// <summary>
@@ -9,37 +11,32 @@ public static class BacktestEntryEligibilityPolicy
     public static BacktestEntryEligibilityDecision Evaluate(
         BacktestEntryEligibilityRequest request)
     {
-        var effectiveMaxPositions = request.StrategyMaxPositions > 0
-            ? Math.Min(request.DefaultMaxPositions, request.StrategyMaxPositions)
-            : request.DefaultMaxPositions;
-
-        if (request.OpenPositionCount >= effectiveMaxPositions)
-            return Blocked(BacktestEntryBlockReason.PositionLimit, effectiveMaxPositions);
-        if (request.DrawdownCircuitBreakerTripped)
-            return Blocked(BacktestEntryBlockReason.DrawdownCircuitBreaker, effectiveMaxPositions);
-        if (request.ConsecutiveLossCircuitBreakerEnabled
-            && request.CurrentTimelineStep < request.CircuitBreakerUntilStep)
-        {
-            return Blocked(BacktestEntryBlockReason.ConsecutiveLossCircuitBreaker, effectiveMaxPositions);
-        }
-        if (request.MaxEntriesPerDay > 0
-            && request.EntriesToday >= request.MaxEntriesPerDay)
-        {
-            return Blocked(BacktestEntryBlockReason.DailyEntryLimit, effectiveMaxPositions);
-        }
-        if (request.ReentryCooldownUntilBar is { } cooldownUntil
-            && request.CurrentBarIndex < cooldownUntil)
-        {
-            return Blocked(BacktestEntryBlockReason.ReentryCooldown, effectiveMaxPositions);
-        }
+        var decision = StrategyEntryEligibilityPolicy.Evaluate(
+            new StrategyEntryEligibilityRequest(
+                request.DefaultMaxPositions,
+                request.StrategyMaxPositions,
+                request.OpenPositionCount,
+                request.DrawdownCircuitBreakerTripped,
+                request.ConsecutiveLossCircuitBreakerEnabled
+                    && request.CurrentTimelineStep < request.CircuitBreakerUntilStep,
+                request.MaxEntriesPerDay,
+                request.EntriesToday,
+                request.ReentryCooldownUntilBar is { } cooldownUntil
+                    && request.CurrentBarIndex < cooldownUntil));
 
         return new BacktestEntryEligibilityDecision(
-            true, BacktestEntryBlockReason.None, effectiveMaxPositions);
+            decision.CanEnter,
+            decision.BlockReason switch
+            {
+                StrategyEntryBlockReason.PositionLimit => BacktestEntryBlockReason.PositionLimit,
+                StrategyEntryBlockReason.DrawdownCircuitBreaker => BacktestEntryBlockReason.DrawdownCircuitBreaker,
+                StrategyEntryBlockReason.ConsecutiveLossCircuitBreaker => BacktestEntryBlockReason.ConsecutiveLossCircuitBreaker,
+                StrategyEntryBlockReason.SessionEntryLimit => BacktestEntryBlockReason.DailyEntryLimit,
+                StrategyEntryBlockReason.ReentryCooldown => BacktestEntryBlockReason.ReentryCooldown,
+                _ => BacktestEntryBlockReason.None
+            },
+            decision.EffectiveMaxPositions);
     }
-
-    private static BacktestEntryEligibilityDecision Blocked(
-        BacktestEntryBlockReason reason,
-        int effectiveMaxPositions) => new(false, reason, effectiveMaxPositions);
 }
 
 public readonly record struct BacktestEntryEligibilityRequest(

@@ -74,6 +74,12 @@ same state, `LongPositionCloseDecisionPolicy` target/strategy/time priority, and
 calculation. Snapshot parity fixtures compare bar-based and live decisions where price ordering is
 fully observable. Built-in close rules such as cumulative RSI2 trend-break/threshold decisions also
 live in pure execution policies rather than in backtest or worker adapters.
+`StrategyEntryEligibilityPolicy` is the corresponding common entry gate. Preview, backtest, and
+live recommendation adapters translate their runtime state into the same position-limit,
+drawdown, consecutive-loss, session-entry, and reentry decisions. Environment-specific bar/date
+bookkeeping stays outside the policy, but it cannot change the gate ordering or effective position
+limit. Live recommendation timestamps and cooldown boundaries use the injected `TimeProvider`,
+and per-day entry counts reset at the US market calendar's date boundary instead of UTC midnight.
 The TQQQ long-trend strategy likewise owns its entry stop/target and rolling SMA stop-floor math in
 `Tqqq200SmaExecutionPolicy`. Its configured SMA period and multipliers feed detection, prepared
 backtest data, and live monitoring; adapters must not embed their own 200-day or multiplier values.

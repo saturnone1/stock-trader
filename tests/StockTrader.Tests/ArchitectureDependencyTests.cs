@@ -626,6 +626,26 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void PreviewBacktestAndLiveShareStrategyEntryEligibilityPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var sharedPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/StrategyEntryEligibilityPolicy.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Api/PatternPreviewEndpoints.cs"));
+        var backtest = File.ReadAllText(Path.Combine(
+            repository, "Application/Backtesting/BacktestEntryEligibilityPolicy.cs"));
+        var live = File.ReadAllText(Path.Combine(
+            repository, "Services/Signal/SignalService.cs"));
+
+        sharedPolicy.Should().Contain("public static class StrategyEntryEligibilityPolicy");
+        preview.Should().Contain("StrategyEntryEligibilityPolicy.Evaluate(");
+        backtest.Should().Contain("StrategyEntryEligibilityPolicy.Evaluate(");
+        live.Should().Contain("StrategyEntryEligibilityPolicy.Evaluate(");
+        live.Should().NotContain("DateTime.UtcNow");
+    }
+
+    [Fact]
     public void BacktestRuntimeStateHasOneRegistryOwner()
     {
         var repository = FindRepositoryRoot();
