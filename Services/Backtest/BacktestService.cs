@@ -239,12 +239,7 @@ public class BacktestService : IBacktestService
         CancellationToken ct)
     {
         // ── Phase 2: 날짜순 포트폴리오 시뮬레이션 ──
-        var allDates = symbolDataMap.Values
-            .SelectMany(d => d.TimestampToIndex.Keys)
-            .Distinct()
-            .Where(d => d >= from)
-            .OrderBy(d => d)
-            .ToList();
+        var allDates = BuildSimulationTimeline(symbolDataMap.Values, from);
 
         var openPositions = new Dictionary<string, TradeSimulator.OpenPosition>();
         var trades = new List<TradeRecord>();
@@ -1297,6 +1292,14 @@ public class BacktestService : IBacktestService
     #endregion
 
     #region Helpers
+
+    internal static List<DateTime> BuildSimulationTimeline(IEnumerable<SymbolPreparedData> preparedData, DateTime from) =>
+        preparedData
+            .SelectMany(data => data.TimestampToIndex.Keys)
+            .Distinct()
+            .Where(timestamp => timestamp >= from)
+            .OrderBy(timestamp => timestamp)
+            .ToList();
 
     private static IReadOnlyCollection<string> CollectReferenceSymbols(IEnumerable<IPatternDetector> detectors)
     {
