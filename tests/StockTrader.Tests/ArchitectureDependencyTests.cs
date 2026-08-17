@@ -453,6 +453,8 @@ public class ArchitectureDependencyTests
         deployment.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().Contain("containerPort: 5239");
         deployment.Should().Contain("targetPort: 5239");
+        deployment.Split("timeoutSeconds: 3", StringSplitOptions.None).Length.Should().Be(3,
+            "readiness와 liveness 모두 초기 SQLite 상태 조회에 충분한 제한 시간을 가져야 합니다");
         compose.Should().Contain("\"5239:5239\"");
         compose.Should().Contain("dockerfile: Dockerfile.api");
         compose.Should().NotContain("ASPNETCORE_URLS");

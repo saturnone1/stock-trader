@@ -62,12 +62,14 @@ spec:
             port: 5239
           initialDelaySeconds: 60
           periodSeconds: 10
+          timeoutSeconds: 3
         readinessProbe:
           httpGet:
             path: /api/health
             port: 5239
           initialDelaySeconds: 10
           periodSeconds: 5
+          timeoutSeconds: 3
       volumes:
       - name: stocktrader-data
         hostPath:

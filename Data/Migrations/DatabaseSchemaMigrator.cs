@@ -36,7 +36,7 @@ public sealed class DatabaseSchemaMigrator
                 "EF 기준선을 채택한 이전 릴리스로 먼저 업그레이드하거나 검증된 백업을 복원하세요.");
         }
 
-        _logger.LogInformation("Applying pending EF Core database migrations");
+        _logger.LogInformation("Ensuring database schema is synchronized with EF Core migrations");
         await _db.Database.MigrateAsync(ct);
     }
 
