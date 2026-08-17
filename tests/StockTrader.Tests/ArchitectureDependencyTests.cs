@@ -50,6 +50,19 @@ public class ArchitectureDependencyTests
             "실시간 탐지·추천·청산은 저장 JSON이나 EF 엔티티를 직접 해석하지 않고 ICompiledStrategyRepository를 사용해야 합니다");
     }
 
+    [Fact]
+    public void ProgramDelegatesSchemaChangesToVersionedMigrationRunner()
+    {
+        var repository = FindRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(repository, "Program.cs"));
+
+        source.Should().Contain("DatabaseMigrationRunner");
+        source.Should().NotContain("ALTER TABLE");
+        source.Should().NotContain("PRAGMA table_info");
+        source.Should().NotContain("CREATE TABLE");
+        source.Should().NotContain("EnsureCreatedAsync");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

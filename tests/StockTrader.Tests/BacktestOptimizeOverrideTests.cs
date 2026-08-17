@@ -51,10 +51,11 @@ public class BacktestOptimizeOverrideTests
         var rules = JsonSerializer.Deserialize<List<EntryRule>>(pattern.EntryRulesJson);
         rules.Should().NotBeNull();
         rules!.Should().ContainSingle();
-        rules[0].CompareIndicator.Should().Be("ROC");
-        rules[0].CompareParams["period"].Should().Be(21);
-        rules[0].Weight.Should().Be(1.5m);
-        rules[0].WithinBars.Should().Be(3);
-        rules[0].ConsecutiveBars.Should().Be(2);
+        var rule = rules!.Single();
+        rule.CompareIndicator.Should().Be("ROC");
+        rule.CompareParams["period"].Should().Be(21);
+        rule.Weight.Should().Be(1.5m);
+        rule.WithinBars.Should().Be(3);
+        rule.ConsecutiveBars.Should().Be(2);
     }
 }
