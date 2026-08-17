@@ -254,6 +254,13 @@ rendered by `PatternWorkspaceSidebar.svelte`, `PatternStrategyTree.svelte`, and
 shell, down from 1,630 lines, with server metadata, API state, validation, and command coordination
 kept in the parent.
 
+`Optimization.svelte` now delegates its complete input surface and job/result presentation to
+`OptimizationJobForm.svelte` and `OptimizationJobList.svelte`. Request validation, API payload
+construction, combination estimates, labels, and result insight calculations live in the pure
+`optimizationModel.js` module with Node goldens. The page is a 328-line API/state coordinator,
+down from 1,017 lines. The extraction also fixed a result-detail runtime failure caused by the
+previous page calling an undefined signed-percent formatter whenever median comparisons existed.
+
 The legacy Blazor route tree and its MudBlazor/ApexCharts packages are removed. `Program.cs` maps
 only the JSON API, and the backend project no longer compiles or publishes a second UI.
 

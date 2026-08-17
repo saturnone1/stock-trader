@@ -150,6 +150,35 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void DesktopOptimizationDelegatesFormResultsAndPureCalculations()
+    {
+        var repository = FindRepositoryRoot();
+        var pagePath = Path.Combine(repository, "desktop-app/src/pages/Optimization.svelte");
+        var page = File.ReadAllText(pagePath);
+        var model = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/optimization/optimizationModel.js"));
+        var modelTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/optimization/optimizationModel.test.js"));
+        var form = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/optimization/OptimizationJobForm.svelte"));
+        var jobs = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/optimization/OptimizationJobList.svelte"));
+
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(400);
+        page.Should().Contain("<OptimizationJobForm");
+        page.Should().Contain("<OptimizationJobList");
+        page.Should().Contain("buildOptimizationJob(form, pattern)");
+        page.Should().NotContain("function parseNumberList(");
+        page.Should().NotContain("function getResultInsights(");
+        page.Should().NotContain("formatSignedPercent(");
+        form.Should().Contain("estimatedCombinationCount(form)");
+        jobs.Should().Contain("resultInsights(result, results)");
+        model.Should().Contain("export function buildOptimizationJob(");
+        model.Should().Contain("export function formatSignedPercent(");
+        modelTests.Should().Contain("without a runtime error");
+    }
+
+    [Fact]
     public void PatternBuilderDelegatesStrategySafetyValidation()
     {
         var repository = FindRepositoryRoot();
