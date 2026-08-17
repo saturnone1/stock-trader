@@ -11,6 +11,8 @@
   import BacktestScenarioComparison from '../features/backtest/BacktestScenarioComparison.svelte'
   import BacktestTradeHistory from '../features/backtest/BacktestTradeHistory.svelte'
   import BacktestTimingOptions from '../features/backtest/BacktestTimingOptions.svelte'
+  import BacktestUniverseComparison from '../features/backtest/BacktestUniverseComparison.svelte'
+  import BacktestUniverseControls from '../features/backtest/BacktestUniverseControls.svelte'
   import BacktestValidationResults from '../features/backtest/BacktestValidationResults.svelte'
   import {
     factorExperimentPresets,
@@ -1118,59 +1120,16 @@
         </div>
       </div>
 
-      <div class="mt-5 rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-5">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <div class="text-sm font-semibold text-emerald-100">유니버스·팩터 비교</div>
-            <div class="mt-1 text-sm text-emerald-50">현재 입력 종목군에서 시총/섹터 필터, 재무 팩터 필터, 교집합 필터를 직접 잘라 같은 타이밍 시나리오로 비교합니다.</div>
-          </div>
-          <label class="flex items-center gap-2 text-sm text-emerald-100">
-            <input type="checkbox" bind:checked={universeComparison.enabled} disabled={!timingLab.enabled} />
-            필터 비교 포함
-          </label>
-        </div>
-
-      <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
-          <label class="flex items-center gap-2 rounded border border-emerald-800/40 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-            <input type="checkbox" bind:checked={universeComparison.includeCurrentSymbols} disabled={!timingLab.enabled} />
-            현재 입력 유지
-          </label>
-          <label class="flex items-center gap-2 rounded border border-emerald-800/40 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-            <input type="checkbox" bind:checked={universeComparison.includeUniverseBuilder} disabled={!timingLab.enabled || !universeComparison.enabled} />
-            시총·섹터 필터
-          </label>
-          <label class="flex items-center gap-2 rounded border border-emerald-800/40 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-            <input type="checkbox" bind:checked={universeComparison.includeFinancialFactor} disabled={!timingLab.enabled || !universeComparison.enabled} />
-            재무 팩터 필터
-          </label>
-          <label class="flex items-center gap-2 rounded border border-emerald-800/40 bg-gray-950 px-4 py-3 text-sm text-gray-300">
-            <input type="checkbox" bind:checked={universeComparison.includeCombined} disabled={!timingLab.enabled || !universeComparison.enabled} />
-            교집합 필터
-          </label>
-        </div>
-
-        <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
-          <div class="rounded border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
-            <div class="text-xs text-gray-500">현재 입력</div>
-            <div class="mt-2 text-xl font-semibold text-white">{uniqueSymbols(parseSymbols()).length}</div>
-          </div>
-          <div class="rounded border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
-            <div class="text-xs text-gray-500">시총·섹터 필터 후</div>
-            <div class="mt-2 text-xl font-semibold text-white">{intersectSymbols(parseSymbols(), universeBuilderSymbols).length}</div>
-            <div class="mt-1 text-xs text-gray-500">후보 {universeBuilderSummary?.matched ?? 0}개</div>
-          </div>
-          <div class="rounded border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
-            <div class="text-xs text-gray-500">재무 팩터 후</div>
-            <div class="mt-2 text-xl font-semibold text-white">{intersectSymbols(parseSymbols(), financialFactorSymbols).length}</div>
-            <div class="mt-1 text-xs text-gray-500">후보 {financialFactorSummary?.matched ?? 0}개</div>
-          </div>
-          <div class="rounded border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
-            <div class="text-xs text-gray-500">교집합 필터 후</div>
-            <div class="mt-2 text-xl font-semibold text-white">{intersectSymbols(intersectSymbols(parseSymbols(), universeBuilderSymbols), financialFactorSymbols).length}</div>
-            <div class="mt-1 text-xs text-gray-500">타이밍 비교에 바로 투입</div>
-          </div>
-        </div>
-      </div>
+      <BacktestUniverseControls
+        timingEnabled={timingLab.enabled}
+        {universeComparison}
+        currentCount={uniqueSymbols(parseSymbols()).length}
+        universeCount={intersectSymbols(parseSymbols(), universeBuilderSymbols).length}
+        financialCount={intersectSymbols(parseSymbols(), financialFactorSymbols).length}
+        combinedCount={intersectSymbols(intersectSymbols(parseSymbols(), universeBuilderSymbols), financialFactorSymbols).length}
+        universeMatched={universeBuilderSummary?.matched ?? 0}
+        financialMatched={financialFactorSummary?.matched ?? 0}
+      />
 
       <BacktestFactorLabPanel
         {factorLab}
@@ -1366,39 +1325,9 @@
     </section>
 
     {#if comparisonResults.length > 0}
-      {#if getUniverseComparisonRows().length > 1}
-        <section class="rounded-2xl border border-emerald-800/40 bg-emerald-950/10 p-5">
-          <div class="text-xl font-semibold text-white">필터 전/후 기준 비교</div>
-          <div class="mt-2 text-sm text-gray-400">각 유니버스의 기본 패턴 결과만 따로 뽑아 현재 입력 대비 얼마나 줄었는지 먼저 확인합니다.</div>
-          <div class="mt-4 overflow-auto">
-            <table class="min-w-full text-sm">
-              <thead class="text-left text-gray-500">
-                <tr>
-                  <th class="px-3 py-2">유니버스</th>
-                  <th class="px-3 py-2">종목 수</th>
-                  <th class="px-3 py-2">종목 감소</th>
-                  <th class="px-3 py-2">총 수익률</th>
-                  <th class="px-3 py-2">최대 낙폭</th>
-                  <th class="px-3 py-2">샤프</th>
-                  <th class="px-3 py-2">거래 수</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each getUniverseComparisonRows() as row}
-                  <tr class="border-t border-gray-800">
-                    <td class="px-3 py-2 font-medium text-white">{row.label}</td>
-                    <td class="px-3 py-2 text-gray-300">{row.symbolCount}</td>
-                    <td class={`px-3 py-2 ${row.symbolReduction >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{row.symbolReduction > 0 ? '+' : ''}{row.symbolReduction}</td>
-                    <td class={`px-3 py-2 ${Number(row.totalReturn ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}`}>{formatPercent(row.totalReturn)}</td>
-                    <td class="px-3 py-2 text-red-300">{formatPercent(row.maxDrawdown)}</td>
-                    <td class="px-3 py-2 text-gray-300">{Number(row.sharpeRatio ?? 0).toFixed(2)}</td>
-                    <td class="px-3 py-2 text-gray-300">{row.totalTrades ?? 0}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      {@const universeComparisonRows = getUniverseComparisonRows()}
+      {#if universeComparisonRows.length > 1}
+        <BacktestUniverseComparison rows={universeComparisonRows} />
       {/if}
 
       {@const factorRankingRows = getFactorLabRankingRows()}

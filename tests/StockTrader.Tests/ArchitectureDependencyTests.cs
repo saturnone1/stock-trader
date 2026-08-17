@@ -40,8 +40,12 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/BacktestTimingOptions.svelte"));
         var scenarioComparison = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/BacktestScenarioComparison.svelte"));
+        var universeControls = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestUniverseControls.svelte"));
+        var universeResults = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestUniverseComparison.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_440);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_370);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
@@ -52,6 +56,8 @@ public class ArchitectureDependencyTests
         page.Should().Contain("<BacktestFactorLabPanel");
         page.Should().Contain("<BacktestTimingOptions");
         page.Should().Contain("<BacktestScenarioComparison");
+        page.Should().Contain("<BacktestUniverseControls");
+        page.Should().Contain("<BacktestUniverseComparison");
         page.Should().NotContain("백테스트 실패:");
         page.Should().NotContain("타이밍 리포트");
         page.Should().NotContain("종목별 성과");
@@ -62,6 +68,8 @@ public class ArchitectureDependencyTests
         page.Should().NotContain(">실행 가능한 프리셋</div>");
         page.Should().NotContain(">비교 기간 조합</div>");
         page.Should().NotContain(">타이밍·팩터 비교 결과</div>");
+        page.Should().NotContain(">유니버스·팩터 비교</div>");
+        page.Should().NotContain(">필터 전/후 기준 비교</div>");
         page.Should().NotContain("function getWhipsawStats(");
         page.Should().NotContain("const factorExperimentPresets = [");
         research.Should().Contain("export function getWhipsawStats(");
@@ -83,6 +91,9 @@ public class ArchitectureDependencyTests
         timingOptions.Should().Contain("비교 기간 조합");
         scenarioComparison.Should().Contain("타이밍·팩터 비교 결과");
         scenarioComparison.Should().Contain("onSelect(row.key)");
+        universeControls.Should().Contain("bind:checked={universeComparison.includeCombined}");
+        universeControls.Should().Contain("교집합 필터 후");
+        universeResults.Should().Contain("필터 전/후 기준 비교");
     }
 
     [Theory]
