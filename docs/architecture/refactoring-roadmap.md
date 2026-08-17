@@ -192,8 +192,12 @@ aliases, numeric sanitization, and grouped-strategy round trips. This reduces th
 transitions in `patternEditorCommands.js`, reducing the page to 1,166 lines. Command goldens cover
 all list boundaries, parent reselection, deep-copy behavior, and invalid-index no-ops. They also fix
 a trust defect where adding the first condition after deleting every group silently inserted both a
-default condition and the requested condition. Presentation panels remain the next extraction
-boundary.
+default condition and the requested condition. Workspace selection/creation, the strategy tree,
+and the rule/settings inspector are now
+rendered by `PatternWorkspaceSidebar.svelte`, `PatternStrategyTree.svelte`, and
+`PatternRuleInspector.svelte`. `PatternBuilder.svelte` is consequently a 624-line orchestration
+shell, down from 1,630 lines, with server metadata, API state, validation, and command coordination
+kept in the parent.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

@@ -167,8 +167,14 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/pattern-builder/patternEditorCommands.js"));
         var editorCommandTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/patternEditorCommands.test.js"));
+        var workspaceSidebar = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/PatternWorkspaceSidebar.svelte"));
+        var strategyTree = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/PatternStrategyTree.svelte"));
+        var ruleInspector = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/PatternRuleInspector.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1170);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(630);
         page.Should().Contain("from '../features/pattern-builder/patternValidation'");
         page.Should().Contain("from '../features/pattern-builder/patternWorkspace'");
         page.Should().NotContain("function collectValidationIssues(");
@@ -177,6 +183,8 @@ public class ArchitectureDependencyTests
         page.Should().NotContain("function normalizeRule(");
         page.Should().NotContain(".splice(");
         page.Should().NotContain("JSON.parse(JSON.stringify");
+        page.Should().NotContain("언제 살까?");
+        page.Should().NotContain("선택한 조건 바꾸기");
         page.Should().Contain("collectPatternValidationIssues(workspace");
         page.Should().Contain("workspaceModel.configure({ indicatorFieldConfigs, dynamicExitFieldConfigs })");
         validation.Should().Contain("export function collectPatternValidationIssues(");
@@ -196,6 +204,17 @@ public class ArchitectureDependencyTests
         editorCommandTests.Should().Contain("creates exactly the requested buy or sell condition");
         editorCommandTests.Should().Contain("do not dirty state at list boundaries");
         editorCommandTests.Should().Contain("safe no-ops");
+        page.Should().Contain("<PatternWorkspaceSidebar");
+        page.Should().Contain("<PatternStrategyTree");
+        page.Should().Contain("<PatternRuleInspector");
+        workspaceSidebar.Should().Contain("내 매매 전략");
+        workspaceSidebar.Should().Contain("bind:value={newPatternName}");
+        strategyTree.Should().Contain("언제 살까?");
+        strategyTree.Should().Contain("언제 팔까?");
+        strategyTree.Should().Contain("추가 매수·분할 매도");
+        ruleInspector.Should().Contain("선택한 조건 바꾸기");
+        ruleInspector.Should().Contain("bind:value={workspace.timeFrame}");
+        ruleInspector.Should().Contain("실시간 감시와 자동 주문에 연결");
     }
 
     [Theory]
