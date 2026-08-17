@@ -132,6 +132,26 @@ public static class PatternPreviewEndpoints
             : requestedStartIndex;
         var evaluationStartIndex = Math.Max(49, displayStartIndex);
         OpenPreviewPosition? position = null;
+        decimal compoundedReturn = 1m;
+        var completedTrades = 0;
+        var winningTrades = 0;
+
+        void Realize(OpenPreviewPosition openPosition, decimal price, int quantity)
+        {
+            if (quantity > 0)
+                openPosition.RealizedPnl += (price - openPosition.EntryPrice) * quantity;
+        }
+
+        void Complete(OpenPreviewPosition openPosition, decimal price)
+        {
+            Realize(openPosition, price, openPosition.CurrentQuantity);
+            var cycleReturn = openPosition.InvestedCapital > 0
+                ? openPosition.RealizedPnl / openPosition.InvestedCapital
+                : 0;
+            compoundedReturn *= Math.Max(0m, 1m + cycleReturn * openPosition.AllocationScale);
+            completedTrades++;
+            if (openPosition.RealizedPnl > 0) winningTrades++;
+        }
 
         if (requestedBars.Length > displayCount)
             warnings.Add($"선택 기간의 {requestedBars.Length:N0}개 봉 중 최근 {displayCount:N0}개를 표시합니다. 기간을 줄이거나 더 큰 봉 단위를 선택하세요.");
@@ -185,6 +205,7 @@ public static class PatternPreviewEndpoints
                     if (current.High >= partialTarget && position.CurrentQuantity >= 2)
                     {
                         var sold = position.CurrentQuantity / 2;
+                        Realize(position, partialTarget, sold);
                         position.CurrentQuantity -= sold;
                         position.PartialProfitTaken = true;
                         position.StopPrice = Math.Max(position.StopPrice, position.EntryPrice);
@@ -226,6 +247,7 @@ public static class PatternPreviewEndpoints
                         if (string.Equals(scaling.Direction, "SCALE_IN", StringComparison.OrdinalIgnoreCase))
                         {
                             var totalCost = position.EntryPrice * position.CurrentQuantity + current.Close * amount;
+                            position.InvestedCapital += current.Close * amount;
                             position.CurrentQuantity += amount;
                             position.EntryPrice = totalCost / position.CurrentQuantity;
                             markers.Add(new PatternPreviewMarker(
@@ -237,6 +259,7 @@ public static class PatternPreviewEndpoints
                             var sold = Math.Min(amount, position.CurrentQuantity - 1);
                             if (sold > 0)
                             {
+                                Realize(position, current.Close, sold);
                                 position.CurrentQuantity -= sold;
                                 markers.Add(new PatternPreviewMarker(
                                     current.Timestamp, "SCALE_OUT", current.Close,
@@ -248,6 +271,7 @@ public static class PatternPreviewEndpoints
 
                 if (reason is not null)
                 {
+                    Complete(position, exitPrice);
                     markers.Add(new PatternPreviewMarker(current.Timestamp, "EXIT", exitPrice, Reason: reason));
                     position = null;
                 }
@@ -294,7 +318,9 @@ public static class PatternPreviewEndpoints
                 StopPrice = entryStop,
                 TargetPrice = entryTarget,
                 HighestPrice = entryPrice,
-                InitialRisk = stopDistance
+                InitialRisk = stopDistance,
+                InvestedCapital = entryPrice * 100,
+                AllocationScale = signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m
             };
             markers.Add(new PatternPreviewMarker(
                 entryDate,
@@ -317,6 +343,18 @@ public static class PatternPreviewEndpoints
         var displayStart = allBars[displayStartIndex].Timestamp;
         var visibleMarkers = markers.Where(marker => marker.Date >= displayStart && marker.Date < dataTo).ToList();
         var visibleMatches = matches.Where(marker => marker.Date >= displayStart && marker.Date < dataTo).ToList();
+        var completedReturnPercent = (compoundedReturn - 1m) * 100m;
+        var totalReturnPercent = completedReturnPercent;
+        decimal? openPositionReturnPercent = null;
+        if (position is not null)
+        {
+            var lastVisibleClose = allBars.Where(bar => bar.Timestamp < dataTo).Last().Close;
+            var openPnl = position.RealizedPnl
+                + (lastVisibleClose - position.EntryPrice) * position.CurrentQuantity;
+            var openCycleReturn = position.InvestedCapital > 0 ? openPnl / position.InvestedCapital : 0;
+            openPositionReturnPercent = openCycleReturn * 100m;
+            totalReturnPercent = (compoundedReturn * (1m + openCycleReturn * position.AllocationScale) - 1m) * 100m;
+        }
 
         return Results.Ok(new
         {
@@ -347,6 +385,12 @@ public static class PatternPreviewEndpoints
                 scaleInCount = visibleMarkers.Count(marker => marker.Type == "SCALE_IN"),
                 partialExitCount = visibleMarkers.Count(marker => marker.Type is "SCALE_OUT" or "PARTIAL_EXIT"),
                 stopMoveCount = visibleMarkers.Count(marker => marker.Type == "STOP_MOVE"),
+                completedTrades,
+                winningTrades,
+                winRate = completedTrades > 0 ? (decimal)winningTrades / completedTrades : 0,
+                completedReturnPercent,
+                totalReturnPercent,
+                openPositionReturnPercent,
                 openPosition = position is not null,
                 from = displayStart.ToString("O"),
                 to = allBars.Where(bar => bar.Timestamp < dataTo).Last().Timestamp.ToString("O"),
@@ -436,6 +480,9 @@ public static class PatternPreviewEndpoints
         public bool PartialProfitTaken { get; set; }
         public bool BreakevenApplied { get; set; }
         public bool TrailingActivated { get; set; }
+        public decimal InvestedCapital { get; set; }
+        public decimal RealizedPnl { get; set; }
+        public decimal AllocationScale { get; init; } = 1m;
         public Dictionary<int, int> ScaleCounts { get; } = new();
     }
 

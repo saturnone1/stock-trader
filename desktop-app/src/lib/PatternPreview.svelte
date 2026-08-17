@@ -78,8 +78,11 @@
         comparison = {
           entryDelta: result.summary.entryCount - previous.summary.entryCount,
           matchDelta: result.summary.matchCount - previous.summary.matchCount,
+          returnDelta: Number(result.summary.totalReturnPercent ?? 0) - Number(previous.summary.totalReturnPercent ?? 0),
           previousEntries: previous.summary.entryCount,
-          currentEntries: result.summary.entryCount
+          currentEntries: result.summary.entryCount,
+          previousReturn: Number(previous.summary.totalReturnPercent ?? 0),
+          currentReturn: Number(result.summary.totalReturnPercent ?? 0)
         }
       } else {
         comparison = null
@@ -182,6 +185,12 @@
     return number >= 1000 ? number.toLocaleString(undefined, { maximumFractionDigits: 0 }) : number.toFixed(2)
   }
 
+  function formatReturn(value, digits = 2) {
+    const number = Number(value)
+    if (!Number.isFinite(number)) return '-'
+    return `${number > 0 ? '+' : ''}${number.toFixed(digits)}%`
+  }
+
   function formatAxisDate(value) {
     if (!value) return ''
     const date = value.slice(5, 10)
@@ -265,7 +274,9 @@
       <span class="flex items-center gap-1 font-semibold text-emerald-300"><TrendingUp size={14} /> 방금 바꾼 설정의 영향</span>
       <span class={comparison.entryDelta > 0 ? 'text-emerald-200' : comparison.entryDelta < 0 ? 'text-amber-200' : 'text-gray-300'}>{deltaLabel(comparison.entryDelta, '실제 매수')}</span>
       <span class="text-gray-300">{deltaLabel(comparison.matchDelta, '매수 조건 충족')}</span>
+      <span class={comparison.returnDelta > 0 ? 'text-emerald-200' : comparison.returnDelta < 0 ? 'text-rose-200' : 'text-gray-300'}>누적 수익률 {formatReturn(comparison.returnDelta)} 변화</span>
       <span class="text-gray-500">이전 {comparison.previousEntries}회 → 현재 {comparison.currentEntries}회</span>
+      <span class="text-gray-500">수익률 {formatReturn(comparison.previousReturn)} → {formatReturn(comparison.currentReturn)}</span>
     </div>
   {/if}
 
@@ -276,6 +287,31 @@
     </div>
   {:else if chart}
     <div class="px-4 pb-3 pt-4">
+      <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div class={`rounded-lg border p-3 ${Number(result.summary.totalReturnPercent ?? 0) >= 0 ? 'border-emerald-900/70 bg-emerald-950/20' : 'border-rose-900/70 bg-rose-950/20'}`}>
+          <div class="text-xs text-gray-400">기간 누적 수익률</div>
+          <div class={`mt-1 text-2xl font-bold ${Number(result.summary.totalReturnPercent ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatReturn(result.summary.totalReturnPercent)}</div>
+          <div class="mt-1 text-[11px] text-gray-500">{result.summary.openPosition ? `마지막 보유분 ${formatReturn(result.summary.openPositionReturnPercent)} 포함` : '모든 거래 청산 기준'}</div>
+        </div>
+        <div class="rounded-lg border border-gray-800 bg-gray-900 p-3">
+          <div class="text-xs text-gray-400">확정 수익률</div>
+          <div class="mt-1 text-xl font-semibold text-white">{formatReturn(result.summary.completedReturnPercent)}</div>
+          <div class="mt-1 text-[11px] text-gray-500">완료된 거래만 복리 계산</div>
+        </div>
+        <div class="rounded-lg border border-gray-800 bg-gray-900 p-3">
+          <div class="text-xs text-gray-400">완료 거래</div>
+          <div class="mt-1 text-xl font-semibold text-white">{result.summary.completedTrades ?? 0}회</div>
+          <div class="mt-1 text-[11px] text-gray-500">수익 {result.summary.winningTrades ?? 0}회 · 손실 {(result.summary.completedTrades ?? 0) - (result.summary.winningTrades ?? 0)}회</div>
+        </div>
+        <div class="rounded-lg border border-gray-800 bg-gray-900 p-3">
+          <div class="text-xs text-gray-400">승률</div>
+          <div class="mt-1 text-xl font-semibold text-white">{((Number(result.summary.winRate ?? 0)) * 100).toFixed(1)}%</div>
+          <div class="mt-1 text-[11px] text-gray-500">미청산 거래는 제외</div>
+        </div>
+      </div>
+      <div class="mb-3 rounded border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] leading-5 text-gray-500">
+        이 수익률은 차트에 표시된 타점을 매수 비중대로 체결했다고 가정한 빠른 비교값입니다. 수수료·슬리피지·포트폴리오 동시 보유를 포함한 최종 성과는 백테스트 결과를 기준으로 판단하세요.
+      </div>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
         <div class="flex flex-wrap gap-4 text-gray-400">
           <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-amber-400"></span>매수 조건 충족 {result.summary.matchCount}회</span>
