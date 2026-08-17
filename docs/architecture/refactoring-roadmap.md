@@ -155,6 +155,9 @@
 - Stored strategy names now use a server-owned normalized comparison key and database unique index.
   Create/update races that pass the application pre-check are translated by the SQLite adapter into
   the same typed name-conflict outcome, while the normalized key remains absent from API contracts.
+- ASP.NET Core now emits a committed OpenAPI document during build without starting migrations,
+  secrets, or hosted workers. `openapi-typescript` generates the desktop schema file, strategy read
+  and write types consume those generated components, and CI rejects OpenAPI or TypeScript drift.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.
@@ -172,6 +175,11 @@
 Remaining Phase 2 work is primarily reducing residual runtime orchestration and broadening
 full-strategy preview/backtest/live parity fixtures beyond the shared entry/exit policies and the
 single-symbol preview simulation goldens.
+
+Remaining contract work includes replacing `BacktestRequest.CustomPatterns` and
+`OptimizeRequest.BasePattern`, which still serialize the persistence model, with the same explicit
+versioned strategy-document contract used by CRUD and preview. The generated OpenAPI document makes
+this remaining coupling visible and prevents it from being mistaken for a completed boundary.
 
 ## Phase 0 — Guardrails and governance
 

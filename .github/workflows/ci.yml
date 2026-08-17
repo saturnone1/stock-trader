@@ -37,6 +37,14 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
           dotnet-quality: 'preview'   # .NET 10 is currently in preview
 
+      - name: Setup Node.js for contract verification
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop-app/package-lock.json
+
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -65,6 +73,14 @@ jobs:
           dotnet build tests/StockTrader.Tests/StockTrader.Tests.csproj
           --configuration Release
           --no-restore
+
+      - name: Verify generated desktop API contracts
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: desktop-app
+        run: |
+          npm ci
+          npm run api:check
+          git diff --exit-code -- openapi/stocktrader_desktop.json src/api/generated.ts
 
       # ── Test ─────────────────────────────────
       - name: Run tests with coverage

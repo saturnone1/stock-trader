@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 
 namespace StockTrader.Tests;
@@ -586,6 +587,45 @@ public class ArchitectureDependencyTests
         autoTune.Should().NotContain("db.CustomPatterns");
         autoTune.Should().NotContain("CopyPatternValues(");
         autoTune.Should().NotContain("DateTime.UtcNow");
+    }
+
+    [Fact]
+    public void DesktopStrategyContractsComeFromSideEffectFreeBuildTimeOpenApi()
+    {
+        var repository = FindRepositoryRoot();
+        var project = File.ReadAllText(Path.Combine(repository, "StockTrader.csproj"));
+        var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
+        var backgroundRegistration = File.ReadAllText(Path.Combine(
+            repository, "Extensions/BackgroundServiceExtensions.cs"));
+        var package = File.ReadAllText(Path.Combine(repository, "desktop-app/package.json"));
+        var desktopTypes = File.ReadAllText(Path.Combine(repository, "desktop-app/src/api/types.ts"));
+        var generated = File.ReadAllText(Path.Combine(repository, "desktop-app/src/api/generated.ts"));
+        var openApi = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/openapi/stocktrader_desktop.json"));
+        using var document = JsonDocument.Parse(openApi);
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        project.Should().Contain("<OpenApiGenerateDocuments>true</OpenApiGenerateDocuments>");
+        project.Should().Contain("Microsoft.Extensions.ApiDescription.Server");
+        project.Should().Contain("Microsoft.OpenApi\" Version=\"2.7.5\"");
+        program.Should().Contain("GetDocument.Insider");
+        program.Should().Contain("includeHostedServices: !isOpenApiGeneration");
+        program.Should().Contain("if (!isOpenApiGeneration)");
+        program.Should().Contain("await app.InitializeStockTraderAsync()");
+        backgroundRegistration.Should().Contain("if (!includeHostedServices)");
+        package.Should().Contain("\"api:generate\"");
+        package.Should().Contain("\"api:check\"");
+        desktopTypes.Should().Contain("components['schemas']['CustomPatternResponse']");
+        desktopTypes.Should().Contain("components['schemas']['CustomPatternWriteRequest']");
+        desktopTypes.Should().NotContain("interface CustomPatternDocument");
+        generated.Should().Contain("CustomPatternResponse:");
+        generated.Should().Contain("CustomPatternWriteRequest:");
+        openApi.Should().Contain("\"CustomPatternResponse\"");
+        openApi.Should().Contain("\"CustomPatternWriteRequest\"");
+        schemas.GetProperty("CustomPatternResponse").GetRawText()
+            .Should().NotContain("normalizedName");
+        schemas.GetProperty("CustomPatternWriteRequest").GetRawText()
+            .Should().NotContain("normalizedName");
     }
 
     [Fact]

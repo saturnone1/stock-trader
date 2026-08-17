@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Reflection;
 using Serilog;
 using StockTrader.Api;
 using StockTrader.Extensions;
@@ -7,8 +8,10 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger()
 
 try
 {
+    var isOpenApiGeneration =
+        Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
     var builder = WebApplication.CreateBuilder(args);
-    if (!builder.Environment.IsDevelopment())
+    if (!isOpenApiGeneration && !builder.Environment.IsDevelopment())
         builder.Configuration.AddUserSecrets<Program>(optional: true);
 
     builder.Host.UseSerilog((context, services, logging) => logging
@@ -17,8 +20,14 @@ try
 
     builder.Services.AddMemoryCache();
     builder.Services.ConfigureHttpJsonOptions(options =>
-        options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-    builder.Services.AddStockTraderServices(builder.Configuration);
+    {
+        options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+        options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
+    builder.Services.AddOpenApi("desktop");
+    builder.Services.AddStockTraderServices(
+        builder.Configuration,
+        includeHostedServices: !isOpenApiGeneration);
     builder.Services.AddSecurityServices(builder.Configuration);
     builder.Services.AddCors(options => options.AddPolicy("DesktopUi", policy => policy
         .WithOrigins(
@@ -42,9 +51,12 @@ try
         Environment.ExitCode = await app.MigrateDatabaseOnlyAsync() ? 0 : 2;
         return;
     }
-    await app.InitializeStockTraderAsync();
+    if (!isOpenApiGeneration)
+        await app.InitializeStockTraderAsync();
     app.UseStockTraderPipeline();
     app.MapStockTraderApi();
+    if (app.Environment.IsDevelopment())
+        app.MapOpenApi("/openapi/{documentName}.json");
     app.Run();
 }
 catch (Exception exception)

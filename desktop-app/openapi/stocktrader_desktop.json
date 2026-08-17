@@ -1,0 +1,3780 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "StockTrader | desktop",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/backtest": {
+      "post": {
+        "tags": [
+          "BacktestEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/backtest/apply-live": {
+      "post": {
+        "tags": [
+          "BacktestEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyLiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/dashboard": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/portfolio": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/portfolio/performance": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/signals": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "pattern",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "style",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/trades/recommendations": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "count",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/trades/positions": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/trades/history": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "pattern",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/risk": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/accounts": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/accounts/{id}": {
+      "put": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/accounts/{id}/test": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/accounts/{id}/activate": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ml": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ml/train": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/analysis/{symbol}": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/pattern-stats": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/universe/meta": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/universe/query": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sectors",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "industries",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "marketCapMin",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "marketCapMax",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "percentileMin",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "percentileMax",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/financial-factors/meta": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/financial-factors/query": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "peRatioMax",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "pbRatioMax",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "roePercentMin",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "operatingMarginMin",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "revenueGrowthMin",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "netIncomeGrowthMin",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "turnaroundOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "positiveEarningsOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "symbols",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sectors",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "industries",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/financial-factors/import": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FinancialSnapshotImportDto"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/financial-factors/pipeline/status": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/financial-factors/pipeline/run": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/financial-factors/vendor-sync/run": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FinancialVendorSyncRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/symbol-profiles": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/symbol-profiles/{symbol}": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/symbol-profiles/{id}/activate": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/symbol-profiles/{id}/deactivate": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/symbol-profiles/{id}": {
+      "delete": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/custom-patterns/preview": {
+      "post": {
+        "tags": [
+          "PatternPreviewEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatternPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/backtest/optimize": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/bootstrap": {
+      "get": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/orders/execute-signal": {
+      "post": {
+        "tags": [
+          "OrderEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/orders/close-position": {
+      "post": {
+        "tags": [
+          "OrderEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/orders/reconcile-position-exit": {
+      "post": {
+        "tags": [
+          "OrderEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/custom-patterns": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomPatternResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomPatternWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPatternResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/api/custom-patterns/{id}": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPatternResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomPatternWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPatternResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/custom-patterns/{id}/apply-backtest": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomPatternResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOptimizeJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs/{id}": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs/{id}/settings": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOptimizeJobSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs/{id}/apply-result": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyOptimizeJobResultRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs/{id}/cancel": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs/{id}/pause": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs/{id}/resume": {
+      "post": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/optimize-jobs/{id}/results": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/metadata/strategy-builder": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApplyLiveRequest": {
+        "required": [
+          "parameterOverrides",
+          "enabledPatterns",
+          "riskPerTradePercent",
+          "dailyLossLimitPercent",
+          "maxTotalPositions",
+          "maxPositionsPerSector"
+        ],
+        "type": "object",
+        "properties": {
+          "parameterOverrides": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PatternParameterOverrides"
+              }
+            ]
+          },
+          "enabledPatterns": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "riskPerTradePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "dailyLossLimitPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "maxTotalPositions": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "maxPositionsPerSector": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ApplyOptimizeJobResultRequest": {
+        "type": "object",
+        "properties": {
+          "resultId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "BacktestApplyRequest": {
+        "type": "object",
+        "properties": {
+          "atrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "atrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "maxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "trailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "partialProfitR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "BacktestRequest": {
+        "type": "object",
+        "properties": {
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "patterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PatternType"
+            }
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "initialCapital": {
+            "type": "number",
+            "format": "double"
+          },
+          "timeFrame": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "slippagePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "commissionPerTrade": {
+            "type": "number",
+            "format": "double"
+          },
+          "slippageModel": {
+            "$ref": "#/components/schemas/SlippageModel"
+          },
+          "enableWalkForward": {
+            "type": "boolean"
+          },
+          "walkForwardInSampleMonths": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "walkForwardOutOfSampleMonths": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enableMonteCarlo": {
+            "type": "boolean"
+          },
+          "monteCarloSimulations": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "riskPerTradePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "dailyLossLimitPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "maxTotalPositions": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "maxPositionsPerSector": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "parameterOverrides": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PatternParameterOverrides"
+              }
+            ]
+          },
+          "dataSource": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DataSource"
+              }
+            ]
+          },
+          "weightStrategy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WeightStrategy"
+              }
+            ]
+          },
+          "backtestMode": {
+            "type": "string"
+          },
+          "customPatterns": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CustomPatternDefinition"
+            }
+          }
+        }
+      },
+      "CreateOptimizeJobRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "chunkSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxDurationHours": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "maxTestedCombinations": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "topResultsToKeep": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rankBy": {
+            "type": "string"
+          },
+          "continuousMode": {
+            "type": "boolean"
+          },
+          "autoApplyBestResult": {
+            "type": "boolean"
+          },
+          "autoApplyMinTrades": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "optimizeRequest": {
+            "$ref": "#/components/schemas/OptimizeRequest"
+          }
+        }
+      },
+      "CustomPatternDefinition": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "documentVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "normalizedName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "entryRulesJson": {
+            "type": "string"
+          },
+          "entryLogic": {
+            "type": "string"
+          },
+          "requireBullRegime": {
+            "type": "boolean"
+          },
+          "atrStopMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "atrTargetMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxHoldingBars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trailingAtr": {
+            "type": "number",
+            "format": "double"
+          },
+          "partialProfitR": {
+            "type": "number",
+            "format": "double"
+          },
+          "useWeightTiers": {
+            "type": "boolean"
+          },
+          "weightTiersJson": {
+            "type": "string"
+          },
+          "defaultAllocationPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitRulesJson": {
+            "type": "string"
+          },
+          "exitRulesLogic": {
+            "type": "string"
+          },
+          "exitGroupsJson": {
+            "type": "string"
+          },
+          "exitGroupsLogic": {
+            "type": "string"
+          },
+          "scalingRulesJson": {
+            "type": "string"
+          },
+          "timeFilterJson": {
+            "type": "string"
+          },
+          "circuitBreakerJson": {
+            "type": "string"
+          },
+          "reentryJson": {
+            "type": "string"
+          },
+          "portfolioRulesJson": {
+            "type": "string"
+          },
+          "entryGroupsJson": {
+            "type": "string"
+          },
+          "entryGroupsLogic": {
+            "type": "string"
+          },
+          "dynamicExitJson": {
+            "type": "string"
+          },
+          "entryMode": {
+            "type": "string"
+          },
+          "timeFrame": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "sizingMode": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "enableLiveTrading": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CustomPatternResponse": {
+        "required": [
+          "id",
+          "documentVersion",
+          "name",
+          "description",
+          "entryRulesJson",
+          "entryLogic",
+          "requireBullRegime",
+          "atrStopMultiplier",
+          "atrTargetMultiplier",
+          "maxHoldingBars",
+          "trailingAtr",
+          "partialProfitR",
+          "useWeightTiers",
+          "weightTiersJson",
+          "defaultAllocationPercent",
+          "exitRulesJson",
+          "exitRulesLogic",
+          "exitGroupsJson",
+          "exitGroupsLogic",
+          "scalingRulesJson",
+          "timeFilterJson",
+          "circuitBreakerJson",
+          "reentryJson",
+          "portfolioRulesJson",
+          "entryGroupsJson",
+          "entryGroupsLogic",
+          "dynamicExitJson",
+          "entryMode",
+          "timeFrame",
+          "sizingMode",
+          "isActive",
+          "enableLiveTrading",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "documentVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "entryRulesJson": {
+            "type": "string"
+          },
+          "entryLogic": {
+            "type": "string"
+          },
+          "requireBullRegime": {
+            "type": "boolean"
+          },
+          "atrStopMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "atrTargetMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxHoldingBars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trailingAtr": {
+            "type": "number",
+            "format": "double"
+          },
+          "partialProfitR": {
+            "type": "number",
+            "format": "double"
+          },
+          "useWeightTiers": {
+            "type": "boolean"
+          },
+          "weightTiersJson": {
+            "type": "string"
+          },
+          "defaultAllocationPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitRulesJson": {
+            "type": "string"
+          },
+          "exitRulesLogic": {
+            "type": "string"
+          },
+          "exitGroupsJson": {
+            "type": "string"
+          },
+          "exitGroupsLogic": {
+            "type": "string"
+          },
+          "scalingRulesJson": {
+            "type": "string"
+          },
+          "timeFilterJson": {
+            "type": "string"
+          },
+          "circuitBreakerJson": {
+            "type": "string"
+          },
+          "reentryJson": {
+            "type": "string"
+          },
+          "portfolioRulesJson": {
+            "type": "string"
+          },
+          "entryGroupsJson": {
+            "type": "string"
+          },
+          "entryGroupsLogic": {
+            "type": "string"
+          },
+          "dynamicExitJson": {
+            "type": "string"
+          },
+          "entryMode": {
+            "type": "string"
+          },
+          "timeFrame": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "sizingMode": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "enableLiveTrading": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CustomPatternWriteRequest": {
+        "type": "object",
+        "properties": {
+          "documentVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "entryRulesJson": {
+            "type": "string"
+          },
+          "entryLogic": {
+            "type": "string"
+          },
+          "requireBullRegime": {
+            "type": "boolean"
+          },
+          "atrStopMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "atrTargetMultiplier": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxHoldingBars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trailingAtr": {
+            "type": "number",
+            "format": "double"
+          },
+          "partialProfitR": {
+            "type": "number",
+            "format": "double"
+          },
+          "useWeightTiers": {
+            "type": "boolean"
+          },
+          "weightTiersJson": {
+            "type": "string"
+          },
+          "defaultAllocationPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitRulesJson": {
+            "type": "string"
+          },
+          "exitRulesLogic": {
+            "type": "string"
+          },
+          "exitGroupsJson": {
+            "type": "string"
+          },
+          "exitGroupsLogic": {
+            "type": "string"
+          },
+          "scalingRulesJson": {
+            "type": "string"
+          },
+          "timeFilterJson": {
+            "type": "string"
+          },
+          "circuitBreakerJson": {
+            "type": "string"
+          },
+          "reentryJson": {
+            "type": "string"
+          },
+          "portfolioRulesJson": {
+            "type": "string"
+          },
+          "entryGroupsJson": {
+            "type": "string"
+          },
+          "entryGroupsLogic": {
+            "type": "string"
+          },
+          "dynamicExitJson": {
+            "type": "string"
+          },
+          "entryMode": {
+            "type": "string"
+          },
+          "timeFrame": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "sizingMode": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "enableLiveTrading": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DataSource": {
+        "enum": [
+          "Alpaca",
+          "Polygon",
+          "Yahoo",
+          "LsSecurities",
+          null
+        ]
+      },
+      "FinancialSnapshotImportDto": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "asOfDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "peRatio": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "pbRatio": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "roePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "operatingMarginPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "revenueCurrent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "revenuePrevious": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "operatingIncomeCurrent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "operatingIncomePrevious": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "netIncomeCurrent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "netIncomePrevious": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FinancialVendorSyncRequest": {
+        "type": "object",
+        "properties": {
+          "symbols": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "OptimizeParams": {
+        "type": "object",
+        "properties": {
+          "atrStopMultiplier": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "atrTargetMultiplier": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "maxHoldingBars": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "trailingAtr": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "partialProfitR": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "ruleParamOverrides": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RuleParamRange"
+            }
+          },
+          "entryLogicOptions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "requireBullRegimeOptions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "boolean"
+            }
+          },
+          "entryModeOptions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "sizingModeOptions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "exitLogicOptions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeFrameOptions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "defaultAllocationPercent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "circuitBreakerConsecutiveLossLimit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "circuitBreakerCooldownBars": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "circuitBreakerMaxDrawdownPercent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "reentryCooldownAfterLoss": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "reentryCooldownAfterWin": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "portfolioMaxPositions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "portfolioMaxSinglePercent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "portfolioMaxEntriesPerDay": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ParamRange"
+              }
+            ]
+          },
+          "ruleFieldOverrides": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RuleFieldRange"
+            }
+          }
+        }
+      },
+      "OptimizeRequest": {
+        "type": "object",
+        "properties": {
+          "basePattern": {
+            "$ref": "#/components/schemas/CustomPatternDefinition"
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "initialCapital": {
+            "type": "number",
+            "format": "double"
+          },
+          "dataSource": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DataSource"
+              }
+            ]
+          },
+          "timeFrame": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "optimizeParams": {
+            "$ref": "#/components/schemas/OptimizeParams"
+          },
+          "rankBy": {
+            "type": "string"
+          },
+          "maxResults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxCombinations": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "oosPercent": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "ParamRange": {
+        "type": "object",
+        "properties": {
+          "min": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "max": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "step": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "values": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        }
+      },
+      "PatternParameterOverrides": {
+        "type": "object",
+        "properties": {
+          "gapUp_MinGapPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "gapUp_MaxPullbackPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "gapUp_MinVolume": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "breakout_LookbackDays": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "breakout_MinVolumeMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "breakout_BreakoutMarginPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "breakout_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "breakout_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vwap_MaxDeviationPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vwap_MinBouncePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vwap_MinBounceFromLowPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi_OversoldThreshold": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi_Period": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi_MinVolumeIncreaseMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "trend_MaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "trend_MaxPullbackFromMa": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "trend_TrendConfirmationDays": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "trend_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "trend_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "orb_RangeMinutes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "orb_MinRangePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volSpike_VolumeMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volSpike_ContinuationBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "volSpike_VolumeAvgPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "volSpike_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volSpike_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "earnings_DriftDays": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "earnings_MinSurprisePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "regime_MaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "regime_IndexSymbol": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "vola_BollingerPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "vola_StdDevMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vola_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vola_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mom_FastEmaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_SlowEmaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_MacdSignalPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_RsiPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_RsiOversold": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_RsiOverbought": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_RsiMomentumMin": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mom_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mtf_LongTrendMaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mtf_ShortEntryMaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mtf_MaxPullbackPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mtf_TrendConfirmationBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mtf_MaxDistanceAboveShortMa": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mtf_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mtf_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "chan_EmaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "chan_AtrPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "chan_AtrMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "chan_RsiPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "chan_RsiOversold": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "chan_RecentLowLookbackBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi2Bb_RsiPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi2Bb_RsiThreshold": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi2Bb_BollingerPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi2Bb_BollingerStdDev": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi2Bb_LongTrendMaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi2Bb_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "cumRsi2_RsiPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "cumRsi2_CumulativePeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "cumRsi2_EntryThreshold": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "cumRsi2_ExitThreshold": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "cumRsi2_LongTrendMaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "cumRsi2_ExitSmaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "cumRsi2_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "cumRsi2_PlaceholderTargetAtrMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volBrk_BreakoutFactor": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volBrk_MinVolumeMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volBrk_VolumeAvgPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "volBrk_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volBrk_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_SmaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "tqqq_EntryDistancePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_FixedStopPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_SmaStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_TargetSmaMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_MinimumTargetReturnPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_SpyExitDistancePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_MaxVolatility20d": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_OverheatStage1": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_OverheatStage2": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_OverheatPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_ConfirmationDays": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "tqqq_ShortTrendEmaPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "tqqq_VolumeAvgPeriod": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "tqqq_MinVolumeRatio": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_AtrStopMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_AtrTargetMultiplier": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "gapUp_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "gapUp_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "gapUp_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "breakout_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "breakout_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "breakout_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vwap_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "vwap_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vwap_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "trend_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "trend_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "trend_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "orb_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "orb_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "orb_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volSpike_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "volSpike_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volSpike_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "earnings_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "earnings_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "earnings_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "regime_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "regime_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "regime_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vola_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "vola_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vola_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mom_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mom_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mom_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mtf_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mtf_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "mtf_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "chan_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "chan_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "chan_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi2Bb_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rsi2Bb_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rsi2Bb_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "cumRsi2_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "cumRsi2_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "cumRsi2_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volBrk_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "volBrk_ExitTrailingAtr": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "volBrk_ExitPartialR": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tqqq_ExitMaxHoldingBars": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PatternPreviewRequest": {
+        "required": [
+          "symbol",
+          "pattern"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "$ref": "#/components/schemas/CustomPatternWriteRequest"
+          },
+          "timeFrame": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "from": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "to": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "PatternType": {
+        "enum": [
+          "GapUpPullback",
+          "Breakout",
+          "VwapReversion",
+          "RsiMeanReversion",
+          "TrendPullback",
+          "OpeningRangeBreakout",
+          "VolumeSpikeContinuation",
+          "EarningsDrift",
+          "IndexRegimeFilter",
+          "VolatilityExpansion",
+          "MomentumReversal",
+          "MultiTimeframeTrend",
+          "MeanReversionChannel",
+          "Rsi2Bollinger",
+          "VolatilityBreakout",
+          "Tqqq200Sma",
+          "CumulativeRsi2",
+          "Custom"
+        ]
+      },
+      "RuleFieldRange": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "ruleIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fieldName": {
+            "type": "string"
+          },
+          "numericValues": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "stringValues": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RuleParamRange": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "ruleIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "paramKey": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        }
+      },
+      "SlippageModel": {
+        "enum": [
+          "Fixed",
+          "Adaptive"
+        ]
+      },
+      "TimeFrame": {
+        "enum": [
+          "OneMinute",
+          "FiveMinute",
+          "FifteenMinute",
+          "Daily",
+          "Weekly"
+        ]
+      },
+      "UpdateOptimizeJobSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "autoApplyBestResult": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "autoApplyMinTrades": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "WeightStrategy": {
+        "type": "object",
+        "properties": {
+          "bullWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "bearWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "overheat1Weight": {
+            "type": "number",
+            "format": "double"
+          },
+          "overheat2Weight": {
+            "type": "number",
+            "format": "double"
+          },
+          "overheatStage1Pct": {
+            "type": "number",
+            "format": "double"
+          },
+          "overheatStage2Pct": {
+            "type": "number",
+            "format": "double"
+          },
+          "smaPeriod": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "StockTrader"
+    },
+    {
+      "name": "BacktestEndpoints"
+    },
+    {
+      "name": "PatternPreviewEndpoints"
+    },
+    {
+      "name": "AuthEndpoints"
+    },
+    {
+      "name": "OrderEndpoints"
+    }
+  ]
+}

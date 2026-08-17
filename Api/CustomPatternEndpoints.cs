@@ -10,13 +10,16 @@ public static class CustomPatternEndpoints
         var group = api.MapGroup("/custom-patterns").RequireAuthorization();
 
         group.MapGet("/", async (CustomPatternManagementService service, CancellationToken ct) =>
-            (await service.ListAsync(ct)).Select(value => value.ToResponse()).ToArray());
+            (await service.ListAsync(ct)).Select(value => value.ToResponse()).ToArray())
+            .Produces<CustomPatternResponse[]>();
 
         group.MapGet("/{id:int}", async (int id, CustomPatternManagementService service, CancellationToken ct) =>
         {
             var pattern = await service.FindAsync(id, ct);
             return pattern is null ? Results.NotFound() : Results.Ok(pattern.ToResponse());
-        });
+        })
+            .Produces<CustomPatternResponse>()
+            .Produces(StatusCodes.Status404NotFound);
 
         group.MapPost("/", async (CustomPatternWriteRequest request, CustomPatternManagementService service, CancellationToken ct) =>
         {
@@ -24,7 +27,10 @@ public static class CustomPatternEndpoints
             return result.Kind == CustomPatternOperationKind.Success
                 ? Results.Created($"/api/custom-patterns/{result.Definition!.Id}", result.Definition.ToResponse())
                 : ToErrorResult(result);
-        });
+        })
+            .Produces<CustomPatternResponse>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status409Conflict);
 
         group.MapPut("/{id:int}", async (int id, CustomPatternWriteRequest request, CustomPatternManagementService service, CancellationToken ct) =>
         {
@@ -32,7 +38,11 @@ public static class CustomPatternEndpoints
             return result.Kind == CustomPatternOperationKind.Success
                 ? Results.Ok(result.Definition!.ToResponse())
                 : ToErrorResult(result);
-        });
+        })
+            .Produces<CustomPatternResponse>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         group.MapDelete("/{id:int}", async (int id, CustomPatternManagementService service, CancellationToken ct) =>
             await service.DeleteAsync(id, ct) ? Results.Ok() : Results.NotFound());
@@ -48,7 +58,11 @@ public static class CustomPatternEndpoints
             return result.Kind == CustomPatternOperationKind.Success
                 ? Results.Ok(result.Definition!.ToResponse())
                 : ToErrorResult(result);
-        });
+        })
+            .Produces<CustomPatternResponse>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         return api;
     }

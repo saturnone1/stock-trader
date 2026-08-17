@@ -54,6 +54,8 @@ Run these commands after relevant changes:
 ```text
 dotnet build StockTrader.csproj --no-restore
 dotnet test tests/StockTrader.Tests/StockTrader.Tests.csproj --no-restore
+cd desktop-app && npm run api:check
+cd desktop-app && npm run test
 cd desktop-app && npm run build
 ```
 

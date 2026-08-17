@@ -1,3 +1,5 @@
+import type { components } from './generated';
+
 // Dashboard
 export interface DashboardData {
   accountInfo?: {
@@ -159,47 +161,10 @@ export interface FinancialPipelineStatus {
   recentRuns: FinancialPipelineRun[];
 }
 
-// Patterns
-export interface CustomPatternDocument {
-  id: number;
-  documentVersion: number;
-  name: string;
-  description: string | null;
-  entryRulesJson: string;
-  entryLogic: string;
-  requireBullRegime: boolean;
-  atrStopMultiplier: number;
-  atrTargetMultiplier: number;
-  maxHoldingBars: number;
-  trailingAtr: number;
-  partialProfitR: number;
-  useWeightTiers: boolean;
-  weightTiersJson: string;
-  defaultAllocationPercent: number;
-  exitRulesJson: string;
-  exitRulesLogic: string;
-  exitGroupsJson: string;
-  exitGroupsLogic: string;
-  scalingRulesJson: string;
-  timeFilterJson: string;
-  circuitBreakerJson: string;
-  reentryJson: string;
-  portfolioRulesJson: string;
-  entryGroupsJson: string;
-  entryGroupsLogic: string;
-  dynamicExitJson: string;
-  entryMode: string;
-  timeFrame: string;
-  sizingMode: string;
-  isActive: boolean;
-  enableLiveTrading: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type CustomPatternWriteRequest = Omit<
-  CustomPatternDocument,
-  'id' | 'createdAt' | 'updatedAt'
+// Patterns. The server contract is generated from ASP.NET Core OpenAPI metadata.
+export type CustomPatternDocument = components['schemas']['CustomPatternResponse'];
+export type CustomPatternWriteRequest = Required<
+  components['schemas']['CustomPatternWriteRequest']
 >;
 
 export interface Pattern {

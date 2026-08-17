@@ -21,7 +21,8 @@ namespace StockTrader.Extensions;
 public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddStockTraderServices(this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        bool includeHostedServices = true)
     {
         // Configuration binding
         services.Configure<AlpacaSettings>(configuration.GetSection("Alpaca"));
@@ -43,7 +44,7 @@ public static class ServiceCollectionExtensions
         services.AddBrokerServices();
         services.AddPatternServices();
         services.AddNotificationServices();
-        services.AddBackgroundServices();
+        services.AddBackgroundServices(includeHostedServices);
 
         services.AddSingleton(TimeProvider.System);
 
