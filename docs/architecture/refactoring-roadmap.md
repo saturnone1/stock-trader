@@ -166,6 +166,11 @@ their baseline comparison table are likewise isolated in `BacktestUniverseContro
 `BacktestUniverseComparison.svelte`. Execution inputs, statistical validation and risk/weight
 settings, and pattern selection/run controls now live in three focused components. This reduces
 the page to 1,228 lines while preserving the parent's request construction and execution state.
+Timing overlays, factor experiment normalization/scoring, universe variants, and scenario-plan
+composition are pure functions in `backtestScenarioPlanning.js`, covered by Node golden tests for
+source immutability, conservative OR exits, deduplication, and ranking formulas. This reduces the
+page to 955 lines. The new tests also fixed order-dependent universe deduplication that previously
+could execute the same symbol set twice.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

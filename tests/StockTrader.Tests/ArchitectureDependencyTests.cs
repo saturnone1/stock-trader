@@ -50,8 +50,12 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/BacktestRiskSettings.svelte"));
         var patternSelection = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/BacktestPatternSelection.svelte"));
+        var scenarioPlanning = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestScenarioPlanning.js"));
+        var scenarioPlanningTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestScenarioPlanning.test.js"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_230);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(960);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
@@ -84,6 +88,9 @@ public class ArchitectureDependencyTests
         page.Should().NotContain(">패턴 선택</div>");
         page.Should().NotContain("function getWhipsawStats(");
         page.Should().NotContain("const factorExperimentPresets = [");
+        page.Should().NotContain("function safeParseJson(");
+        page.Should().NotContain("function buildTimingRule(");
+        page.Should().NotContain("totalReturn * 140");
         research.Should().Contain("export function getWhipsawStats(");
         research.Should().Contain("export function getEquityCurveVolatility(");
         research.Should().Contain("export function factorReturnLift(");
@@ -112,6 +119,11 @@ public class ArchitectureDependencyTests
         riskSettings.Should().Contain("bind:checked={form.useWeightStrategy}");
         patternSelection.Should().Contain("onRun");
         patternSelection.Should().Contain("패턴 선택");
+        scenarioPlanning.Should().Contain("export function buildScenarioPatterns(");
+        scenarioPlanning.Should().Contain("export function buildUniverseVariants(");
+        scenarioPlanning.Should().Contain("[...symbols].sort().join('|')");
+        scenarioPlanningTests.Should().Contain("source[0].raw.exitRulesJson");
+        scenarioPlanningTests.Should().Contain("deduplicate identical symbol sets");
     }
 
     [Theory]
