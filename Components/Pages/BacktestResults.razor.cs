@@ -1,3 +1,4 @@
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Backtest;
@@ -94,15 +95,7 @@ public partial class BacktestResults
         else _selectedPatterns.Remove(pattern);
     }
 
-    private static string GetTimeFrameLabel(TimeFrame tf) => tf switch
-    {
-        TimeFrame.OneMinute     => "1분봉",
-        TimeFrame.FiveMinute    => "5분봉",
-        TimeFrame.FifteenMinute => "15분봉",
-        TimeFrame.Daily         => "일봉",
-        TimeFrame.Weekly        => "주봉",
-        _                       => tf.ToString()
-    };
+    private static string GetTimeFrameLabel(TimeFrame tf) => TimeFrameCatalog.DisplayName(tf);
 
     private static int GetMaxRecommendedDays(TimeFrame tf) => tf switch
     {

@@ -16,6 +16,8 @@ public static class StrategyCatalog
     public const string FixedRiskSizingMode = "FixedRisk";
     public const string KellySizingMode = "Kelly";
     public const string HalfKellySizingMode = "HalfKelly";
+    public const string ScalingInDirection = "SCALE_IN";
+    public const string ScalingOutDirection = "SCALE_OUT";
 
     private static IndicatorParameterDescriptor P(
         string key, string name, decimal value, decimal step = 1m) => new(key, name, value, step);
@@ -41,8 +43,8 @@ public static class StrategyCatalog
 
     public static IReadOnlyList<StrategyOptionDescriptor> ScalingDirections { get; } =
     [
-        new("SCALE_IN", "추가 매수"),
-        new("SCALE_OUT", "일부 매도")
+        new(ScalingInDirection, "추가 매수"),
+        new(ScalingOutDirection, "일부 매도")
     ];
 
     public static IReadOnlyList<ExitMethodDescriptor> StopMethods { get; } =

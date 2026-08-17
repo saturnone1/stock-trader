@@ -1,185 +1,15 @@
 using StockTrader.Configuration;
-using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
-using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
-using StockTrader.Services.Indicators;
-using StockTrader.Services.Patterns;
 
 namespace StockTrader.Services.Backtest;
 
 /// <summary>
-/// 개별 종목에 대한 바-바이-바 시뮬레이션을 수행합니다.
-/// 진입 시그널 감지, 포지션 관리(트레일링/부분익절/손절), 청산 로직을 담당합니다.
+/// 공유 장기 포지션 체결 정책을 백테스트 거래 기록과 연결합니다.
 /// </summary>
 internal sealed class TradeSimulator
 {
-
-    private readonly IIndicatorService _indicators;
-    private readonly ILogger _logger;
-
-    public TradeSimulator(IIndicatorService indicators, ILogger logger)
-    {
-        _indicators = indicators;
-        _logger = logger;
-    }
-
-    /// <returns>
-    /// (trades, warningMessage, actualDataFrom)
-    ///   - warningMessage: null이면 정상, 문자열이면 사용자에게 표시할 경고
-    ///   - actualDataFrom: 분봉 기간 클램핑이 발생한 경우 실제 데이터 시작일
-    /// </returns>
-    public async Task<(List<TradeRecord> trades, string? warning, DateTime? actualDataFrom)> SimulateSymbolAsync(
-        string symbol,
-        List<OhlcvBar> bars,
-        List<IPatternDetector> detectors,
-        Dictionary<DateOnly, MarketRegime> regimeByDate,
-        DateTime from,
-        decimal capital,
-        TimeFrame timeFrame,
-        BacktestRiskParameters riskParams,
-        PatternParameterOverrides? exitOverrides,
-        CancellationToken ct)
-    {
-        if (bars.Count < BacktestDataPolicy.MinimumWarmupBars)
-        {
-            string warning;
-            if (TimeFrameCatalog.IsIntraday(timeFrame))
-            {
-                var limitDays = timeFrame == TimeFrame.OneMinute ? 7 : 60;
-                warning = $"{symbol}: 분봉 데이터 부족 ({bars.Count}개). " +
-                          $"Yahoo Finance {GetTimeFrameLabel(timeFrame)} 데이터는 최근 {limitDays}일만 제공됩니다. " +
-                          $"시작일을 오늘 기준 {limitDays}일 이내로 설정하세요.";
-            }
-            else
-            {
-                warning = $"{symbol}: 데이터 부족 ({bars.Count}개, 최소 {BacktestDataPolicy.MinimumWarmupBars}개 필요). " +
-                          "기간을 늘리거나 다른 종목을 선택하세요.";
-            }
-            _logger.LogWarning("{Symbol}: 데이터 부족 ({Count}개, timeFrame={TimeFrame})", symbol, bars.Count, timeFrame);
-            return ([], warning, null);
-        }
-
-        var actualDataFrom = bars.Count > 0 ? (DateTime?)bars[0].Timestamp : null;
-
-        var barsArray = bars.ToArray();
-        var atrArray = _indicators.ATR(barsArray, 14);
-        var closesArray = IndicatorService.ExtractCloses(barsArray);
-        var sma200Array = _indicators.SMA(closesArray, 200);
-        var cumulativeRsi2Config = new CumulativeRsi2Config();
-        var cumulativeRsi2Array = _indicators.CumulativeRsi(
-            closesArray, cumulativeRsi2Config.RsiPeriod, cumulativeRsi2Config.CumulativePeriod);
-        var cumulativeRsi2TrendMaArray = _indicators.SMA(
-            closesArray, cumulativeRsi2Config.LongTrendMaPeriod);
-
-        var pepCache = new Dictionary<PatternType, PatternExitProfile>();
-        var trades = new List<TradeRecord>();
-        OpenPosition? openPosition = null;
-
-        var riskPerTrade = riskParams.RiskPerTradePercent;
-        var maxTotalPositions = riskParams.MaxTotalPositions;
-
-        for (int i = BacktestDataPolicy.MinimumWarmupBars; i < bars.Count; i++)
-        {
-            var currentBar = bars[i];
-            if (currentBar.Timestamp < from) continue;
-
-            ct.ThrowIfCancellationRequested();
-
-            var currentDate = DateOnly.FromDateTime(currentBar.Timestamp);
-            var regime = GetRegimeForDate(currentDate, regimeByDate);
-
-            // ── Exit logic ──
-            if (openPosition != null)
-            {
-                var exitResult = ProcessExitLogic(
-                    openPosition, currentBar, i, atrArray[i], sma200Array[i],
-                    cumulativeRsi2Array[i], cumulativeRsi2TrendMaArray[i], cumulativeRsi2Config,
-                    pepCache, exitOverrides, symbol, trades);
-                openPosition = exitResult;
-            }
-
-            if (openPosition != null) continue;
-
-            // ── Entry logic ──
-            var maxWindow = BacktestTimeFramePolicy.Get(timeFrame).SimulationWindowBars;
-            var windowSize = Math.Min(i + 1, maxWindow);
-            var windowStart = i + 1 - windowSize;
-            var windowBars = barsArray[windowStart..(i + 1)];
-
-            foreach (var detector in detectors)
-            {
-                try
-                {
-                    var signal = await detector.DetectAsync(symbol, windowBars, regime, ct);
-                    if (signal == null) continue;
-                    if (signal.EntryPrice <= 0 || signal.StopLossPrice <= 0) continue;
-
-                    var stopDistance = Math.Abs(signal.EntryPrice - signal.StopLossPrice);
-                    if (stopDistance <= 0) continue;
-
-                    int quantity;
-                    if (detector.PatternType == PatternType.Tqqq200Sma)
-                    {
-                        quantity = (int)(capital * 0.95m / signal.EntryPrice);
-                        if (quantity <= 0) quantity = 1;
-                    }
-                    else
-                    {
-                        var riskAmount = capital * riskPerTrade;
-                        quantity = (int)(riskAmount / stopDistance);
-                        if (quantity <= 0) quantity = 1;
-
-                        var maxPositionCapitalRatio = maxTotalPositions > 0
-                            ? 1.0m / maxTotalPositions
-                            : 0.10m;
-                        var maxQty = (int)(capital * maxPositionCapitalRatio / signal.EntryPrice);
-                        if (maxQty > 0) quantity = Math.Min(quantity, maxQty);
-                    }
-
-                    var entryAtr = atrArray[i] > 0 ? atrArray[i] : stopDistance;
-
-                    openPosition = new OpenPosition
-                    {
-                        PatternType           = detector.PatternType,
-                        EntryPrice            = signal.EntryPrice,
-                        OriginalStop          = signal.StopLossPrice,
-                        StopLoss              = signal.StopLossPrice,
-                        Target                = signal.TargetPrice,
-                        Quantity              = quantity,
-                        EntryTime             = currentBar.Timestamp,
-                        EntryBarIndex         = i,
-                        EntryAtr              = entryAtr,
-                        EntryVolume           = currentBar.Volume,
-                        // CurrentClose 진입은 해당 봉이 닫힌 뒤 체결된다.
-                        // 진입 전에 발생한 동일 고가/저가를 MFE/MAE에 포함하지 않는다.
-                        HighestHighSinceEntry = signal.EntryPrice,
-                        LowestLowSinceEntry   = signal.EntryPrice,
-                        RiskDistance           = stopDistance
-                    };
-
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "{Symbol} 패턴 {Pattern} 감지 실패",
-                        symbol, detector.PatternType);
-                }
-            }
-        }
-
-        // Close remaining position at last bar's close
-        if (openPosition != null && bars.Count > 0)
-        {
-            var lastBar = bars[^1];
-            trades.Add(CreateTradeRecord(symbol, openPosition, lastBar.Close,
-                lastBar.Timestamp, "기간 종료", openPosition.Quantity));
-        }
-
-        _logger.LogInformation("{Symbol}: {Count}건 거래 완료", symbol, trades.Count);
-        return (trades, null, actualDataFrom);
-    }
 
     /// <summary>
     /// 오픈 포지션의 청산 로직을 처리합니다.
@@ -361,8 +191,6 @@ internal sealed class TradeSimulator
             MfePercent     = mfePercent
         };
     }
-
-    internal static string GetTimeFrameLabel(TimeFrame tf) => TimeFrameCatalog.DisplayName(tf);
 
     internal static MarketRegime GetRegimeForDate(
         DateOnly date, Dictionary<DateOnly, MarketRegime> regimeByDate)

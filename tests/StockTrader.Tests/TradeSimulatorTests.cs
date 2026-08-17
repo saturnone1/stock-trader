@@ -1,9 +1,7 @@
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Backtest;
-using StockTrader.Services.Indicators;
 
 namespace StockTrader.Tests;
 
@@ -99,7 +97,7 @@ public class TradeSimulatorTests
             EquityAtEntry = equityAtEntry,
             CustomExitProfile = profile
         };
-        return (new TradeSimulator(new IndicatorService(), NullLogger<TradeSimulator>.Instance), position, []);
+        return (new TradeSimulator(), position, []);
     }
 
     private static TradeSimulator.OpenPosition? Process(

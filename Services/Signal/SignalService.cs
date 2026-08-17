@@ -207,21 +207,13 @@ public class SignalService : ISignalService
                 signal.StopLossPrice);
             positionSize *= signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m;
 
-            // Gap 4 fix: 백테스트와 동일하게 1/MaxTotalPositions 캡 적용
-            var maxTotalPositions = _tradingSettings.MaxTotalPositions;
-            if (maxTotalPositions > 0 && signal.EntryPrice > 0)
-            {
-                var maxPositionCapitalRatio = 1.0m / maxTotalPositions;
-                var maxPositionSize = settings.AccountSize * maxPositionCapitalRatio;
-                positionSize = Math.Min(positionSize, maxPositionSize);
-            }
-            if (portfolioRules?.MaxSinglePositionPercent > 0)
-                positionSize = Math.Min(positionSize,
-                    settings.AccountSize * portfolioRules.MaxSinglePositionPercent / 100m);
-
-            var shareQty = signal.EntryPrice > 0
-                ? (int)Math.Floor(positionSize / signal.EntryPrice)
-                : 0;
+            positionSize = LongPositionSizingPolicy.ApplyPositionCapitalCap(
+                positionSize,
+                settings.AccountSize,
+                _tradingSettings.MaxTotalPositions,
+                portfolioRules?.MaxSinglePositionPercent ?? 0m);
+            var shareQty = LongPositionSizingPolicy.CalculateAffordableQuantity(
+                positionSize, signal.EntryPrice);
 
             // ── 6. 주문 수량 검증: 0주면 자동매매 실행 불가 ──
             if (shareQty <= 0)

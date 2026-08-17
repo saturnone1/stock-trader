@@ -52,6 +52,37 @@ public class LongPositionSizingPolicyTests
     }
 
     [Fact]
+    public void CalculateWithCapFraction_RepricesNextOpenWithoutBypassingCapitalCap()
+    {
+        var decision = LongPositionSizingPolicy.CalculateWithCapFraction(
+            accountEquity: 500m,
+            riskFraction: 0.01m,
+            entryPrice: 100m,
+            stopPrice: 95m,
+            positionCapFraction: 0.10m);
+
+        decision.CanEnter.Should().BeFalse();
+    }
+
+    [Fact]
+    public void LiveCapitalHelpers_UseTheSamePortfolioCapAndFloorQuantity()
+    {
+        LongPositionSizingPolicy.ApplyPositionCapitalCap(
+                desiredCapital: 20_000m,
+                accountEquity: 100_000m,
+                maxTotalPositions: 10)
+            .Should().Be(10_000m);
+        LongPositionSizingPolicy.ApplyPositionCapitalCap(
+                desiredCapital: 20_000m,
+                accountEquity: 100_000m,
+                maxTotalPositions: 10,
+                maxSinglePositionPercent: 5m)
+            .Should().Be(5_000m);
+        LongPositionSizingPolicy.CalculateAffordableQuantity(8_050m, 100m)
+            .Should().Be(80);
+    }
+
+    [Fact]
     public void ResolveRiskFraction_UsesOnlyCompletedSamplesAfterMinimumCount()
     {
         var samples = Enumerable.Range(0, 10)

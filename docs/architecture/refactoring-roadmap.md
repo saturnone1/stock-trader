@@ -39,8 +39,16 @@
   portfolio caps, minimum Kelly samples, Kelly/Half-Kelly selection, and the 25% Kelly ceiling.
   Daily, one-minute, and weekly golden simulations lock the same entry, target fill, quantity, and
   portfolio return across timeframe variants.
+- `BacktestPositionExitProcessor` owns the invariant order of intrabar fills, close-based strategy
+  exits, scale-ins, and scale-outs. Strategy cooldown/circuit-breaker transitions are isolated in
+  `BacktestStrategyTransitionPolicy`, and NextOpen fills re-run the central sizing cap after repricing.
+  The unused `TradeSimulator.SimulateSymbolAsync` second simulation loop has been removed; the
+  remaining adapter only maps the shared long-position execution policy into backtest trade records.
+  Live recommendations now use the same capital-cap and whole-share floor helpers. Golden fixtures
+  cover NextOpen gap repricing/entry-bar exits and close-based scale-outs in addition to the three
+  timeframe baseline.
 
-Remaining Phase 2 work is primarily the extraction of entry/exit orchestration from
+Remaining Phase 2 work is primarily the extraction of entry and NextOpen orchestration from
 `BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
 and broader preview/backtest/live parity fixtures.
 

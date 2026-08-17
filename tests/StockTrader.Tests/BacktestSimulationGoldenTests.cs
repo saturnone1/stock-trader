@@ -1,6 +1,6 @@
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using StockTrader.Application.Backtesting;
 using StockTrader.Configuration;
 using StockTrader.Models;
@@ -13,6 +13,67 @@ namespace StockTrader.Tests;
 
 public class BacktestSimulationGoldenTests
 {
+    [Fact]
+    public async Task RunAsync_NextOpenRepricesRiskAndEvaluatesTheEntryBar()
+    {
+        var bars = Bars(TimeFrame.Daily, TimeSpan.FromDays(1));
+        bars[51].Open = 105m;
+        bars[51].High = 110m;
+        bars[51].Low = 104m;
+        bars[51].Close = 109m;
+        var entryAt = bars[50].Timestamp;
+        var definition = new CustomPatternDefinition
+        {
+            Name = "next-open-golden",
+            EntryMode = "NextOpen",
+            EntryRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new EntryRule
+                {
+                    Indicator = "PRICE_CHANGE",
+                    Operator = ">=",
+                    Value = 0m,
+                    Params = new Dictionary<string, decimal> { ["bars"] = 1m }
+                }
+            }),
+            AtrStopMultiplier = 1m,
+            AtrTargetMultiplier = 2m,
+            MaxHoldingBars = 10
+        };
+        var detector = new RuleBasedDetector(new IndicatorService(), definition);
+        var engine = new BacktestSimulationEngine(
+            NullLogger<BacktestSimulationEngine>.Instance);
+
+        var result = await engine.RunAsync(
+            ["AAA"],
+            new Dictionary<string, PreparedSymbolData> { ["AAA"] = Prepared(bars) },
+            [detector],
+            [],
+            entryAt,
+            bars[^1].Timestamp,
+            100_000m,
+            0m,
+            0m,
+            TimeFrame.Daily,
+            new BacktestRiskParameters(0.01m, 0.03m, 10, 2),
+            null,
+            SlippageModel.Fixed,
+            [],
+            bars[0].Timestamp,
+            new TradeSimulator(),
+            null,
+            new CumulativeRsi2Config(),
+            CancellationToken.None);
+
+        result.Trades.Should().ContainSingle();
+        var trade = result.Trades[0];
+        trade.EntryPrice.Should().Be(105m);
+        trade.ExitPrice.Should().Be(109m);
+        trade.Quantity.Should().Be(95);
+        trade.ExitReason.Should().Be("목표 도달");
+        result.TotalReturn.Should().Be(380m);
+    }
+
     [Theory]
     [InlineData(TimeFrame.OneMinute)]
     [InlineData(TimeFrame.Daily)]
@@ -28,10 +89,7 @@ public class BacktestSimulationGoldenTests
         var bars = Bars(timeFrame, interval);
         var entryAt = bars[50].Timestamp;
         var prepared = Prepared(bars);
-        var indicators = new Mock<IIndicatorService>();
-        var simulator = new TradeSimulator(
-            indicators.Object,
-            NullLogger<TradeSimulator>.Instance);
+        var simulator = new TradeSimulator();
         var engine = new BacktestSimulationEngine(
             NullLogger<BacktestSimulationEngine>.Instance);
 

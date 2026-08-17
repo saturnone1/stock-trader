@@ -6,6 +6,7 @@ using StockTrader.Application.StrategyPreview;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Execution;
 using StockTrader.Domain.MarketData;
+using StockTrader.Domain.Strategies;
 using StockTrader.Services.DataFeed;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
@@ -261,14 +262,17 @@ public static class PatternPreviewEndpoints
                     if (scaling is not null)
                     {
                         var amount = Math.Max(1, (int)Math.Round(position.InitialQuantity * scaling.Percent / 100m));
-                        if (string.Equals(scaling.Direction, "SCALE_IN", StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(
+                                scaling.Direction,
+                                StrategyCatalog.ScalingInDirection,
+                                StringComparison.OrdinalIgnoreCase))
                         {
                             var totalCost = position.EntryPrice * position.CurrentQuantity + current.Close * amount;
                             position.InvestedCapital += current.Close * amount;
                             position.CurrentQuantity += amount;
                             position.EntryPrice = totalCost / position.CurrentQuantity;
                             markers.Add(new PatternPreviewMarker(
-                                current.Timestamp, "SCALE_IN", current.Close,
+                                current.Timestamp, StrategyCatalog.ScalingInDirection, current.Close,
                                 Details: $"최초 수량의 {scaling.Percent:F0}% 추가 매수 · 새 평균가 {position.EntryPrice:F2}"));
                         }
                         else
@@ -279,7 +283,7 @@ public static class PatternPreviewEndpoints
                                 Realize(position, current.Close, sold);
                                 position.CurrentQuantity -= sold;
                                 markers.Add(new PatternPreviewMarker(
-                                    current.Timestamp, "SCALE_OUT", current.Close,
+                                    current.Timestamp, StrategyCatalog.ScalingOutDirection, current.Close,
                                     Details: $"최초 수량의 {scaling.Percent:F0}% 일부 매도"));
                             }
                         }
@@ -441,8 +445,9 @@ public static class PatternPreviewEndpoints
                 matchCount = visibleMatches.Count,
                 entryCount = visibleMarkers.Count(marker => marker.Type == "ENTRY"),
                 exitCount = visibleMarkers.Count(marker => marker.Type == "EXIT"),
-                scaleInCount = visibleMarkers.Count(marker => marker.Type == "SCALE_IN"),
-                partialExitCount = visibleMarkers.Count(marker => marker.Type is "SCALE_OUT" or "PARTIAL_EXIT"),
+                scaleInCount = visibleMarkers.Count(marker => marker.Type == StrategyCatalog.ScalingInDirection),
+                partialExitCount = visibleMarkers.Count(marker =>
+                    marker.Type is StrategyCatalog.ScalingOutDirection or "PARTIAL_EXIT"),
                 stopMoveCount = visibleMarkers.Count(marker => marker.Type == "STOP_MOVE"),
                 safetyBlockedEntries,
                 completedTrades,

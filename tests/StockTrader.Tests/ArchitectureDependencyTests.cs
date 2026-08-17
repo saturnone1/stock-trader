@@ -112,10 +112,34 @@ public class ArchitectureDependencyTests
         engine.Should().Contain("new BacktestPortfolioState(");
         engine.Should().Contain("LongPositionSizingPolicy.Calculate(");
         signalService.Should().Contain("LongPositionSizingPolicy.ResolveRiskFraction(");
+        signalService.Should().Contain("LongPositionSizingPolicy.ApplyPositionCapitalCap(");
+        signalService.Should().Contain("LongPositionSizingPolicy.CalculateAffordableQuantity(");
         riskService.Should().Contain("LongPositionSizingPolicy.CalculateRiskCapital(");
         performance.Should().Contain("LongPositionSizingPolicy.ComputeKellyFraction(");
         engine.Should().NotContain("rollingAvgWin");
         signalService.Should().NotContain("var kelly =");
+    }
+
+    [Fact]
+    public void BacktestEngineDelegatesExitScalingAndHasNoLegacySecondSimulationLoop()
+    {
+        var repository = FindRepositoryRoot();
+        var engine = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSimulationEngine.cs"));
+        var executionAdapter = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/TradeSimulator.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Api/PatternPreviewEndpoints.cs"));
+
+        engine.Should().Contain("positionExitProcessor.Process(");
+        File.ReadAllLines(Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs"))
+            .Length.Should().BeLessThanOrEqualTo(650);
+        File.ReadAllLines(Path.Combine(repository, "Services/Backtest/TradeSimulator.cs"))
+            .Length.Should().BeLessThanOrEqualTo(400);
+        engine.Should().NotContain("positionDetector.CheckScaling(");
+        executionAdapter.Should().NotContain("SimulateSymbolAsync(");
+        executionAdapter.Should().NotContain("DetectAsync(");
+        preview.Should().Contain("StrategyCatalog.ScalingInDirection");
     }
 
     [Fact]

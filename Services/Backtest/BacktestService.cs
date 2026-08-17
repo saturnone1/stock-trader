@@ -160,7 +160,7 @@ public class BacktestService : IBacktestService
             return new BacktestResult { Warnings = prepared.Warnings.ToList() };
         }
 
-        var simulator = new TradeSimulator(_indicators, _logger);
+        var simulator = new TradeSimulator();
         return await _simulationEngine.RunAsync(
             symbols, prepared.Symbols, detectors, regimeByDate,
             from, to, initialCapital, slippagePercent, commissionPerTrade,
@@ -207,7 +207,7 @@ public class BacktestService : IBacktestService
             return new BacktestResult { Warnings = prepared.Warnings.ToList() };
 
         // 이하 RunCoreAsync와 동일한 시뮬레이션 로직 (공통 메서드로 위임)
-        var simulator = new TradeSimulator(_indicators, _logger);
+        var simulator = new TradeSimulator();
         return await _simulationEngine.RunAsync(
             symbols, prepared.Symbols, detectors, regimeByDate,
             from, to, initialCapital, slippagePercent, commissionPerTrade,

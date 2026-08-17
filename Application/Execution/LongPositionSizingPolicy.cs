@@ -83,27 +83,61 @@ public static class LongPositionSizingPolicy
 
     public static LongPositionSizingDecision Calculate(LongPositionSizingRequest request)
     {
-        var riskCapital = CalculateRiskCapital(
+        var capFraction = ResolvePositionCapFraction(
+            request.MaxTotalPositions,
+            request.MaxSinglePositionPercent);
+
+        return CalculateWithCapFraction(
             request.AccountEquity,
             request.RiskFraction,
             request.EntryPrice,
-            request.StopPrice);
-        if (riskCapital <= 0)
+            request.StopPrice,
+            capFraction);
+    }
+
+    public static LongPositionSizingDecision CalculateWithCapFraction(
+        decimal accountEquity,
+        decimal riskFraction,
+        decimal entryPrice,
+        decimal stopPrice,
+        decimal positionCapFraction)
+    {
+        var riskCapital = CalculateRiskCapital(
+            accountEquity, riskFraction, entryPrice, stopPrice);
+        if (riskCapital <= 0 || positionCapFraction <= 0)
             return new LongPositionSizingDecision(0, 0, 0, 0);
 
-        var capFraction = request.MaxTotalPositions > 0
-            ? 1m / request.MaxTotalPositions
-            : 0.10m;
-        if (request.MaxSinglePositionPercent > 0)
-            capFraction = Math.Min(capFraction, request.MaxSinglePositionPercent / 100m);
-
-        var cappedCapital = Math.Min(riskCapital, request.AccountEquity * capFraction);
-        var quantity = request.EntryPrice > 0
-            ? (int)Math.Floor(cappedCapital / request.EntryPrice)
-            : 0;
-        var positionCapital = quantity > 0 ? quantity * request.EntryPrice : 0;
+        var cappedCapital = Math.Min(riskCapital, accountEquity * positionCapFraction);
+        var quantity = CalculateAffordableQuantity(cappedCapital, entryPrice);
+        var positionCapital = quantity > 0 ? quantity * entryPrice : 0;
 
         return new LongPositionSizingDecision(
-            quantity, positionCapital, riskCapital, capFraction);
+            quantity, positionCapital, riskCapital, positionCapFraction);
+    }
+
+    public static decimal ApplyPositionCapitalCap(
+        decimal desiredCapital,
+        decimal accountEquity,
+        int maxTotalPositions,
+        decimal maxSinglePositionPercent = 0m)
+    {
+        var capFraction = ResolvePositionCapFraction(
+            maxTotalPositions, maxSinglePositionPercent);
+        return Math.Min(Math.Max(0m, desiredCapital), Math.Max(0m, accountEquity) * capFraction);
+    }
+
+    public static int CalculateAffordableQuantity(decimal positionCapital, decimal entryPrice) =>
+        positionCapital > 0 && entryPrice > 0
+            ? (int)Math.Floor(positionCapital / entryPrice)
+            : 0;
+
+    public static decimal ResolvePositionCapFraction(
+        int maxTotalPositions,
+        decimal maxSinglePositionPercent = 0m)
+    {
+        var capFraction = maxTotalPositions > 0 ? 1m / maxTotalPositions : 0.10m;
+        if (maxSinglePositionPercent > 0)
+            capFraction = Math.Min(capFraction, maxSinglePositionPercent / 100m);
+        return capFraction;
     }
 }
