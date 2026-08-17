@@ -34,6 +34,10 @@
   Execution costs are isolated in `BacktestExecutionCostLedger`, with regression tests covering
   fixed/adaptive slippage and exactly-once commission application. Result/metric construction is
   isolated in `BacktestResultBuilder`.
+- `BacktestSignalEntryProcessor` owns the complete ordered new-entry pipeline: shared eligibility,
+  regime allocation, correlation blocking, past-only Kelly samples, sizing, and immediate or
+  next-open registration. The simulation engine is reduced to daily sequencing and no longer
+  performs detector-specific entry orchestration inline.
 - Realized/unrealized equity, daily loss limits, marked-equity drawdown, and open positions now live
   in `BacktestPortfolioState`. `LongPositionSizingPolicy` is the shared owner for stop-risk capital,
   portfolio caps, minimum Kelly samples, Kelly/Half-Kelly selection, and the 25% Kelly ceiling.

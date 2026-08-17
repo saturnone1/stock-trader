@@ -46,6 +46,10 @@ Historical market-data preparation now crosses a named boundary:
 `Services/Backtest/BacktestDataPreparer.cs` produces the read-only dictionary boundary in
 `Application/Backtesting/PreparedBacktestData.cs`. Backtest, walk-forward, and both optimization
 execution modes must use this boundary instead of calculating private indicator arrays.
+`BacktestSignalEntryProcessor` owns the ordered new-entry pipeline after data preparation:
+eligibility, regime allocation, correlation blocking, past-only sizing samples, position sizing,
+and current-close versus next-open registration. `BacktestSimulationEngine` only schedules this
+pipeline within the daily exit/pending-entry/mark-to-market sequence.
 
 Long-position execution now crosses a second named boundary in `Application/Execution`.
 Pattern preview and backtest must delegate entry repricing and per-bar exit ordering to this pure

@@ -102,6 +102,8 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var engine = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestSimulationEngine.cs"));
+        var entryProcessor = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
         var signalService = File.ReadAllText(Path.Combine(
             repository, "Services/Signal/SignalService.cs"));
         var riskService = File.ReadAllText(Path.Combine(
@@ -110,7 +112,7 @@ public class ArchitectureDependencyTests
             repository, "Services/Backtest/PerformanceCalculator.cs"));
 
         engine.Should().Contain("new BacktestPortfolioState(");
-        engine.Should().Contain("LongPositionSizingPolicy.Calculate(");
+        entryProcessor.Should().Contain("LongPositionSizingPolicy.Calculate(");
         signalService.Should().Contain("LongPositionSizingPolicy.ResolveRiskFraction(");
         signalService.Should().Contain("LongPositionSizingPolicy.ApplyPositionCapitalCap(");
         signalService.Should().Contain("LongPositionSizingPolicy.CalculateAffordableQuantity(");
@@ -128,12 +130,15 @@ public class ArchitectureDependencyTests
             repository, "Services/Backtest/BacktestSimulationEngine.cs"));
         var executionAdapter = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
+        var entryProcessor = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
         var preview = File.ReadAllText(Path.Combine(
             repository, "Api/PatternPreviewEndpoints.cs"));
 
         engine.Should().Contain("positionExitProcessor.Process(");
         engine.Should().Contain("pendingEntryProcessor.Process(");
-        engine.Should().Contain("BacktestOpenPositionFactory.CreateCurrentClose(");
+        engine.Should().Contain("_signalEntryProcessor.ProcessAsync(");
+        entryProcessor.Should().Contain("BacktestOpenPositionFactory.CreateCurrentClose(");
         File.ReadAllLines(Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs"))
             .Length.Should().BeLessThanOrEqualTo(550);
         File.ReadAllLines(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"))
@@ -152,14 +157,17 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
         var engine = File.ReadAllText(enginePath);
+        var entryProcessor = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
         var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
         var signal = File.ReadAllText(Path.Combine(repository, "Services/Signal/SignalService.cs"));
 
         File.ReadAllLines(enginePath).Length.Should().BeLessThanOrEqualTo(450);
-        engine.Should().Contain("PositionAllocationPolicy.Apply(");
-        engine.Should().Contain("PortfolioCorrelationPolicy.ExceedsLimit(");
-        engine.Should().NotContain("GetWeightScale(");
-        engine.Should().NotContain("ComputePearsonCorrelation(");
+        engine.Should().Contain("_signalEntryProcessor.ProcessAsync(");
+        entryProcessor.Should().Contain("PositionAllocationPolicy.Apply(");
+        entryProcessor.Should().Contain("PortfolioCorrelationPolicy.ExceedsLimit(");
+        entryProcessor.Should().NotContain("GetWeightScale(");
+        entryProcessor.Should().NotContain("ComputePearsonCorrelation(");
         preview.Should().Contain("PositionAllocationPolicy.NormalizeScale(");
         signal.Should().Contain("PositionAllocationPolicy.NormalizeScale(");
     }
@@ -170,11 +178,16 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
         var engine = File.ReadAllText(enginePath);
+        var entryProcessorPath = Path.Combine(
+            repository, "Services/Backtest/BacktestSignalEntryProcessor.cs");
+        var entryProcessor = File.ReadAllText(entryProcessorPath);
         var pending = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestPendingEntryProcessor.cs"));
 
         File.ReadAllLines(enginePath).Length.Should().BeLessThanOrEqualTo(410);
-        engine.Should().Contain("BacktestEntryEligibilityPolicy.Evaluate(");
+        File.ReadAllLines(entryProcessorPath).Length.Should().BeLessThanOrEqualTo(240);
+        engine.Should().Contain("_signalEntryProcessor.ProcessAsync(");
+        entryProcessor.Should().Contain("BacktestEntryEligibilityPolicy.Evaluate(");
         pending.Should().Contain("BacktestEntryEligibilityPolicy.Evaluate(");
         pending.Should().NotContain("private static bool IsBlocked(");
     }
@@ -261,13 +274,16 @@ public class ArchitectureDependencyTests
         var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
         var engine = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestSimulationEngine.cs"));
+        var entryProcessor = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
         var adapter = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
         var live = File.ReadAllText(Path.Combine(
             repository, "BackgroundServices/PositionExitManagerService.cs"));
 
         preview.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");
-        engine.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");
+        engine.Should().Contain("_signalEntryProcessor.ProcessAsync(");
+        entryProcessor.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");
         adapter.Should().Contain("LongPositionExitPolicyCatalog.ForPattern(");
         live.Should().Contain("LongPositionExitPolicyCatalog.ForPattern(");
         live.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");

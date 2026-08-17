@@ -64,6 +64,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<FinancialSnapshotImportService>();
         services.AddSingleton<FinancialSnapshotFileParser>();
         services.AddScoped<BacktestDataPreparer>();
+        services.AddScoped<BacktestSignalEntryProcessor>();
         services.AddScoped<BacktestSimulationEngine>();
         services.AddScoped<BacktestService>();
         services.AddScoped<IBacktestService>(sp => sp.GetRequiredService<BacktestService>());

@@ -42,8 +42,7 @@ public class BacktestSimulationGoldenTests
             MaxHoldingBars = 10
         };
         var detector = new RuleBasedDetector(new IndicatorService(), definition);
-        var engine = new BacktestSimulationEngine(
-            NullLogger<BacktestSimulationEngine>.Instance);
+        var engine = CreateEngine();
 
         var result = await engine.RunAsync(
             ["AAA"],
@@ -201,8 +200,7 @@ public class BacktestSimulationGoldenTests
         };
         var detector = new RuleBasedDetector(new IndicatorService(), definition);
 
-        var result = await new BacktestSimulationEngine(
-                NullLogger<BacktestSimulationEngine>.Instance)
+        var result = await CreateEngine()
             .RunAsync(
                 ["FIRST", "SECOND"],
                 new Dictionary<string, PreparedSymbolData>
@@ -294,7 +292,7 @@ public class BacktestSimulationGoldenTests
         WeightStrategy? weightStrategy = null)
     {
         var entryAt = bars[50].Timestamp;
-        return new BacktestSimulationEngine(NullLogger<BacktestSimulationEngine>.Instance)
+        return CreateEngine()
             .RunAsync(
                 ["AAA"],
                 new Dictionary<string, PreparedSymbolData> { ["AAA"] = Prepared(bars) },
@@ -316,6 +314,10 @@ public class BacktestSimulationGoldenTests
                 new CumulativeRsi2Config(),
                 CancellationToken.None);
     }
+
+    private static BacktestSimulationEngine CreateEngine() => new(
+        new BacktestSignalEntryProcessor(
+            NullLogger<BacktestSignalEntryProcessor>.Instance));
 
     private sealed class SingleEntryDetector(
         DateTime entryAt,

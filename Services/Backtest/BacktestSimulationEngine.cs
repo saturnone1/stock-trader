@@ -15,11 +15,11 @@ namespace StockTrader.Services.Backtest;
 /// </summary>
 public sealed class BacktestSimulationEngine
 {
-    private readonly ILogger<BacktestSimulationEngine> _logger;
+    private readonly BacktestSignalEntryProcessor _signalEntryProcessor;
 
-    public BacktestSimulationEngine(ILogger<BacktestSimulationEngine> logger)
+    public BacktestSimulationEngine(BacktestSignalEntryProcessor signalEntryProcessor)
     {
-        _logger = logger;
+        _signalEntryProcessor = signalEntryProcessor;
     }
 
     internal async Task<BacktestResult> RunAsync(
@@ -191,159 +191,24 @@ public sealed class BacktestSimulationEngine
                 continue;
             }
 
-            foreach (var symbol in symbols)
-            {
-                if (openPositions.ContainsKey(symbol)) continue;
-                if (openPositions.Count >= maxTotalPositions) break;
-                if (!symbolDataMap.TryGetValue(symbol, out var sd)) continue;
-                if (!sd.TimestampToIndex.TryGetValue(date, out var barIdx)) continue;
-                if (barIdx < BacktestDataPolicy.MinimumWarmupBars) continue;
-
-                var windowSize = Math.Min(barIdx + 1, maxWindow);
-                var windowStart = barIdx + 1 - windowSize;
-                var windowBars = sd.Bars[windowStart..(barIdx + 1)];
-
-                foreach (var detector in detectors)
-                {
-                    try
-                    {
-                        var ruleDetector = detector as RuleBasedDetector;
-                        var strategyRuntime = ruleDetector != null
-                            && strategyRuntimes.TryGetValue(ruleDetector.Definition.Name, out var configuredRuntime)
-                                ? configuredRuntime
-                                : null;
-                        var portfolioRules = strategyRuntime?.Portfolio;
-                        var cooldownUntil = ruleDetector != null
-                            && reentryCooldowns.TryGetValue(
-                                $"{ruleDetector.Definition.Name}|{symbol}", out var blockedUntil)
-                                    ? blockedUntil
-                                    : (int?)null;
-                        var entryEligibility = BacktestEntryEligibilityPolicy.Evaluate(
-                            new BacktestEntryEligibilityRequest(
-                                maxTotalPositions,
-                                portfolioRules?.MaxTotalPositions ?? 0,
-                                openPositions.Count,
-                                strategyRuntime?.CircuitBreakerTripped == true,
-                                strategyRuntime?.CircuitBreaker.ConsecutiveLossLimit > 0,
-                                timelineIndex,
-                                strategyRuntime?.CircuitBreakerUntilStep ?? 0,
-                                portfolioRules?.MaxEntriesPerDay ?? 0,
-                                strategyRuntime?.DailyEntryCount ?? 0,
-                                barIdx,
-                                cooldownUntil));
-                        if (!entryEligibility.CanEnter) continue;
-                        var effectiveMaxPos = entryEligibility.EffectiveMaxPositions;
-
-                        var signal = await detector.DetectAsync(symbol, windowBars, regime!, ct);
-                        if (signal == null) continue;
-                        if (signal.EntryPrice <= 0 || signal.StopLossPrice <= 0) continue;
-
-                        var stopDistance = Math.Abs(signal.EntryPrice - signal.StopLossPrice);
-                        if (stopDistance <= 0) continue;
-
-                        var baseEquity = Math.Max(portfolio.CurrentEquity, initialCapital * 0.10m);
-                        var regimeScale = weightStrategy != null && regime != null
-                            ? PositionAllocationPolicy.ResolveRegimeScale(regime, weightStrategy)
-                            : 1m;
-                        var allocation = PositionAllocationPolicy.Apply(
-                            baseEquity, regimeScale, signal.AllocationScale);
-                        var effectiveEquity = allocation.EffectiveEquity;
-                        portfolio.RegisterWeightReductions(allocation.ReductionCount);
-
-                        if (portfolioRules?.MaxCorrelation > 0
-                            && PortfolioCorrelationPolicy.ExceedsLimit(
-                                symbol,
-                                openPositions.Keys,
-                                symbolDataMap,
-                                date,
-                                portfolioRules.MaxCorrelation))
-                        {
-                            continue;
-                        }
-
-                        // 완료된 과거 거래만 사용해 켈리 비율 계산 (미래 거래 누출 방지)
-                        var sizingTrades = ruleDetector == null
-                            ? Array.Empty<PositionSizingTradeSample>()
-                            : trades
-                                .Where(trade => string.Equals(
-                                    trade.CustomPatternName,
-                                    ruleDetector.Definition.Name,
-                                    StringComparison.OrdinalIgnoreCase))
-                                .Select(trade => new PositionSizingTradeSample(
-                                    trade.PnL, trade.PnLPercent))
-                                .ToArray();
-                        var effectiveRisk = LongPositionSizingPolicy.ResolveRiskFraction(
-                            riskPerTrade,
-                            ruleDetector?.Definition.SizingMode,
-                            sizingTrades);
-                        var sizing = LongPositionSizingPolicy.Calculate(new LongPositionSizingRequest(
-                            effectiveEquity,
-                            effectiveRisk,
-                            signal.EntryPrice,
-                            signal.StopLossPrice,
-                            effectiveMaxPos,
-                            portfolioRules?.MaxSinglePositionPercent ?? 0m));
-                        if (!sizing.CanEnter) continue;
-
-                        var quantity = sizing.Quantity;
-                        var capRatio = sizing.PositionCapFraction;
-
-                        var entryAtr = sd.Atr[barIdx] > 0 ? sd.Atr[barIdx] : stopDistance;
-
-                        LongPositionExitPolicy? customExit = null;
-                        if (ruleDetector != null)
-                        {
-                            customExit = LongPositionExitPolicyCatalog.ForCustom(
-                                ruleDetector.Definition);
-                        }
-
-                        var entryDefinition = ruleDetector?.Definition;
-                        var isNextOpen = entryDefinition?.EntryMode == StrategyCatalog.NextOpenEntryMode;
-
-                        if (isNextOpen && !pendingEntryProcessor.Contains(symbol))
-                        {
-                            signal.PendingEntry = true;
-                            pendingEntryProcessor.TryAdd(symbol, new BacktestPendingEntry(
-                                detector.PatternType,
-                                entryDefinition!.Name,
-                                signal.EntryPrice,
-                                signal.StopLossPrice,
-                                signal.TargetPrice,
-                                entryAtr,
-                                sd.Bars[barIdx].Volume,
-                                effectiveEquity,
-                                effectiveRisk,
-                                capRatio,
-                                customExit));
-                        }
-                        else if (!isNextOpen)
-                        {
-                            openPositions[symbol] = BacktestOpenPositionFactory.CreateCurrentClose(
-                                signal,
-                                detector.PatternType,
-                                entryDefinition?.Name,
-                                sd.Bars[barIdx],
-                                barIdx,
-                                quantity,
-                                entryAtr,
-                                effectiveEquity,
-                                customExit);
-
-                            if (strategyRuntime != null)
-                            {
-                                strategyRuntime.DailyEntryCount++;
-                                strategyRuntime.LastEntryDate = tradingDay;
-                            }
-                        }
-
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "{Symbol} 패턴 {Pattern} 감지 실패", symbol, detector.PatternType);
-                    }
-                }
-            }
+            await _signalEntryProcessor.ProcessAsync(new BacktestSignalEntryContext(
+                date,
+                tradingDay,
+                timelineIndex,
+                initialCapital,
+                riskPerTrade,
+                maxTotalPositions,
+                maxWindow,
+                symbols,
+                symbolDataMap,
+                detectors,
+                regime!,
+                weightStrategy,
+                portfolio,
+                strategyRuntimes,
+                reentryCooldowns,
+                trades,
+                pendingEntryProcessor), ct);
 
             portfolio.RecordMarkedEquity(date);
         }
