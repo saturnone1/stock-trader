@@ -234,6 +234,33 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void RuleBasedDetectorDelegatesIndicatorMathAndEvaluationCache()
+    {
+        var repository = FindRepositoryRoot();
+        var detectorPath = Path.Combine(repository, "Services/Patterns/RuleBasedDetector.cs");
+        var evaluatorPath = Path.Combine(repository, "Services/Patterns/RuleIndicatorEvaluator.cs");
+        var detector = File.ReadAllText(detectorPath);
+        var evaluator = File.ReadAllText(evaluatorPath);
+        var evaluatorTests = File.ReadAllText(Path.Combine(
+            repository, "tests/StockTrader.Tests/RuleIndicatorEvaluatorTests.cs"));
+
+        File.ReadAllLines(detectorPath).Length.Should().BeLessThanOrEqualTo(500);
+        File.ReadAllLines(evaluatorPath).Length.Should().BeLessThanOrEqualTo(660);
+        detector.Should().Contain("_indicatorEvaluator.Compute(");
+        detector.Should().Contain("_indicatorEvaluator.CreateContext(");
+        detector.Should().NotContain("switch (indicator.ToUpperInvariant())");
+        detector.Should().NotContain("case \"RSI\"");
+        detector.Should().NotContain("ComputeAdx(");
+        evaluator.Should().Contain("switch (indicator.ToUpperInvariant())");
+        evaluator.Should().Contain("case \"RSI\"");
+        evaluator.Should().Contain("case \"VOLATILITY_20D\"");
+        evaluator.Should().Contain("private readonly Dictionary<string, object> _cache");
+        evaluatorTests.Should().Contain("CachesIndicatorWithinEvaluationContext");
+        evaluatorTests.Should().Contain("DoesNotLeakCachedValuesAcrossSymbols");
+        evaluatorTests.Should().Contain("PreservesCurrentAndPreviousBarOffsetContract");
+    }
+
+    [Fact]
     public void LiveStrategyExecutionPathsUseCompiledRepositoryBoundary()
     {
         var repository = FindRepositoryRoot();

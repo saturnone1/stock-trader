@@ -93,6 +93,11 @@
   protective-stop calculations. The SMA period and stop/target multipliers are typed settings used
   by detection, prepared backtest data, and live monitoring. Daily data lookback expands with the
   configured period, and parity fixtures lock stop advancement and subsequent triggering.
+- `RuleIndicatorEvaluator` now owns custom-rule indicator math and per-evaluation caches. The
+  1,106-line `RuleBasedDetector` is reduced to a 482-line strategy orchestration shell and no longer
+  embeds RSI, MACD, volatility, price-structure, volume, ADX, or stochastic calculations. Direct
+  goldens lock catalog defaults, current/previous bar offsets, context-local caching, and neutral
+  handling of unknown indicators while the existing detector suite preserves end-to-end behavior.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.
