@@ -150,8 +150,11 @@ Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate 
 
 Progress: `Backtest.svelte` now imports timing/factor research catalogs, symbol-set operations,
 formatters, whipsaw classification, and equity-curve volatility from
-`features/backtest/backtestResearch.js`. This first pure boundary reduced the page from 2,130 to
-1,988 lines and is the shared base for extracting the result and factor-lab panels next.
+`features/backtest/backtestResearch.js`. Failure and warning messages, execution metadata, headline
+metrics, and the timing report are rendered by `features/backtest/BacktestResultSummary.svelte`.
+These boundaries reduced the page from 2,130 to 1,905 lines and leave the page responsible for
+research execution and scenario selection while the remaining result and factor-lab panels are
+extracted incrementally.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

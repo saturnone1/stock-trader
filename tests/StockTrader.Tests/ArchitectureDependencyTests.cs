@@ -20,13 +20,21 @@ public class ArchitectureDependencyTests
         var page = File.ReadAllText(pagePath);
         var research = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/backtestResearch.js"));
+        var resultSummary = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestResultSummary.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(2_000);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_910);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
+        page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
+        page.Should().Contain("<BacktestResultSummary");
+        page.Should().NotContain("백테스트 실패:");
+        page.Should().NotContain("타이밍 리포트");
         page.Should().NotContain("function getWhipsawStats(");
         page.Should().NotContain("const factorExperimentPresets = [");
         research.Should().Contain("export function getWhipsawStats(");
         research.Should().Contain("export function getEquityCurveVolatility(");
+        resultSummary.Should().Contain("백테스트 실패:");
+        resultSummary.Should().Contain("타이밍 리포트");
     }
 
     [Theory]
