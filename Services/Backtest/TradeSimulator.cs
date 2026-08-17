@@ -1,5 +1,6 @@
 using StockTrader.Configuration;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -199,7 +200,6 @@ internal sealed class TradeSimulator
         List<TradeRecord> trades)
     {
         var currentAtr = currentAtrRaw > 0 ? currentAtrRaw : openPosition.EntryAtr;
-        var barsSinceEntry = barIndex - openPosition.EntryBarIndex;
 
         PatternExitProfile pep;
         if (openPosition.CustomExitProfile != null)
@@ -212,153 +212,116 @@ internal sealed class TradeSimulator
             pepCache[openPosition.PatternType] = pep;
         }
 
-        // OHLC만으로는 한 봉 안에서 고가와 저가 중 무엇이 먼저였는지 알 수 없다.
-        // 따라서 봉 시작 전에 확정되어 있던 손절가를 가장 먼저 확인한다.
-        // 현재 봉에서 새로 계산한 손익분기/트레일링 스탑은 다음 봉부터 효력을 갖는다.
-        var stopAtBarOpen = openPosition.StopLoss;
-        if (currentBar.Low <= stopAtBarOpen)
+        StrategyExitInstruction? strategyExit = null;
+        if (openPosition.PatternType == PatternType.CumulativeRsi2
+            && currentCumulativeRsi2TrendMa > 0
+            && currentBar.Close <= currentCumulativeRsi2TrendMa)
         {
-            var stopFill = currentBar.Open > 0 && currentBar.Open < stopAtBarOpen
-                ? currentBar.Open
-                : stopAtBarOpen;
-            openPosition.LowestLowSinceEntry = openPosition.LowestLowSinceEntry == 0
-                ? stopFill
-                : Math.Min(openPosition.LowestLowSinceEntry, stopFill);
-            var stopQty = openPosition.CurrentQuantity > 0
-                ? openPosition.CurrentQuantity : openPosition.Quantity;
-            var stopReason = openPosition.PatternType == PatternType.Tqqq200Sma
-                ? "SMA200 이탈"
-                : openPosition.BreakevenApplied || openPosition.TrailingStopActivated
-                    ? "트레일링 손절"
-                    : "손절";
-            trades.Add(CreateTradeRecord(symbol, openPosition, stopFill,
-                currentBar.Timestamp, stopReason, stopQty));
-            return null;
-        }
-
-        // 손절에 걸리지 않은 봉만 전체 고가/저가를 보유 중 익스커션으로 반영한다.
-        if (currentBar.High > openPosition.HighestHighSinceEntry)
-            openPosition.HighestHighSinceEntry = currentBar.High;
-        if (openPosition.LowestLowSinceEntry == 0 || currentBar.Low < openPosition.LowestLowSinceEntry)
-            openPosition.LowestLowSinceEntry = currentBar.Low;
-
-        // 부분 익절. 이 봉에서 손절가 동시에 닿았다면 위의 보수적 손절이 우선한다.
-        if (pep.EnablePartialProfit && !openPosition.PartialProfitTaken)
-        {
-            var partialProfitTarget = openPosition.EntryPrice
-                + openPosition.RiskDistance * pep.PartialProfitRMultiple;
-            var effectiveQty = openPosition.CurrentQuantity > 0
-                ? openPosition.CurrentQuantity : openPosition.Quantity;
-            if (currentBar.High >= partialProfitTarget && effectiveQty >= 2)
-            {
-                var halfQty = effectiveQty / 2;
-                var remainQty = effectiveQty - halfQty;
-
-                trades.Add(CreateTradeRecord(
-                    symbol, openPosition, partialProfitTarget,
-                    currentBar.Timestamp, $"부분 익절({pep.PartialProfitRMultiple}R)", halfQty));
-
-                openPosition = new OpenPosition
-                {
-                    PatternType              = openPosition.PatternType,
-                    CustomPatternName        = openPosition.CustomPatternName,
-                    EntryPrice               = openPosition.EntryPrice,
-                    OriginalStop             = openPosition.OriginalStop,
-                    StopLoss                 = Math.Max(openPosition.StopLoss, openPosition.EntryPrice),
-                    Target                   = openPosition.Target,
-                    Quantity                 = remainQty,
-                    CurrentQuantity          = remainQty,
-                    TotalCost                = openPosition.EntryPrice * remainQty,
-                    EntryTime                = openPosition.EntryTime,
-                    EntryBarIndex            = openPosition.EntryBarIndex,
-                    EntryAtr                 = openPosition.EntryAtr,
-                    EntryVolume              = openPosition.EntryVolume,
-                    HighestHighSinceEntry    = openPosition.HighestHighSinceEntry,
-                    LowestLowSinceEntry      = openPosition.LowestLowSinceEntry,
-                    TrailingStopActivated    = openPosition.TrailingStopActivated,
-                    BreakevenApplied         = true,
-                    PartialProfitTaken       = true,
-                    RiskDistance              = openPosition.RiskDistance,
-                    CustomExitProfile        = openPosition.CustomExitProfile,
-                    ScaleCounts              = openPosition.ScaleCounts
-                };
-            }
-        }
-
-        // 손절을 통과한 뒤 목표가/종가 청산을 평가한다.
-        decimal exitPrice = 0;
-        string exitReason = "";
-
-        if (pep.EnableTargetExit && currentBar.High >= openPosition.Target)
-        {
-            exitPrice = openPosition.Target;
-            exitReason = "목표 도달";
-        }
-        else if (openPosition.PatternType == PatternType.CumulativeRsi2
-                 && currentCumulativeRsi2TrendMa > 0
-                 && currentBar.Close <= currentCumulativeRsi2TrendMa)
-        {
-            exitPrice = currentBar.Close;
-            exitReason = $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈";
+            strategyExit = new StrategyExitInstruction(
+                currentBar.Close,
+                $"{cumulativeRsi2Config.LongTrendMaPeriod}SMA 이탈");
         }
         else if (openPosition.PatternType == PatternType.CumulativeRsi2
                  && currentCumulativeRsi2 >= cumulativeRsi2Config.ExitThreshold)
         {
-            exitPrice = currentBar.Close;
-            exitReason = $"누적 RSI 청산({currentCumulativeRsi2:F1})";
-        }
-        else if (pep.EnableTimeExit && barsSinceEntry >= pep.MaxHoldingBars)
-        {
-            exitPrice = currentBar.Close;
-            exitReason = $"시간 청산({pep.MaxHoldingBars}봉)";
+            strategyExit = new StrategyExitInstruction(
+                currentBar.Close,
+                $"누적 RSI 청산({currentCumulativeRsi2:F1})");
         }
 
-        if (exitPrice > 0)
+        var state = new LongPositionExecutionState(
+            openPosition.EntryPrice,
+            openPosition.StopLoss,
+            openPosition.Target,
+            openPosition.HighestHighSinceEntry,
+            openPosition.LowestLowSinceEntry,
+            openPosition.RiskDistance,
+            openPosition.EntryAtr,
+            openPosition.EntryBarIndex,
+            openPosition.CurrentQuantity > 0 ? openPosition.CurrentQuantity : openPosition.Quantity,
+            openPosition.PartialProfitTaken,
+            openPosition.BreakevenApplied,
+            openPosition.TrailingStopActivated);
+        var tqqqSmaExit = openPosition.PatternType == PatternType.Tqqq200Sma;
+        var stopReason = tqqqSmaExit ? "SMA200 이탈" : "손절";
+        var policy = new LongPositionExitPolicy(
+            pep.MaxHoldingBars,
+            pep.EnableTrailingStop,
+            pep.TrailingStopAtrMultiplier,
+            pep.TrailingActivationR,
+            pep.EnablePartialProfit,
+            pep.PartialProfitRMultiple,
+            pep.EnableTargetExit,
+            pep.EnableTimeExit,
+            pep.BreakevenAtrMultiplier,
+            StopReason: stopReason,
+            ProtectedStopReason: tqqqSmaExit ? stopReason : "트레일링 손절");
+        var result = LongPositionExecutionPolicy.Evaluate(
+            state,
+            currentBar,
+            barIndex,
+            currentAtr,
+            policy,
+            strategyExit,
+            tqqqSmaExit && sma200 > 0 ? sma200 * 0.99m : null);
+
+        var positionForFill = openPosition;
+        foreach (var executionEvent in result.Events)
         {
-            // 스케일링된 수량 반영 (CurrentQuantity > 0이면 스케일링이 적용된 것)
-            var exitQty = openPosition.CurrentQuantity > 0
-                ? openPosition.CurrentQuantity : openPosition.Quantity;
-            trades.Add(CreateTradeRecord(symbol, openPosition, exitPrice,
-                currentBar.Timestamp, exitReason, exitQty));
+            if (executionEvent.Type == PositionExecutionEventType.StopMoved)
+                continue;
+
+            trades.Add(CreateTradeRecord(
+                symbol,
+                positionForFill,
+                executionEvent.Price,
+                currentBar.Timestamp,
+                executionEvent.Reason,
+                executionEvent.Quantity));
+
+            if (executionEvent.Type == PositionExecutionEventType.PartialExit)
+                positionForFill = CopyWithExecutionState(openPosition, result.State, quantityBecomesRemaining: true);
+        }
+
+        if (result.IsClosed)
             return null;
-        }
 
-        // 종가로 확정한 보호 스탑은 다음 봉부터 사용한다.
-        if (!openPosition.BreakevenApplied && openPosition.EntryAtr > 0
-            && pep.BreakevenAtrMultiplier > 0)
+        return CopyWithExecutionState(
+            openPosition,
+            result.State,
+            result.Events.Any(item => item.Type == PositionExecutionEventType.PartialExit));
+    }
+
+    private static OpenPosition CopyWithExecutionState(
+        OpenPosition source,
+        LongPositionExecutionState state,
+        bool quantityBecomesRemaining)
+    {
+        return new OpenPosition
         {
-            var breakevenThreshold = openPosition.EntryPrice + openPosition.EntryAtr * pep.BreakevenAtrMultiplier;
-            if (currentBar.Close >= breakevenThreshold)
-            {
-                openPosition.StopLoss = Math.Max(openPosition.StopLoss, openPosition.EntryPrice);
-                openPosition.BreakevenApplied = true;
-            }
-        }
-
-        if (pep.EnableTrailingStop)
-        {
-            var activationTarget = openPosition.EntryPrice
-                + openPosition.RiskDistance * pep.TrailingActivationR;
-            if (!openPosition.TrailingStopActivated && currentBar.Close >= activationTarget)
-                openPosition.TrailingStopActivated = true;
-
-            if (openPosition.TrailingStopActivated && currentAtr > 0)
-            {
-                var chandelier = openPosition.HighestHighSinceEntry
-                    - currentAtr * pep.TrailingStopAtrMultiplier;
-                if (chandelier > openPosition.StopLoss)
-                    openPosition.StopLoss = chandelier;
-            }
-        }
-
-        if (openPosition.PatternType == PatternType.Tqqq200Sma && sma200 > 0)
-        {
-            var dynamicSmaStop = sma200 * 0.99m;
-            if (dynamicSmaStop > openPosition.StopLoss)
-                openPosition.StopLoss = dynamicSmaStop;
-        }
-
-        return openPosition;
+            PatternType = source.PatternType,
+            CustomPatternName = source.CustomPatternName,
+            EntryPrice = source.EntryPrice,
+            OriginalStop = source.OriginalStop,
+            StopLoss = state.StopPrice,
+            Target = source.Target,
+            Quantity = quantityBecomesRemaining ? state.CurrentQuantity : source.Quantity,
+            CurrentQuantity = state.CurrentQuantity,
+            TotalCost = quantityBecomesRemaining ? source.EntryPrice * state.CurrentQuantity : source.TotalCost,
+            EntryTime = source.EntryTime,
+            EntryBarIndex = source.EntryBarIndex,
+            EntryAtr = source.EntryAtr,
+            EntryVolume = source.EntryVolume,
+            HighestHighSinceEntry = state.HighestPrice,
+            LowestLowSinceEntry = state.LowestPrice,
+            TrailingStopActivated = state.TrailingActivated,
+            BreakevenApplied = state.BreakevenApplied,
+            PartialProfitTaken = state.PartialProfitTaken,
+            RiskDistance = source.RiskDistance,
+            EquityAtEntry = source.EquityAtEntry,
+            CustomExitProfile = source.CustomExitProfile,
+            ScaleCounts = source.ScaleCounts,
+        };
     }
 
     internal static TradeRecord CreateTradeRecord(

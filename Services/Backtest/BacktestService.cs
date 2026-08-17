@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 using StockTrader.Application.Optimization;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
@@ -516,16 +517,21 @@ public class BacktestService : IBacktestService
                     var nextOpen = pendingSd.Bars[pendingBarIdx].Open;
                     if (nextOpen <= 0) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
 
-                    // NextOpen 기준으로 StopLoss/Target 재계산
-                    var newStopDistance = pending.stopDistance; // ATR 기반 거리 유지
-                    var newStop   = nextOpen - newStopDistance;
-                    var rMultiple = pending.entryPrice > 0 && pending.stopLoss < pending.entryPrice
-                        ? (pending.target - pending.entryPrice) / (pending.entryPrice - pending.stopLoss)
-                        : 2.0m;
-                    var newTarget = nextOpen + newStopDistance * rMultiple;
+                    // NextOpen에서도 미리보기와 동일하게 원 신호의 위험 거리/R 배수를 보존한다.
+                    var fill = LongEntryFillPolicy.Reprice(
+                        pending.entryPrice,
+                        pending.stopLoss,
+                        pending.target,
+                        nextOpen,
+                        fallbackTargetMultiple: 2m);
+                    if (fill is null)
+                    {
+                        pendingNextOpenSignals.Remove(pendingSymbol);
+                        continue;
+                    }
 
                     var pendingRiskAmount = pending.equityAtEntry * pending.riskPerTradeSnap;
-                    var pendingQty = (int)(pendingRiskAmount / newStopDistance);
+                    var pendingQty = (int)(pendingRiskAmount / fill.RiskDistance);
                     if (pendingQty <= 0) pendingQty = 1;
                     var pendingMaxQty = pending.effectiveMaxPosSnap > 0
                         ? (int)(pending.equityAtEntry * pending.effectiveMaxPosSnap / nextOpen)
@@ -537,9 +543,9 @@ public class BacktestService : IBacktestService
                         PatternType           = PatternType.Custom,
                         CustomPatternName     = pending.customPatternName,
                         EntryPrice            = nextOpen,
-                        OriginalStop          = newStop,
-                        StopLoss              = newStop,
-                        Target                = newTarget,
+                        OriginalStop          = fill.StopPrice,
+                        StopLoss              = fill.StopPrice,
+                        Target                = fill.TargetPrice,
                         Quantity              = pendingQty,
                         CurrentQuantity       = pendingQty,
                         TotalCost             = nextOpen * pendingQty,
@@ -549,7 +555,7 @@ public class BacktestService : IBacktestService
                         EntryVolume           = pending.entryVolume,
                         HighestHighSinceEntry = nextOpen,
                         LowestLowSinceEntry   = nextOpen,
-                        RiskDistance          = newStopDistance,
+                        RiskDistance          = fill.RiskDistance,
                         EquityAtEntry         = pending.equityAtEntry,
                         CustomExitProfile     = pending.customExit
                     };

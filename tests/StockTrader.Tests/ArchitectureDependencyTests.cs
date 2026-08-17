@@ -90,6 +90,20 @@ public class ArchitectureDependencyTests
         source.Should().NotContain("BacktestService.SymbolPreparedData");
     }
 
+    [Fact]
+    public void PreviewAndBacktestUseTheSameLongPositionExecutionPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
+        var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/TradeSimulator.cs"));
+
+        preview.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
+        backtest.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
+        preview.Should().Contain("LongEntryFillPolicy.Reprice(");
+        preview.Should().NotContain("current.Low <= position.StopPrice");
+        preview.Should().NotContain("current.High >= position.TargetPrice");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

@@ -10,9 +10,13 @@
   `Application/Optimization`.
 - Historical data preparation and derived indicator arrays are shared by backtest, walk-forward,
   synchronous optimization, and background optimization through `BacktestDataPreparer`.
+- Pattern preview and backtest now share `LongEntryFillPolicy` and
+  `LongPositionExecutionPolicy`. The shared policy owns long-entry repricing, gap-stop fills,
+  same-bar exit priority, partial profit, target/time exits, and next-bar protective-stop updates.
 
-Remaining Phase 2 work is primarily the extraction of fill, position, portfolio, and metric
-orchestration from `BacktestService`, followed by preview/backtest/live execution parity fixtures.
+Remaining Phase 2 work is primarily the extraction of portfolio and metric orchestration from
+`BacktestService`, followed by connecting live execution to the same position policy and adding
+preview/backtest/live parity fixtures.
 
 ## Phase 0 — Guardrails and governance
 

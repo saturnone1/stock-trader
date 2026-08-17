@@ -51,15 +51,33 @@ public class TradeSimulatorTests
         trades[0].ExitPrice.Should().Be(110m);
     }
 
-    private static (TradeSimulator simulator, TradeSimulator.OpenPosition position, List<TradeRecord> trades) Setup(bool trailing = false)
+    [Fact]
+    public void ProcessExitLogic_PartialExitPreservesEntryEquityAndUsesRemainingQuantity()
+    {
+        var (simulator, position, trades) = Setup(partial: true, equityAtEntry: 25_000m);
+        var bar = Bar(open: 101m, high: 106m, low: 99m, close: 105m);
+
+        var stillOpen = Process(simulator, position, bar, trades);
+
+        stillOpen.Should().NotBeNull();
+        stillOpen!.CurrentQuantity.Should().Be(5);
+        stillOpen.Quantity.Should().Be(5);
+        stillOpen.EquityAtEntry.Should().Be(25_000m);
+        trades.Should().ContainSingle(trade => trade.ExitReason == "부분 익절(1R)" && trade.Quantity == 5);
+    }
+
+    private static (TradeSimulator simulator, TradeSimulator.OpenPosition position, List<TradeRecord> trades) Setup(
+        bool trailing = false,
+        bool partial = false,
+        decimal equityAtEntry = 0m)
     {
         var profile = new TradeSimulator.PatternExitProfile(
             MaxHoldingBars: 20,
             EnableTrailingStop: trailing,
             TrailingStopAtrMultiplier: 2m,
             TrailingActivationR: 1m,
-            EnablePartialProfit: false,
-            PartialProfitRMultiple: 0m,
+            EnablePartialProfit: partial,
+            PartialProfitRMultiple: partial ? 1m : 0m,
             EnableTargetExit: true,
             EnableTimeExit: false,
             BreakevenAtrMultiplier: 0m);
@@ -78,6 +96,7 @@ public class TradeSimulatorTests
             HighestHighSinceEntry = 100m,
             LowestLowSinceEntry = 100m,
             RiskDistance = 5m,
+            EquityAtEntry = equityAtEntry,
             CustomExitProfile = profile
         };
         return (new TradeSimulator(new IndicatorService(), NullLogger<TradeSimulator>.Instance), position, []);

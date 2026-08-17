@@ -4,6 +4,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Application.StrategyPreview;
 using StockTrader.Application.Strategies;
+using StockTrader.Application.Execution;
 using StockTrader.Domain.MarketData;
 using StockTrader.Services.DataFeed;
 using StockTrader.Services.Indicators;
@@ -149,6 +150,15 @@ public static class PatternPreviewEndpoints
         var currentEntryDay = DateOnly.MinValue;
         var entriesToday = 0;
         var safetyBlockedEntries = 0;
+        var exitPolicy = new LongPositionExitPolicy(
+            request.Pattern.MaxHoldingBars,
+            request.Pattern.TrailingAtr > 0,
+            request.Pattern.TrailingAtr,
+            1m,
+            request.Pattern.PartialProfitR > 0,
+            request.Pattern.PartialProfitR,
+            EnableTargetExit: true,
+            EnableTimeExit: true);
 
         void Realize(OpenPreviewPosition openPosition, decimal price, int quantity)
         {
@@ -181,72 +191,68 @@ public static class PatternPreviewEndpoints
                 pair => pair.Key,
                 pair => pair.Value.Where(bar => bar.Timestamp <= current.Timestamp).ToArray()));
 
-            if (position is not null && index > position.EntryIndex)
+            // NextOpen은 진입 봉 자체의 고가/저가도 실제 보유 구간이므로 즉시 평가한다.
+            if (position is not null && index >= position.EntryIndex)
             {
-                string? reason = null;
-                decimal exitPrice = current.Close;
-
-                position.HighestPrice = Math.Max(position.HighestPrice, current.High);
                 var currentAtr = indicators.ATR(window, 14).LastOrDefault();
-                var oldStop = position.StopPrice;
-                if (!position.BreakevenApplied && currentAtr > 0
-                    && current.Close >= position.EntryPrice + currentAtr * 1.5m)
-                {
-                    position.StopPrice = Math.Max(position.StopPrice, position.EntryPrice);
-                    position.BreakevenApplied = true;
-                }
-                if (request.Pattern.TrailingAtr > 0
-                    && current.Close >= position.EntryPrice + position.InitialRisk)
-                {
-                    position.TrailingActivated = true;
-                    if (currentAtr > 0)
-                        position.StopPrice = Math.Max(position.StopPrice,
-                            position.HighestPrice - currentAtr * request.Pattern.TrailingAtr);
-                }
-                if (position.StopPrice > oldStop)
-                {
-                    markers.Add(new PatternPreviewMarker(
-                        current.Timestamp, "STOP_MOVE", position.StopPrice,
-                        Details: position.TrailingActivated ? "추적 손절가 상향" : "손절가를 매수가로 상향"));
-                }
+                var strategyExit = detector.ShouldExit(window)
+                    ? new StrategyExitInstruction(current.Close, "청산 규칙 충족")
+                    : null;
+                var result = LongPositionExecutionPolicy.Evaluate(
+                    new LongPositionExecutionState(
+                        position.EntryPrice,
+                        position.StopPrice,
+                        position.TargetPrice,
+                        position.HighestPrice,
+                        position.LowestPrice,
+                        position.InitialRisk,
+                        position.EntryAtr,
+                        position.EntryIndex,
+                        position.CurrentQuantity,
+                        position.PartialProfitTaken,
+                        position.BreakevenApplied,
+                        position.TrailingActivated),
+                    current,
+                    index,
+                    currentAtr,
+                    exitPolicy,
+                    strategyExit);
 
-                if (request.Pattern.PartialProfitR > 0 && !position.PartialProfitTaken)
+                position.StopPrice = result.State.StopPrice;
+                position.HighestPrice = result.State.HighestPrice;
+                position.LowestPrice = result.State.LowestPrice;
+                position.CurrentQuantity = result.State.CurrentQuantity;
+                position.PartialProfitTaken = result.State.PartialProfitTaken;
+                position.BreakevenApplied = result.State.BreakevenApplied;
+                position.TrailingActivated = result.State.TrailingActivated;
+
+                foreach (var executionEvent in result.Events)
                 {
-                    var partialTarget = position.EntryPrice + position.InitialRisk * request.Pattern.PartialProfitR;
-                    if (current.High >= partialTarget && position.CurrentQuantity >= 2)
+                    if (executionEvent.Type == PositionExecutionEventType.StopMoved)
                     {
-                        var sold = position.CurrentQuantity / 2;
-                        Realize(position, partialTarget, sold);
-                        position.CurrentQuantity -= sold;
-                        position.PartialProfitTaken = true;
-                        position.StopPrice = Math.Max(position.StopPrice, position.EntryPrice);
                         markers.Add(new PatternPreviewMarker(
-                            current.Timestamp, "PARTIAL_EXIT", partialTarget,
-                            Details: $"보유 수량의 {sold * 100m / (sold + position.CurrentQuantity):F0}% 매도",
-                            Reason: $"{request.Pattern.PartialProfitR:F1}R 부분 익절"));
+                            current.Timestamp,
+                            "STOP_MOVE",
+                            executionEvent.Price,
+                            Details: executionEvent.Reason));
+                    }
+                    else if (executionEvent.Type == PositionExecutionEventType.PartialExit)
+                    {
+                        Realize(position, executionEvent.Price, executionEvent.Quantity);
+                        markers.Add(new PatternPreviewMarker(
+                            current.Timestamp,
+                            "PARTIAL_EXIT",
+                            executionEvent.Price,
+                            Details: $"보유 수량의 {executionEvent.Quantity * 100m / (executionEvent.Quantity + position.CurrentQuantity):F0}% 매도",
+                            Reason: executionEvent.Reason));
                     }
                 }
 
-                if (current.Low <= position.StopPrice)
-                {
-                    reason = position.TrailingActivated || position.BreakevenApplied ? "추적 손절가 도달" : "손절가 도달";
-                    exitPrice = position.StopPrice;
-                }
-                else if (current.High >= position.TargetPrice)
-                {
-                    reason = "목표가 도달";
-                    exitPrice = position.TargetPrice;
-                }
-                else if (detector.ShouldExit(window))
-                {
-                    reason = "청산 규칙 충족";
-                }
-                else if (request.Pattern.MaxHoldingBars > 0 && index - position.EntryIndex >= request.Pattern.MaxHoldingBars)
-                {
-                    reason = "최대 보유기간";
-                }
+                var policyExit = result.Events.LastOrDefault(item => item.Type == PositionExecutionEventType.Exit);
+                string? closeReason = policyExit?.Reason;
+                var closePrice = policyExit?.Price ?? current.Close;
 
-                if (reason is null && detector.HasScalingRules)
+                if (closeReason is null && detector.HasScalingRules)
                 {
                     var profitPercent = position.EntryPrice > 0
                         ? (current.Close - position.EntryPrice) / position.EntryPrice * 100m
@@ -280,9 +286,9 @@ public static class PatternPreviewEndpoints
                     }
                 }
 
-                if (reason is not null)
+                if (closeReason is not null)
                 {
-                    Complete(position, exitPrice);
+                    Complete(position, closePrice);
                     var wasLoss = position.RealizedPnl < 0;
                     var reentryBars = wasLoss ? reentry.CooldownBarsAfterLoss : reentry.CooldownBarsAfterWin;
                     if (reentryBars > 0) reentryUntilIndex = index + reentryBars + 1;
@@ -299,7 +305,7 @@ public static class PatternPreviewEndpoints
                         && (peakCompoundedReturn - compoundedReturn) / peakCompoundedReturn * 100m >= circuitBreaker.MaxDrawdownPercent)
                         drawdownTripped = true;
 
-                    markers.Add(new PatternPreviewMarker(current.Timestamp, "EXIT", exitPrice, Reason: reason));
+                    markers.Add(new PatternPreviewMarker(current.Timestamp, "EXIT", closePrice, Reason: closeReason));
                     position = null;
                 }
             }
@@ -347,21 +353,29 @@ public static class PatternPreviewEndpoints
                 entryDate = allBars[entryIndex].Timestamp;
             }
 
-            var stopDistance = Math.Max(0.0001m, signal.EntryPrice - signal.StopLossPrice);
-            var targetMultiple = stopDistance > 0
-                ? (signal.TargetPrice - signal.EntryPrice) / stopDistance
-                : request.Pattern.AtrTargetMultiplier / request.Pattern.AtrStopMultiplier;
-            var entryStop = entryPrice - stopDistance;
-            var entryTarget = entryPrice + stopDistance * targetMultiple;
+            var fallbackTargetMultiple = request.Pattern.AtrStopMultiplier > 0
+                ? request.Pattern.AtrTargetMultiplier / request.Pattern.AtrStopMultiplier
+                : 1m;
+            var fill = LongEntryFillPolicy.Reprice(
+                signal.EntryPrice,
+                signal.StopLossPrice,
+                signal.TargetPrice,
+                entryPrice,
+                fallbackTargetMultiple);
+            if (fill is null)
+                continue;
+            var entryAtr = indicators.ATR(window, 14).LastOrDefault();
             position = new OpenPreviewPosition
             {
                 EntryIndex = entryIndex,
-                EntryPrice = entryPrice,
-                StopPrice = entryStop,
-                TargetPrice = entryTarget,
-                HighestPrice = entryPrice,
-                InitialRisk = stopDistance,
-                InvestedCapital = entryPrice * 100,
+                EntryPrice = fill.EntryPrice,
+                StopPrice = fill.StopPrice,
+                TargetPrice = fill.TargetPrice,
+                HighestPrice = fill.EntryPrice,
+                LowestPrice = fill.EntryPrice,
+                InitialRisk = fill.RiskDistance,
+                EntryAtr = entryAtr > 0 ? entryAtr : fill.RiskDistance,
+                InvestedCapital = fill.EntryPrice * 100,
                 AllocationScale = Math.Min(
                     signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m,
                     portfolioRules.MaxSinglePositionPercent > 0 ? portfolioRules.MaxSinglePositionPercent / 100m : 1m)
@@ -370,9 +384,9 @@ public static class PatternPreviewEndpoints
             markers.Add(new PatternPreviewMarker(
                 entryDate,
                 "ENTRY",
-                entryPrice,
-                entryStop,
-                entryTarget,
+                fill.EntryPrice,
+                fill.StopPrice,
+                fill.TargetPrice,
                 $"{signal.Details} · 매수 비중 {signal.AllocationScale * 100m:F0}%"));
         }
 
@@ -490,7 +504,9 @@ public static class PatternPreviewEndpoints
         public decimal StopPrice { get; set; }
         public decimal TargetPrice { get; init; }
         public decimal HighestPrice { get; set; }
+        public decimal LowestPrice { get; set; }
         public decimal InitialRisk { get; init; }
+        public decimal EntryAtr { get; init; }
         public int InitialQuantity { get; init; } = 100;
         public int CurrentQuantity { get; set; } = 100;
         public bool PartialProfitTaken { get; set; }
