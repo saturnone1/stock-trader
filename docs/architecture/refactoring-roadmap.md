@@ -17,8 +17,8 @@
   decisions to `LiveLongPositionDecisionPolicy`, while broker submission and actual fill lookup stay
   in the live adapter. Both execution policies share the same position state and protective-stop
   calculation.
-- Live protective-stop state is persisted on `Position` through the ordered
-  `PositionExecutionStateMigration`; process restarts no longer discard initial risk, breakeven, or
+- Live protective-stop state is persisted on `Position` in the EF-owned schema; process restarts
+  no longer discard initial risk, breakeven, or
   trailing activation. Market-open checks use the injected clock, and daily holding limits count
   observed market bars instead of approximating business days as calendar days.
 - Automatic and manual live exits share `LivePositionExitCoordinator`. It atomically claims the
@@ -115,11 +115,10 @@
   `RuleBasedDetector`; production code no longer creates or casts the concrete detector directly,
   and every execution receives a fresh runtime over the same compiled-strategy semantics.
 - EF Core now owns the generated initial schema, model snapshot, and future schema history. Empty
-  databases migrate directly through EF. Existing databases run the frozen compatibility reader,
-  must pass table/column/index parity, and only then adopt the initial EF history row. A read-only
-  `--verify-ef-baseline` mode supports production preflight; tests cover empty creation, row-preserving
-  baseline adoption, idempotency, and fail-closed handling of incomplete legacy schemas.
-  `/api/health` reports the applied/latest EF migration, pending count, and synchronization state.
+  databases migrate directly through EF. The one-time production compatibility bridge completed
+  baseline adoption and has been removed; an unbaselined database now fails closed without writes.
+  Tests cover empty creation, row preservation, idempotency, and legacy refusal. `/api/health`
+  reports the applied/latest EF migration, pending count, and synchronization state.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.
@@ -130,6 +129,9 @@
   full-stack Dockerfile, four competing Compose variants, single-process K3s manifests, and duplicate
   build/deploy scripts were removed. Desktop uses same-origin `/api` routing in Vite, nginx, and K3s,
   and API rollouts use `Recreate` so two application Pods never share the production SQLite file.
+- Production baseline evidence allowed the handwritten SQLite bridge to be retired. Startup now
+  accepts only an empty database or one with EF migration history and fails closed without writes
+  for an unbaselined legacy database. EF Core is the sole schema mutation engine.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

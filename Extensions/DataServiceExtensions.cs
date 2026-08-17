@@ -21,11 +21,6 @@ public static class DataServiceExtensions
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
         services.AddScoped<ICompiledStrategyRepository, CompiledStrategyRepository>();
-        services.AddScoped<IDatabaseMigration, LegacySchemaBaselineMigration>();
-        services.AddScoped<IDatabaseMigration, PositionExecutionStateMigration>();
-        services.AddScoped<IDatabaseMigration, PositionExitIntentMigration>();
-        services.AddScoped<DatabaseMigrationRunner>();
-        services.AddScoped<EfBaselineCompatibilityValidator>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();
 

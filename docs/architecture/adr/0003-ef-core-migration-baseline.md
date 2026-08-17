@@ -37,6 +37,8 @@ EF Core migrations are the sole owner of schema creation and all future schema c
 The old `IDatabaseMigration` implementations are compatibility readers only. No new schema change
 may be added to that pipeline.
 
+The bridge described here has completed its production adoption and was retired by ADR 0004.
+
 ## Consequences
 
 - New and existing installations converge on one EF migration ledger without recreating tables.
@@ -44,5 +46,4 @@ may be added to that pipeline.
 - Production baseline adoption is deliberately fail-closed and requires a backup before rollout.
 - Provider-generated history SQL is used during the one-time bridge; handwritten compatibility SQL
   remains temporarily until every supported legacy database has adopted the EF baseline.
-- Removing the compatibility reader becomes a later cleanup after deployed databases prove an EF
-  history row through health/operations evidence.
+- Deployed health and operations evidence proved the EF history row; ADR 0004 removes the bridge.

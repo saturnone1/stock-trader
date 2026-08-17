@@ -389,7 +389,7 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
-    public void StartupUsesEfSchemaMigratorAndKeepsLegacySqlBehindCompatibilityBoundary()
+    public void StartupUsesOnlyEfSchemaMigrationsAndRejectsUnbaselinedDatabases()
     {
         var repository = FindRepositoryRoot();
         var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
@@ -404,8 +404,6 @@ public class ArchitectureDependencyTests
         (program + initialization).Should().NotContain("CREATE TABLE");
         (program + initialization).Should().NotContain("EnsureCreatedAsync");
 
-        var legacyRunner = File.ReadAllText(Path.Combine(
-            repository, "Data/Migrations/DatabaseMigrationRunner.cs"));
         var schemaMigrator = File.ReadAllText(Path.Combine(
             repository, "Data/Migrations/DatabaseSchemaMigrator.cs"));
         var efMigration = Directory.EnumerateFiles(
@@ -413,12 +411,15 @@ public class ArchitectureDependencyTests
             .Single();
         var toolManifest = File.ReadAllText(Path.Combine(repository, "dotnet-tools.json"));
 
-        legacyRunner.Should().NotContain("EnsureCreated");
         schemaMigrator.Should().Contain("_db.Database.MigrateAsync(");
-        schemaMigrator.Should().Contain("EfBaselineCompatibilityValidator");
-        schemaMigrator.Should().Contain("GetInsertScript(new HistoryRow(");
-        program.Should().Contain("--verify-ef-baseline");
-        initialization.Should().Contain("VerifyEfBaselineCompatibilityAsync");
+        schemaMigrator.Should().Contain("EF 마이그레이션 이력이 없는 기존 데이터베이스");
+        schemaMigrator.Should().NotContain("DatabaseMigrationRunner");
+        schemaMigrator.Should().NotContain("ExecuteSqlRaw");
+        schemaMigrator.Should().NotContain("ALTER TABLE");
+        schemaMigrator.Should().NotContain("CREATE TABLE");
+        program.Should().NotContain("--verify-ef-baseline");
+        program.Should().Contain("--verify-database-migrations");
+        initialization.Should().Contain("DatabaseMigrationStatusProvider");
         var health = File.ReadAllText(Path.Combine(repository, "Api/HealthEndpoints.cs"));
         health.Should().Contain("DatabaseMigrationStatusProvider");
         health.Should().Contain("databaseMigration");
@@ -428,20 +429,12 @@ public class ArchitectureDependencyTests
         toolManifest.Should().Contain("\"dotnet-ef\"");
         toolManifest.Should().Contain("\"10.0.10\"");
 
-        var registrations = File.ReadAllText(Path.Combine(
-            repository, "Extensions/DataServiceExtensions.cs"));
-        var legacyImplementations = Directory.EnumerateFiles(
-                Path.Combine(repository, "Data/Migrations"), "*.cs")
-            .Where(path => File.ReadAllText(path).Contains(": IDatabaseMigration", StringComparison.Ordinal))
+        Directory.EnumerateFiles(Path.Combine(repository, "Data/Migrations"), "*.cs")
             .Select(Path.GetFileNameWithoutExtension)
             .Order(StringComparer.Ordinal)
-            .ToArray();
-        legacyImplementations.Should().Equal(
-            "LegacySchemaBaselineMigration",
-            "PositionExecutionStateMigration",
-            "PositionExitIntentMigration");
-        registrations.Split("AddScoped<IDatabaseMigration", StringSplitOptions.None).Length.Should().Be(4,
-            "세 개의 기존 호환 리더 외에 새 수동 스키마 마이그레이션을 등록하면 안 됩니다");
+            .Should().Equal("DatabaseMigrationStatusProvider", "DatabaseSchemaMigrator");
+        File.Exists(Path.Combine(repository, "docs/architecture/adr/0004-retire-handwritten-migrations.md"))
+            .Should().BeTrue();
     }
 
     [Fact]

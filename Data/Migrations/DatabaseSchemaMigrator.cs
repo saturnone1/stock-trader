@@ -1,68 +1,43 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace StockTrader.Data.Migrations;
 
 /// <summary>
-/// Owns the one-time transition from the legacy migration ledger to EF Core migrations.
-/// Empty databases are created by EF. Existing databases are compatibility-upgraded, structurally
-/// verified, and only then marked at the initial EF baseline.
+/// Applies EF Core migrations and rejects databases that never adopted EF history.
+/// Legacy schema mutation has been retired; an old database must be upgraded with a historical
+/// release or restored from a verified backup before this application can open it.
 /// </summary>
 public sealed class DatabaseSchemaMigrator
 {
     internal const string InitialMigrationSuffix = "_InitialSchema";
-    internal const string InitialProductVersion = "10.0.10";
-
     private readonly AppDbContext _db;
-    private readonly DatabaseMigrationRunner _legacyMigrations;
     private readonly ILogger<DatabaseSchemaMigrator> _logger;
 
     public DatabaseSchemaMigrator(
         AppDbContext db,
-        DatabaseMigrationRunner legacyMigrations,
         ILogger<DatabaseSchemaMigrator> logger)
     {
         _db = db;
-        _legacyMigrations = legacyMigrations;
         _logger = logger;
     }
 
     public async Task MigrateAsync(CancellationToken ct = default)
     {
-        var efMigrations = _db.Database.GetMigrations().ToArray();
-        var initialMigration = efMigrations.FirstOrDefault(value =>
-            value.EndsWith(InitialMigrationSuffix, StringComparison.Ordinal));
-        if (initialMigration == null)
+        if (!_db.Database.GetMigrations().Any(value =>
+                value.EndsWith(InitialMigrationSuffix, StringComparison.Ordinal)))
             throw new InvalidOperationException("EF 초기 스키마 마이그레이션을 찾을 수 없습니다.");
 
-        var applied = (await _db.Database.GetAppliedMigrationsAsync(ct)).ToHashSet(StringComparer.Ordinal);
-        if (applied.Count > 0)
-        {
-            await _db.Database.MigrateAsync(ct);
-            return;
-        }
-
-        if (!await HasApplicationTablesAsync(ct))
-        {
-            _logger.LogInformation("Creating a new database from EF Core migrations");
-            await _db.Database.MigrateAsync(ct);
-            return;
-        }
-
-        _logger.LogInformation("Upgrading legacy database before adopting EF Core migration history");
-        await _legacyMigrations.MigrateAsync(ct);
-        var compatibility = await new EfBaselineCompatibilityValidator(_db).ValidateAsync(ct);
-        if (!compatibility.IsCompatible)
+        var applied = await _db.Database.GetAppliedMigrationsAsync(ct);
+        if (!applied.Any() && await HasApplicationTablesAsync(ct))
         {
             throw new InvalidOperationException(
-                $"기존 데이터베이스가 EF 초기 스키마와 일치하지 않아 기준선을 등록할 수 없습니다: {compatibility.Describe()}");
+                "EF 마이그레이션 이력이 없는 기존 데이터베이스는 자동 변경하지 않습니다. " +
+                "EF 기준선을 채택한 이전 릴리스로 먼저 업그레이드하거나 검증된 백업을 복원하세요.");
         }
 
-        await RecordInitialBaselineAsync(initialMigration, ct);
+        _logger.LogInformation("Applying pending EF Core database migrations");
         await _db.Database.MigrateAsync(ct);
-        _logger.LogInformation("Adopted EF Core migration baseline {MigrationId}", initialMigration);
     }
 
     private async Task<bool> HasApplicationTablesAsync(CancellationToken ct)
@@ -81,15 +56,4 @@ public sealed class DatabaseSchemaMigrator
         return Convert.ToInt64(await command.ExecuteScalarAsync(ct)) > 0;
     }
 
-    private async Task RecordInitialBaselineAsync(string migrationId, CancellationToken ct)
-    {
-        var history = _db.GetService<IHistoryRepository>();
-        await _db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript(), ct);
-        var applied = await _db.Database.GetAppliedMigrationsAsync(ct);
-        if (applied.Contains(migrationId, StringComparer.Ordinal))
-            return;
-        await _db.Database.ExecuteSqlRawAsync(
-            history.GetInsertScript(new HistoryRow(migrationId, InitialProductVersion)),
-            ct);
-    }
 }

@@ -92,11 +92,10 @@ monitoring and the operator API call the same use case. Position responses use o
 shows whether an exit is ready, missing a confirmed broker order ID, or awaiting broker resolution;
 the operator can request reconciliation but cannot force-clear an uncertain order.
 
-Database schema ownership now crosses a fail-closed EF Core baseline boundary. Empty databases are
-created from the generated initial migration. Existing SQLite databases run only the frozen legacy
-compatibility readers, must match every EF table, column, and named index, and then adopt the initial
-EF history row before later migrations run. `--verify-ef-baseline` performs the same comparison
-without writes so production volumes can be checked before rollout.
+Database schema ownership now crosses a fail-closed EF Core boundary. Empty databases are created
+from generated migrations and databases with EF history apply only their pending migrations. The
+temporary legacy baseline writer has completed production adoption and is removed. A database with
+application tables but no EF history is rejected before any schema or row change.
 
 ## Decision records
 
@@ -105,4 +104,6 @@ without writes so production volumes can be checked before rollout.
   conditions, groups, dynamic price levels, reference history, and observation time.
 - `adr/0003-ef-core-migration-baseline.md`: safe adoption of EF schema history by new and legacy SQLite
   databases.
+- `adr/0004-retire-handwritten-migrations.md`: fail-closed retirement of the temporary legacy
+  schema writer after production baseline adoption.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

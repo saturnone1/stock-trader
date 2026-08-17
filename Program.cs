@@ -32,9 +32,9 @@ try
         .AllowAnyMethod()
         .AllowCredentials()));
     var app = builder.Build();
-    if (args.Contains("--verify-ef-baseline", StringComparer.Ordinal))
+    if (args.Contains("--verify-database-migrations", StringComparer.Ordinal))
     {
-        Environment.ExitCode = await app.VerifyEfBaselineCompatibilityAsync() ? 0 : 2;
+        Environment.ExitCode = await app.VerifyDatabaseMigrationsAsync() ? 0 : 2;
         return;
     }
     await app.InitializeStockTraderAsync();

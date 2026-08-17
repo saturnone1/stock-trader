@@ -41,3 +41,7 @@ rollouts, and removes its temporary archives.
 The API deployment uses `Recreate` because one SQLite database must never be opened by old and new
 application Pods during a rollout. Verify the desktop URL, `/api/health`, Pod restart counts, and
 API startup logs after deployment.
+
+For a read-only database preflight, run the API image with the production `/data` volume mounted
+read-only and append `--verify-database-migrations`. Exit code 0 proves the database is already at
+the image's latest EF migration; the command never applies a migration.

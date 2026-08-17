@@ -11,23 +11,27 @@ namespace StockTrader.Extensions;
 
 public static class ApplicationInitializationExtensions
 {
-    public static async Task<bool> VerifyEfBaselineCompatibilityAsync(this WebApplication app)
+    public static async Task<bool> VerifyDatabaseMigrationsAsync(this WebApplication app)
     {
         using var scope = app.Services.CreateScope();
-        var compatibility = await scope.ServiceProvider
-            .GetRequiredService<EfBaselineCompatibilityValidator>()
-            .ValidateAsync(CancellationToken.None);
+        var status = await scope.ServiceProvider
+            .GetRequiredService<DatabaseMigrationStatusProvider>()
+            .GetAsync(CancellationToken.None);
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
             .CreateLogger(typeof(ApplicationInitializationExtensions));
-        if (compatibility.IsCompatible)
+        if (status.IsSynchronized)
         {
-            logger.LogInformation("EF baseline compatibility verification passed");
+            logger.LogInformation(
+                "Database migration verification passed at {MigrationId}",
+                status.Current);
             return true;
         }
 
         logger.LogError(
-            "EF baseline compatibility verification failed: {Differences}",
-            compatibility.Describe());
+            "Database migration verification failed: current={Current}, latest={Latest}, pending={PendingCount}",
+            status.Current,
+            status.Latest,
+            status.PendingCount);
         return false;
     }
 
