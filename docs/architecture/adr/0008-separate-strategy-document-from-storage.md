@@ -17,14 +17,15 @@ silently become part of the desktop API, and research execution depended on stor
 preview, backtest, optimization, scanning, and live execution. It contains strategy semantics and
 an optional `StoredStrategyId` reference, but no normalized database key or audit timestamps.
 
-`StrategyCompiler` and custom detector contracts accept only `StrategyDocument`. Stored entities
-are converted at the persistence/application boundary. Backtest and optimization OpenAPI schemas
+`StrategyCompiler` and custom detector contracts accept only `StrategyDocument`. Strategy CRUD uses
+`StoredStrategy`, which combines the document with server-owned identity and audit timestamps.
+`ICustomPatternStore` exposes only these application types; EF entities are converted inside the
+SQLite adapter. Backtest and optimization OpenAPI schemas
 refer to `StrategyDocument`; the desktop explicitly maps a stored response `id` to
 `storedStrategyId` and removes storage audit fields before execution requests.
 
-The EF entity remains temporarily inside the strategy-management persistence port. Moving that
-port to storage-independent records is a separate migration and must not reintroduce the entity
-into compiler or execution contracts.
+The EF entity is confined to `Data`, database configuration, and migrations. Architecture tests
+reject any `CustomPatternDefinition` reference under `Application`.
 
 ## Consequences
 

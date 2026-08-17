@@ -15,17 +15,19 @@ public sealed class CustomPatternStore : ICustomPatternStore
         _db = db;
     }
 
-    public async Task<IReadOnlyList<CustomPatternDefinition>> ListAsync(CancellationToken ct = default) =>
-        await _db.CustomPatterns.AsNoTracking()
+    public async Task<IReadOnlyList<StoredStrategy>> ListAsync(CancellationToken ct = default) =>
+        (await _db.CustomPatterns.AsNoTracking()
             .OrderByDescending(pattern => pattern.UpdatedAt)
-            .ToListAsync(ct);
+            .ToListAsync(ct)).Select(pattern => pattern.ToStoredStrategy()).ToArray();
 
-    public Task<CustomPatternDefinition?> FindAsync(int id, CancellationToken ct = default) =>
-        _db.CustomPatterns.AsNoTracking().FirstOrDefaultAsync(pattern => pattern.Id == id, ct);
+    public async Task<StoredStrategy?> FindAsync(int id, CancellationToken ct = default) =>
+        (await _db.CustomPatterns.AsNoTracking().FirstOrDefaultAsync(pattern => pattern.Id == id, ct))
+            ?.ToStoredStrategy();
 
-    public Task<CustomPatternDefinition?> FindByNameAsync(string normalizedName, CancellationToken ct = default) =>
-        _db.CustomPatterns.AsNoTracking()
-            .FirstOrDefaultAsync(pattern => pattern.NormalizedName == normalizedName, ct);
+    public async Task<StoredStrategy?> FindByNameAsync(string normalizedName, CancellationToken ct = default) =>
+        (await _db.CustomPatterns.AsNoTracking()
+            .FirstOrDefaultAsync(pattern => pattern.NormalizedName == normalizedName, ct))
+            ?.ToStoredStrategy();
 
     public Task<bool> NameExistsAsync(
         string normalizedName,
@@ -35,19 +37,21 @@ public sealed class CustomPatternStore : ICustomPatternStore
             (!excludingId.HasValue || pattern.Id != excludingId.Value)
             && pattern.NormalizedName == normalizedName, ct);
 
-    public async Task<CustomPatternWriteResult> AddAsync(
-        CustomPatternDefinition definition,
+    public async Task<CustomPatternStoreWriteOutcome> AddAsync(
+        StoredStrategy strategy,
         CancellationToken ct = default)
     {
+        var definition = strategy.ToEntity();
         definition.NormalizedName = StoredStrategyName.Normalize(definition.Name);
         _db.CustomPatterns.Add(definition);
         return await SaveAsync(definition, ct);
     }
 
-    public async Task<CustomPatternWriteResult> UpdateAsync(
-        CustomPatternDefinition definition,
+    public async Task<CustomPatternStoreWriteOutcome> UpdateAsync(
+        StoredStrategy strategy,
         CancellationToken ct = default)
     {
+        var definition = strategy.ToEntity();
         definition.NormalizedName = StoredStrategyName.Normalize(definition.Name);
         _db.CustomPatterns.Update(definition);
         return await SaveAsync(definition, ct);
@@ -56,19 +60,26 @@ public sealed class CustomPatternStore : ICustomPatternStore
     public async Task<bool> DeleteAsync(int id, CancellationToken ct = default) =>
         await _db.CustomPatterns.Where(pattern => pattern.Id == id).ExecuteDeleteAsync(ct) > 0;
 
-    private async Task<CustomPatternWriteResult> SaveAsync(
+    private async Task<CustomPatternStoreWriteOutcome> SaveAsync(
         CustomPatternDefinition definition,
         CancellationToken ct)
     {
         try
         {
             await _db.SaveChangesAsync(ct);
-            return CustomPatternWriteResult.Saved;
+            var saved = definition.ToStoredStrategy();
+            _db.Entry(definition).State = EntityState.Detached;
+            return CustomPatternStoreWriteOutcome.Saved(saved);
         }
         catch (DbUpdateException exception) when (IsNormalizedNameConflict(exception))
         {
             _db.Entry(definition).State = EntityState.Detached;
-            return CustomPatternWriteResult.NameConflict;
+            return CustomPatternStoreWriteOutcome.NameConflict();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _db.Entry(definition).State = EntityState.Detached;
+            return CustomPatternStoreWriteOutcome.NotFound();
         }
     }
 

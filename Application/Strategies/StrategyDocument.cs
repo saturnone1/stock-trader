@@ -1,5 +1,4 @@
 using StockTrader.Domain.Strategies;
-using StockTrader.Models;
 using StockTrader.Models.Enums;
 
 namespace StockTrader.Application.Strategies;
@@ -42,93 +41,7 @@ public sealed class StrategyDocument
     public string SizingMode { get; set; } = StrategyCatalog.FixedRiskSizingMode;
     public bool IsActive { get; set; } = StrategyDocumentDefaults.IsActive;
     public bool EnableLiveTrading { get; set; }
-}
 
-/// <summary>실행 문서와 현재 EF 저장 엔티티 사이의 단일 변환 경계.</summary>
-public static class StrategyDocumentMapper
-{
-    public static StrategyDocument ToStrategyDocument(this CustomPatternDefinition value)
-    {
-        ArgumentNullException.ThrowIfNull(value);
-        return new StrategyDocument
-        {
-            StoredStrategyId = value.Id > 0 ? value.Id : null,
-            DocumentVersion = value.DocumentVersion,
-            Name = value.Name,
-            Description = value.Description,
-            EntryRulesJson = value.EntryRulesJson,
-            EntryLogic = value.EntryLogic,
-            RequireBullRegime = value.RequireBullRegime,
-            AtrStopMultiplier = value.AtrStopMultiplier,
-            AtrTargetMultiplier = value.AtrTargetMultiplier,
-            MaxHoldingBars = value.MaxHoldingBars,
-            TrailingAtr = value.TrailingAtr,
-            PartialProfitR = value.PartialProfitR,
-            UseWeightTiers = value.UseWeightTiers,
-            WeightTiersJson = value.WeightTiersJson,
-            DefaultAllocationPercent = value.DefaultAllocationPercent,
-            ExitRulesJson = value.ExitRulesJson,
-            ExitRulesLogic = value.ExitRulesLogic,
-            ExitGroupsJson = value.ExitGroupsJson,
-            ExitGroupsLogic = value.ExitGroupsLogic,
-            ScalingRulesJson = value.ScalingRulesJson,
-            TimeFilterJson = value.TimeFilterJson,
-            CircuitBreakerJson = value.CircuitBreakerJson,
-            ReentryJson = value.ReentryJson,
-            PortfolioRulesJson = value.PortfolioRulesJson,
-            EntryGroupsJson = value.EntryGroupsJson,
-            EntryGroupsLogic = value.EntryGroupsLogic,
-            DynamicExitJson = value.DynamicExitJson,
-            EntryMode = value.EntryMode,
-            TimeFrame = value.TimeFrame,
-            SizingMode = value.SizingMode,
-            IsActive = value.IsActive,
-            EnableLiveTrading = value.EnableLiveTrading,
-        };
-    }
-
-    public static CustomPatternDefinition ToStoredDefinition(this StrategyDocument value)
-    {
-        ArgumentNullException.ThrowIfNull(value);
-        var target = new CustomPatternDefinition();
-        value.ApplyToStoredDefinition(target);
-        return target;
-    }
-
-    public static void ApplyToStoredDefinition(this StrategyDocument value, CustomPatternDefinition target)
-    {
-        ArgumentNullException.ThrowIfNull(value);
-        ArgumentNullException.ThrowIfNull(target);
-        target.DocumentVersion = value.DocumentVersion;
-        target.Name = value.Name;
-        target.Description = value.Description;
-        target.EntryRulesJson = value.EntryRulesJson;
-        target.EntryLogic = value.EntryLogic;
-        target.RequireBullRegime = value.RequireBullRegime;
-        target.AtrStopMultiplier = value.AtrStopMultiplier;
-        target.AtrTargetMultiplier = value.AtrTargetMultiplier;
-        target.MaxHoldingBars = value.MaxHoldingBars;
-        target.TrailingAtr = value.TrailingAtr;
-        target.PartialProfitR = value.PartialProfitR;
-        target.UseWeightTiers = value.UseWeightTiers;
-        target.WeightTiersJson = value.WeightTiersJson;
-        target.DefaultAllocationPercent = value.DefaultAllocationPercent;
-        target.ExitRulesJson = value.ExitRulesJson;
-        target.ExitRulesLogic = value.ExitRulesLogic;
-        target.ExitGroupsJson = value.ExitGroupsJson;
-        target.ExitGroupsLogic = value.ExitGroupsLogic;
-        target.ScalingRulesJson = value.ScalingRulesJson;
-        target.TimeFilterJson = value.TimeFilterJson;
-        target.CircuitBreakerJson = value.CircuitBreakerJson;
-        target.ReentryJson = value.ReentryJson;
-        target.PortfolioRulesJson = value.PortfolioRulesJson;
-        target.EntryGroupsJson = value.EntryGroupsJson;
-        target.EntryGroupsLogic = value.EntryGroupsLogic;
-        target.DynamicExitJson = value.DynamicExitJson;
-        target.EntryMode = value.EntryMode;
-        target.TimeFrame = value.TimeFrame;
-        target.SizingMode = value.SizingMode;
-        target.IsActive = value.IsActive;
-        target.EnableLiveTrading = value.EnableLiveTrading;
-    }
+    /// <summary>JSON 설정은 불변 문자열이므로 최적화·편집 경계에서 안전한 얕은 복사입니다.</summary>
+    public StrategyDocument Copy() => (StrategyDocument)MemberwiseClone();
 }

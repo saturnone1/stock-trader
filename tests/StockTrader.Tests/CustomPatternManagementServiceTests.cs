@@ -17,19 +17,18 @@ public class CustomPatternManagementServiceTests
         var service = new CustomPatternManagementService(store, new FixedClock(Now));
         var input = ValidPattern("  반등 전략  ");
         input.DocumentVersion = StrategyDocumentVersions.LegacyUnversioned;
-        input.Id = 999;
-        input.CreatedAt = DateTime.UnixEpoch;
-        input.UpdatedAt = DateTime.UnixEpoch;
+        input.StoredStrategyId = 999;
 
         var created = await service.CreateAsync(input);
         var duplicate = await service.CreateAsync(ValidPattern("반등 전략".ToUpperInvariant()));
 
         created.Kind.Should().Be(CustomPatternOperationKind.Success);
-        created.Definition!.Id.Should().Be(1);
-        created.Definition.Name.Should().Be("반등 전략");
-        created.Definition.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
-        created.Definition.CreatedAt.Should().Be(Now.UtcDateTime);
-        created.Definition.UpdatedAt.Should().Be(Now.UtcDateTime);
+        created.Strategy!.Id.Should().Be(1);
+        created.Strategy.Document.StoredStrategyId.Should().Be(1);
+        created.Strategy.Document.Name.Should().Be("반등 전략");
+        created.Strategy.Document.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
+        created.Strategy.CreatedAt.Should().Be(Now.UtcDateTime);
+        created.Strategy.UpdatedAt.Should().Be(Now.UtcDateTime);
         duplicate.Kind.Should().Be(CustomPatternOperationKind.Conflict);
         store.AddCount.Should().Be(1);
     }
@@ -51,30 +50,40 @@ public class CustomPatternManagementServiceTests
     public async Task UpdatePreservesServerOwnedIdentityAndCreationTime()
     {
         var createdAt = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc);
-        var existing = ValidPattern("기존 전략");
-        existing.Id = 7;
-        existing.CreatedAt = createdAt;
+        var existing = new StoredStrategy(7, ValidPattern("기존 전략"), createdAt, createdAt);
         var store = new MemoryStore(existing);
         var service = new CustomPatternManagementService(store, new FixedClock(Now));
         var replacement = ValidPattern("수정 전략");
-        replacement.Id = 1234;
-        replacement.CreatedAt = DateTime.UnixEpoch;
+        replacement.StoredStrategyId = 1234;
 
         var result = await service.UpdateAsync(7, replacement);
 
         result.Kind.Should().Be(CustomPatternOperationKind.Success);
-        result.Definition!.Id.Should().Be(7);
-        result.Definition.CreatedAt.Should().Be(createdAt);
-        result.Definition.UpdatedAt.Should().Be(Now.UtcDateTime);
+        result.Strategy!.Id.Should().Be(7);
+        result.Strategy.Document.StoredStrategyId.Should().Be(7);
+        result.Strategy.CreatedAt.Should().Be(createdAt);
+        result.Strategy.UpdatedAt.Should().Be(Now.UtcDateTime);
         store.UpdateCount.Should().Be(1);
-        store.Stored(7)!.Name.Should().Be("수정 전략");
+        store.Stored(7)!.Document.Name.Should().Be("수정 전략");
+    }
+
+    [Fact]
+    public async Task UpdateTranslatesDeleteRaceToNotFound()
+    {
+        var existing = new StoredStrategy(7, ValidPattern("삭제 경쟁"), Now.UtcDateTime, Now.UtcDateTime);
+        var store = new MemoryStore(existing) { NextWriteResult = CustomPatternWriteResult.NotFound };
+        var service = new CustomPatternManagementService(store, new FixedClock(Now));
+
+        var result = await service.UpdateAsync(7, ValidPattern("수정 시도"));
+
+        result.Kind.Should().Be(CustomPatternOperationKind.NotFound);
+        store.Stored(7)!.Document.Name.Should().Be("삭제 경쟁");
     }
 
     [Fact]
     public async Task ApplyBacktestRejectsInvalidParametersBeforePersistence()
     {
-        var existing = ValidPattern("안전 전략");
-        existing.Id = 3;
+        var existing = new StoredStrategy(3, ValidPattern("안전 전략"), Now.UtcDateTime, Now.UtcDateTime);
         var store = new MemoryStore(existing);
         var service = new CustomPatternManagementService(store, new FixedClock(Now));
 
@@ -88,7 +97,7 @@ public class CustomPatternManagementServiceTests
         invalid.Kind.Should().Be(CustomPatternOperationKind.Invalid);
         invalid.Errors.Should().Contain(error => error.Contains("ATR 손절 배수"));
         store.UpdateCount.Should().Be(0);
-        store.Stored(3)!.AtrStopMultiplier.Should().Be(StrategyDocumentDefaults.AtrStopMultiplier);
+        store.Stored(3)!.Document.AtrStopMultiplier.Should().Be(StrategyDocumentDefaults.AtrStopMultiplier);
 
         var valid = await service.ApplyBacktestAsync(3, new BacktestStrategyParameterUpdate(
             AtrStopMultiplier: 1.25m,
@@ -99,11 +108,11 @@ public class CustomPatternManagementServiceTests
 
         valid.Kind.Should().Be(CustomPatternOperationKind.Success);
         store.UpdateCount.Should().Be(1);
-        store.Stored(3)!.AtrStopMultiplier.Should().Be(1.25m);
+        store.Stored(3)!.Document.AtrStopMultiplier.Should().Be(1.25m);
         store.Stored(3)!.UpdatedAt.Should().Be(Now.UtcDateTime);
     }
 
-    private static CustomPatternDefinition ValidPattern(string name) => new()
+    private static StrategyDocument ValidPattern(string name) => new()
     {
         Name = name,
         EntryGroupsJson = JsonSerializer.Serialize(new[]
@@ -131,10 +140,10 @@ public class CustomPatternManagementServiceTests
 
     private sealed class MemoryStore : ICustomPatternStore
     {
-        private readonly Dictionary<int, CustomPatternDefinition> _items = new();
+        private readonly Dictionary<int, StoredStrategy> _items = new();
         private int _nextId = 1;
 
-        public MemoryStore(params CustomPatternDefinition[] definitions)
+        public MemoryStore(params StoredStrategy[] definitions)
         {
             foreach (var definition in definitions)
             {
@@ -146,18 +155,18 @@ public class CustomPatternManagementServiceTests
         public int AddCount { get; private set; }
         public int UpdateCount { get; private set; }
         public CustomPatternWriteResult NextWriteResult { get; set; } = CustomPatternWriteResult.Saved;
-        public CustomPatternDefinition? Stored(int id) =>
+        public StoredStrategy? Stored(int id) =>
             _items.TryGetValue(id, out var value) ? Clone(value) : null;
 
-        public Task<IReadOnlyList<CustomPatternDefinition>> ListAsync(CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<CustomPatternDefinition>>(_items.Values.Select(Clone).ToArray());
+        public Task<IReadOnlyList<StoredStrategy>> ListAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<StoredStrategy>>(_items.Values.Select(Clone).ToArray());
 
-        public Task<CustomPatternDefinition?> FindAsync(int id, CancellationToken ct = default) =>
+        public Task<StoredStrategy?> FindAsync(int id, CancellationToken ct = default) =>
             Task.FromResult(Stored(id));
 
-        public Task<CustomPatternDefinition?> FindByNameAsync(string name, CancellationToken ct = default) =>
+        public Task<StoredStrategy?> FindByNameAsync(string name, CancellationToken ct = default) =>
             Task.FromResult(_items.Values
-                .FirstOrDefault(value => StoredStrategyName.Normalize(value.Name) == name) is { } value
+                .FirstOrDefault(value => StoredStrategyName.Normalize(value.Document.Name) == name) is { } value
                     ? Clone(value)
                     : null);
 
@@ -165,37 +174,54 @@ public class CustomPatternManagementServiceTests
             string normalizedName,
             int? excludingId = null,
             CancellationToken ct = default) => Task.FromResult(_items.Values.Any(value =>
-                value.Id != excludingId && StoredStrategyName.Normalize(value.Name) == normalizedName));
+                value.Id != excludingId && StoredStrategyName.Normalize(value.Document.Name) == normalizedName));
 
-        public Task<CustomPatternWriteResult> AddAsync(
-            CustomPatternDefinition definition,
+        public Task<CustomPatternStoreWriteOutcome> AddAsync(
+            StoredStrategy strategy,
             CancellationToken ct = default)
         {
             var result = NextWriteResult;
             NextWriteResult = CustomPatternWriteResult.Saved;
-            definition.Id = _nextId++;
+            var id = _nextId++;
+            var saved = strategy with
+            {
+                Id = id,
+                Document = strategy.Document.Copy()
+            };
+            saved.Document.StoredStrategyId = id;
             AddCount++;
             if (result == CustomPatternWriteResult.Saved)
-                _items[definition.Id] = Clone(definition);
-            return Task.FromResult(result);
+            {
+                _items[id] = Clone(saved);
+                return Task.FromResult(CustomPatternStoreWriteOutcome.Saved(Clone(saved)));
+            }
+            return Task.FromResult(Failed(result));
         }
 
-        public Task<CustomPatternWriteResult> UpdateAsync(
-            CustomPatternDefinition definition,
+        public Task<CustomPatternStoreWriteOutcome> UpdateAsync(
+            StoredStrategy strategy,
             CancellationToken ct = default)
         {
             var result = NextWriteResult;
             NextWriteResult = CustomPatternWriteResult.Saved;
             UpdateCount++;
             if (result == CustomPatternWriteResult.Saved)
-                _items[definition.Id] = Clone(definition);
-            return Task.FromResult(result);
+            {
+                _items[strategy.Id] = Clone(strategy);
+                return Task.FromResult(CustomPatternStoreWriteOutcome.Saved(Clone(strategy)));
+            }
+            return Task.FromResult(Failed(result));
         }
 
         public Task<bool> DeleteAsync(int id, CancellationToken ct = default) =>
             Task.FromResult(_items.Remove(id));
 
-        private static CustomPatternDefinition Clone(CustomPatternDefinition value) =>
-            JsonSerializer.Deserialize<CustomPatternDefinition>(JsonSerializer.Serialize(value))!;
+        private static StoredStrategy Clone(StoredStrategy value) =>
+            value with { Document = value.Document.Copy() };
+
+        private static CustomPatternStoreWriteOutcome Failed(CustomPatternWriteResult result) =>
+            result == CustomPatternWriteResult.NotFound
+                ? CustomPatternStoreWriteOutcome.NotFound()
+                : CustomPatternStoreWriteOutcome.NameConflict();
     }
 }

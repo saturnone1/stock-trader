@@ -156,17 +156,16 @@ public class OptimizationAutoTuneService
             return new ApplyResultOutcome(false, message, null, job.AppliedResultCount);
         }
 
-        var promoted = StrategyVariantFactory.CloneStrategyDocument(targetPattern.ToStrategyDocument());
+        var promoted = StrategyVariantFactory.CloneStrategyDocument(targetPattern.Document);
         StrategyVariantFactory.ApplyOptimizeOverrides(promoted, snapshot);
-        promoted.ApplyToStoredDefinition(targetPattern);
-        var promotion = await patternManagement.UpdateAsync(targetPattern.Id, targetPattern, ct);
+        var promotion = await patternManagement.UpdateAsync(targetPattern.Id, promoted, ct);
         if (promotion.Kind != CustomPatternOperationKind.Success)
         {
             var message = $"반영 실패: {promotion.Error ?? "전략 검증 또는 저장에 실패했습니다."}";
             await SaveApplyStatusAsync(repo, job.Id, null, message);
             return new ApplyResultOutcome(false, message, null, job.AppliedResultCount);
         }
-        targetPattern = promotion.Definition!;
+        targetPattern = promotion.Strategy!;
 
         var metricSource = candidate.OosTotalReturn.HasValue ? "OOS" : "IS";
         var metricValue = candidate.OosTotalReturn ?? candidate.TotalReturn;
@@ -175,16 +174,16 @@ public class OptimizationAutoTuneService
             repo,
             job.Id,
             candidate.Id,
-            $"{targetPattern.Name}에 {applyLabel} 완료 ({metricSource} return {metricValue:F2}%, trades {GetTradeCount(candidate, candidate.OosTotalReturn.HasValue)}).",
+            $"{targetPattern.Document.Name}에 {applyLabel} 완료 ({metricSource} return {metricValue:F2}%, trades {GetTradeCount(candidate, candidate.OosTotalReturn.HasValue)}).",
             incrementAppliedCount: true);
 
         _logger.LogInformation(
             "Optimization job {JobId}: {ApplyMode} result {ResultId} to custom pattern {PatternId} ({PatternName})",
-            job.Id, isAutoApply ? "auto-applied" : "manually applied", candidate.Id, targetPattern.Id, targetPattern.Name);
+            job.Id, isAutoApply ? "auto-applied" : "manually applied", candidate.Id, targetPattern.Id, targetPattern.Document.Name);
 
         return new ApplyResultOutcome(
             true,
-            $"{targetPattern.Name}에 {(isAutoApply ? "자동" : "수동")} 반영했습니다.",
+            $"{targetPattern.Document.Name}에 {(isAutoApply ? "자동" : "수동")} 반영했습니다.",
             candidate.Id,
             appliedCount);
     }
@@ -198,7 +197,7 @@ public class OptimizationAutoTuneService
         await using var scope = _scopeFactory.CreateAsyncScope();
         var patternManagement = scope.ServiceProvider.GetRequiredService<CustomPatternManagementService>();
 
-        var latestPattern = (await ResolveTargetPatternAsync(patternManagement, request.BasePattern, ct))?.ToStrategyDocument()
+        var latestPattern = (await ResolveTargetPatternAsync(patternManagement, request.BasePattern, ct))?.Document
             ?? request.BasePattern;
         var nextRequest = BuildNextRequest(request, latestPattern, _clock.GetUtcNow().UtcDateTime);
         await repo.RequeueContinuousJobAsync(
@@ -230,7 +229,7 @@ public class OptimizationAutoTuneService
         return job.AppliedResultCount;
     }
 
-    private static async Task<CustomPatternDefinition?> ResolveTargetPatternAsync(
+    private static async Task<StoredStrategy?> ResolveTargetPatternAsync(
         CustomPatternManagementService management,
         StrategyDocument basePattern,
         CancellationToken ct)

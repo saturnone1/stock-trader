@@ -162,6 +162,9 @@
   `StrategyDocument`. It has an optional stored-strategy reference but no normalized key or audit
   timestamps. The desktop strips persistence metadata explicitly, and generated OpenAPI no longer
   exposes `CustomPatternDefinition`.
+- Strategy CRUD and promotion now use `StoredStrategy` through `ICustomPatternStore`. EF strategy
+  rows are translated only inside the SQLite adapter; application and API source cannot reference
+  the persistence entity, and mapper round-trip tests protect every strategy field.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.
@@ -180,9 +183,9 @@ Remaining Phase 2 work is primarily reducing residual runtime orchestration and 
 full-strategy preview/backtest/live parity fixtures beyond the shared entry/exit policies and the
 single-symbol preview simulation goldens.
 
-Remaining persistence-boundary work is to move `ICustomPatternStore` and strategy management away
-from returning the EF entity. That migration must preserve the new invariant that compiler,
-preview, backtest, optimization, scanning, and live execution accept only `StrategyDocument`.
+Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
+remaining orchestration services and extending multi-symbol, scaling, and live-order parity fixtures
+around the shared compiled strategy and execution policies.
 
 ## Phase 0 — Guardrails and governance
 

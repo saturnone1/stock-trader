@@ -506,8 +506,9 @@ public class ArchitectureDependencyTests
         versions.Should().Contain("public const int Current = 1;");
         policy.Should().Contain("StrategyDocumentVersions.LegacyUnversioned or StrategyDocumentVersions.Current");
         compiler.Should().Contain("StrategyDocumentVersionPolicy.Validate(pattern.DocumentVersion)");
-        management.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(input)");
-        management.Should().Contain("StrategyDocumentVersionPolicy.StampCurrent(pattern)");
+        policy.Should().Contain("StampCurrent(StrategyDocument document)");
+        management.Split("StrategyDocumentVersionPolicy.StampCurrent(document)", StringSplitOptions.None)
+            .Length.Should().Be(4, "create, update, and backtest promotion must stamp the current document version");
         File.ReadAllText(migration).Should().Contain(
             "defaultValue: StockTrader.Domain.Strategies.StrategyDocumentVersions.Current");
     }
@@ -568,13 +569,17 @@ public class ArchitectureDependencyTests
         endpoints.Should().NotContain("Microsoft.EntityFrameworkCore");
         endpoints.Should().NotContain("StrategyCompiler.Compile");
         endpoints.Should().NotContain("TimeProvider");
-        management.Should().Contain("StrategyCompiler.Compile(input.ToStrategyDocument())");
+        management.Should().Contain("StrategyCompiler.Compile(input)");
         management.Should().Contain("_store.NameExistsAsync(");
         management.Should().Contain("CustomPatternWriteResult.NameConflict");
         management.Should().Contain("_clock.GetUtcNow()");
         management.Should().Contain("ApplyBacktestAsync(");
         port.Should().Contain("public interface ICustomPatternStore");
+        port.Should().Contain("Task<IReadOnlyList<StoredStrategy>> ListAsync");
+        port.Should().Contain("Task<CustomPatternStoreWriteOutcome> AddAsync(StoredStrategy strategy");
+        port.Should().NotContain("CustomPatternDefinition");
         port.Should().NotContain("Microsoft.EntityFrameworkCore");
+        management.Should().NotContain("CustomPatternDefinition");
         adapter.Should().Contain("class CustomPatternStore : ICustomPatternStore");
         adapter.Should().Contain("ExecuteDeleteAsync");
         adapter.Should().Contain("IsNormalizedNameConflict");
@@ -587,6 +592,12 @@ public class ArchitectureDependencyTests
         autoTune.Should().NotContain("db.CustomPatterns");
         autoTune.Should().NotContain("CopyPatternValues(");
         autoTune.Should().NotContain("DateTime.UtcNow");
+
+        var applicationSources = string.Join("\n", Directory.EnumerateFiles(
+                Path.Combine(repository, "Application"), "*.cs", SearchOption.AllDirectories)
+            .Select(File.ReadAllText));
+        applicationSources.Should().NotContain("CustomPatternDefinition",
+            "EF strategy entities must stop at the Data adapter boundary");
     }
 
     [Fact]
@@ -653,6 +664,10 @@ public class ArchitectureDependencyTests
         var backtest = File.ReadAllText(Path.Combine(repository, "Models/BacktestResult.cs"));
         var optimization = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizationModels.cs"));
+        var variants = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/StrategyVariantFactory.cs"));
+        var persistenceMapper = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/StoredStrategyMapper.cs"));
         var codec = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizeRequestJsonCodec.cs"));
         var jobEndpoints = File.ReadAllText(Path.Combine(repository, "Api/OptimizeJobEndpoints.cs"));
@@ -674,6 +689,10 @@ public class ArchitectureDependencyTests
         detector.Should().NotContain("CustomPatternDefinition Definition");
         backtest.Should().Contain("List<StrategyDocument>? CustomPatterns");
         optimization.Should().Contain("StrategyDocument BasePattern");
+        variants.Should().Contain("return src.Copy();");
+        variants.Should().NotContain("return new StrategyDocument");
+        persistenceMapper.Should().Contain("CustomPatternDefinition ToEntity(this StoredStrategy value)");
+        persistenceMapper.Should().Contain("StoredStrategy ToStoredStrategy(this CustomPatternDefinition value)");
         codec.Should().Contain("TryGetProperty(basePattern, \"id\"");
         codec.Should().Contain("request.BasePattern.StoredStrategyId = id");
         jobEndpoints.Should().Contain("OptimizeRequestJsonCodec.Serialize(");

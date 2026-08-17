@@ -14,41 +14,8 @@ public static class StrategyVariantFactory
     /// </summary>
     public static StrategyDocument CloneStrategyDocument(StrategyDocument src)
     {
-        return new StrategyDocument
-        {
-            StoredStrategyId = src.StoredStrategyId,
-            DocumentVersion = src.DocumentVersion,
-            Name = src.Name,
-            Description = src.Description,
-            EntryRulesJson = src.EntryRulesJson,
-            EntryLogic = src.EntryLogic,
-            RequireBullRegime = src.RequireBullRegime,
-            AtrStopMultiplier = src.AtrStopMultiplier,
-            AtrTargetMultiplier = src.AtrTargetMultiplier,
-            MaxHoldingBars = src.MaxHoldingBars,
-            TrailingAtr = src.TrailingAtr,
-            PartialProfitR = src.PartialProfitR,
-            UseWeightTiers = src.UseWeightTiers,
-            WeightTiersJson = src.WeightTiersJson,
-            DefaultAllocationPercent = src.DefaultAllocationPercent,
-            ExitRulesJson = src.ExitRulesJson,
-            ExitRulesLogic = src.ExitRulesLogic,
-            ExitGroupsJson = src.ExitGroupsJson,
-            ExitGroupsLogic = src.ExitGroupsLogic,
-            ScalingRulesJson = src.ScalingRulesJson,
-            TimeFilterJson = src.TimeFilterJson,
-            CircuitBreakerJson = src.CircuitBreakerJson,
-            ReentryJson = src.ReentryJson,
-            PortfolioRulesJson = src.PortfolioRulesJson,
-            EntryGroupsJson = src.EntryGroupsJson,
-            EntryGroupsLogic = src.EntryGroupsLogic,
-            DynamicExitJson = src.DynamicExitJson,
-            EntryMode = src.EntryMode,
-            TimeFrame = src.TimeFrame,
-            SizingMode = src.SizingMode,
-            IsActive = src.IsActive,
-            EnableLiveTrading = src.EnableLiveTrading,
-        };
+        ArgumentNullException.ThrowIfNull(src);
+        return src.Copy();
     }
 
     /// <summary>

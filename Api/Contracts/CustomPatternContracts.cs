@@ -1,6 +1,5 @@
 using StockTrader.Domain.Strategies;
 using StockTrader.Application.Strategies;
-using StockTrader.Models;
 using StockTrader.Models.Enums;
 
 namespace StockTrader.Api.Contracts;
@@ -87,87 +86,78 @@ public sealed record BacktestApplyRequest(
 
 internal static class CustomPatternContractMapper
 {
-    public static StrategyDocument ToStrategyDocument(this CustomPatternWriteRequest request) =>
-        request.ToDefinition().ToStrategyDocument();
-
-    public static CustomPatternDefinition ToDefinition(this CustomPatternWriteRequest request)
+    public static StrategyDocument ToStrategyDocument(this CustomPatternWriteRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var definition = new CustomPatternDefinition();
-        ApplyTo(request, definition);
-        return definition;
+        return new StrategyDocument
+        {
+            DocumentVersion = request.DocumentVersion,
+            Name = request.Name ?? string.Empty,
+            Description = request.Description,
+            EntryRulesJson = request.EntryRulesJson ?? StrategyDocumentDefaults.EmptyListJson,
+            EntryLogic = request.EntryLogic ?? StrategyDocumentDefaults.AndLogic,
+            RequireBullRegime = request.RequireBullRegime,
+            AtrStopMultiplier = request.AtrStopMultiplier,
+            AtrTargetMultiplier = request.AtrTargetMultiplier,
+            MaxHoldingBars = request.MaxHoldingBars,
+            TrailingAtr = request.TrailingAtr,
+            PartialProfitR = request.PartialProfitR,
+            UseWeightTiers = request.UseWeightTiers,
+            WeightTiersJson = request.WeightTiersJson ?? StrategyDocumentDefaults.EmptyListJson,
+            DefaultAllocationPercent = request.DefaultAllocationPercent,
+            ExitRulesJson = request.ExitRulesJson ?? StrategyDocumentDefaults.EmptyListJson,
+            ExitRulesLogic = request.ExitRulesLogic ?? StrategyDocumentDefaults.OrLogic,
+            ExitGroupsJson = request.ExitGroupsJson ?? StrategyDocumentDefaults.EmptyListJson,
+            ExitGroupsLogic = request.ExitGroupsLogic ?? StrategyDocumentDefaults.OrLogic,
+            ScalingRulesJson = request.ScalingRulesJson ?? StrategyDocumentDefaults.EmptyListJson,
+            TimeFilterJson = request.TimeFilterJson ?? StrategyDocumentDefaults.EmptyObjectJson,
+            CircuitBreakerJson = request.CircuitBreakerJson ?? StrategyDocumentDefaults.EmptyObjectJson,
+            ReentryJson = request.ReentryJson ?? StrategyDocumentDefaults.EmptyObjectJson,
+            PortfolioRulesJson = request.PortfolioRulesJson ?? StrategyDocumentDefaults.EmptyObjectJson,
+            EntryGroupsJson = request.EntryGroupsJson ?? StrategyDocumentDefaults.EmptyListJson,
+            EntryGroupsLogic = request.EntryGroupsLogic ?? StrategyDocumentDefaults.AndLogic,
+            DynamicExitJson = request.DynamicExitJson ?? StrategyDocumentDefaults.EmptyObjectJson,
+            EntryMode = request.EntryMode ?? StrategyCatalog.CurrentCloseEntryMode,
+            TimeFrame = request.TimeFrame,
+            SizingMode = request.SizingMode ?? StrategyCatalog.FixedRiskSizingMode,
+            IsActive = request.IsActive,
+            EnableLiveTrading = request.EnableLiveTrading,
+        };
     }
 
-    public static void ApplyTo(this CustomPatternWriteRequest request, CustomPatternDefinition target)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(target);
-        target.DocumentVersion = request.DocumentVersion;
-        target.Name = request.Name ?? string.Empty;
-        target.Description = request.Description;
-        target.EntryRulesJson = request.EntryRulesJson ?? StrategyDocumentDefaults.EmptyListJson;
-        target.EntryLogic = request.EntryLogic ?? StrategyDocumentDefaults.AndLogic;
-        target.RequireBullRegime = request.RequireBullRegime;
-        target.AtrStopMultiplier = request.AtrStopMultiplier;
-        target.AtrTargetMultiplier = request.AtrTargetMultiplier;
-        target.MaxHoldingBars = request.MaxHoldingBars;
-        target.TrailingAtr = request.TrailingAtr;
-        target.PartialProfitR = request.PartialProfitR;
-        target.UseWeightTiers = request.UseWeightTiers;
-        target.WeightTiersJson = request.WeightTiersJson ?? StrategyDocumentDefaults.EmptyListJson;
-        target.DefaultAllocationPercent = request.DefaultAllocationPercent;
-        target.ExitRulesJson = request.ExitRulesJson ?? StrategyDocumentDefaults.EmptyListJson;
-        target.ExitRulesLogic = request.ExitRulesLogic ?? StrategyDocumentDefaults.OrLogic;
-        target.ExitGroupsJson = request.ExitGroupsJson ?? StrategyDocumentDefaults.EmptyListJson;
-        target.ExitGroupsLogic = request.ExitGroupsLogic ?? StrategyDocumentDefaults.OrLogic;
-        target.ScalingRulesJson = request.ScalingRulesJson ?? StrategyDocumentDefaults.EmptyListJson;
-        target.TimeFilterJson = request.TimeFilterJson ?? StrategyDocumentDefaults.EmptyObjectJson;
-        target.CircuitBreakerJson = request.CircuitBreakerJson ?? StrategyDocumentDefaults.EmptyObjectJson;
-        target.ReentryJson = request.ReentryJson ?? StrategyDocumentDefaults.EmptyObjectJson;
-        target.PortfolioRulesJson = request.PortfolioRulesJson ?? StrategyDocumentDefaults.EmptyObjectJson;
-        target.EntryGroupsJson = request.EntryGroupsJson ?? StrategyDocumentDefaults.EmptyListJson;
-        target.EntryGroupsLogic = request.EntryGroupsLogic ?? StrategyDocumentDefaults.AndLogic;
-        target.DynamicExitJson = request.DynamicExitJson ?? StrategyDocumentDefaults.EmptyObjectJson;
-        target.EntryMode = request.EntryMode ?? StrategyCatalog.CurrentCloseEntryMode;
-        target.TimeFrame = request.TimeFrame;
-        target.SizingMode = request.SizingMode ?? StrategyCatalog.FixedRiskSizingMode;
-        target.IsActive = request.IsActive;
-        target.EnableLiveTrading = request.EnableLiveTrading;
-    }
-
-    public static CustomPatternResponse ToResponse(this CustomPatternDefinition value) => new(
+    public static CustomPatternResponse ToResponse(this StoredStrategy value) => new(
         value.Id,
-        value.DocumentVersion,
-        value.Name,
-        value.Description,
-        value.EntryRulesJson,
-        value.EntryLogic,
-        value.RequireBullRegime,
-        value.AtrStopMultiplier,
-        value.AtrTargetMultiplier,
-        value.MaxHoldingBars,
-        value.TrailingAtr,
-        value.PartialProfitR,
-        value.UseWeightTiers,
-        value.WeightTiersJson,
-        value.DefaultAllocationPercent,
-        value.ExitRulesJson,
-        value.ExitRulesLogic,
-        value.ExitGroupsJson,
-        value.ExitGroupsLogic,
-        value.ScalingRulesJson,
-        value.TimeFilterJson,
-        value.CircuitBreakerJson,
-        value.ReentryJson,
-        value.PortfolioRulesJson,
-        value.EntryGroupsJson,
-        value.EntryGroupsLogic,
-        value.DynamicExitJson,
-        value.EntryMode,
-        value.TimeFrame,
-        value.SizingMode,
-        value.IsActive,
-        value.EnableLiveTrading,
+        value.Document.DocumentVersion,
+        value.Document.Name,
+        value.Document.Description,
+        value.Document.EntryRulesJson,
+        value.Document.EntryLogic,
+        value.Document.RequireBullRegime,
+        value.Document.AtrStopMultiplier,
+        value.Document.AtrTargetMultiplier,
+        value.Document.MaxHoldingBars,
+        value.Document.TrailingAtr,
+        value.Document.PartialProfitR,
+        value.Document.UseWeightTiers,
+        value.Document.WeightTiersJson,
+        value.Document.DefaultAllocationPercent,
+        value.Document.ExitRulesJson,
+        value.Document.ExitRulesLogic,
+        value.Document.ExitGroupsJson,
+        value.Document.ExitGroupsLogic,
+        value.Document.ScalingRulesJson,
+        value.Document.TimeFilterJson,
+        value.Document.CircuitBreakerJson,
+        value.Document.ReentryJson,
+        value.Document.PortfolioRulesJson,
+        value.Document.EntryGroupsJson,
+        value.Document.EntryGroupsLogic,
+        value.Document.DynamicExitJson,
+        value.Document.EntryMode,
+        value.Document.TimeFrame,
+        value.Document.SizingMode,
+        value.Document.IsActive,
+        value.Document.EnableLiveTrading,
         value.CreatedAt,
         value.UpdatedAt);
 }

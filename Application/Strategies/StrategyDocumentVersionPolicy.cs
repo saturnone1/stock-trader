@@ -1,5 +1,4 @@
 using StockTrader.Domain.Strategies;
-using StockTrader.Models;
 
 namespace StockTrader.Application.Strategies;
 
@@ -16,9 +15,9 @@ public static class StrategyDocumentVersionPolicy
         _ => $"이 프로그램이 지원하지 않는 전략 문서 버전입니다. 지원 버전: {StrategyDocumentVersions.Current}, 입력 버전: {version}"
     };
 
-    public static void StampCurrent(CustomPatternDefinition definition)
+    public static void StampCurrent(StrategyDocument document)
     {
-        ArgumentNullException.ThrowIfNull(definition);
-        definition.DocumentVersion = StrategyDocumentVersions.Current;
+        ArgumentNullException.ThrowIfNull(document);
+        document.DocumentVersion = StrategyDocumentVersions.Current;
     }
 }

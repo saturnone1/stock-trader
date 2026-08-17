@@ -23,9 +23,9 @@ public static class CustomPatternEndpoints
 
         group.MapPost("/", async (CustomPatternWriteRequest request, CustomPatternManagementService service, CancellationToken ct) =>
         {
-            var result = await service.CreateAsync(request.ToDefinition(), ct);
+            var result = await service.CreateAsync(request.ToStrategyDocument(), ct);
             return result.Kind == CustomPatternOperationKind.Success
-                ? Results.Created($"/api/custom-patterns/{result.Definition!.Id}", result.Definition.ToResponse())
+                ? Results.Created($"/api/custom-patterns/{result.Strategy!.Id}", result.Strategy.ToResponse())
                 : ToErrorResult(result);
         })
             .Produces<CustomPatternResponse>(StatusCodes.Status201Created)
@@ -34,9 +34,9 @@ public static class CustomPatternEndpoints
 
         group.MapPut("/{id:int}", async (int id, CustomPatternWriteRequest request, CustomPatternManagementService service, CancellationToken ct) =>
         {
-            var result = await service.UpdateAsync(id, request.ToDefinition(), ct);
+            var result = await service.UpdateAsync(id, request.ToStrategyDocument(), ct);
             return result.Kind == CustomPatternOperationKind.Success
-                ? Results.Ok(result.Definition!.ToResponse())
+                ? Results.Ok(result.Strategy!.ToResponse())
                 : ToErrorResult(result);
         })
             .Produces<CustomPatternResponse>()
@@ -56,7 +56,7 @@ public static class CustomPatternEndpoints
                 request.TrailingAtr,
                 request.PartialProfitR), ct);
             return result.Kind == CustomPatternOperationKind.Success
-                ? Results.Ok(result.Definition!.ToResponse())
+                ? Results.Ok(result.Strategy!.ToResponse())
                 : ToErrorResult(result);
         })
             .Produces<CustomPatternResponse>()

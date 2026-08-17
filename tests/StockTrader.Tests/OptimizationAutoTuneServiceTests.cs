@@ -85,7 +85,7 @@ public class OptimizationAutoTuneServiceTests
 
         var request = new OptimizeRequest
         {
-            BasePattern = StrategyVariantFactory.CloneStrategyDocument(pattern.ToStrategyDocument()),
+            BasePattern = StrategyVariantFactory.CloneStrategyDocument(pattern.ToStoredStrategy().Document),
             Symbols = ["TQQQ"],
             From = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             To = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -204,7 +204,7 @@ public class OptimizationAutoTuneServiceTests
 
         var request = new OptimizeRequest
         {
-            BasePattern = StrategyVariantFactory.CloneStrategyDocument(pattern.ToStrategyDocument()),
+            BasePattern = StrategyVariantFactory.CloneStrategyDocument(pattern.ToStoredStrategy().Document),
             Symbols = ["QQQ"],
             From = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             To = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),

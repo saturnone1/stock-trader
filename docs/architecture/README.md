@@ -148,10 +148,12 @@ use `StrategyDocument`, which carries strategy semantics and an optional stored-
 without EF-only keys or audit timestamps. The desktop performs the stored-response conversion
 explicitly before research requests, and OpenAPI no longer exposes the EF entity.
 `CustomPatternManagementService` is the application boundary for strategy CRUD and optimization
-promotion. It validates every candidate with `StrategyCompiler`, owns identity/version/timestamps and
-case-insensitive name conflicts, and persists through `ICustomPatternStore`. HTTP endpoints and the
-automatic optimizer cannot write strategy rows directly. Invalid optimization output is rejected
-without changing the stored strategy or incrementing its applied-result count.
+promotion. It validates every `StrategyDocument` with `StrategyCompiler`, owns identity/version/
+timestamps and case-insensitive name conflicts, and persists `StoredStrategy` through
+`ICustomPatternStore`. The port contains no EF types; `CustomPatternDefinition` conversion and unique
+constraint translation live solely in the SQLite adapter. HTTP endpoints and the automatic optimizer
+cannot write strategy rows directly. Invalid optimization output is rejected without changing the
+stored strategy or incrementing its applied-result count.
 Stored display names have a separate server-owned normalized key with a database unique index.
 The application pre-check provides an early conflict response, while the persistence adapter maps
 the remaining concurrent-write race to the same typed conflict result.
