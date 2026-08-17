@@ -30,7 +30,10 @@
   middleware pipeline have dedicated extensions. A route-table test verifies the extracted public
   routes are registered exactly once.
 - Prepared-data execution now runs behind `BacktestSimulationEngine`; `BacktestService` coordinates
-  data loading, walk-forward, and optimization instead of owning the date-by-date portfolio loop.
+  ordinary runs and walk-forward instead of owning the date-by-date portfolio loop. Prepared-range
+  slicing, benchmark regime construction, and parameter-search orchestration now live in
+  `BacktestPreparedSimulationRunner`, `BacktestRegimeMapBuilder`, and `BacktestOptimizationService`.
+  The coordinator has dropped from 732 to 382 lines and has an architecture cap of 500 lines.
   Execution costs are isolated in `BacktestExecutionCostLedger`, with regression tests covering
   fixed/adaptive slippage and exactly-once commission application. Result/metric construction is
   isolated in `BacktestResultBuilder`.

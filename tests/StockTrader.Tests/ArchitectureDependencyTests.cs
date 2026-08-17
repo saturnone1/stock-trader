@@ -500,14 +500,22 @@ public class ArchitectureDependencyTests
     public void BacktestServiceDelegatesOptimizationShapeAndVariantLogic()
     {
         var repository = FindRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestService.cs"));
+        var service = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestService.cs"));
+        var optimization = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestOptimizationService.cs"));
 
-        source.Should().NotContain("using StockTrader.Api");
-        source.Should().NotContain("private static CustomPatternDefinition ClonePatternDefinition(");
-        source.Should().NotContain("private static void ApplyOptimizeOverrides(");
-        source.Should().NotContain("private static List<OptimizeParamSnapshot> GenerateOptimizeCombinations(");
-        source.Should().Contain("StrategyVariantFactory.ClonePatternDefinition(");
-        source.Should().Contain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
+        service.Should().NotContain("using StockTrader.Api");
+        service.Should().Contain("_optimization.RunAsync(");
+        service.Should().NotContain("StrategyVariantFactory.ClonePatternDefinition(");
+        service.Should().NotContain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
+        optimization.Should().NotContain("private static CustomPatternDefinition ClonePatternDefinition(");
+        optimization.Should().NotContain("private static void ApplyOptimizeOverrides(");
+        optimization.Should().NotContain("private static List<OptimizeParamSnapshot> GenerateOptimizeCombinations(");
+        optimization.Should().Contain("StrategyVariantFactory.ClonePatternDefinition(");
+        optimization.Should().Contain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
+        File.ReadAllLines(Path.Combine(
+            repository, "Services/Backtest/BacktestOptimizationService.cs"))
+            .Length.Should().BeLessThanOrEqualTo(500);
     }
 
     [Fact]
@@ -516,15 +524,21 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var servicePath = Path.Combine(repository, "Services/Backtest/BacktestService.cs");
         var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
+        var runnerPath = Path.Combine(repository, "Services/Backtest/BacktestPreparedSimulationRunner.cs");
         var service = File.ReadAllText(servicePath);
         var engine = File.ReadAllText(enginePath);
+        var runner = File.ReadAllText(runnerPath);
         var tradeLedger = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestTradeLedger.cs"));
 
-        File.ReadAllLines(servicePath).Length.Should().BeLessThanOrEqualTo(800);
+        File.ReadAllLines(servicePath).Length.Should().BeLessThanOrEqualTo(500);
         service.Should().Contain("_simulationEngine.RunAsync(");
+        service.Should().Contain("_preparedRunner.RunAsync(");
         service.Should().NotContain("private async Task<BacktestResult> RunSimulationAsync(");
         service.Should().NotContain("volatilityFactor");
+        runner.Should().Contain("_dataPreparer.Slice(");
+        runner.Should().Contain("_simulation.RunAsync(");
+        File.ReadAllLines(runnerPath).Length.Should().BeLessThanOrEqualTo(150);
         engine.Should().Contain("new BacktestTradeLedger(");
         tradeLedger.Should().Contain("new BacktestExecutionCostLedger(");
     }

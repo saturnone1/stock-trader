@@ -383,13 +383,14 @@ public sealed class PatternPreviewSimulationEngine
     {
         var available = regimeBars
             .Where(bar => bar.Timestamp <= timestamp)
-            .TakeLast(200)
+            .TakeLast(StrategyEvaluationPolicy.RegimeTrendBars)
             .ToArray();
         var price = available.LastOrDefault()?.Close ?? 0;
         var average = available.Length > 0 ? available.Average(bar => bar.Close) : 0;
         return new MarketRegime
         {
-            SpyAbove200Ma = available.Length < 200 || price >= average,
+            SpyAbove200Ma = available.Length < StrategyEvaluationPolicy.RegimeTrendBars
+                || price >= average,
             SpyPrice = price,
             Spy200Ma = average,
             RegimeLabel = price >= average ? "Bull" : "Bear",

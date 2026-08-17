@@ -68,6 +68,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BacktestDataPreparer>();
         services.AddScoped<BacktestSignalEntryProcessor>();
         services.AddScoped<BacktestSimulationEngine>();
+        services.AddScoped<BacktestPreparedSimulationRunner>();
+        services.AddScoped<BacktestRegimeMapBuilder>();
+        services.AddScoped<BacktestOptimizationService>();
         services.AddScoped<BacktestService>();
         services.AddScoped<IBacktestService>(sp => sp.GetRequiredService<BacktestService>());
         services.AddSingleton<PatternPreviewSimulationEngine>();

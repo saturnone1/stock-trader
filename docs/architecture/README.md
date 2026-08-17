@@ -48,6 +48,10 @@ Historical market-data preparation now crosses a named boundary:
 `Services/Backtest/BacktestDataPreparer.cs` produces the read-only dictionary boundary in
 `Application/Backtesting/PreparedBacktestData.cs`. Backtest, walk-forward, and both optimization
 execution modes must use this boundary instead of calculating private indicator arrays.
+`BacktestPreparedSimulationRunner` owns prepared-range slicing and invocation of the deterministic
+simulation engine, `BacktestRegimeMapBuilder` owns benchmark regime construction, and
+`BacktestOptimizationService` owns candidate search plus IS/OOS ranking. `BacktestService` remains
+the sub-500-line application coordinator for an ordinary run and walk-forward validation.
 `BacktestSignalEntryProcessor` owns the ordered new-entry pipeline after data preparation:
 eligibility, regime allocation, correlation blocking, past-only sizing samples, position sizing,
 and current-close versus next-open registration. `BacktestSimulationEngine` only schedules this
