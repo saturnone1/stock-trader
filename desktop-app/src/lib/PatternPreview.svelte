@@ -345,6 +345,10 @@
       </div>
       <div class="mb-3 rounded border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] leading-5 text-gray-500">
         이 수익률은 차트에 표시된 타점을 매수 비중대로 체결했다고 가정한 빠른 비교값입니다. 수수료·슬리피지·포트폴리오 동시 보유를 포함한 최종 성과는 백테스트 결과를 기준으로 판단하세요.
+        <div class="mt-2 flex flex-wrap gap-2">
+          <span class="rounded bg-emerald-950/50 px-2 py-1 text-emerald-300">미리보기 반영: 매수·매도 조건, 손절·목표, 분할매매, 비중, 재매수 대기, 손실 중단</span>
+          <span class="rounded bg-amber-950/50 px-2 py-1 text-amber-300">백테스트 전용: 켈리 주문금액, 동시 보유 종목, 종목간 상관관계, 수수료·슬리피지</span>
+        </div>
       </div>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
         <div class="flex flex-wrap gap-4 text-gray-400">
@@ -353,6 +357,7 @@
           <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-rose-400"></span>매도 {result.summary.exitCount}회</span>
           <span class="text-cyan-300">추가 매수 {result.summary.scaleInCount ?? 0}회</span>
           <span class="text-orange-300">일부 매도 {result.summary.partialExitCount ?? 0}회</span>
+          {#if (result.summary.safetyBlockedEntries ?? 0) > 0}<span class="text-violet-300">안전 규칙으로 매수 보류 {result.summary.safetyBlockedEntries}회</span>{/if}
           <span>{result.summary.requestedFrom} ~ {result.summary.requestedTo}</span>
         </div>
         <div class={result.summary.openPosition ? 'text-amber-300' : 'text-gray-500'}>

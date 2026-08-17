@@ -8,6 +8,23 @@ public static class CustomPatternValidator
     private static readonly HashSet<string> Logics = new(StringComparer.OrdinalIgnoreCase) { "AND", "OR" };
     private static readonly HashSet<string> Operators = new(StringComparer.OrdinalIgnoreCase)
         { ">", "<", ">=", "<=", "crosses_above", "crosses_below" };
+    private static readonly HashSet<string> Indicators = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "RSI", "CUMULATIVE_RSI", "PRICE_VS_SMA", "PRICE_VS_EMA", "MACD_HIST", "BOLLINGER_POS",
+        "VOLUME_RATIO", "PRICE_CHANGE", "ATR", "SMA_SLOPE", "CANDLE_BODY", "DIST_FROM_HIGH",
+        "DIST_FROM_LOW", "GAP", "HIGHER_LOW", "LOWER_HIGH", "INSIDE_BAR", "ENGULFING",
+        "BREAKOUT_HIGH", "BREAKOUT_LOW", "CONSECUTIVE_UP", "CONSECUTIVE_DOWN", "ADX",
+        "STOCHASTIC_K", "STOCHASTIC_D", "ATR_PERCENT", "VOLATILITY_20D", "OBV",
+        "PRICE_VS_VWAP", "OBV_SLOPE", "CCI", "ROC", "WILLIAMS_R", "CMF"
+    };
+    private static readonly HashSet<string> EntryModes = new(StringComparer.OrdinalIgnoreCase) { "CurrentClose", "NextOpen" };
+    private static readonly HashSet<string> SizingModes = new(StringComparer.OrdinalIgnoreCase) { "FixedRisk", "Kelly", "HalfKelly" };
+    private static readonly HashSet<string> StopTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "ATR", "BOLLINGER_LOWER", "SMA", "EMA", "PREV_LOW", "PERCENT" };
+    private static readonly HashSet<string> TargetTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "ATR", "BOLLINGER_UPPER", "SMA", "EMA", "PREV_HIGH", "R_MULTIPLE", "PERCENT" };
+    private static readonly HashSet<string> PositiveParameterKeys = new(StringComparer.OrdinalIgnoreCase)
+        { "period", "cumulativePeriod", "bars", "lookback", "stddev", "smooth", "slow", "fast", "signal" };
 
     public static IReadOnlyList<string> Validate(CustomPatternDefinition pattern)
     {
@@ -21,6 +38,8 @@ public static class CustomPatternValidator
         if (pattern.TrailingAtr < 0) errors.Add("트레일링 ATR은 0 이상이어야 합니다.");
         if (pattern.PartialProfitR < 0) errors.Add("부분 익절 R은 0 이상이어야 합니다.");
         if (pattern.DefaultAllocationPercent is < 0 or > 100) errors.Add("기본 매수 비중은 0~100%여야 합니다.");
+        if (!EntryModes.Contains(pattern.EntryMode)) errors.Add("매수 체결 시점이 올바르지 않습니다.");
+        if (!SizingModes.Contains(pattern.SizingMode)) errors.Add("주문 금액 계산법이 올바르지 않습니다.");
         ValidateLogic(pattern.EntryGroupsLogic, "매수 상황 결합", errors);
         ValidateLogic(pattern.ExitGroupsLogic, "매도 상황 결합", errors);
 
@@ -37,6 +56,7 @@ public static class CustomPatternValidator
         ValidateRules(legacyExits, "기존 매도 조건", errors);
 
         var tiers = Parse<List<WeightTier>>(pattern.WeightTiersJson, "[]", "매수 비중", errors, options) ?? [];
+        if (!pattern.UseWeightTiers) tiers = [];
         foreach (var (tier, index) in tiers.Select((value, index) => (value, index)))
         {
             ValidateLogic(tier.Logic, $"매수 비중 {index + 1}", errors);
@@ -72,6 +92,12 @@ public static class CustomPatternValidator
         if (portfolio.MaxSinglePositionPercent is < 0 or > 100) errors.Add("한 종목 최대 비중은 0~100%여야 합니다.");
         if (portfolio.MaxCorrelation is < 0 or > 1) errors.Add("최대 상관계수는 0~1 사이여야 합니다.");
 
+        var dynamicExit = Parse<DynamicExitConfig>(pattern.DynamicExitJson, "{}", "손절·목표가", errors, options) ?? new();
+        if (!StopTypes.Contains(dynamicExit.StopType)) errors.Add("손절가 계산 방식이 올바르지 않습니다.");
+        if (!TargetTypes.Contains(dynamicExit.TargetType)) errors.Add("목표가 계산 방식이 올바르지 않습니다.");
+        ValidatePositiveParams(dynamicExit.StopParams, "손절가", errors);
+        ValidatePositiveParams(dynamicExit.TargetParams, "목표가", errors);
+
         return errors.Distinct().ToArray();
     }
 
@@ -91,11 +117,33 @@ public static class CustomPatternValidator
         {
             var prefix = $"{scope} / 조건 {index + 1}";
             if (string.IsNullOrWhiteSpace(rule.Indicator)) errors.Add($"{prefix}: 지표를 선택하세요.");
+            else if (!Indicators.Contains(rule.Indicator)) errors.Add($"{prefix}: 지원하지 않는 지표입니다.");
+            if (!string.IsNullOrWhiteSpace(rule.CompareIndicator) && !Indicators.Contains(rule.CompareIndicator))
+                errors.Add($"{prefix}: 비교 지표가 올바르지 않습니다.");
             if (!Operators.Contains(rule.Operator)) errors.Add($"{prefix}: 비교 방식이 올바르지 않습니다.");
             if (rule.WithinBars < 0 || rule.ConsecutiveBars < 0) errors.Add($"{prefix}: 봉 수는 0 이상이어야 합니다.");
             if (rule.WithinBars > 0 && rule.ConsecutiveBars > 0) errors.Add($"{prefix}: 최근 N봉과 연속 봉은 동시에 사용할 수 없습니다.");
             if (rule.Weight <= 0) errors.Add($"{prefix}: 가중치는 0보다 커야 합니다.");
             if (rule.Params.Any(pair => pair.Value < 0)) errors.Add($"{prefix}: 지표 계산 기간은 음수일 수 없습니다.");
+            ValidatePositiveParams(rule.Params, prefix, errors);
+            ValidatePositiveParams(rule.CompareParams, $"{prefix} 비교 지표", errors);
+            if (rule.Indicator.Equals("MACD_HIST", StringComparison.OrdinalIgnoreCase)
+                && rule.Params.TryGetValue("fast", out var fast)
+                && rule.Params.TryGetValue("slow", out var slow)
+                && fast >= slow)
+                errors.Add($"{prefix}: MACD 빠른 기간은 느린 기간보다 작아야 합니다.");
+        }
+    }
+
+    private static void ValidatePositiveParams(Dictionary<string, decimal>? parameters, string scope, List<string> errors)
+    {
+        if (parameters is null) return;
+        foreach (var (key, value) in parameters)
+        {
+            if (PositiveParameterKeys.Contains(key) && value <= 0)
+                errors.Add($"{scope}: {key} 값은 0보다 커야 합니다.");
+            if (key is "multiplier" or "multiple" or "percent" && value <= 0)
+                errors.Add($"{scope}: {key} 값은 0보다 커야 합니다.");
         }
     }
 

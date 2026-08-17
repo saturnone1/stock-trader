@@ -653,17 +653,17 @@ public class RuleBasedDetector : IPatternDetector
 
             case "DIST_FROM_HIGH":
             {
-                // N일 고점 대비 현재가 거리 (%). 음수 = 고점 대비 하락
+                // N봉 고점에서 현재가까지 내려온 거리 (%). 0에 가까울수록 고점 부근
                 var lookback = GetInt("period", 52);
                 var start = Math.Max(0, ci - lookback);
                 decimal high = 0;
                 for (int i = start; i <= ci; i++) if (bars[i].High > high) high = bars[i].High;
                 if (high == 0) return (0, 0);
-                var curr = (closes[ci] - high) / high * 100;
+                var curr = (high - closes[ci]) / high * 100;
                 decimal prevHigh = 0;
                 var pStart = Math.Max(0, pi - lookback);
                 for (int i = pStart; i <= pi; i++) if (bars[i].High > prevHigh) prevHigh = bars[i].High;
-                var prev = prevHigh == 0 ? 0 : (closes[pi] - prevHigh) / prevHigh * 100;
+                var prev = prevHigh == 0 ? 0 : (prevHigh - closes[pi]) / prevHigh * 100;
                 return (curr, prev);
             }
 
@@ -1005,7 +1005,7 @@ public class RuleBasedDetector : IPatternDetector
         }
         var mean = returns.Average();
         var variance = returns.Average(r => (r - mean) * (r - mean));
-        return (decimal)Math.Sqrt((double)variance) * (decimal)Math.Sqrt(252);
+        return (decimal)Math.Sqrt((double)variance) * (decimal)Math.Sqrt(252) * 100m;
     }
 
     private static decimal[] ComputeAdx(OhlcvBar[] bars, int period)

@@ -137,6 +137,41 @@ public class RuleBasedDetectorTests
         result.Should().BeNull();
     }
 
+    [Fact]
+    public async Task DetectAsync_HistoricalVolatilityUsesPercentUnits()
+    {
+        var closes = Enumerable.Range(0, 60).Select(index => index % 2 == 0 ? 90m : 110m).ToArray();
+        var sut = CreateSut(new EntryRule
+        {
+            Indicator = "VOLATILITY_20D",
+            Operator = ">=",
+            Value = 30m,
+            Params = new() { ["period"] = 20 }
+        });
+
+        var result = await sut.DetectAsync("AAPL", CreateBars(closes), BullRegime);
+
+        result.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task DetectAsync_DistanceFromHighIsAPositiveDrawdownPercent()
+    {
+        var closes = Enumerable.Repeat(100m, 60).ToArray();
+        closes[^1] = 95m;
+        var sut = CreateSut(new EntryRule
+        {
+            Indicator = "DIST_FROM_HIGH",
+            Operator = ">=",
+            Value = 4m,
+            Params = new() { ["period"] = 20 }
+        });
+
+        var result = await sut.DetectAsync("AAPL", CreateBars(closes), BullRegime);
+
+        result.Should().NotBeNull();
+    }
+
     private static RuleBasedDetector CreateSut(EntryRule rule)
     {
         var definition = new CustomPatternDefinition

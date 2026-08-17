@@ -36,50 +36,37 @@ public static class CustomPatternEndpoints
             if (validationErrors.Count > 0)
                 return Results.BadRequest(new { error = validationErrors[0], errors = validationErrors });
 
-            var existing = await db.CustomPatterns
-                .FirstOrDefaultAsync(p => p.Name == input.Name, ct);
+            var normalizedName = input.Name.Trim().ToLower();
+            if (await db.CustomPatterns.AnyAsync(p => p.Name.ToLower() == normalizedName, ct))
+                return Results.Conflict(new { error = "같은 이름의 전략이 이미 있습니다. 다른 이름을 사용하세요." });
 
-            if (existing != null)
-            {
-                existing.Description = input.Description;
-                existing.EntryRulesJson = input.EntryRulesJson;
-                existing.EntryLogic = input.EntryLogic;
-                existing.RequireBullRegime = input.RequireBullRegime;
-                existing.AtrStopMultiplier = input.AtrStopMultiplier;
-                existing.AtrTargetMultiplier = input.AtrTargetMultiplier;
-                existing.MaxHoldingBars = input.MaxHoldingBars;
-                existing.TrailingAtr = input.TrailingAtr;
-                existing.PartialProfitR = input.PartialProfitR;
-                existing.UseWeightTiers = input.UseWeightTiers;
-                existing.WeightTiersJson = input.WeightTiersJson;
-                existing.DefaultAllocationPercent = input.DefaultAllocationPercent;
-                existing.ExitRulesJson = input.ExitRulesJson;
-                existing.ExitRulesLogic = input.ExitRulesLogic;
-                existing.ExitGroupsJson = input.ExitGroupsJson;
-                existing.ExitGroupsLogic = input.ExitGroupsLogic;
-                existing.ScalingRulesJson = input.ScalingRulesJson;
-                existing.TimeFilterJson = input.TimeFilterJson;
-                existing.CircuitBreakerJson = input.CircuitBreakerJson;
-                existing.ReentryJson = input.ReentryJson;
-                existing.PortfolioRulesJson = input.PortfolioRulesJson;
-                existing.EntryGroupsJson = input.EntryGroupsJson;
-                existing.EntryGroupsLogic = input.EntryGroupsLogic;
-                existing.DynamicExitJson = input.DynamicExitJson;
-                existing.EntryMode = input.EntryMode;
-                existing.SizingMode = input.SizingMode;
-                existing.IsActive = input.IsActive;
-                existing.EnableLiveTrading = input.EnableLiveTrading;
-                existing.UpdatedAt = DateTime.UtcNow;
-                await db.SaveChangesAsync(ct);
-                return Results.Ok(existing);
-            }
-
+            input.Name = input.Name.Trim();
             input.Id = 0;
             input.CreatedAt = DateTime.UtcNow;
             input.UpdatedAt = DateTime.UtcNow;
             db.CustomPatterns.Add(input);
             await db.SaveChangesAsync(ct);
-            return Results.Ok(input);
+            return Results.Created($"/api/custom-patterns/{input.Id}", input);
+        });
+
+        group.MapPut("/{id:int}", async (int id, CustomPatternDefinition input, AppDbContext db, CancellationToken ct) =>
+        {
+            var validationErrors = CustomPatternValidator.Validate(input);
+            if (validationErrors.Count > 0)
+                return Results.BadRequest(new { error = validationErrors[0], errors = validationErrors });
+
+            var existing = await db.CustomPatterns.FindAsync([id], ct);
+            if (existing is null) return Results.NotFound(new { error = "수정할 전략을 찾을 수 없습니다." });
+
+            var normalizedName = input.Name.Trim().ToLower();
+            if (await db.CustomPatterns.AnyAsync(p => p.Id != id && p.Name.ToLower() == normalizedName, ct))
+                return Results.Conflict(new { error = "같은 이름의 전략이 이미 있습니다. 다른 이름을 사용하세요." });
+
+            CopyEditableFields(existing, input);
+            existing.Name = input.Name.Trim();
+            existing.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(existing);
         });
 
         group.MapDelete("/{id:int}", async (int id, AppDbContext db, CancellationToken ct) =>
@@ -107,5 +94,37 @@ public static class CustomPatternEndpoints
         });
 
         return api;
+    }
+
+    private static void CopyEditableFields(CustomPatternDefinition target, CustomPatternDefinition source)
+    {
+        target.Description = source.Description;
+        target.EntryRulesJson = source.EntryRulesJson;
+        target.EntryLogic = source.EntryLogic;
+        target.RequireBullRegime = source.RequireBullRegime;
+        target.AtrStopMultiplier = source.AtrStopMultiplier;
+        target.AtrTargetMultiplier = source.AtrTargetMultiplier;
+        target.MaxHoldingBars = source.MaxHoldingBars;
+        target.TrailingAtr = source.TrailingAtr;
+        target.PartialProfitR = source.PartialProfitR;
+        target.UseWeightTiers = source.UseWeightTiers;
+        target.WeightTiersJson = source.WeightTiersJson;
+        target.DefaultAllocationPercent = source.DefaultAllocationPercent;
+        target.ExitRulesJson = source.ExitRulesJson;
+        target.ExitRulesLogic = source.ExitRulesLogic;
+        target.ExitGroupsJson = source.ExitGroupsJson;
+        target.ExitGroupsLogic = source.ExitGroupsLogic;
+        target.ScalingRulesJson = source.ScalingRulesJson;
+        target.TimeFilterJson = source.TimeFilterJson;
+        target.CircuitBreakerJson = source.CircuitBreakerJson;
+        target.ReentryJson = source.ReentryJson;
+        target.PortfolioRulesJson = source.PortfolioRulesJson;
+        target.EntryGroupsJson = source.EntryGroupsJson;
+        target.EntryGroupsLogic = source.EntryGroupsLogic;
+        target.DynamicExitJson = source.DynamicExitJson;
+        target.EntryMode = source.EntryMode;
+        target.SizingMode = source.SizingMode;
+        target.IsActive = source.IsActive;
+        target.EnableLiveTrading = source.EnableLiveTrading;
     }
 }

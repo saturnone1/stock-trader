@@ -112,6 +112,10 @@ public static class PatternPreviewEndpoints
         var latest = allBars[^1];
 
         var detector = new RuleBasedDetector(indicators, request.Pattern);
+        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var circuitBreaker = JsonSerializer.Deserialize<CircuitBreakerConfig>(request.Pattern.CircuitBreakerJson, jsonOptions) ?? new();
+        var reentry = JsonSerializer.Deserialize<ReentryConfig>(request.Pattern.ReentryJson, jsonOptions) ?? new();
+        var portfolioRules = JsonSerializer.Deserialize<PortfolioRulesConfig>(request.Pattern.PortfolioRulesJson, jsonOptions) ?? new();
         var referenceBars = await LoadReferenceBarsAsync(
             request.Pattern, request.TimeFrame, allBars[0].Timestamp, latest.Timestamp, ohlcvRepository, ct);
         var spyBars = (await ohlcvRepository.GetBarsAsync(
@@ -134,6 +138,14 @@ public static class PatternPreviewEndpoints
         decimal compoundedReturn = 1m;
         var completedTrades = 0;
         var winningTrades = 0;
+        var consecutiveLosses = 0;
+        var circuitBreakerUntilIndex = 0;
+        var reentryUntilIndex = 0;
+        var drawdownTripped = false;
+        var peakCompoundedReturn = 1m;
+        var currentEntryDay = DateOnly.MinValue;
+        var entriesToday = 0;
+        var safetyBlockedEntries = 0;
 
         void Realize(OpenPreviewPosition openPosition, decimal price, int quantity)
         {
@@ -268,6 +280,22 @@ public static class PatternPreviewEndpoints
                 if (reason is not null)
                 {
                     Complete(position, exitPrice);
+                    var wasLoss = position.RealizedPnl < 0;
+                    var reentryBars = wasLoss ? reentry.CooldownBarsAfterLoss : reentry.CooldownBarsAfterWin;
+                    if (reentryBars > 0) reentryUntilIndex = index + reentryBars + 1;
+
+                    consecutiveLosses = wasLoss ? consecutiveLosses + 1 : 0;
+                    if (circuitBreaker.ConsecutiveLossLimit > 0
+                        && consecutiveLosses >= circuitBreaker.ConsecutiveLossLimit)
+                    {
+                        circuitBreakerUntilIndex = index + circuitBreaker.CooldownBars + 1;
+                        consecutiveLosses = 0;
+                    }
+                    peakCompoundedReturn = Math.Max(peakCompoundedReturn, compoundedReturn);
+                    if (circuitBreaker.MaxDrawdownPercent > 0 && peakCompoundedReturn > 0
+                        && (peakCompoundedReturn - compoundedReturn) / peakCompoundedReturn * 100m >= circuitBreaker.MaxDrawdownPercent)
+                        drawdownTripped = true;
+
                     markers.Add(new PatternPreviewMarker(current.Timestamp, "EXIT", exitPrice, Reason: reason));
                     position = null;
                 }
@@ -288,6 +316,21 @@ public static class PatternPreviewEndpoints
 
             if (position is not null)
                 continue;
+
+            var signalDay = DateOnly.FromDateTime(current.Timestamp);
+            if (signalDay != currentEntryDay)
+            {
+                currentEntryDay = signalDay;
+                entriesToday = 0;
+            }
+            if (index < reentryUntilIndex
+                || index < circuitBreakerUntilIndex
+                || drawdownTripped
+                || (portfolioRules.MaxEntriesPerDay > 0 && entriesToday >= portfolioRules.MaxEntriesPerDay))
+            {
+                safetyBlockedEntries++;
+                continue;
+            }
 
             var entryIndex = index;
             var entryPrice = current.Close;
@@ -316,8 +359,11 @@ public static class PatternPreviewEndpoints
                 HighestPrice = entryPrice,
                 InitialRisk = stopDistance,
                 InvestedCapital = entryPrice * 100,
-                AllocationScale = signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m
+                AllocationScale = Math.Min(
+                    signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m,
+                    portfolioRules.MaxSinglePositionPercent > 0 ? portfolioRules.MaxSinglePositionPercent / 100m : 1m)
             };
+            entriesToday++;
             markers.Add(new PatternPreviewMarker(
                 entryDate,
                 "ENTRY",
@@ -381,6 +427,7 @@ public static class PatternPreviewEndpoints
                 scaleInCount = visibleMarkers.Count(marker => marker.Type == "SCALE_IN"),
                 partialExitCount = visibleMarkers.Count(marker => marker.Type is "SCALE_OUT" or "PARTIAL_EXIT"),
                 stopMoveCount = visibleMarkers.Count(marker => marker.Type == "STOP_MOVE"),
+                safetyBlockedEntries,
                 completedTrades,
                 winningTrades,
                 winRate = completedTrades > 0 ? (decimal)winningTrades / completedTrades : 0,

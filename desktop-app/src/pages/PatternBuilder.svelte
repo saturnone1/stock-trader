@@ -56,7 +56,7 @@
         { label: 'ATR %', indicator: 'ATR_PERCENT', operator: '>=', value: 2, params: { period: 14 } },
         { label: '가격 변화율', indicator: 'PRICE_CHANGE', operator: '>=', value: 3, params: { bars: 5 } },
         { label: '20일 변동성', indicator: 'VOLATILITY_20D', operator: '>=', value: 30, params: { period: 20 } },
-        { label: '캔들 바디', indicator: 'CANDLE_BODY', operator: '>=', value: 1, params: {} },
+        { label: '캔들 몸통 비율', indicator: 'CANDLE_BODY', operator: '>=', value: 0.6, params: {} },
       ]
     }
   ]
@@ -70,7 +70,20 @@
   const targetTypeOptions = ['ATR', 'BOLLINGER_UPPER', 'SMA', 'EMA', 'PREV_HIGH', 'R_MULTIPLE', 'PERCENT']
   const indicatorOptions = indicatorPalette.flatMap((section) => section.items)
   const indicatorSet = new Set(indicatorOptions.map((item) => item.indicator))
+  const positiveParamKeys = new Set(['period', 'cumulativePeriod', 'bars', 'lookback', 'stddev', 'smooth', 'slow', 'fast', 'signal', 'multiplier', 'multiple', 'percent'])
+  const dayOptions = [
+    { value: 1, label: '월' }, { value: 2, label: '화' }, { value: 3, label: '수' },
+    { value: 4, label: '목' }, { value: 5, label: '금' }, { value: 6, label: '토' }, { value: 0, label: '일' }
+  ]
+  const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1)
   const indicatorLabels = Object.fromEntries(indicatorOptions.map((item) => [item.indicator, item.label]))
+  const indicatorValueGuides = {
+    RSI: '0~100', CUMULATIVE_RSI: 'RSI 합계', STOCHASTIC_K: '0~100', STOCHASTIC_D: '0~100',
+    BOLLINGER_POS: '0=하단, 1=상단', VOLUME_RATIO: '평균 대비 배수', PRICE_CHANGE: '%',
+    SMA_SLOPE: '%', CANDLE_BODY: '0~1 비율', DIST_FROM_HIGH: '고점 아래 거리 %', DIST_FROM_LOW: '저점 위 거리 %',
+    GAP: '%', ATR_PERCENT: '%', VOLATILITY_20D: '연환산 %', PRICE_VS_SMA: '%', PRICE_VS_EMA: '%',
+    PRICE_VS_VWAP: '%', ROC: '%', WILLIAMS_R: '-100~0', CMF: '-1~1', INSIDE_BAR: '참=1', ENGULFING: '강세=1, 약세=-1'
+  }
   const operatorLabels = {
     '>': '초과',
     '<': '미만',
@@ -602,12 +615,20 @@
       if (!indicatorSet.has(indicator)) {
         issues.push(`${scope}: 지원하지 않는 지표 ${rule.indicator || '(비어 있음)'}`)
       }
+      if (rule.compareIndicator && !indicatorSet.has(rule.compareIndicator)) issues.push(`${scope}: 지원하지 않는 비교 지표입니다.`)
       if (toNumber(rule.withinBars, 0) > 0 && toNumber(rule.consecutiveBars, 0) > 0) {
         issues.push(`${scope}: 최근 N봉 내와 연속 봉 수는 동시에 사용할 수 없습니다.`)
       }
       if (toNumber(rule.withinBars, 0) < 0 || toNumber(rule.consecutiveBars, 0) < 0) issues.push(`${scope}: 봉 수는 0 이상이어야 합니다.`)
       if (toNumber(rule.weight, 0) <= 0) issues.push(`${scope}: 가중치는 0보다 커야 합니다.`)
       if (Object.values(rule.params ?? {}).some((value) => toNumber(value, -1) < 0)) issues.push(`${scope}: 지표 계산값은 음수일 수 없습니다.`)
+      for (const [key, value] of Object.entries(rule.params ?? {})) {
+        if (positiveParamKeys.has(key) && toNumber(value, 0) <= 0) issues.push(`${scope}: ${paramKeyLabels[key] ?? key}은 0보다 커야 합니다.`)
+      }
+      for (const [key, value] of Object.entries(rule.compareParams ?? {})) {
+        if (positiveParamKeys.has(key) && toNumber(value, 0) <= 0) issues.push(`${scope}: 비교 지표의 ${paramKeyLabels[key] ?? key}은 0보다 커야 합니다.`)
+      }
+      if (indicator === 'MACD_HIST' && toNumber(rule.params?.fast, 12) >= toNumber(rule.params?.slow, 26)) issues.push(`${scope}: 빠른 EMA는 느린 EMA보다 작아야 합니다.`)
     }
 
     if (!currentWorkspace.name.trim()) issues.push('전략 이름을 입력하세요.')
@@ -635,7 +656,7 @@
       group.rules.forEach((rule, ruleIndex) => checkRule(rule, `매도 상황 ${groupIndex + 1} / 조건 ${ruleIndex + 1}`))
     })
 
-    currentWorkspace.weightTiers.forEach((tier, tierIndex) => {
+    if (currentWorkspace.useWeightTiers) currentWorkspace.weightTiers.forEach((tier, tierIndex) => {
       if (toNumber(tier.allocationPercent, -1) < 0 || toNumber(tier.allocationPercent, 101) > 100) issues.push(`매수 비중 ${tierIndex + 1}: 비중은 0~100%여야 합니다.`)
       if (!tier.conditions.length) {
         issues.push(`매수 비중 ${tierIndex + 1}: 조건이 비어 있습니다.`)
@@ -694,7 +715,7 @@
       notice = '새 매매 전략을 만들었습니다.'
       error = ''
     } catch (e) {
-      error = e?.message || '전략 생성에 실패했습니다.'
+      error = e?.response?.data?.error || e?.message || '전략 생성에 실패했습니다.'
     }
   }
 
@@ -786,6 +807,8 @@
     } else {
       workspace.exitGroups[index].rules.push(blankRule(template))
     }
+    if (workspace.enableLiveTrading && !workspace.raw?.enableLiveTrading
+      && !confirm('이 전략을 실시간 감시와 자동 주문에 연결합니다. 저장 후 실제 주문이 발생할 수 있습니다. 계속할까요?')) return
     selectedNode = { type: 'exitRule', groupIndex: index, ruleIndex: workspace.exitGroups[index].rules.length - 1 }
     touch()
   }
@@ -1014,6 +1037,13 @@
   function textToIntList(value) {
     return value.split(',').map((item) => item.trim()).filter(Boolean).map((item) => Number(item)).filter((item) => Number.isFinite(item))
   }
+
+  function toggleListValue(list, value) {
+    const next = list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
+    next.sort((a, b) => a - b)
+    touch()
+    return next
+  }
 </script>
 
 <div class="flex h-full overflow-hidden">
@@ -1058,11 +1088,15 @@
                 <div class="font-medium text-white">{pat.name}</div>
                 <div class="mt-1 text-xs text-gray-500">{pat.raw?.updatedAt ?? pat.updatedAt}</div>
               </button>
-              <div class="mt-2 flex justify-end">
-                <button on:click={() => deletePattern(pat)} class="rounded p-1 text-red-400 transition hover:bg-red-950/30">
-                  <Trash2 size={14} />
-                </button>
-              </div>
+              {#if String(pat.id) !== '-1001'}
+                <div class="mt-2 flex justify-end">
+                  <button on:click={() => deletePattern(pat)} class="rounded p-1 text-red-400 transition hover:bg-red-950/30" aria-label={`${pat.name} 전략 삭제`}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              {:else}
+                <div class="mt-2 text-right text-[11px] text-blue-300">기본 예시 · 저장하면 내 전략으로 복사</div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -1472,11 +1506,16 @@
         <div title={tooltipFor('weightTier')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">매수 비중</div>
         <input bind:value={tier.label} on:input={touch} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
         <div class="grid grid-cols-2 gap-3">
-          <select bind:value={tier.logic} on:change={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
-            {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
-          </select>
-          <input type="number" bind:value={tier.allocationPercent} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+          <label class="text-sm text-gray-400">조건 결합
+            <select bind:value={tier.logic} on:change={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
+              {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
+            </select>
+          </label>
+          <label class="text-sm text-gray-400">투자 비중 (%)
+            <input type="number" min="0" max="100" bind:value={tier.allocationPercent} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+          </label>
         </div>
+        <div class="rounded border border-blue-900/60 bg-blue-950/20 p-3 text-xs leading-5 text-blue-200">위에서부터 조건을 확인해 처음 만족한 비중 하나만 적용합니다. 순서가 결과에 영향을 줍니다.</div>
         <button on:click={() => addTierCondition(selectedNode.tierIndex)} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ 적용 조건 추가</button>
       </div>
     {:else if selectedNode.type === 'scalingRule'}
@@ -1484,29 +1523,37 @@
       <div class="space-y-4">
         <div title={tooltipFor('scalingRule')} class="cursor-help text-xs uppercase tracking-wider text-gray-500">추가 매수·분할 매도</div>
         <div class="grid grid-cols-2 gap-3">
-          <select bind:value={rule.direction} on:change={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
+          <label class="text-sm text-gray-400">실행 종류<select bind:value={rule.direction} on:change={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
             {#each scalingDirectionOptions as option}<option value={option}>{displayScalingDirection(option)}</option>{/each}
-          </select>
-          <select bind:value={rule.logic} on:change={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
+          </select></label>
+          <label class="text-sm text-gray-400">조건 결합<select bind:value={rule.logic} on:change={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
             {#each logicOptions as option}<option value={option}>{displayLogic(option)}</option>{/each}
-          </select>
-          <input type="number" bind:value={rule.percent} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="비율 %" />
-          <input type="number" bind:value={rule.maxCount} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="최대 횟수" />
-          <input type="number" step="0.1" bind:value={rule.minProfitPercent} on:input={touch} class="col-span-2 rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="최소 수익률 %" />
+          </select></label>
+          <label class="text-sm text-gray-400">최초 매수 수량 대비 비율 (%)<input type="number" min="0" max="100" bind:value={rule.percent} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+          <label class="text-sm text-gray-400">최대 실행 횟수<input type="number" min="1" bind:value={rule.maxCount} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+          <label class="col-span-2 text-sm text-gray-400">이 수익률 이상일 때만 실행 (%)<input type="number" step="0.1" bind:value={rule.minProfitPercent} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
         </div>
         <button on:click={() => addScalingCondition(selectedNode.scalingIndex)} class="rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700">+ 실행 조건 추가</button>
       </div>
     {:else if selectedNode.type === 'timeFilter'}
       <div class="space-y-4">
         <div class="text-xs uppercase tracking-wider text-gray-500">매매 가능 시기</div>
-        <label class="block text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">허용 요일 (0~6)</div>
-          <input value={listToText(workspace.timeFilter.allowedDaysOfWeek)} on:input={(e) => { workspace.timeFilter.allowedDaysOfWeek = textToIntList(e.currentTarget.value); touch(); }} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        </label>
-        <label class="block text-sm text-gray-300">
-          <div class="mb-2 text-gray-500">차단 월 (1~12)</div>
-          <input value={listToText(workspace.timeFilter.blockedMonths)} on:input={(e) => { workspace.timeFilter.blockedMonths = textToIntList(e.currentTarget.value); touch(); }} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        </label>
+        <div class="block text-sm text-gray-300">
+          <div class="mb-2 text-gray-500">매수할 요일 <span class="text-xs">(선택하지 않으면 매일)</span></div>
+          <div class="grid grid-cols-7 gap-2">
+            {#each dayOptions as day}
+              <button type="button" on:click={() => (workspace.timeFilter.allowedDaysOfWeek = toggleListValue(workspace.timeFilter.allowedDaysOfWeek, day.value))} class={`rounded border px-2 py-2 ${workspace.timeFilter.allowedDaysOfWeek.includes(day.value) ? 'border-blue-500 bg-blue-950/50 text-blue-200' : 'border-gray-700 bg-gray-900 text-gray-400'}`}>{day.label}</button>
+            {/each}
+          </div>
+        </div>
+        <div class="block text-sm text-gray-300">
+          <div class="mb-2 text-gray-500">매수하지 않을 달</div>
+          <div class="grid grid-cols-6 gap-2">
+            {#each monthOptions as month}
+              <button type="button" on:click={() => (workspace.timeFilter.blockedMonths = toggleListValue(workspace.timeFilter.blockedMonths, month))} class={`rounded border px-2 py-2 ${workspace.timeFilter.blockedMonths.includes(month) ? 'border-rose-600 bg-rose-950/40 text-rose-200' : 'border-gray-700 bg-gray-900 text-gray-400'}`}>{month}월</button>
+            {/each}
+          </div>
+        </div>
       </div>
     {:else if selectedNode.type === 'circuitBreaker'}
       <div class="space-y-4">
@@ -1584,14 +1631,14 @@
             <select bind:value={rule.operator} on:change={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
               {#each operatorOptions as option}<option value={option}>{operatorLabels[option] ?? option}</option>{/each}
             </select>
-            <input type="number" step="0.1" bind:value={rule.value} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="기준값" />
-            <input type="number" bind:value={rule.withinBars} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="최근 N봉 내" />
-            <input type="number" bind:value={rule.consecutiveBars} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="연속 봉 수" />
-            <input type="number" step="0.1" bind:value={rule.weight} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="가중치" />
-            <input bind:value={rule.refSymbol} on:input={touch} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="참조 심볼" />
+            <label class="text-xs text-gray-400">기준값 {indicatorValueGuides[rule.indicator] ? `(${indicatorValueGuides[rule.indicator]})` : ''}<input type="number" step="0.1" bind:value={rule.value} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+            <label class="text-xs text-gray-400">최근 몇 봉 안에 한 번이라도<input type="number" min="0" bind:value={rule.withinBars} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+            <label class="text-xs text-gray-400">몇 봉 연속 만족<input type="number" min="0" bind:value={rule.consecutiveBars} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+            <label class="text-xs text-gray-400">신뢰도 계산 가중치<input type="number" min="0.1" step="0.1" bind:value={rule.weight} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
+            <label class="text-xs text-gray-400">다른 종목을 기준으로 판단<input bind:value={rule.refSymbol} on:input={touch} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 uppercase text-white" placeholder="예: SPY" /></label>
           </div>
           <div class="rounded border border-gray-800 bg-gray-900 p-3 text-xs text-gray-400">
-            조건이 최근에 한 번이라도 나왔는지는 <span class="text-gray-200">최근 N봉 내</span>, 계속 이어져야 한다면 <span class="text-gray-200">연속 봉 수</span>를 사용하세요. 두 값은 하나만 쓰는 것이 좋습니다.
+            조건이 최근에 한 번이라도 나왔는지는 <span class="text-gray-200">최근 몇 봉 안에</span>, 계속 이어져야 한다면 <span class="text-gray-200">연속 만족</span>을 사용하세요. 두 값은 동시에 사용할 수 없습니다. 가중치는 매수 여부가 아니라 신뢰도 점수에만 반영됩니다.
           </div>
           <select bind:value={rule.compareIndicator} on:change={(e) => updateRuleField('compareIndicator', e.currentTarget.value)} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
             <option value="">고정값과 비교</option>

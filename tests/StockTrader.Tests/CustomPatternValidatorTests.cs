@@ -35,6 +35,43 @@ public class CustomPatternValidatorTests
         CustomPatternValidator.Validate(pattern).Should().BeEmpty();
     }
 
+    [Fact]
+    public void Validate_RejectsUnknownIndicatorsAndZeroPeriods()
+    {
+        var pattern = ValidPattern();
+        pattern.EntryGroupsJson = JsonSerializer.Serialize(new[]
+        {
+            new ConditionGroup
+            {
+                Label = "진입",
+                Logic = "AND",
+                Rules =
+                [
+                    new EntryRule { Indicator = "NOT_REAL", Operator = ">", Value = 0m },
+                    new EntryRule { Indicator = "RSI", Operator = "<", Value = 30m, Params = new() { ["period"] = 0m } }
+                ]
+            }
+        });
+
+        var errors = CustomPatternValidator.Validate(pattern);
+
+        errors.Should().Contain(error => error.Contains("지원하지 않는 지표"));
+        errors.Should().Contain(error => error.Contains("0보다 커야"));
+    }
+
+    [Fact]
+    public void Validate_IgnoresDisabledWeightTiers()
+    {
+        var pattern = ValidPattern();
+        pattern.UseWeightTiers = false;
+        pattern.WeightTiersJson = JsonSerializer.Serialize(new[]
+        {
+            new WeightTier { Label = "사용 안 함", Conditions = [], AllocationPercent = 200m }
+        });
+
+        CustomPatternValidator.Validate(pattern).Should().BeEmpty();
+    }
+
     private static CustomPatternDefinition ValidPattern() => new()
     {
         Name = "검증 전략",

@@ -152,7 +152,12 @@ public class BacktestService : IBacktestService
             _                       => 400
         };
 
-        foreach (var symbol in symbols)
+        var symbolsToLoad = symbols
+            .Concat(CollectReferenceSymbols(detectors))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var symbol in symbolsToLoad)
         {
             ct.ThrowIfCancellationRequested();
             try
@@ -178,13 +183,13 @@ public class BacktestService : IBacktestService
                 var cumulativeRsi2TrendMaArray = _indicators.SMA(
                     closesArray, cumulativeRsi2Config.LongTrendMaPeriod);
 
-                var dateToIndex = new Dictionary<DateOnly, int>();
+                var timestampToIndex = new Dictionary<DateTime, int>();
                 for (int i = 0; i < barsArray.Length; i++)
-                    dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
+                    timestampToIndex[barsArray[i].Timestamp] = i;
 
                 symbolDataMap[symbol] = new SymbolPreparedData(
                     barsArray, atrArray, closesArray, sma200Array,
-                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, dateToIndex);
+                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
 
                 var firstTs = barsArray[0].Timestamp;
                 if (!actualDataFrom.HasValue || firstTs < actualDataFrom.Value)
@@ -235,9 +240,9 @@ public class BacktestService : IBacktestService
     {
         // ── Phase 2: 날짜순 포트폴리오 시뮬레이션 ──
         var allDates = symbolDataMap.Values
-            .SelectMany(d => d.DateToIndex.Keys)
+            .SelectMany(d => d.TimestampToIndex.Keys)
             .Distinct()
-            .Where(d => d >= DateOnly.FromDateTime(from))
+            .Where(d => d >= from)
             .OrderBy(d => d)
             .ToList();
 
@@ -285,7 +290,7 @@ public class BacktestService : IBacktestService
             StringComparer.OrdinalIgnoreCase);
 
         // 전략+종목별 재진입 쿨다운
-        var reentryCooldowns = new Dictionary<string, DateOnly>();
+        var reentryCooldowns = new Dictionary<string, int>();
         // 스케일링 횟수 추적: (symbol → rule index → count)
         var positionScaleCounts = new Dictionary<string, Dictionary<int, int>>();
 
@@ -298,33 +303,35 @@ public class BacktestService : IBacktestService
                 referenceData[sym.ToUpperInvariant()] = sd.Bars;
         }
 
-        foreach (var date in allDates)
+        for (var timelineIndex = 0; timelineIndex < allDates.Count; timelineIndex++)
         {
+            var date = allDates[timelineIndex];
+            var tradingDay = DateOnly.FromDateTime(date);
             ct.ThrowIfCancellationRequested();
             if (referenceData != null)
             {
-                var referenceAsOf = date.ToDateTime(TimeOnly.MaxValue);
+                var referenceAsOf = date;
                 foreach (var detector in customDetectors)
                     detector.SetReferenceData(referenceData, referenceAsOf);
             }
-            var regime = TradeSimulator.GetRegimeForDate(date, regimeByDate);
+            var regime = TradeSimulator.GetRegimeForDate(tradingDay, regimeByDate);
 
-            if (date != dailyLossDate)
+            if (tradingDay != dailyLossDate)
             {
-                dailyLossDate = date;
+                dailyLossDate = tradingDay;
                 dailyStartEquity = currentEquity;
             }
 
             foreach (var runtime in strategyRuntimes.Values)
             {
-                if (runtime.LastEntryDate != date) runtime.DailyEntryCount = 0;
+                if (runtime.LastEntryDate != tradingDay) runtime.DailyEntryCount = 0;
             }
 
             // ── 2a. 보유 중인 모든 포지션의 청산 로직 ──
             foreach (var symbol in openPositions.Keys.ToList())
             {
                 if (!symbolDataMap.TryGetValue(symbol, out var sd)) continue;
-                if (!sd.DateToIndex.TryGetValue(date, out var barIdx)) continue;
+                if (!sd.TimestampToIndex.TryGetValue(date, out var barIdx)) continue;
 
                 var pos = openPositions[symbol];
                 var tradesBefore = trades.Count;
@@ -357,9 +364,9 @@ public class BacktestService : IBacktestService
                         // 재진입 쿨다운 등록
                         if (positionRuntime != null)
                         {
-                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", date, trades[^1], positionRuntime.Reentry, reentryCooldowns);
-                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilDate,
-                                date, positionRuntime.CircuitBreaker);
+                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", barIdx, trades[^1], positionRuntime.Reentry, reentryCooldowns);
+                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilStep,
+                                timelineIndex, positionRuntime.CircuitBreaker);
                         }
                         continue;
                     }
@@ -431,9 +438,9 @@ public class BacktestService : IBacktestService
                     {
                         if (positionRuntime != null)
                         {
-                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", date, trades[^1], positionRuntime.Reentry, reentryCooldowns);
-                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilDate,
-                                date, positionRuntime.CircuitBreaker);
+                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", barIdx, trades[^1], positionRuntime.Reentry, reentryCooldowns);
+                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilStep,
+                                timelineIndex, positionRuntime.CircuitBreaker);
                         }
                     }
                 }
@@ -470,7 +477,7 @@ public class BacktestService : IBacktestService
                 {
                     if (openPositions.ContainsKey(pendingSymbol)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
                     if (!symbolDataMap.TryGetValue(pendingSymbol, out var pendingSd)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
-                    if (!pendingSd.DateToIndex.TryGetValue(date, out var pendingBarIdx)) { pendingNextOpenSignals.Remove(pendingSymbol); continue; }
+                    if (!pendingSd.TimestampToIndex.TryGetValue(date, out var pendingBarIdx)) continue;
 
                     var pending = pendingNextOpenSignals[pendingSymbol];
                     var pendingRuntime = pending.customPatternName != null
@@ -482,9 +489,9 @@ public class BacktestService : IBacktestService
                         : maxTotalPositions;
                     if (openPositions.Count >= pendingPositionLimit
                         || pendingRuntime?.CircuitBreakerTripped == true
-                        || (pendingRuntime != null && pendingRuntime.CircuitBreaker.ConsecutiveLossLimit > 0 && date < pendingRuntime.CircuitBreakerUntilDate)
+                        || (pendingRuntime != null && pendingRuntime.CircuitBreaker.ConsecutiveLossLimit > 0 && timelineIndex < pendingRuntime.CircuitBreakerUntilStep)
                         || (pendingRuntime != null && pendingRuntime.Portfolio.MaxEntriesPerDay > 0 && pendingRuntime.DailyEntryCount >= pendingRuntime.Portfolio.MaxEntriesPerDay)
-                        || (pending.customPatternName != null && reentryCooldowns.TryGetValue($"{pending.customPatternName}|{pendingSymbol}", out var pendingCooldown) && date < pendingCooldown))
+                        || (pending.customPatternName != null && reentryCooldowns.TryGetValue($"{pending.customPatternName}|{pendingSymbol}", out var pendingCooldown) && pendingBarIdx < pendingCooldown))
                     {
                         pendingNextOpenSignals.Remove(pendingSymbol);
                         continue;
@@ -534,7 +541,7 @@ public class BacktestService : IBacktestService
                     if (pendingRuntime != null)
                     {
                         pendingRuntime.DailyEntryCount++;
-                        pendingRuntime.LastEntryDate = date;
+                        pendingRuntime.LastEntryDate = tradingDay;
                     }
                 }
             }
@@ -549,7 +556,7 @@ public class BacktestService : IBacktestService
                 if (openPositions.ContainsKey(symbol)) continue;
                 if (openPositions.Count >= maxTotalPositions) break;
                 if (!symbolDataMap.TryGetValue(symbol, out var sd)) continue;
-                if (!sd.DateToIndex.TryGetValue(date, out var barIdx)) continue;
+                if (!sd.TimestampToIndex.TryGetValue(date, out var barIdx)) continue;
                 if (barIdx < TradeSimulator.MinWarmupBars) continue;
 
                 var windowSize = Math.Min(barIdx + 1, maxWindow);
@@ -573,13 +580,13 @@ public class BacktestService : IBacktestService
                         if (strategyRuntime?.CircuitBreakerTripped == true) continue;
                         if (strategyRuntime != null
                             && strategyRuntime.CircuitBreaker.ConsecutiveLossLimit > 0
-                            && date < strategyRuntime.CircuitBreakerUntilDate) continue;
+                            && timelineIndex < strategyRuntime.CircuitBreakerUntilStep) continue;
                         if (strategyRuntime != null
                             && strategyRuntime.Portfolio.MaxEntriesPerDay > 0
                             && strategyRuntime.DailyEntryCount >= strategyRuntime.Portfolio.MaxEntriesPerDay) continue;
                         if (ruleDetector != null
                             && reentryCooldowns.TryGetValue($"{ruleDetector.Definition.Name}|{symbol}", out var cooldownUntil)
-                            && date < cooldownUntil) continue;
+                            && barIdx < cooldownUntil) continue;
 
                         var signal = await detector.DetectAsync(symbol, windowBars, regime!, ct);
                         if (signal == null) continue;
@@ -618,8 +625,8 @@ public class BacktestService : IBacktestService
                                 // 최근 60개 수익률로 Pearson 상관계수 계산
                                 const int corrWindow = 60;
                                 var corrCorr = ComputePearsonCorrelation(
-                                    existingSd.Closes, existingSd.DateToIndex,
-                                    newSd.Closes, newSd.DateToIndex,
+                                    existingSd.Closes, existingSd.TimestampToIndex,
+                                    newSd.Closes, newSd.TimestampToIndex,
                                     date, corrWindow);
 
                                 if (corrCorr > (double)portfolioRules.MaxCorrelation)
@@ -735,7 +742,7 @@ public class BacktestService : IBacktestService
                             if (strategyRuntime != null)
                             {
                                 strategyRuntime.DailyEntryCount++;
-                                strategyRuntime.LastEntryDate = date;
+                                strategyRuntime.LastEntryDate = tradingDay;
                             }
                         }
 
@@ -916,19 +923,19 @@ public class BacktestService : IBacktestService
     }
 
     /// <summary>재진입 쿨다운 등록</summary>
-    private static void RegisterCooldown(string symbol, DateOnly date, TradeRecord lastTrade,
-        ReentryConfig? config, Dictionary<string, DateOnly> cooldowns)
+    private static void RegisterCooldown(string symbol, int currentBarIndex, TradeRecord lastTrade,
+        ReentryConfig? config, Dictionary<string, int> cooldowns)
     {
         if (config == null) return;
         var isLoss = lastTrade.PnL < 0;
         var bars = isLoss ? config.CooldownBarsAfterLoss : config.CooldownBarsAfterWin;
         if (bars > 0)
-            cooldowns[symbol] = date.AddDays(bars); // 근사치 (거래일 ≈ 캘린더일)
+            cooldowns[symbol] = currentBarIndex + bars + 1;
     }
 
     /// <summary>서킷브레이커 상태 업데이트</summary>
     private static void UpdateCircuitBreaker(TradeRecord trade, ref int consecutiveLosses,
-        ref DateOnly circuitBreakerUntilDate, DateOnly currentDate, CircuitBreakerConfig? config)
+        ref int circuitBreakerUntilStep, int currentTimelineStep, CircuitBreakerConfig? config)
     {
         if (config == null || config.ConsecutiveLossLimit <= 0) return;
         if (trade.PnL < 0)
@@ -936,7 +943,7 @@ public class BacktestService : IBacktestService
             consecutiveLosses++;
             if (consecutiveLosses >= config.ConsecutiveLossLimit)
             {
-                circuitBreakerUntilDate = currentDate.AddDays(config.CooldownBars);
+                circuitBreakerUntilStep = currentTimelineStep + config.CooldownBars + 1;
                 consecutiveLosses = 0; // 리셋
             }
         }
@@ -1012,7 +1019,11 @@ public class BacktestService : IBacktestService
         };
         var fetchFrom = DateOnly.FromDateTime(from.AddDays(-warmupDays));
 
-        foreach (var symbol in symbols)
+        var sliceSymbols = symbols
+            .Concat(CollectReferenceSymbols(detectors))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var symbol in sliceSymbols)
         {
             ct.ThrowIfCancellationRequested();
             if (!fullDataMap.TryGetValue(symbol, out var full)) continue;
@@ -1043,14 +1054,14 @@ public class BacktestService : IBacktestService
                 continue;
             }
 
-            // 슬라이싱된 범위에 맞는 dateToIndex 재구성
-            var dateToIndex = new Dictionary<DateOnly, int>(barsSlice.Length);
+            // 슬라이싱된 범위에 맞는 봉 시각 인덱스 재구성
+            var timestampToIndex = new Dictionary<DateTime, int>(barsSlice.Length);
             for (int i = 0; i < barsSlice.Length; i++)
-                dateToIndex[DateOnly.FromDateTime(barsSlice[i].Timestamp)] = i;
+                timestampToIndex[barsSlice[i].Timestamp] = i;
 
             symbolDataMap[symbol] = new SymbolPreparedData(
                 barsSlice, atrSlice, closesSlice, sma200Slice,
-                cumulativeRsi2Slice, cumulativeRsi2TrendMaSlice, dateToIndex);
+                cumulativeRsi2Slice, cumulativeRsi2TrendMaSlice, timestampToIndex);
 
             var firstTs = barsSlice[0].Timestamp;
             if (!actualDataFrom.HasValue || firstTs < actualDataFrom.Value)
@@ -1076,7 +1087,7 @@ public class BacktestService : IBacktestService
         decimal[] Sma200,
         decimal[] CumulativeRsi2,
         decimal[] CumulativeRsi2TrendMa,
-        Dictionary<DateOnly, int> DateToIndex);
+        Dictionary<DateTime, int> TimestampToIndex);
 
     #region Walk-Forward Analysis
 
@@ -1102,7 +1113,11 @@ public class BacktestService : IBacktestService
             _                       => 400
         };
         var wfFullDataMap = new Dictionary<string, SymbolPreparedData>();
-        foreach (var symbol in request.Symbols)
+        var walkForwardSymbols = request.Symbols
+            .Concat(CollectReferenceSymbols(detectors))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var symbol in walkForwardSymbols)
         {
             ct.ThrowIfCancellationRequested();
             try
@@ -1121,13 +1136,13 @@ public class BacktestService : IBacktestService
                 var cumulativeRsi2TrendMaArray = _indicators.SMA(
                     closesArray, _basePatternSettings.CumulativeRsi2.LongTrendMaPeriod);
 
-                var dateToIndex = new Dictionary<DateOnly, int>(barsArray.Length);
+                var timestampToIndex = new Dictionary<DateTime, int>(barsArray.Length);
                 for (int i = 0; i < barsArray.Length; i++)
-                    dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
+                    timestampToIndex[barsArray[i].Timestamp] = i;
 
                 wfFullDataMap[symbol] = new SymbolPreparedData(
                     barsArray, atrArray, closesArray, sma200Array,
-                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, dateToIndex);
+                    cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
             }
             catch (Exception ex)
             {
@@ -1283,13 +1298,50 @@ public class BacktestService : IBacktestService
 
     #region Helpers
 
+    private static IReadOnlyCollection<string> CollectReferenceSymbols(IEnumerable<IPatternDetector> detectors)
+    {
+        var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        static void AddRules(IEnumerable<EntryRule> rules, HashSet<string> target)
+        {
+            foreach (var rule in rules)
+                if (!string.IsNullOrWhiteSpace(rule.RefSymbol))
+                    target.Add(rule.RefSymbol.Trim().ToUpperInvariant());
+        }
+
+        foreach (var detector in detectors.OfType<RuleBasedDetector>())
+        {
+            var definition = detector.Definition;
+            try
+            {
+                AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.EntryRulesJson, options) ?? [], symbols);
+                AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.ExitRulesJson, options) ?? [], symbols);
+                foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(definition.EntryGroupsJson, options) ?? [])
+                    AddRules(group.Rules, symbols);
+                foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(definition.ExitGroupsJson, options) ?? [])
+                    AddRules(group.Rules, symbols);
+                foreach (var tier in JsonSerializer.Deserialize<List<WeightTier>>(definition.WeightTiersJson, options) ?? [])
+                    AddRules(tier.Conditions, symbols);
+                foreach (var scaling in JsonSerializer.Deserialize<List<ScalingRule>>(definition.ScalingRulesJson, options) ?? [])
+                    AddRules(scaling.Conditions, symbols);
+            }
+            catch (JsonException)
+            {
+                // 유효성 검사는 호출 전에 수행되므로 손상된 전략만 참조 종목 로딩에서 제외한다.
+            }
+        }
+
+        return symbols;
+    }
+
     /// <summary>
     /// [E-2] 두 심볼의 최근 N봉 일간 수익률 Pearson 상관계수 계산.
     /// </summary>
     private static double ComputePearsonCorrelation(
-        decimal[] closesA, Dictionary<DateOnly, int> idxA,
-        decimal[] closesB, Dictionary<DateOnly, int> idxB,
-        DateOnly refDate, int window)
+        decimal[] closesA, Dictionary<DateTime, int> idxA,
+        decimal[] closesB, Dictionary<DateTime, int> idxB,
+        DateTime refDate, int window)
     {
         // refDate 기준으로 최근 window+1개 공통 날짜 수집 → window개의 수익률
         var returnsA = new List<double>(window);
@@ -1350,7 +1402,7 @@ public class BacktestService : IBacktestService
         public required ReentryConfig Reentry { get; init; }
         public required PortfolioRulesConfig Portfolio { get; init; }
         public int ConsecutiveLosses;
-        public DateOnly CircuitBreakerUntilDate = DateOnly.MinValue;
+        public int CircuitBreakerUntilStep;
         public decimal PeakEquity;
         public bool CircuitBreakerTripped;
         public int DailyEntryCount;
@@ -1499,7 +1551,11 @@ public class BacktestService : IBacktestService
                 _                                    => 400
             };
             var tfDataMap = new Dictionary<string, SymbolPreparedData>();
-            foreach (var symbol in request.Symbols)
+            var optimizationSymbols = request.Symbols
+                .Concat(CollectReferenceSymbols([new RuleBasedDetector(_indicators, request.BasePattern)]))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            foreach (var symbol in optimizationSymbols)
             {
                 ct.ThrowIfCancellationRequested();
                 try
@@ -1519,13 +1575,13 @@ public class BacktestService : IBacktestService
                     var cumulativeRsi2TrendMaArray = _indicators.SMA(
                         closesArray, _basePatternSettings.CumulativeRsi2.LongTrendMaPeriod);
 
-                    var dateToIndex = new Dictionary<DateOnly, int>(barsArray.Length);
+                    var timestampToIndex = new Dictionary<DateTime, int>(barsArray.Length);
                     for (int i = 0; i < barsArray.Length; i++)
-                        dateToIndex[DateOnly.FromDateTime(barsArray[i].Timestamp)] = i;
+                        timestampToIndex[barsArray[i].Timestamp] = i;
 
                     tfDataMap[symbol] = new SymbolPreparedData(
                         barsArray, atrArray, closesArray, sma200Array,
-                        cumulativeRsi2Array, cumulativeRsi2TrendMaArray, dateToIndex);
+                        cumulativeRsi2Array, cumulativeRsi2TrendMaArray, timestampToIndex);
                 }
                 catch (Exception ex)
                 {

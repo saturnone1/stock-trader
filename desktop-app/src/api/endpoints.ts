@@ -246,8 +246,10 @@ export const patternApi = {
       data: normalizePattern(response.data)
     };
   },
-  update: async (_id: string, data: any) => {
-    const response = await api.post('/api/custom-patterns', data);
+  update: async (id: string, data: any) => {
+    const response = isPresetPatternId(id)
+      ? await api.post('/api/custom-patterns', data)
+      : await api.put(`/api/custom-patterns/${id}`, data);
     return {
       ...response,
       data: normalizePattern(response.data)
