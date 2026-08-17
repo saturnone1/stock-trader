@@ -41,6 +41,7 @@
   }
   $: chart = buildChart(result?.bars ?? [], result?.markers ?? [], result?.matches ?? [])
   $: presets = presetsFor(timeFrame)
+  $: intraday = isIntraday(timeFrame)
 
   onDestroy(() => clearTimeout(refreshTimer))
 
@@ -52,7 +53,7 @@
   async function loadPreview(reason = 'manual') {
     if (!pattern || !symbol.trim() || !fromDate || !toDate) return
     if (fromDate > toDate) {
-      error = '조회 시작일은 종료일보다 앞서야 합니다.'
+      error = '조회 시작 시점은 종료 시점보다 앞서야 합니다.'
       return
     }
 
@@ -65,10 +66,9 @@
 
     try {
       const response = await patternApi.preview(symbol.trim().toUpperCase(), pattern, {
-        bars: 600,
         timeFrame,
-        from: fromDate,
-        to: toDate
+        from: intraday ? marketDateTimeToIso(fromDate) : fromDate,
+        to: intraday ? marketDateTimeToIso(toDate) : toDate
       })
       if (version !== requestVersion) return
 
@@ -102,14 +102,21 @@
   }
 
   function changeTimeFrame(value) {
+    const wasIntraday = isIntraday(timeFrame)
     timeFrame = value
+    const nowIntraday = isIntraday(value)
+    const endDay = toDate.slice(0, 10)
+    toDate = nowIntraday ? `${endDay}T16:00` : endDay
     fromDate = defaultFromDate(value, toDate)
+    if (nowIntraday) fromDate = `${fromDate}T09:30`
+    if (wasIntraday !== nowIntraday) error = ''
     comparison = null
     loadPreview('filters')
   }
 
   function applyPreset(days) {
-    fromDate = shiftDate(toDate, -(days - 1))
+    const startDay = shiftDate(toDate.slice(0, 10), -(days - 1))
+    fromDate = intraday ? `${startDay}T09:30` : startDay
     comparison = null
     loadPreview('filters')
   }
@@ -124,7 +131,30 @@
 
   function defaultFromDate(value, endDate) {
     const preset = value === 'OneMinute' ? 1 : value === 'FiveMinute' ? 5 : value === 'FifteenMinute' ? 20 : value === 'Weekly' ? 1095 : 365
-    return shiftDate(endDate, -(preset - 1))
+    return shiftDate(endDate.slice(0, 10), -(preset - 1))
+  }
+
+  function isIntraday(value) {
+    return ['OneMinute', 'FiveMinute', 'FifteenMinute'].includes(value)
+  }
+
+  // datetime-local에는 시간대가 없으므로 입력값을 미국 동부시간으로 해석해 UTC로 보낸다.
+  function marketDateTimeToIso(value) {
+    const [datePart, timePart = '00:00'] = value.split('T')
+    const [year, month, day] = datePart.split('-').map(Number)
+    const [hour, minute] = timePart.split(':').map(Number)
+    const desired = Date.UTC(year, month - 1, day, hour, minute)
+    let candidate = desired
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+    })
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const parts = Object.fromEntries(formatter.formatToParts(new Date(candidate)).map((part) => [part.type, part.value]))
+      const actual = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour) % 24, Number(parts.minute))
+      candidate += desired - actual
+    }
+    return new Date(candidate).toISOString()
   }
 
   function shiftDate(value, days) {
@@ -139,7 +169,8 @@
 
   function buildChart(sourceBars, markers, matches) {
     if (!sourceBars.length) return null
-    const plotWidth = width - left - right
+    const chartWidth = Math.max(width, left + right + sourceBars.length * 4)
+    const plotWidth = chartWidth - left - right
     const plotHeight = height - top - bottom
     const low = Math.min(...sourceBars.map((bar) => Number(bar.low)))
     const high = Math.max(...sourceBars.map((bar) => Number(bar.high)))
@@ -173,10 +204,13 @@
       const price = maxPrice - range * ratio
       return { y: top + plotHeight * ratio, label: formatPrice(price) }
     })
-    const dateTicks = [0, Math.floor((sourceBars.length - 1) / 2), sourceBars.length - 1]
+    const dateTickCount = Math.max(3, Math.ceil(chartWidth / 260))
+    const dateTicks = Array.from({ length: dateTickCount }, (_, tickIndex) =>
+      Math.round((sourceBars.length - 1) * tickIndex / (dateTickCount - 1)))
+      .filter((index, position, values) => position === 0 || index !== values[position - 1])
       .map((index) => ({ x: xForIndex(index), label: formatAxisDate(sourceBars[index]?.date) }))
     const entryMarkers = markerPoints.filter((marker) => marker.type === 'ENTRY')
-    return { candles, markerPoints, matchPoints, ticks, dateTicks, entryMarkers, yForPrice }
+    return { width: chartWidth, candles, markerPoints, matchPoints, ticks, dateTicks, entryMarkers, yForPrice }
   }
 
   function formatPrice(value) {
@@ -217,7 +251,7 @@
         </div>
         <p class="mt-1 text-xs text-gray-400">종목과 기간을 고른 뒤 조건을 바꾸면, 매수 후보와 실제 거래 시점이 자동으로 다시 계산됩니다.</p>
       </div>
-      <div class="text-xs text-gray-500">표시 한도 600봉 · 날짜는 미국 거래일 기준</div>
+      <div class="text-xs text-gray-500">선택한 기간 전체 표시 · 분봉 시각은 미국 동부시간(ET)</div>
     </div>
 
     <form on:submit={submitFilters} class="space-y-3">
@@ -240,13 +274,13 @@
         </fieldset>
 
         <label class="block text-xs text-gray-400">
-          <span class="mb-1 flex items-center gap-1"><CalendarDays size={12} /> 시작일</span>
-          <input type="date" bind:value={fromDate} max={toDate} class="w-full rounded border border-gray-700 bg-gray-900 px-2 py-2 text-sm text-white" />
+          <span class="mb-1 flex items-center gap-1"><CalendarDays size={12} /> {intraday ? '시작 시각 (ET)' : '시작일'}</span>
+          <input type={intraday ? 'datetime-local' : 'date'} bind:value={fromDate} max={toDate} step={intraday ? '60' : undefined} class="w-full rounded border border-gray-700 bg-gray-900 px-2 py-2 text-sm text-white" />
         </label>
 
         <label class="block text-xs text-gray-400">
-          <span class="mb-1 flex items-center gap-1"><CalendarDays size={12} /> 종료일</span>
-          <input type="date" bind:value={toDate} min={fromDate} class="w-full rounded border border-gray-700 bg-gray-900 px-2 py-2 text-sm text-white" />
+          <span class="mb-1 flex items-center gap-1"><CalendarDays size={12} /> {intraday ? '종료 시각 (ET)' : '종료일'}</span>
+          <input type={intraday ? 'datetime-local' : 'date'} bind:value={toDate} min={fromDate} step={intraday ? '60' : undefined} class="w-full rounded border border-gray-700 bg-gray-900 px-2 py-2 text-sm text-white" />
         </label>
 
         <button type="submit" class="mt-5 h-[38px] rounded bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">차트 보기</button>
@@ -327,18 +361,18 @@
       </div>
 
       <div class="overflow-x-auto rounded-lg border border-gray-800 bg-[#080d18]">
-        <svg viewBox={`0 0 ${width} ${height}`} class="block min-w-[720px] w-full" role="img" aria-label={`${result.symbol} 매매 시점 차트`}>
+        <svg viewBox={`0 0 ${chart.width} ${height}`} style={`width:${chart.width}px;max-width:none`} class="block min-w-full" role="img" aria-label={`${result.symbol} 매매 시점 차트`}>
           {#each chart.ticks as tick}
-            <line x1={left} x2={width - right} y1={tick.y} y2={tick.y} stroke="#1f2937" stroke-width="1" />
+            <line x1={left} x2={chart.width - right} y1={tick.y} y2={tick.y} stroke="#1f2937" stroke-width="1" />
             <text x={left - 7} y={tick.y + 4} text-anchor="end" fill="#6b7280" font-size="10">{tick.label}</text>
           {/each}
 
           {#each chart.entryMarkers as marker}
             {#if marker.stopPrice != null}
-              <line x1={marker.x} x2={width - right} y1={chart.yForPrice(marker.stopPrice)} y2={chart.yForPrice(marker.stopPrice)} stroke="#f87171" stroke-width="1" stroke-dasharray="4 5" opacity="0.32" />
+              <line x1={marker.x} x2={chart.width - right} y1={chart.yForPrice(marker.stopPrice)} y2={chart.yForPrice(marker.stopPrice)} stroke="#f87171" stroke-width="1" stroke-dasharray="4 5" opacity="0.32" />
             {/if}
             {#if marker.targetPrice != null}
-              <line x1={marker.x} x2={width - right} y1={chart.yForPrice(marker.targetPrice)} y2={chart.yForPrice(marker.targetPrice)} stroke="#34d399" stroke-width="1" stroke-dasharray="4 5" opacity="0.28" />
+              <line x1={marker.x} x2={chart.width - right} y1={chart.yForPrice(marker.targetPrice)} y2={chart.yForPrice(marker.targetPrice)} stroke="#34d399" stroke-width="1" stroke-dasharray="4 5" opacity="0.28" />
             {/if}
           {/each}
 

@@ -256,8 +256,8 @@ export const patternApi = {
   delete: (id: string) => isPresetPatternId(id)
     ? Promise.resolve({ data: null })
     : api.delete(`/api/custom-patterns/${id}`),
-  preview: (symbol: string, pattern: any, options: { bars?: number; timeFrame?: string; from?: string; to?: string } = {}) =>
-    api.post('/api/custom-patterns/preview', { symbol, pattern, bars: 600, ...options }),
+  preview: (symbol: string, pattern: any, options: { timeFrame?: string; from?: string; to?: string } = {}) =>
+    api.post('/api/custom-patterns/preview', { symbol, pattern, ...options }),
 };
 
 export const optimizationApi = {

@@ -10,7 +10,6 @@ namespace StockTrader.Api;
 
 public sealed record PatternPreviewRequest(
     string Symbol,
-    int Bars,
     CustomPatternDefinition Pattern,
     TimeFrame TimeFrame = TimeFrame.Daily,
     DateTime? From = null,
@@ -53,11 +52,13 @@ public static class PatternPreviewEndpoints
         if (validationErrors.Count > 0)
             return Results.BadRequest(new { error = validationErrors[0], errors = validationErrors });
 
-        var displayCount = Math.Clamp(request.Bars <= 0 ? 600 : request.Bars, 60, 600);
-        var dataTo = (request.To ?? DateTime.UtcNow).Date.AddDays(1);
-        var dataFrom = (request.From ?? DefaultFrom(request.TimeFrame, dataTo)).Date;
+        var isIntraday = IsIntraday(request.TimeFrame);
+        var requestedTo = request.To ?? DateTime.UtcNow;
+        var dataTo = isIntraday ? requestedTo.ToUniversalTime() : requestedTo.Date.AddDays(1);
+        var requestedFrom = request.From ?? DefaultFrom(request.TimeFrame, dataTo);
+        var dataFrom = isIntraday ? requestedFrom.ToUniversalTime() : requestedFrom.Date;
         if (dataFrom >= dataTo)
-            return Results.BadRequest(new { error = "조회 시작일은 종료일보다 앞서야 합니다." });
+            return Results.BadRequest(new { error = "조회 시작 시점은 종료 시점보다 앞서야 합니다." });
 
         var maximumRange = MaximumRange(request.TimeFrame);
         if (dataTo - dataFrom > maximumRange)
@@ -127,9 +128,7 @@ public static class PatternPreviewEndpoints
         var requestedBars = allBars.Skip(requestedStartIndex).Where(bar => bar.Timestamp < dataTo).ToArray();
         if (requestedBars.Length == 0)
             return Results.NotFound(new { error = "선택한 기간에 표시할 시세가 없습니다." });
-        var displayStartIndex = requestedBars.Length > displayCount
-            ? allBars.Length - requestedBars.Length + (requestedBars.Length - displayCount)
-            : requestedStartIndex;
+        var displayStartIndex = requestedStartIndex;
         var evaluationStartIndex = Math.Max(49, displayStartIndex);
         OpenPreviewPosition? position = null;
         decimal compoundedReturn = 1m;
@@ -152,9 +151,6 @@ public static class PatternPreviewEndpoints
             completedTrades++;
             if (openPosition.RealizedPnl > 0) winningTrades++;
         }
-
-        if (requestedBars.Length > displayCount)
-            warnings.Add($"선택 기간의 {requestedBars.Length:N0}개 봉 중 최근 {displayCount:N0}개를 표시합니다. 기간을 줄이거나 더 큰 봉 단위를 선택하세요.");
 
         foreach (var (refSymbol, bars) in referenceBars)
         {
@@ -394,10 +390,10 @@ public static class PatternPreviewEndpoints
                 openPosition = position is not null,
                 from = displayStart.ToString("O"),
                 to = allBars.Where(bar => bar.Timestamp < dataTo).Last().Timestamp.ToString("O"),
-                requestedFrom = dataFrom.ToString("yyyy-MM-dd"),
-                requestedTo = dataTo.AddDays(-1).ToString("yyyy-MM-dd"),
+                requestedFrom = isIntraday ? DisplayMarketTime(dataFrom) : dataFrom.ToString("yyyy-MM-dd"),
+                requestedTo = isIntraday ? DisplayMarketTime(dataTo) : dataTo.AddDays(-1).ToString("yyyy-MM-dd"),
                 requestedBarCount = requestedBars.Length,
-                displayedBarCount = Math.Min(requestedBars.Length, displayCount)
+                displayedBarCount = requestedBars.Length
             },
             warnings = warnings.Distinct()
         });
@@ -494,6 +490,25 @@ public static class PatternPreviewEndpoints
         TimeFrame.Weekly => to.AddYears(-5),
         _ => to.AddYears(-1)
     };
+
+    private static bool IsIntraday(TimeFrame timeFrame) => timeFrame is
+        TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute;
+
+    private static string DisplayMarketTime(DateTime value)
+    {
+        TimeZoneInfo marketTimeZone;
+        try
+        {
+            marketTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            marketTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+        }
+
+        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        return $"{TimeZoneInfo.ConvertTimeFromUtc(utc, marketTimeZone):yyyy-MM-dd HH:mm} ET";
+    }
 
     private static TimeSpan MaximumRange(TimeFrame timeFrame) => timeFrame switch
     {
