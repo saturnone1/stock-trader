@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
+using StockTrader.Application.Strategies;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -109,11 +109,13 @@ public class PatternDetectionService
         {
             try
             {
-                if (CustomPatternValidator.Validate(definition).Count > 0) continue;
+                var compilation = StrategyCompiler.Compile(definition);
+                if (!compilation.IsValid) continue;
+                var strategy = compilation.Strategy!;
                 if (bars.Length == 0 || definition.TimeFrame != bars[^1].TimeFrame)
                     continue;
-                var detector = new RuleBasedDetector(_indicators, definition);
-                var referenceData = await LoadReferenceDataAsync(definition, symbol, bars, ct);
+                var detector = new RuleBasedDetector(_indicators, strategy);
+                var referenceData = await LoadReferenceDataAsync(strategy, symbol, bars, ct);
                 detector.SetReferenceData(referenceData, bars[^1].Timestamp);
                 var signal = await detector.DetectAsync(symbol, bars, effectiveRegime, ct);
                 if (signal == null) continue;
@@ -131,35 +133,14 @@ public class PatternDetectionService
     }
 
     private async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(
-        CustomPatternDefinition definition, string symbol, OhlcvBar[] bars, CancellationToken ct)
+        CompiledStrategy strategy, string symbol, OhlcvBar[] bars, CancellationToken ct)
     {
         var result = new Dictionary<string, OhlcvBar[]>(StringComparer.OrdinalIgnoreCase)
         {
             [symbol] = bars
         };
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        void AddRules(IEnumerable<EntryRule> rules)
-        {
-            foreach (var rule in rules)
-                if (!string.IsNullOrWhiteSpace(rule.RefSymbol)) symbols.Add(rule.RefSymbol.Trim().ToUpperInvariant());
-        }
-
-        void AddGroups(string json)
-        {
-            foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(json, options) ?? []) AddRules(group.Rules);
-        }
-
-        AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.EntryRulesJson, options) ?? []);
-        AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.ExitRulesJson, options) ?? []);
-        AddGroups(definition.EntryGroupsJson);
-        AddGroups(definition.ExitGroupsJson);
-        foreach (var tier in JsonSerializer.Deserialize<List<WeightTier>>(definition.WeightTiersJson, options) ?? []) AddRules(tier.Conditions);
-        foreach (var scaling in JsonSerializer.Deserialize<List<ScalingRule>>(definition.ScalingRulesJson, options) ?? []) AddRules(scaling.Conditions);
-
         var timeFrame = bars[0].TimeFrame;
-        foreach (var referenceSymbol in symbols.Where(value => !value.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
+        foreach (var referenceSymbol in strategy.ReferenceSymbols.Where(value => !value.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
         {
             result[referenceSymbol] = (await _ohlcvRepository.GetBarsAsync(
                     referenceSymbol, timeFrame, bars[0].Timestamp, bars[^1].Timestamp.AddDays(1), ct))

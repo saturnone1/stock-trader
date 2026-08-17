@@ -1,4 +1,5 @@
 using StockTrader.Application.StrategyPreview;
+using StockTrader.Application.Strategies;
 using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
@@ -40,15 +41,33 @@ public sealed record DataProviderMetadataResponse(
     IReadOnlyList<TimeFrame> SupportedTimeFrames,
     IReadOnlyDictionary<TimeFrame, int> MaximumLookbackDays);
 
+public sealed record StrategyOptionMetadataResponse(string Code, string DisplayName);
+public sealed record ExitMethodMetadataResponse(
+    string Code,
+    string DisplayName,
+    IReadOnlyList<IndicatorParameterMetadataResponse> Parameters);
+public sealed record LiveStrategyConstraintsMetadataResponse(
+    IReadOnlyList<TimeFrame> SupportedTimeFrames,
+    IReadOnlyList<string> SupportedEntryModes,
+    bool SupportsPartialExit,
+    bool SupportsScaling);
+
 public sealed record StrategyBuilderMetadataResponse(
     int SchemaVersion,
     IReadOnlyList<IndicatorMetadataResponse> Indicators,
     IReadOnlyList<TimeFrameMetadataResponse> TimeFrames,
     IReadOnlyList<DataProviderMetadataResponse> DataProviders,
-    IReadOnlyList<string> RuleOperators)
+    IReadOnlyList<string> RuleOperators,
+    IReadOnlyList<StrategyOptionMetadataResponse> EntryModes,
+    IReadOnlyList<StrategyOptionMetadataResponse> SizingModes,
+    IReadOnlyList<StrategyOptionMetadataResponse> LogicModes,
+    IReadOnlyList<StrategyOptionMetadataResponse> ScalingDirections,
+    IReadOnlyList<ExitMethodMetadataResponse> StopMethods,
+    IReadOnlyList<ExitMethodMetadataResponse> TargetMethods,
+    LiveStrategyConstraintsMetadataResponse LiveStrategyConstraints)
 {
     public static StrategyBuilderMetadataResponse Create() => new(
-        SchemaVersion: 1,
+        SchemaVersion: 2,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
             item.DisplayName,
@@ -81,5 +100,23 @@ public sealed record StrategyBuilderMetadataResponse(
             item.Market,
             item.SupportedTimeFrames,
             item.MaximumLookbackDays)).ToArray(),
-        RuleOperators: RuleOperatorCatalog.All);
+        RuleOperators: RuleOperatorCatalog.All,
+        EntryModes: StrategyCatalog.EntryModes.Select(ToResponse).ToArray(),
+        SizingModes: StrategyCatalog.SizingModes.Select(ToResponse).ToArray(),
+        LogicModes: StrategyCatalog.LogicModes.Select(ToResponse).ToArray(),
+        ScalingDirections: StrategyCatalog.ScalingDirections.Select(ToResponse).ToArray(),
+        StopMethods: StrategyCatalog.StopMethods.Select(ToResponse).ToArray(),
+        TargetMethods: StrategyCatalog.TargetMethods.Select(ToResponse).ToArray(),
+        LiveStrategyConstraints: new(
+            LiveStrategyCompatibilityPolicy.SupportedTimeFrames,
+            LiveStrategyCompatibilityPolicy.SupportedEntryModes,
+            LiveStrategyCompatibilityPolicy.SupportsPartialExit,
+            LiveStrategyCompatibilityPolicy.SupportsScaling));
+
+    private static StrategyOptionMetadataResponse ToResponse(StrategyOptionDescriptor item) =>
+        new(item.Code, item.DisplayName);
+
+    private static ExitMethodMetadataResponse ToResponse(ExitMethodDescriptor item) =>
+        new(item.Code, item.DisplayName, item.Parameters.Select(parameter => new IndicatorParameterMetadataResponse(
+            parameter.Key, parameter.DisplayName, parameter.DefaultValue, parameter.Step, parameter.MustBePositive)).ToArray());
 }

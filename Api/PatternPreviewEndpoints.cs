@@ -3,6 +3,7 @@ using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Application.StrategyPreview;
+using StockTrader.Application.Strategies;
 using StockTrader.Domain.MarketData;
 using StockTrader.Services.DataFeed;
 using StockTrader.Services.Indicators;
@@ -50,9 +51,10 @@ public static class PatternPreviewEndpoints
         if (request.Pattern is null)
             return Results.BadRequest(new { error = "미리보기 패턴 정의가 필요합니다." });
 
-        var validationErrors = CustomPatternValidator.Validate(request.Pattern);
-        if (validationErrors.Count > 0)
-            return Results.BadRequest(new { error = validationErrors[0], errors = validationErrors });
+        var compilation = StrategyCompiler.Compile(request.Pattern);
+        if (!compilation.IsValid)
+            return Results.BadRequest(new { error = compilation.Errors[0], errors = compilation.Errors });
+        var strategy = compilation.Strategy!;
 
         var isIntraday = IsIntraday(request.TimeFrame);
         var requestedTo = request.To ?? DateTime.UtcNow;
@@ -113,13 +115,12 @@ public static class PatternPreviewEndpoints
 
         var latest = allBars[^1];
 
-        var detector = new RuleBasedDetector(indicators, request.Pattern);
-        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var circuitBreaker = JsonSerializer.Deserialize<CircuitBreakerConfig>(request.Pattern.CircuitBreakerJson, jsonOptions) ?? new();
-        var reentry = JsonSerializer.Deserialize<ReentryConfig>(request.Pattern.ReentryJson, jsonOptions) ?? new();
-        var portfolioRules = JsonSerializer.Deserialize<PortfolioRulesConfig>(request.Pattern.PortfolioRulesJson, jsonOptions) ?? new();
+        var detector = new RuleBasedDetector(indicators, strategy);
+        var circuitBreaker = strategy.CircuitBreaker;
+        var reentry = strategy.Reentry;
+        var portfolioRules = strategy.PortfolioRules;
         var referenceBars = await LoadReferenceBarsAsync(
-            request.Pattern, request.TimeFrame, allBars[0].Timestamp, latest.Timestamp, ohlcvRepository, ct);
+            strategy, request.TimeFrame, allBars[0].Timestamp, latest.Timestamp, ohlcvRepository, ct);
         var spyBars = (await ohlcvRepository.GetBarsAsync(
                 "SPY", TimeFrame.Daily, dataFrom.AddYears(-2), latest.Timestamp.AddDays(1), ct))
             .OrderBy(bar => bar.Timestamp)
@@ -464,45 +465,15 @@ public static class PatternPreviewEndpoints
     }
 
     private static async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceBarsAsync(
-        CustomPatternDefinition pattern,
+        CompiledStrategy strategy,
         TimeFrame timeFrame,
         DateTime from,
         DateTime to,
         IOhlcvRepository repository,
         CancellationToken ct)
     {
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        void AddRules(IEnumerable<EntryRule> rules)
-        {
-            foreach (var rule in rules)
-            {
-                if (!string.IsNullOrWhiteSpace(rule.RefSymbol))
-                    symbols.Add(rule.RefSymbol.Trim().ToUpperInvariant());
-            }
-        }
-
-        try
-        {
-            AddRules(JsonSerializer.Deserialize<List<EntryRule>>(pattern.EntryRulesJson, options) ?? []);
-            AddRules(JsonSerializer.Deserialize<List<EntryRule>>(pattern.ExitRulesJson, options) ?? []);
-            foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(pattern.EntryGroupsJson, options) ?? [])
-                AddRules(group.Rules);
-            foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(pattern.ExitGroupsJson, options) ?? [])
-                AddRules(group.Rules);
-            foreach (var tier in JsonSerializer.Deserialize<List<WeightTier>>(pattern.WeightTiersJson, options) ?? [])
-                AddRules(tier.Conditions);
-            foreach (var scaling in JsonSerializer.Deserialize<List<ScalingRule>>(pattern.ScalingRulesJson, options) ?? [])
-                AddRules(scaling.Conditions);
-        }
-        catch (JsonException)
-        {
-            return new Dictionary<string, OhlcvBar[]>(StringComparer.OrdinalIgnoreCase);
-        }
-
         var result = new Dictionary<string, OhlcvBar[]>(StringComparer.OrdinalIgnoreCase);
-        foreach (var symbol in symbols)
+        foreach (var symbol in strategy.ReferenceSymbols)
         {
             result[symbol] = (await repository.GetBarsAsync(
                     symbol, timeFrame, from, to.AddDays(1), ct))

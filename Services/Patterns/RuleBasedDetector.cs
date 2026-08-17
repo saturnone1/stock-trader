@@ -1,4 +1,4 @@
-using System.Text.Json;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Domain.Strategies;
@@ -14,6 +14,7 @@ namespace StockTrader.Services.Patterns;
 public class RuleBasedDetector : IPatternDetector
 {
     private readonly IIndicatorService _indicators;
+    private readonly CompiledStrategy _strategy;
     private readonly CustomPatternDefinition _definition;
     private readonly List<EntryRule> _rules;
     private readonly List<ConditionGroup> _entryGroups;
@@ -33,34 +34,34 @@ public class RuleBasedDetector : IPatternDetector
     public PatternType PatternType => PatternType.Custom;
     public string CustomPatternName => _definition.Name;
     public CustomPatternDefinition Definition => _definition;
+    public CompiledStrategy Strategy => _strategy;
 
     public RuleBasedDetector(IIndicatorService indicators, CustomPatternDefinition definition)
+        : this(indicators, Compile(definition))
+    {
+    }
+
+    public RuleBasedDetector(IIndicatorService indicators, CompiledStrategy strategy)
     {
         _indicators = indicators;
-        _definition = definition;
-        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        _rules = JsonSerializer.Deserialize<List<EntryRule>>(
-            definition.EntryRulesJson, jsonOpts) ?? [];
-        _entryGroups = JsonSerializer.Deserialize<List<ConditionGroup>>(
-            definition.EntryGroupsJson, jsonOpts) ?? [];
-        _entryGroupsLogic = definition.EntryGroupsLogic;
-        _weightTiers = definition.UseWeightTiers
-            ? JsonSerializer.Deserialize<List<WeightTier>>(definition.WeightTiersJson, jsonOpts) ?? []
-            : [];
-        _exitRules = JsonSerializer.Deserialize<List<EntryRule>>(
-            definition.ExitRulesJson, jsonOpts) ?? [];
-        _exitGroups = JsonSerializer.Deserialize<List<ConditionGroup>>(
-            definition.ExitGroupsJson, jsonOpts) ?? [];
-        _exitGroupsLogic = definition.ExitGroupsLogic;
-        _scalingRules = JsonSerializer.Deserialize<List<ScalingRule>>(
-            definition.ScalingRulesJson, jsonOpts) ?? [];
-        _timeFilter = JsonSerializer.Deserialize<TimeFilter>(
-            definition.TimeFilterJson, jsonOpts) ?? new();
-        var dynExit = JsonSerializer.Deserialize<DynamicExitConfig>(
-            definition.DynamicExitJson, jsonOpts);
-        _dynamicExit = dynExit?.StopType == "ATR" && dynExit.StopParams.Count == 0
-            && dynExit.TargetType == "ATR" && dynExit.TargetParams.Count == 0
-            ? null : dynExit;
+        _strategy = strategy;
+        _definition = strategy.Source;
+        _rules = strategy.EntryRules.ToList();
+        _entryGroups = strategy.EntryGroups.ToList();
+        _entryGroupsLogic = strategy.Source.EntryGroupsLogic;
+        _weightTiers = strategy.WeightTiers.ToList();
+        _exitRules = strategy.ExitRules.ToList();
+        _exitGroups = strategy.ExitGroups.ToList();
+        _exitGroupsLogic = strategy.Source.ExitGroupsLogic;
+        _scalingRules = strategy.ScalingRules.ToList();
+        _timeFilter = strategy.TimeFilter;
+        _dynamicExit = strategy.DynamicExit;
+    }
+
+    private static CompiledStrategy Compile(CustomPatternDefinition definition)
+    {
+        var result = StrategyCompiler.Compile(definition);
+        return result.Strategy ?? throw new ArgumentException(string.Join(" ", result.Errors), nameof(definition));
     }
 
     /// <summary>참조 종목 데이터를 설정합니다. BacktestService에서 매 심볼 루프 전에 호출.</summary>

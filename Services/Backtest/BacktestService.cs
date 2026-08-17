@@ -318,15 +318,14 @@ public class BacktestService : IBacktestService
         var customDetectorsByName = customDetectors
             .GroupBy(detector => detector.Definition.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         strategyRuntimes = customDetectorsByName.ToDictionary(
             pair => pair.Key,
             pair => new CustomStrategyRuntime
             {
                 Detector = pair.Value,
-                CircuitBreaker = JsonSerializer.Deserialize<CircuitBreakerConfig>(pair.Value.Definition.CircuitBreakerJson, jsonOpts) ?? new(),
-                Reentry = JsonSerializer.Deserialize<ReentryConfig>(pair.Value.Definition.ReentryJson, jsonOpts) ?? new(),
-                Portfolio = JsonSerializer.Deserialize<PortfolioRulesConfig>(pair.Value.Definition.PortfolioRulesJson, jsonOpts) ?? new(),
+                CircuitBreaker = pair.Value.Strategy.CircuitBreaker,
+                Reentry = pair.Value.Strategy.Reentry,
+                Portfolio = pair.Value.Strategy.PortfolioRules,
                 RealizedEquity = initialCapital,
                 PeakEquity = initialCapital
             },
@@ -1350,39 +1349,11 @@ public class BacktestService : IBacktestService
 
     private static IReadOnlyCollection<string> CollectReferenceSymbols(IEnumerable<IPatternDetector> detectors)
     {
-        var symbols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
-        static void AddRules(IEnumerable<EntryRule> rules, HashSet<string> target)
-        {
-            foreach (var rule in rules)
-                if (!string.IsNullOrWhiteSpace(rule.RefSymbol))
-                    target.Add(rule.RefSymbol.Trim().ToUpperInvariant());
-        }
-
-        foreach (var detector in detectors.OfType<RuleBasedDetector>())
-        {
-            var definition = detector.Definition;
-            try
-            {
-                AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.EntryRulesJson, options) ?? [], symbols);
-                AddRules(JsonSerializer.Deserialize<List<EntryRule>>(definition.ExitRulesJson, options) ?? [], symbols);
-                foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(definition.EntryGroupsJson, options) ?? [])
-                    AddRules(group.Rules, symbols);
-                foreach (var group in JsonSerializer.Deserialize<List<ConditionGroup>>(definition.ExitGroupsJson, options) ?? [])
-                    AddRules(group.Rules, symbols);
-                foreach (var tier in JsonSerializer.Deserialize<List<WeightTier>>(definition.WeightTiersJson, options) ?? [])
-                    AddRules(tier.Conditions, symbols);
-                foreach (var scaling in JsonSerializer.Deserialize<List<ScalingRule>>(definition.ScalingRulesJson, options) ?? [])
-                    AddRules(scaling.Conditions, symbols);
-            }
-            catch (JsonException)
-            {
-                // 유효성 검사는 호출 전에 수행되므로 손상된 전략만 참조 종목 로딩에서 제외한다.
-            }
-        }
-
-        return symbols;
+        return detectors.OfType<RuleBasedDetector>()
+            .SelectMany(detector => detector.Strategy.ReferenceSymbols)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     /// <summary>

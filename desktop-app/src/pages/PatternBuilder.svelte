@@ -6,13 +6,13 @@
 
   let indicatorPalette = []
   let operatorOptions = []
-  const entryModeOptions = ['CurrentClose', 'NextOpen']
+  let entryModeOptions = []
   let timeFrameOptions = []
-  const sizingModeOptions = ['FixedRisk', 'Kelly', 'HalfKelly']
-  const logicOptions = ['AND', 'OR']
-  const scalingDirectionOptions = ['SCALE_IN', 'SCALE_OUT']
-  const stopTypeOptions = ['ATR', 'BOLLINGER_LOWER', 'SMA', 'EMA', 'PREV_LOW', 'PERCENT']
-  const targetTypeOptions = ['ATR', 'BOLLINGER_UPPER', 'SMA', 'EMA', 'PREV_HIGH', 'R_MULTIPLE', 'PERCENT']
+  let sizingModeOptions = []
+  let logicOptions = []
+  let scalingDirectionOptions = []
+  let stopTypeOptions = []
+  let targetTypeOptions = []
   let indicatorOptions = []
   let indicatorSet = new Set()
   let positiveParamKeys = new Set(['multiplier', 'multiple', 'percent'])
@@ -32,40 +32,13 @@
     crosses_above: '상향 돌파',
     crosses_below: '하향 이탈'
   }
-  const entryModeLabels = {
-    CurrentClose: '신호 봉의 종가에 매수',
-    NextOpen: '다음 봉의 시가에 매수'
-  }
-  const sizingModeLabels = {
-    FixedRisk: '손실 허용액 기준',
-    Kelly: '켈리 공식',
-    HalfKelly: '절반 켈리 공식'
-  }
-  const logicLabels = {
-    AND: '모두 만족',
-    OR: '하나만 만족'
-  }
-  const scalingDirectionLabels = {
-    SCALE_IN: '추가 매수',
-    SCALE_OUT: '일부 매도'
-  }
-  const stopTypeLabels = {
-    ATR: 'ATR 기준',
-    BOLLINGER_LOWER: '볼린저 하단',
-    SMA: '단순이동평균',
-    EMA: '지수이동평균',
-    PREV_LOW: '이전 저점',
-    PERCENT: '퍼센트 기준'
-  }
-  const targetTypeLabels = {
-    ATR: 'ATR 기준',
-    BOLLINGER_UPPER: '볼린저 상단',
-    SMA: '단순이동평균',
-    EMA: '지수이동평균',
-    PREV_HIGH: '이전 고점',
-    R_MULTIPLE: 'R 배수',
-    PERCENT: '퍼센트 기준'
-  }
+  let entryModeLabels = {}
+  let sizingModeLabels = {}
+  let logicLabels = {}
+  let scalingDirectionLabels = {}
+  let stopTypeLabels = {}
+  let targetTypeLabels = {}
+  let liveStrategyConstraints = null
   const paramKeyLabels = {
     period: '기간',
     cumulativePeriod: '누적 기간',
@@ -95,37 +68,7 @@
     entryMode: '신호가 뜬 현재 봉 종가에 바로 들어갈지, 다음 봉 시가에 들어갈지 정합니다.',
     sizingMode: '주문 크기를 어떤 방식으로 계산할지 정합니다.'
   }
-  const dynamicExitFieldConfigs = {
-    stop: {
-      ATR: [
-        { key: 'multiplier', label: 'ATR 배수', step: '0.1', defaultValue: 2 },
-        { key: 'period', label: 'ATR 기간', step: '1', defaultValue: 14 }
-      ],
-      BOLLINGER_LOWER: [
-        { key: 'period', label: '기간', step: '1', defaultValue: 20 },
-        { key: 'stddev', label: '표준편차', step: '0.1', defaultValue: 2 }
-      ],
-      SMA: [{ key: 'period', label: '기간', step: '1', defaultValue: 20 }],
-      EMA: [{ key: 'period', label: '기간', step: '1', defaultValue: 20 }],
-      PREV_LOW: [{ key: 'period', label: '되돌아보기', step: '1', defaultValue: 5 }],
-      PERCENT: [{ key: 'percent', label: '퍼센트', step: '0.1', defaultValue: 2 }]
-    },
-    target: {
-      ATR: [
-        { key: 'multiplier', label: 'ATR 배수', step: '0.1', defaultValue: 3 },
-        { key: 'period', label: 'ATR 기간', step: '1', defaultValue: 14 }
-      ],
-      BOLLINGER_UPPER: [
-        { key: 'period', label: '기간', step: '1', defaultValue: 20 },
-        { key: 'stddev', label: '표준편차', step: '0.1', defaultValue: 2 }
-      ],
-      SMA: [{ key: 'period', label: '기간', step: '1', defaultValue: 20 }],
-      EMA: [{ key: 'period', label: '기간', step: '1', defaultValue: 20 }],
-      PREV_HIGH: [{ key: 'period', label: '되돌아보기', step: '1', defaultValue: 5 }],
-      R_MULTIPLE: [{ key: 'multiple', label: 'R 배수', step: '0.1', defaultValue: 3 }],
-      PERCENT: [{ key: 'percent', label: '퍼센트', step: '0.1', defaultValue: 5 }]
-    }
-  }
+  let dynamicExitFieldConfigs = { stop: {}, target: {} }
   let patterns = []
   let selectedPattern = null
   let workspace = null
@@ -188,8 +131,27 @@
     ])
     operatorOptions = metadata?.ruleOperators ?? []
     timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => ({ value: item.value, label: item.displayName }))
+    const setOptions = (items) => (items ?? []).map((item) => item.code)
+    const setLabels = (items) => Object.fromEntries((items ?? []).map((item) => [item.code, item.displayName]))
+    const exitConfigs = (items) => Object.fromEntries((items ?? []).map((item) => [item.code, (item.parameters ?? []).map((parameter) => ({
+      key: parameter.key, label: parameter.displayName, step: String(parameter.step), defaultValue: parameter.defaultValue
+    }))]))
+    entryModeOptions = setOptions(metadata?.entryModes)
+    sizingModeOptions = setOptions(metadata?.sizingModes)
+    logicOptions = setOptions(metadata?.logicModes)
+    scalingDirectionOptions = setOptions(metadata?.scalingDirections)
+    stopTypeOptions = setOptions(metadata?.stopMethods)
+    targetTypeOptions = setOptions(metadata?.targetMethods)
+    entryModeLabels = setLabels(metadata?.entryModes)
+    sizingModeLabels = setLabels(metadata?.sizingModes)
+    logicLabels = setLabels(metadata?.logicModes)
+    scalingDirectionLabels = setLabels(metadata?.scalingDirections)
+    stopTypeLabels = setLabels(metadata?.stopMethods)
+    targetTypeLabels = setLabels(metadata?.targetMethods)
+    dynamicExitFieldConfigs = { stop: exitConfigs(metadata?.stopMethods), target: exitConfigs(metadata?.targetMethods) }
+    liveStrategyConstraints = metadata?.liveStrategyConstraints
 
-    if (!indicatorOptions.length || !timeFrameOptions.length || !operatorOptions.length) {
+    if (!indicatorOptions.length || !timeFrameOptions.length || !operatorOptions.length || !entryModeOptions.length || !stopTypeOptions.length) {
       throw new Error('서버의 전략 구성 메타데이터가 비어 있습니다.')
     }
   }
@@ -618,9 +580,12 @@
 
     if (currentWorkspace.circuitBreaker.consecutiveLossLimit < 0 || currentWorkspace.circuitBreaker.cooldownBars < 0) issues.push('손실 횟수와 거래 중단 봉 수는 0 이상이어야 합니다.')
     if (currentWorkspace.circuitBreaker.maxDrawdownPercent < 0 || currentWorkspace.circuitBreaker.maxDrawdownPercent > 100) issues.push('최대 낙폭은 0~100%여야 합니다.')
-    if (currentWorkspace.enableLiveTrading && currentWorkspace.timeFrame !== 'Daily') issues.push('실시간 주문은 현재 일봉 전략만 지원합니다.')
-    if (currentWorkspace.enableLiveTrading && currentWorkspace.entryMode !== 'NextOpen') issues.push('실시간 주문은 완료된 일봉을 사용하는 ‘다음 봉 시가’만 지원합니다.')
-    if (currentWorkspace.enableLiveTrading && (currentWorkspace.partialProfitR > 0 || currentWorkspace.scalingRules.length > 0)) issues.push('부분 익절·추가 매수·분할 매도 전략은 실시간 주문을 아직 켤 수 없습니다.')
+    if (currentWorkspace.enableLiveTrading && liveStrategyConstraints) {
+      if (!liveStrategyConstraints.supportedTimeFrames.includes(currentWorkspace.timeFrame)) issues.push('선택한 시간축은 실시간 주문에서 아직 지원하지 않습니다.')
+      if (!liveStrategyConstraints.supportedEntryModes.includes(currentWorkspace.entryMode)) issues.push('선택한 매수 체결 시점은 실시간 주문에서 아직 지원하지 않습니다.')
+      if (!liveStrategyConstraints.supportsPartialExit && currentWorkspace.partialProfitR > 0) issues.push('부분 익절 전략은 실시간 주문을 아직 켤 수 없습니다.')
+      if (!liveStrategyConstraints.supportsScaling && currentWorkspace.scalingRules.length > 0) issues.push('추가 매수·분할 매도 전략은 실시간 주문을 아직 켤 수 없습니다.')
+    }
     if (currentWorkspace.reentry.cooldownBarsAfterLoss < 0 || currentWorkspace.reentry.cooldownBarsAfterWin < 0) issues.push('재매수 대기 봉 수는 0 이상이어야 합니다.')
     if (currentWorkspace.portfolioRules.maxTotalPositions < 0 || currentWorkspace.portfolioRules.maxEntriesPerDay < 0) issues.push('보유 종목 수와 하루 매수 횟수는 0 이상이어야 합니다.')
     if (currentWorkspace.portfolioRules.maxSinglePositionPercent < 0 || currentWorkspace.portfolioRules.maxSinglePositionPercent > 100) issues.push('한 종목 최대 비중은 0~100%여야 합니다.')

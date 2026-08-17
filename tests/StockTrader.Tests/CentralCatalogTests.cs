@@ -62,7 +62,10 @@ public class CentralCatalogTests
     {
         var contract = StrategyBuilderMetadataResponse.Create();
 
-        contract.SchemaVersion.Should().Be(1);
+        contract.SchemaVersion.Should().Be(2);
+        contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
+        contract.StopMethods.Should().NotBeEmpty();
+        contract.LiveStrategyConstraints.SupportedEntryModes.Should().Contain("NextOpen");
         contract.Indicators.Select(item => item.Code)
             .Should().Equal(IndicatorCatalog.All.Select(item => item.Code));
         contract.TimeFrames.Select(item => item.Value)
@@ -87,7 +90,7 @@ public class CentralCatalogTests
         var yahoo = root.GetProperty("dataProviders").EnumerateArray()
             .Single(item => item.GetProperty("value").GetString() == "Yahoo");
 
-        root.GetProperty("schemaVersion").GetInt32().Should().Be(1);
+        root.GetProperty("schemaVersion").GetInt32().Should().Be(2);
         root.GetProperty("timeFrames")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         yahoo.GetProperty("maximumLookbackDays").GetProperty("OneMinute").GetInt32().Should().Be(7);
     }

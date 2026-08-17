@@ -17,21 +17,9 @@
   let timeFrameOptions = []
   let dataSourceOptions = [['', '기본 설정']]
 
-  const entryModeLabelMap = {
-    CurrentClose: '현재 봉 종가',
-    NextOpen: '다음 봉 시가'
-  }
-
-  const sizingModeLabelMap = {
-    FixedRisk: '고정 리스크',
-    Kelly: '켈리',
-    HalfKelly: '하프 켈리'
-  }
-
-  const logicOptionValues = [
-    ['AND', '모두 만족'],
-    ['OR', '하나만 만족']
-  ]
+  let entryModeLabelMap = {}
+  let sizingModeLabelMap = {}
+  let logicOptionValues = []
 
   const yesNoOptions = [
     [true, '사용'],
@@ -122,6 +110,13 @@
       const metadata = await metadataApi.getStrategyBuilder()
       timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => [item.value, item.displayName])
       dataSourceOptions = [['', '기본 설정'], ...(metadata?.dataProviders ?? []).map((item) => [item.value, item.displayName])]
+      entryModeLabelMap = Object.fromEntries((metadata?.entryModes ?? []).map((item) => [item.code, item.displayName]))
+      sizingModeLabelMap = Object.fromEntries((metadata?.sizingModes ?? []).map((item) => [item.code, item.displayName]))
+      logicOptionValues = (metadata?.logicModes ?? []).map((item) => [item.code, item.displayName])
+      form.entryModeOptions = (metadata?.entryModes ?? []).map((item) => item.code)
+      form.sizingModeOptions = (metadata?.sizingModes ?? []).map((item) => item.code)
+      form.entryLogicOptions = (metadata?.logicModes ?? []).map((item) => item.code)
+      form.exitLogicOptions = [...form.entryLogicOptions].reverse()
     } catch (e) {
       error = e?.response?.data?.error || e?.message || '시간축·데이터 공급자 정보를 불러오지 못했습니다.'
     }
