@@ -184,8 +184,11 @@ now a 714-line orchestration shell rather than an API request builder.
 weight-tier, scaling, portfolio, and live-execution compatibility validation now resides in the pure
 `patternValidation.js` module. Node goldens prevent empty sell/scaling conditions, conflicting bar
 lookbacks, invalid MACD periods, and unsupported live features from silently reaching persistence.
-The page is reduced from 1,630 to 1,553 lines, with workspace normalization and persistence mapping
-remaining as the next extraction boundary.
+The page was initially reduced from 1,630 to 1,553 lines. Workspace hydration and API payload
+serialization now live in `patternWorkspace.js`, configured from the server-provided indicator and
+dynamic-exit catalogs. Goldens cover legacy flat-rule promotion, malformed JSON recovery, parameter
+aliases, numeric sanitization, and grouped-strategy round trips. This reduces the page further to
+1,253 lines; editor commands and presentation panels remain as the next extraction boundaries.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

@@ -159,17 +159,32 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/pattern-builder/patternValidation.js"));
         var validationTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/patternValidation.test.js"));
+        var workspace = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternWorkspace.js"));
+        var workspaceTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternWorkspace.test.js"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1560);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1260);
         page.Should().Contain("from '../features/pattern-builder/patternValidation'");
+        page.Should().Contain("from '../features/pattern-builder/patternWorkspace'");
         page.Should().NotContain("function collectValidationIssues(");
+        page.Should().NotContain("function buildWorkspace(");
+        page.Should().NotContain("function buildPatternPayload(");
+        page.Should().NotContain("function normalizeRule(");
         page.Should().Contain("collectPatternValidationIssues(workspace");
+        page.Should().Contain("workspaceModel.configure({ indicatorFieldConfigs, dynamicExitFieldConfigs })");
         validation.Should().Contain("export function collectPatternValidationIssues(");
         validation.Should().Contain("supportsPartialExit");
         validation.Should().Contain("supportsScaling");
         validationTests.Should().Contain("invalid MACD ordering");
         validationTests.Should().Contain("cannot silently contain empty conditions");
         validationTests.Should().Contain("not supported by the execution engine");
+        workspace.Should().Contain("export function createPatternWorkspaceModel(");
+        workspace.Should().Contain("entryGroupsJson: JSON.stringify(entryGroups)");
+        workspace.Should().Contain("exitGroupsJson: JSON.stringify(exitGroups)");
+        workspaceTests.Should().Contain("legacy flat rules are promoted");
+        workspaceTests.Should().Contain("malformed optional JSON");
+        workspaceTests.Should().Contain("round trip preserves grouped execution semantics");
     }
 
     [Theory]
