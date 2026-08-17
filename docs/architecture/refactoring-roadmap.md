@@ -65,10 +65,14 @@
 - `LongPositionExitPolicyCatalog` now owns built-in pattern defaults, exit overrides, and custom-strategy
   policy construction. Preview, backtest, and live monitoring consume the same `LongPositionExitPolicy`;
   live code no longer reaches into a nested backtest-adapter profile type.
+- `LivePositionExitCoordinator` now owns evidence-based reconciliation as well as idempotent submission.
+  The background worker and authenticated operator endpoint share it; only a proven terminal failure
+  releases a claim and only a proven fill closes the position. Trade, portfolio, and dashboard APIs
+  share one open-position response with pending-exit state and elapsed time. The desktop portfolio
+  disables duplicate close requests and offers a safe status refresh instead of a force retry.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
-`BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
-and broader preview/backtest/live parity fixtures.
+`BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.
 
 ## Phase 0 — Guardrails and governance
 

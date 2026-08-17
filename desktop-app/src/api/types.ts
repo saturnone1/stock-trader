@@ -30,6 +30,11 @@ export interface Position {
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
+  exitStatus?: 'Ready' | 'SubmissionUnconfirmed' | 'AwaitingBroker';
+  exitRequestedAt?: string | null;
+  exitRequestReason?: string | null;
+  hasExitOrderId?: boolean;
+  exitPendingSeconds?: number;
 }
 
 export interface Signal {

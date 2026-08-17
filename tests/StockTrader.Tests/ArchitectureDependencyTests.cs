@@ -241,7 +241,34 @@ public class ArchitectureDependencyTests
         liveManager.Should().NotContain("TZConvert");
         liveManager.Should().NotContain("7.0 / 5.0");
         liveManager.Should().Contain("exitCoordinator.SubmitAsync(");
+        liveManager.Should().Contain("exitCoordinator.ReconcileAsync(");
         liveManager.Should().NotContain("brokerService.ClosePositionAsync(");
+        liveManager.Should().NotContain("ExitOrderReconciliationPolicy.Resolve(");
+        liveManager.Should().NotContain("ReleasePositionExitClaimAsync(");
+        liveManager.Should().NotContain("TryCompletePositionExitAsync(");
+    }
+
+    [Fact]
+    public void PositionApisShareOperationalExitStatusContract()
+    {
+        var repository = FindRepositoryRoot();
+        var endpointPaths = new[]
+        {
+            "Api/TradeEndpoints.cs",
+            "Api/PortfolioEndpoints.cs",
+            "Api/DashboardEndpoints.cs"
+        };
+
+        foreach (var path in endpointPaths)
+        {
+            var source = File.ReadAllText(Path.Combine(repository, path));
+            source.Should().Contain("OpenPositionResponseMapper.Map(");
+            source.Should().NotContain("HoldingDays    = (DateTime.UtcNow");
+        }
+
+        var orders = File.ReadAllText(Path.Combine(repository, "Api/OrderEndpoints.cs"));
+        orders.Should().Contain("/reconcile-position-exit");
+        orders.Should().Contain("exits.ReconcileAsync(");
     }
 
     [Fact]

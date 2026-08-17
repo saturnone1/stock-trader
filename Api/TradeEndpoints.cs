@@ -1,3 +1,4 @@
+using StockTrader.Api.Contracts;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
@@ -41,6 +42,7 @@ public static class TradeEndpoints
         // GET /api/trades/positions — 진행 중 포지션
         group.MapGet("/trades/positions", async (
             ITradeRepository tradeRepo,
+            TimeProvider timeProvider,
             CancellationToken ct) =>
         {
             var positions = await tradeRepo.GetOpenPositionsAsync(ct);
@@ -48,24 +50,8 @@ public static class TradeEndpoints
             return Results.Ok(new
             {
                 Count = positions.Count,
-                Positions = positions.Select(p => new
-                {
-                    p.Id,
-                    p.Symbol,
-                    p.Sector,
-                    p.Quantity,
-                    p.EntryPrice,
-                    p.CurrentPrice,
-                    p.StopLossPrice,
-                    p.TargetPrice,
-                    Pattern        = p.PatternType.ToString(),
-                    p.UnrealizedPnL,
-                    p.AccountId,
-                    p.HighSinceEntry,
-                    p.EntryAtr,
-                    HoldingDays    = (DateTime.UtcNow - p.OpenedAt).Days,
-                    OpenedAt       = p.OpenedAt.ToString("o")
-                })
+                Positions = positions.Select(p => OpenPositionResponseMapper.Map(
+                    p, timeProvider.GetUtcNow().UtcDateTime))
             });
         }).RequireAuthorization();
 

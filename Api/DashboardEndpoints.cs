@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using StockTrader.Api.Contracts;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Account;
 using StockTrader.Services.Analysis;
@@ -16,6 +17,7 @@ public static class DashboardEndpoints
             ITradeRepository tradeRepo,
             IStockAnalysisService analysisService,
             ISettingsRepository settingsRepo,
+            TimeProvider timeProvider,
             CancellationToken ct) =>
         {
             // 병렬로 데이터 수집
@@ -91,22 +93,8 @@ public static class DashboardEndpoints
                     r.WasExecuted,
                     GeneratedAt = r.GeneratedAt.ToString("o")
                 }),
-                Positions = positions.Select(p => new
-                {
-                    p.Id,
-                    p.Symbol,
-                    p.Sector,
-                    p.Quantity,
-                    p.EntryPrice,
-                    p.CurrentPrice,
-                    p.StopLossPrice,
-                    p.TargetPrice,
-                    Pattern         = p.PatternType.ToString(),
-                    p.UnrealizedPnL,
-                    p.AccountId,
-                    HoldingDays     = (DateTime.UtcNow - p.OpenedAt).Days,
-                    OpenedAt        = p.OpenedAt.ToString("o")
-                }),
+                Positions = positions.Select(p => OpenPositionResponseMapper.Map(
+                    p, timeProvider.GetUtcNow().UtcDateTime)),
                 MarketRegime = regime.RegimeLabel,
                 OrderMode    = settings.OrderMode.ToString()
             });

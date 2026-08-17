@@ -67,6 +67,10 @@ Live exit submission is a use case, not a broker call hidden in a worker or UI. 
 manual exits first atomically claim the persisted position, then store the broker's order ID. A
 restart reconciles that order as filled, terminally failed, or still uncertain; uncertain orders
 are never blindly resubmitted. Position closure and its trade record commit atomically.
+`LivePositionExitCoordinator` owns both submission and evidence-based reconciliation. Background
+monitoring and the operator API call the same use case. Position responses use one contract that
+shows whether an exit is ready, missing a confirmed broker order ID, or awaiting broker resolution;
+the operator can request reconciliation but cannot force-clear an uncertain order.
 
 ## Decision records
 

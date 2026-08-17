@@ -128,7 +128,9 @@ public class PositionExitManagerService : BackgroundService
             {
                 if (position.ExitRequestedAt.HasValue)
                 {
-                    await ReconcilePendingExitAsync(position, brokerService, tradeRepo, ct);
+                    var reconciliation = await exitCoordinator.ReconcileAsync(
+                        position, brokerService, ct: ct);
+                    HandleExitReconciliation(position, reconciliation);
                     continue;
                 }
 
@@ -161,11 +163,14 @@ public class PositionExitManagerService : BackgroundService
                         || !submission.RequestedAt.HasValue)
                         continue;
 
-                    var resolution = ExitOrderReconciliationPolicy.Resolve(
-                        position.Symbol, position.ExitOrderId, submission.RequestedAt.Value, [submission.Order]);
-                    if (resolution.Action == ExitOrderReconciliationAction.Wait)
-                        resolution = await WaitForExitResolutionAsync(position, brokerService, ct);
-                    await ApplyExitResolutionAsync(position, resolution, tradeRepo, ct);
+                    var reconciliation = await exitCoordinator.ReconcileAsync(
+                        position, brokerService, [submission.Order], ct);
+                    if (reconciliation.Status == LiveExitReconciliationStatus.AwaitingBroker)
+                    {
+                        reconciliation = await WaitForExitResolutionAsync(
+                            position, brokerService, exitCoordinator, ct);
+                    }
+                    HandleExitReconciliation(position, reconciliation);
                 }
                 else
                 {
@@ -189,89 +194,40 @@ public class PositionExitManagerService : BackgroundService
         }
     }
 
-    private async Task ReconcilePendingExitAsync(
+    private static async Task<LiveExitReconciliationResult> WaitForExitResolutionAsync(
         Position position,
         IBrokerService broker,
-        ITradeRepository trades,
-        CancellationToken ct)
-    {
-        var resolution = await ReadExitResolutionAsync(position, broker, ct);
-        await ApplyExitResolutionAsync(position, resolution, trades, ct);
-    }
-
-    private async Task<ExitOrderReconciliation> WaitForExitResolutionAsync(
-        Position position,
-        IBrokerService broker,
+        ILivePositionExitCoordinator exitCoordinator,
         CancellationToken ct)
     {
         const int maxAttempts = 10;
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             await Task.Delay(500, ct);
-            var resolution = await ReadExitResolutionAsync(position, broker, ct);
-            if (resolution.Action != ExitOrderReconciliationAction.Wait)
-                return resolution;
+            var reconciliation = await exitCoordinator.ReconcileAsync(position, broker, ct: ct);
+            if (reconciliation.Status != LiveExitReconciliationStatus.AwaitingBroker)
+                return reconciliation;
         }
-        return new ExitOrderReconciliation(ExitOrderReconciliationAction.Wait);
+        return new LiveExitReconciliationResult(LiveExitReconciliationStatus.AwaitingBroker);
     }
 
-    private async Task<ExitOrderReconciliation> ReadExitResolutionAsync(
+    private void HandleExitReconciliation(
         Position position,
-        IBrokerService broker,
-        CancellationToken ct)
+        LiveExitReconciliationResult reconciliation)
     {
-        var requestedAt = position.ExitRequestedAt!.Value;
-        var orders = await broker.GetOrderHistoryAsync(
-            requestedAt.AddSeconds(-2), UtcNow.AddSeconds(1), ct);
-        return ExitOrderReconciliationPolicy.Resolve(
-            position.Symbol, position.ExitOrderId, requestedAt, orders);
-    }
-
-    private async Task ApplyExitResolutionAsync(
-        Position position,
-        ExitOrderReconciliation resolution,
-        ITradeRepository trades,
-        CancellationToken ct)
-    {
-        if (resolution.Action == ExitOrderReconciliationAction.ReleaseForRetry)
+        if (reconciliation.Status == LiveExitReconciliationStatus.ReleasedForRetry)
         {
             _logger.LogWarning("[EXIT] {Symbol}: 청산 주문 {OrderId}가 {Status} 상태여서 재평가를 허용합니다.",
-                position.Symbol, resolution.Order?.OrderId, resolution.Order?.Status);
-            var requestedAt = position.ExitRequestedAt!.Value;
-            ClearExitIntent(position);
-            await trades.ReleasePositionExitClaimAsync(
-                position.Id, requestedAt, ct);
+                position.Symbol, reconciliation.Order?.OrderId, reconciliation.Order?.Status);
             return;
         }
 
-        if (resolution.Action != ExitOrderReconciliationAction.Finalize || resolution.Order is null)
+        if (reconciliation.Status != LiveExitReconciliationStatus.Completed)
         {
             _logger.LogDebug("[EXIT] {Symbol}: 청산 주문 {OrderId}의 확정 상태를 기다립니다.",
                 position.Symbol, position.ExitOrderId);
             return;
         }
-
-        var exitPrice = resolution.Order.AverageFillPrice!.Value;
-        var exitTime = resolution.Order.FilledAt ?? UtcNow;
-        position.ClosedAt = exitTime;
-        position.ExitPrice = exitPrice;
-        var trade = new TradeRecord
-        {
-            Symbol = position.Symbol,
-            PatternType = position.PatternType,
-            CustomPatternName = position.CustomPatternName,
-            EntryPrice = position.EntryPrice,
-            ExitPrice = exitPrice,
-            Quantity = position.Quantity,
-            EntryTime = position.OpenedAt,
-            ExitTime = exitTime,
-            PnL = (exitPrice - position.EntryPrice) * position.Quantity,
-            PnLPercent = exitPrice / position.EntryPrice - 1,
-            ExitReason = position.ExitRequestReason ?? "실시간 청산",
-        };
-        var completed = await trades.TryCompletePositionExitAsync(position, trade, ct);
-        if (!completed)
-            return;
 
         _notificationService.Notify(new TradeRecommendation
         {
@@ -279,17 +235,10 @@ public class PositionExitManagerService : BackgroundService
             PatternType = position.PatternType,
             CustomPatternName = position.CustomPatternName,
             EntryPrice = position.EntryPrice,
-            TargetPrice = exitPrice,
+            TargetPrice = position.ExitPrice ?? position.CurrentPrice,
             ShareQuantity = position.Quantity,
             GeneratedAt = UtcNow,
         });
-    }
-
-    private static void ClearExitIntent(Position position)
-    {
-        position.ExitRequestedAt = null;
-        position.ExitRequestReason = null;
-        position.ExitOrderId = null;
     }
 
     private async Task<(bool ShouldExit, string Reason)> EvaluateExitAsync(

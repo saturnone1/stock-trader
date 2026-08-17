@@ -1,3 +1,4 @@
+using StockTrader.Api.Contracts;
 using StockTrader.Data.Repositories;
 
 namespace StockTrader.Api;
@@ -9,30 +10,15 @@ public static class PortfolioEndpoints
         // GET /api/portfolio — 보유 포지션 상세
         group.MapGet("/portfolio", async (
             ITradeRepository tradeRepo,
+            TimeProvider timeProvider,
             CancellationToken ct) =>
         {
             var positions = await tradeRepo.GetOpenPositionsAsync(ct);
 
             return Results.Ok(new
             {
-                Positions = positions.Select(p => new
-                {
-                    p.Id,
-                    p.Symbol,
-                    p.Sector,
-                    p.Quantity,
-                    p.EntryPrice,
-                    p.CurrentPrice,
-                    p.StopLossPrice,
-                    p.TargetPrice,
-                    Pattern        = p.PatternType.ToString(),
-                    p.UnrealizedPnL,
-                    p.AccountId,
-                    p.HighSinceEntry,
-                    p.EntryAtr,
-                    HoldingDays    = (DateTime.UtcNow - p.OpenedAt).Days,
-                    OpenedAt       = p.OpenedAt.ToString("o")
-                }),
+                Positions = positions.Select(p => OpenPositionResponseMapper.Map(
+                    p, timeProvider.GetUtcNow().UtcDateTime)),
                 TotalUnrealizedPnL = positions.Sum(p => p.UnrealizedPnL),
                 PositionCount      = positions.Count
             });
