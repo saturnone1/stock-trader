@@ -32,7 +32,10 @@ public class AlpacaDataFeedService : IDataFeedService
         try
         {
             var barTimeFrame = ToAlpacaTimeFrame(timeFrame);
-            var request = new HistoricalBarsRequest(symbol, from, to, barTimeFrame);
+            var request = new HistoricalBarsRequest(symbol, from, to, barTimeFrame)
+            {
+                Adjustment = Adjustment.SplitsAndDividends
+            };
             if (_isPaper) request.Feed = MarketDataFeed.Iex;
 
             var bars = new List<OhlcvBar>();
@@ -91,7 +94,10 @@ public class AlpacaDataFeedService : IDataFeedService
             var marketCloseEt = new DateTime(date.Year, date.Month, date.Day, 16, 0, 0, DateTimeKind.Unspecified);
             var from = TimeZoneInfo.ConvertTimeToUtc(marketOpenEt, eastern);
             var to = TimeZoneInfo.ConvertTimeToUtc(marketCloseEt, eastern);
-            var request = new HistoricalBarsRequest(symbol, from, to, BarTimeFrame.Minute);
+            var request = new HistoricalBarsRequest(symbol, from, to, BarTimeFrame.Minute)
+            {
+                Adjustment = Adjustment.SplitsAndDividends
+            };
             if (_isPaper) request.Feed = MarketDataFeed.Iex;
 
             var bars = new List<OhlcvBar>();

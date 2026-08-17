@@ -117,18 +117,31 @@ public class OrderService : IOrderService
             recommendation.WasExecuted = true;
             await _tradeRepo.UpdateRecommendationAsync(recommendation, ct);
 
+            // 시장가 주문은 신호 가격과 다른 가격에 체결될 수 있다. 실제 브로커 평균단가를
+            // 확인한 뒤에만 로컬 포지션을 생성해 손익·손절·목표가의 기준을 일치시킨다.
+            var brokerPosition = await WaitForBrokerPositionAsync(
+                brokerService, recommendation.Symbol, ct);
+            var actualEntry = brokerPosition?.EntryPrice > 0
+                ? brokerPosition.EntryPrice
+                : recommendation.EntryPrice;
+            var actualQuantity = brokerPosition?.Quantity > 0
+                ? brokerPosition.Quantity
+                : recommendation.ShareQuantity;
+            var stopDistance = Math.Max(0m, recommendation.EntryPrice - recommendation.StopLossPrice);
+            var targetDistance = Math.Max(0m, recommendation.TargetPrice - recommendation.EntryPrice);
+
             var position = new Position
             {
                 Symbol = recommendation.Symbol,
-                Quantity = recommendation.ShareQuantity,
-                EntryPrice = recommendation.EntryPrice,
-                CurrentPrice = recommendation.EntryPrice,
-                StopLossPrice = recommendation.StopLossPrice,
-                TargetPrice = recommendation.TargetPrice,
+                Quantity = actualQuantity,
+                EntryPrice = actualEntry,
+                CurrentPrice = brokerPosition?.CurrentPrice > 0 ? brokerPosition.CurrentPrice : actualEntry,
+                StopLossPrice = stopDistance > 0 ? actualEntry - stopDistance : recommendation.StopLossPrice,
+                TargetPrice = targetDistance > 0 ? actualEntry + targetDistance : recommendation.TargetPrice,
                 PatternType = recommendation.PatternType,
                 CustomPatternName = recommendation.CustomPatternName,
                 OpenedAt = DateTime.UtcNow,
-                HighSinceEntry = recommendation.EntryPrice
+                HighSinceEntry = actualEntry
             };
             await _tradeRepo.SavePositionAsync(position, ct);
 
@@ -139,6 +152,25 @@ public class OrderService : IOrderService
         }
 
         return success;
+    }
+
+    private static async Task<Position?> WaitForBrokerPositionAsync(
+        IBrokerService brokerService, string symbol, CancellationToken ct)
+    {
+        const int maxAttempts = 10;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            if (attempt > 0)
+                await Task.Delay(500, ct);
+
+            var positions = await brokerService.GetPositionsAsync(ct);
+            if (positions == null) return null;
+            var position = positions.FirstOrDefault(item => string.Equals(
+                    item.Symbol, symbol, StringComparison.OrdinalIgnoreCase));
+            if (position is { EntryPrice: > 0, Quantity: > 0 })
+                return position;
+        }
+        return null;
     }
 
     /// <inheritdoc />

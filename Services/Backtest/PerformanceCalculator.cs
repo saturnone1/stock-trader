@@ -18,14 +18,14 @@ internal static class PerformanceCalculator
     public static decimal ComputeSortinoRatio(List<TradeRecord> trades, TimeFrame tf)
     {
         if (trades.Count < 2) return 0;
-        var returns = trades.Select(t => t.PnLPercent / 100m).ToList();
+        var returns = trades.Select(t => t.PnLPercent).ToList();
         var mean = returns.Average();
-        var downReturns = returns.Where(r => r < 0).ToList();
-        if (downReturns.Count == 0) return mean > 0 ? 10m : 0;
-        var downDev = (decimal)Math.Sqrt((double)downReturns.Average(r => r * r));
+        var downsideSquares = returns.Select(r => r < 0 ? r * r : 0m).ToList();
+        if (downsideSquares.All(value => value == 0)) return mean > 0 ? 10m : 0;
+        var downDev = (decimal)Math.Sqrt((double)downsideSquares.Average());
         if (downDev == 0) return 0;
-        // 일봉: sqrt(252), 분봉: sqrt(252 * 6.5 * 12) 연율화 인수
-        var annFactor = tf == TimeFrame.Daily ? (decimal)Math.Sqrt(252) : (decimal)Math.Sqrt(252 * 6.5 * 12);
+        // 입력은 봉 수익률이 아니라 완결된 거래 수익률이므로 실제 연간 거래 빈도로 연율화한다.
+        var annFactor = (decimal)Math.Sqrt(EstimateTradesPerYear(trades));
         return mean / downDev * annFactor;
     }
 
@@ -48,10 +48,10 @@ internal static class PerformanceCalculator
     /// <summary>
     /// 연율화 수익률 (CAGR): (1 + totalReturn)^(1/years) - 1
     /// </summary>
-    public static decimal ComputeAnnualizedReturn(decimal totalReturn, int tradingDays)
+    public static decimal ComputeAnnualizedReturn(decimal totalReturn, int calendarDays)
     {
-        if (tradingDays <= 0) return 0;
-        var years = tradingDays / 252.0;
+        if (calendarDays <= 0) return 0;
+        var years = calendarDays / 365.25;
         if (years <= 0) return 0;
         var factor = 1 + totalReturn / 100m;
         if (factor <= 0) return -100;
@@ -163,7 +163,8 @@ internal static class PerformanceCalculator
                 decimal sqDiff = 0;
                 for (int i = 0; i < n; i++) { var d = groupTrades[i].PnLPercent - avg; sqDiff += d * d; }
                 var stdDev = (decimal)Math.Sqrt((double)(sqDiff / (n - 1)));
-                if (stdDev > 0) sharpe = avg / stdDev * (decimal)Math.Sqrt(252.0);
+                if (stdDev > 0) sharpe = avg / stdDev
+                    * (decimal)Math.Sqrt(EstimateTradesPerYear(groupTrades));
             }
 
             result[key] = new RegimePerformance
@@ -261,13 +262,7 @@ internal static class PerformanceCalculator
 
         if (stdDev <= 0) return 0;
 
-        // 거래 기간에서 연간 거래 횟수 추정
-        var firstEntry = trades.Min(t => t.EntryTime);
-        var lastExit = trades.Max(t => t.ExitTime != default ? t.ExitTime : t.EntryTime);
-        var tradingDays = Math.Max(1.0, (lastExit - firstEntry).TotalDays);
-        var tradesPerYear = n / tradingDays * 365.25;
-
-        return avgReturn / stdDev * (decimal)Math.Sqrt(tradesPerYear);
+        return avgReturn / stdDev * (decimal)Math.Sqrt(EstimateTradesPerYear(trades));
     }
 
     public static List<SymbolStats> ComputePerSymbolStats(
@@ -316,18 +311,66 @@ internal static class PerformanceCalculator
 
     public static decimal ComputeGroupDrawdown(List<TradeRecord> trades)
     {
-        var cumPnl = 0m;
-        var peak = 0m;
+        var equity = 1m;
+        var peak = 1m;
         var maxDd = 0m;
 
-        foreach (var t in trades.OrderBy(t => t.EntryTime))
+        foreach (var t in trades.OrderBy(t => t.ExitTime))
         {
-            cumPnl += t.PnLPercent;
-            if (cumPnl > peak) peak = cumPnl;
-            var dd = peak - cumPnl;
+            equity *= Math.Max(0m, 1m + t.PnLPercent);
+            if (equity > peak) peak = equity;
+            var dd = peak > 0 ? (peak - equity) / peak : 0m;
             if (dd > maxDd) maxDd = dd;
         }
 
         return maxDd;
+    }
+
+    internal static List<TradeRecord> AggregateTradeCycles(IEnumerable<TradeRecord> executions)
+    {
+        return executions
+            .GroupBy(trade => new
+            {
+                trade.Symbol,
+                trade.PatternType,
+                Strategy = trade.CustomPatternName ?? string.Empty,
+                trade.EntryTime
+            })
+            .Select(group =>
+            {
+                var quantity = group.Sum(trade => trade.Quantity);
+                var entryNotional = group.Sum(trade => trade.EntryPrice * trade.Quantity);
+                var pnl = group.Sum(trade => trade.PnL);
+                var first = group.First();
+                return new TradeRecord
+                {
+                    Symbol = first.Symbol,
+                    PatternType = first.PatternType,
+                    CustomPatternName = first.CustomPatternName,
+                    EntryPrice = quantity > 0 ? entryNotional / quantity : first.EntryPrice,
+                    ExitPrice = group.OrderBy(trade => trade.ExitTime).Last().ExitPrice,
+                    Quantity = quantity,
+                    EntryTime = first.EntryTime,
+                    ExitTime = group.Max(trade => trade.ExitTime),
+                    PnL = pnl,
+                    PnLPercent = entryNotional > 0 ? pnl / entryNotional : 0,
+                    ExitReason = string.Join(" + ", group.Select(trade => trade.ExitReason).Distinct()),
+                    EntryAtr = first.EntryAtr,
+                    EntryVolume = first.EntryVolume,
+                    EquityAtEntry = first.EquityAtEntry,
+                    MaePercent = group.Min(trade => trade.MaePercent),
+                    MfePercent = group.Max(trade => trade.MfePercent)
+                };
+            })
+            .OrderBy(trade => trade.EntryTime)
+            .ToList();
+    }
+
+    private static double EstimateTradesPerYear(List<TradeRecord> trades)
+    {
+        var firstEntry = trades.Min(trade => trade.EntryTime);
+        var lastExit = trades.Max(trade => trade.ExitTime != default ? trade.ExitTime : trade.EntryTime);
+        var calendarDays = Math.Max(1.0, (lastExit - firstEntry).TotalDays);
+        return Math.Max(1.0, trades.Count / calendarDays * 365.25);
     }
 }

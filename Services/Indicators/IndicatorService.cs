@@ -144,6 +144,14 @@ public class IndicatorService : IIndicatorService
 
         for (int i = 0; i < bars.Length; i++)
         {
+            var isIntraday = bars[i].TimeFrame is Models.Enums.TimeFrame.OneMinute
+                or Models.Enums.TimeFrame.FiveMinute
+                or Models.Enums.TimeFrame.FifteenMinute;
+            if (isIntraday && i > 0 && bars[i].Timestamp.Date != bars[i - 1].Timestamp.Date)
+            {
+                cumulativeTPV = 0;
+                cumulativeVolume = 0;
+            }
             var typicalPrice = (bars[i].High + bars[i].Low + bars[i].Close) / 3;
             cumulativeTPV += typicalPrice * bars[i].Volume;
             cumulativeVolume += bars[i].Volume;

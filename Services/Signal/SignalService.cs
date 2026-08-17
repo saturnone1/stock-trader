@@ -127,7 +127,8 @@ public class SignalService : ISignalService
                 _logger.LogInformation("Custom strategy {Strategy} blocked: {Reason}", signal.CustomPatternName, cooldownReason);
                 continue;
             }
-            if (breakerRules?.MaxDrawdownPercent > 0 && ComputeStrategyDrawdown(strategyTrades) >= breakerRules.MaxDrawdownPercent)
+            if (breakerRules?.MaxDrawdownPercent > 0
+                && ComputeStrategyDrawdown(strategyTrades, settings.AccountSize) >= breakerRules.MaxDrawdownPercent)
             {
                 _logger.LogWarning("Custom strategy {Strategy} blocked: drawdown circuit breaker", signal.CustomPatternName);
                 continue;
@@ -286,7 +287,7 @@ public class SignalService : ISignalService
         if (trades.Count == 0) return false;
         var latest = trades[^1];
         var waitDays = latest.PnL < 0 ? reentry?.CooldownBarsAfterLoss ?? 0 : reentry?.CooldownBarsAfterWin ?? 0;
-        if (waitDays > 0 && DateTime.UtcNow.Date < latest.ExitTime.Date.AddDays(waitDays))
+        if (waitDays > 0 && DateTime.UtcNow.Date < AddTradingDays(latest.ExitTime.Date, waitDays))
         {
             reason = $"재매수 대기 {waitDays}봉";
             return true;
@@ -296,7 +297,7 @@ public class SignalService : ISignalService
         {
             var consecutiveLosses = trades.AsEnumerable().Reverse().TakeWhile(trade => trade.PnL < 0).Count();
             if (consecutiveLosses >= breaker.ConsecutiveLossLimit
-                && DateTime.UtcNow.Date < latest.ExitTime.Date.AddDays(breaker.CooldownBars))
+                && DateTime.UtcNow.Date < AddTradingDays(latest.ExitTime.Date, breaker.CooldownBars))
             {
                 reason = $"연속 손실 후 {breaker.CooldownBars}봉 중단";
                 return true;
@@ -305,12 +306,25 @@ public class SignalService : ISignalService
         return false;
     }
 
-    private static decimal ComputeStrategyDrawdown(List<TradeRecord> trades)
+    private static DateTime AddTradingDays(DateTime date, int tradingDays)
     {
-        decimal equity = 1m, peak = 1m, maximum = 0m;
-        foreach (var trade in trades)
+        var result = date.Date;
+        var remaining = Math.Max(0, tradingDays);
+        while (remaining > 0)
         {
-            equity *= Math.Max(0m, 1m + trade.PnLPercent);
+            result = result.AddDays(1);
+            if (result.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) continue;
+            remaining--;
+        }
+        return result;
+    }
+
+    private static decimal ComputeStrategyDrawdown(List<TradeRecord> trades, decimal accountSize)
+    {
+        decimal equity = Math.Max(1m, accountSize), peak = equity, maximum = 0m;
+        foreach (var trade in trades.OrderBy(trade => trade.ExitTime))
+        {
+            equity += trade.PnL;
             peak = Math.Max(peak, equity);
             if (peak > 0) maximum = Math.Max(maximum, (peak - equity) / peak * 100m);
         }

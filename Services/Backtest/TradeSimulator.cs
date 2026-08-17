@@ -156,8 +156,10 @@ internal sealed class TradeSimulator
                         EntryBarIndex         = i,
                         EntryAtr              = entryAtr,
                         EntryVolume           = currentBar.Volume,
-                        HighestHighSinceEntry = currentBar.High,
-                        LowestLowSinceEntry   = currentBar.Low,
+                        // CurrentClose 진입은 해당 봉이 닫힌 뒤 체결된다.
+                        // 진입 전에 발생한 동일 고가/저가를 MFE/MAE에 포함하지 않는다.
+                        HighestHighSinceEntry = signal.EntryPrice,
+                        LowestLowSinceEntry   = signal.EntryPrice,
                         RiskDistance           = stopDistance
                     };
 
@@ -215,42 +217,37 @@ internal sealed class TradeSimulator
             pepCache[openPosition.PatternType] = pep;
         }
 
-        // 1. Highest high / lowest low tracking (MFE/MAE 계산용)
+        // OHLC만으로는 한 봉 안에서 고가와 저가 중 무엇이 먼저였는지 알 수 없다.
+        // 따라서 봉 시작 전에 확정되어 있던 손절가를 가장 먼저 확인한다.
+        // 현재 봉에서 새로 계산한 손익분기/트레일링 스탑은 다음 봉부터 효력을 갖는다.
+        var stopAtBarOpen = openPosition.StopLoss;
+        if (currentBar.Low <= stopAtBarOpen)
+        {
+            var stopFill = currentBar.Open > 0 && currentBar.Open < stopAtBarOpen
+                ? currentBar.Open
+                : stopAtBarOpen;
+            openPosition.LowestLowSinceEntry = openPosition.LowestLowSinceEntry == 0
+                ? stopFill
+                : Math.Min(openPosition.LowestLowSinceEntry, stopFill);
+            var stopQty = openPosition.CurrentQuantity > 0
+                ? openPosition.CurrentQuantity : openPosition.Quantity;
+            var stopReason = openPosition.PatternType == PatternType.Tqqq200Sma
+                ? "SMA200 이탈"
+                : openPosition.BreakevenApplied || openPosition.TrailingStopActivated
+                    ? "트레일링 손절"
+                    : "손절";
+            trades.Add(CreateTradeRecord(symbol, openPosition, stopFill,
+                currentBar.Timestamp, stopReason, stopQty));
+            return null;
+        }
+
+        // 손절에 걸리지 않은 봉만 전체 고가/저가를 보유 중 익스커션으로 반영한다.
         if (currentBar.High > openPosition.HighestHighSinceEntry)
             openPosition.HighestHighSinceEntry = currentBar.High;
         if (openPosition.LowestLowSinceEntry == 0 || currentBar.Low < openPosition.LowestLowSinceEntry)
             openPosition.LowestLowSinceEntry = currentBar.Low;
 
-        // 2. Breakeven stop
-        if (!openPosition.BreakevenApplied && openPosition.EntryAtr > 0
-            && pep.BreakevenAtrMultiplier > 0)
-        {
-            var breakevenThreshold = openPosition.EntryPrice + openPosition.EntryAtr * pep.BreakevenAtrMultiplier;
-            if (currentBar.Close >= breakevenThreshold)
-            {
-                openPosition.StopLoss = Math.Max(openPosition.StopLoss, openPosition.EntryPrice);
-                openPosition.BreakevenApplied = true;
-            }
-        }
-
-        // 3. Trailing stop (Chandelier)
-        if (pep.EnableTrailingStop)
-        {
-            var activationTarget = openPosition.EntryPrice
-                + openPosition.RiskDistance * pep.TrailingActivationR;
-            if (!openPosition.TrailingStopActivated && currentBar.Close >= activationTarget)
-                openPosition.TrailingStopActivated = true;
-
-            if (openPosition.TrailingStopActivated && currentAtr > 0)
-            {
-                var chandelier = openPosition.HighestHighSinceEntry
-                    - currentAtr * pep.TrailingStopAtrMultiplier;
-                if (chandelier > openPosition.StopLoss)
-                    openPosition.StopLoss = chandelier;
-            }
-        }
-
-        // 4. Partial profit
+        // 부분 익절. 이 봉에서 손절가 동시에 닿았다면 위의 보수적 손절이 우선한다.
         if (pep.EnablePartialProfit && !openPosition.PartialProfitTaken)
         {
             var partialProfitTarget = openPosition.EntryPrice
@@ -293,27 +290,14 @@ internal sealed class TradeSimulator
             }
         }
 
-        // 5. Regime-based dynamic exit (Tqqq200Sma)
-        // SMA200 동적 스탑: 종가 기준으로 별도 체크 (고정 손절과 분리)
-        if (openPosition.PatternType == PatternType.Tqqq200Sma && sma200 > 0)
-        {
-            var dynamicSmaStop = sma200 * 0.99m;
-            if (dynamicSmaStop > openPosition.StopLoss)
-                openPosition.StopLoss = dynamicSmaStop;
-        }
-
-        // 6. Check exits
+        // 손절을 통과한 뒤 목표가/종가 청산을 평가한다.
         decimal exitPrice = 0;
         string exitReason = "";
 
-        if (currentBar.Low <= openPosition.StopLoss)
+        if (pep.EnableTargetExit && currentBar.High >= openPosition.Target)
         {
-            exitPrice = openPosition.StopLoss;
-            exitReason = openPosition.PatternType == PatternType.Tqqq200Sma
-                ? "SMA200 이탈"
-                : openPosition.BreakevenApplied || openPosition.TrailingStopActivated
-                    ? "트레일링 손절"
-                    : "손절";
+            exitPrice = openPosition.Target;
+            exitReason = "목표 도달";
         }
         else if (openPosition.PatternType == PatternType.CumulativeRsi2
                  && currentCumulativeRsi2TrendMa > 0
@@ -327,11 +311,6 @@ internal sealed class TradeSimulator
         {
             exitPrice = currentBar.Close;
             exitReason = $"누적 RSI 청산({currentCumulativeRsi2:F1})";
-        }
-        else if (pep.EnableTargetExit && currentBar.High >= openPosition.Target)
-        {
-            exitPrice = openPosition.Target;
-            exitReason = "목표 도달";
         }
         else if (pep.EnableTimeExit && barsSinceEntry >= pep.MaxHoldingBars)
         {
@@ -347,6 +326,41 @@ internal sealed class TradeSimulator
             trades.Add(CreateTradeRecord(symbol, openPosition, exitPrice,
                 currentBar.Timestamp, exitReason, exitQty));
             return null;
+        }
+
+        // 종가로 확정한 보호 스탑은 다음 봉부터 사용한다.
+        if (!openPosition.BreakevenApplied && openPosition.EntryAtr > 0
+            && pep.BreakevenAtrMultiplier > 0)
+        {
+            var breakevenThreshold = openPosition.EntryPrice + openPosition.EntryAtr * pep.BreakevenAtrMultiplier;
+            if (currentBar.Close >= breakevenThreshold)
+            {
+                openPosition.StopLoss = Math.Max(openPosition.StopLoss, openPosition.EntryPrice);
+                openPosition.BreakevenApplied = true;
+            }
+        }
+
+        if (pep.EnableTrailingStop)
+        {
+            var activationTarget = openPosition.EntryPrice
+                + openPosition.RiskDistance * pep.TrailingActivationR;
+            if (!openPosition.TrailingStopActivated && currentBar.Close >= activationTarget)
+                openPosition.TrailingStopActivated = true;
+
+            if (openPosition.TrailingStopActivated && currentAtr > 0)
+            {
+                var chandelier = openPosition.HighestHighSinceEntry
+                    - currentAtr * pep.TrailingStopAtrMultiplier;
+                if (chandelier > openPosition.StopLoss)
+                    openPosition.StopLoss = chandelier;
+            }
+        }
+
+        if (openPosition.PatternType == PatternType.Tqqq200Sma && sma200 > 0)
+        {
+            var dynamicSmaStop = sma200 * 0.99m;
+            if (dynamicSmaStop > openPosition.StopLoss)
+                openPosition.StopLoss = dynamicSmaStop;
         }
 
         return openPosition;

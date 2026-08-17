@@ -123,6 +123,7 @@ public static class CustomPatternEndpoints
         target.EntryGroupsLogic = source.EntryGroupsLogic;
         target.DynamicExitJson = source.DynamicExitJson;
         target.EntryMode = source.EntryMode;
+        target.TimeFrame = source.TimeFrame;
         target.SizingMode = source.SizingMode;
         target.IsActive = source.IsActive;
         target.EnableLiveTrading = source.EnableLiveTrading;

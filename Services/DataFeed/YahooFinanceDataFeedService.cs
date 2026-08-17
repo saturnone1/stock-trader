@@ -205,6 +205,7 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
         var result = response.Chart.Result[0];
         var timestamps = result.Timestamp;
         var quote = result.Indicators?.Quote?.FirstOrDefault();
+        var adjustedCloses = result.Indicators?.AdjClose?.FirstOrDefault()?.Values;
 
         if (timestamps == null || quote == null)
             return bars;
@@ -220,6 +221,14 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
             // Yahoo sometimes returns null for individual candles (e.g., pre/post market)
             if (open == 0 || high == 0 || low == 0 || close == 0)
                 continue;
+
+            // 분할·배당 전후가 하나의 연속된 가격계열이 되도록 Yahoo의 수정종가 비율을 OHLC에 적용한다.
+            var adjustedClose = GetValue(adjustedCloses, i);
+            var adjustmentFactor = adjustedClose > 0 ? adjustedClose / close : 1m;
+            open *= adjustmentFactor;
+            high *= adjustmentFactor;
+            low *= adjustmentFactor;
+            close = adjustedClose > 0 ? adjustedClose : close;
 
             bars.Add(new OhlcvBar
             {
@@ -277,7 +286,11 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
         [property: JsonPropertyName("regularMarketPrice")] decimal RegularMarketPrice);
 
     private record YahooIndicators(
-        [property: JsonPropertyName("quote")] List<YahooQuote>? Quote);
+        [property: JsonPropertyName("quote")] List<YahooQuote>? Quote,
+        [property: JsonPropertyName("adjclose")] List<YahooAdjClose>? AdjClose);
+
+    private record YahooAdjClose(
+        [property: JsonPropertyName("adjclose")] List<decimal?>? Values);
 
     private record YahooQuote(
         [property: JsonPropertyName("open")] List<decimal?>? Open,

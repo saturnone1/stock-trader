@@ -1,3 +1,5 @@
+using StockTrader.Models.Enums;
+
 namespace StockTrader.Models;
 
 /// <summary>
@@ -76,6 +78,11 @@ public class CustomPatternDefinition
 
     /// <summary>진입 가격 모드: "CurrentClose"(기본), "NextOpen"(차기봉 시가 지연 체결; 시가에서 신호를 재평가하지 않음)</summary>
     public string EntryMode { get; set; } = "CurrentClose";
+
+    /// <summary>
+    /// 전략을 평가하고 실행할 기준 봉. 미리보기·백테스트·실시간 스캐너가 같은 값을 사용해야 한다.
+    /// </summary>
+    public TimeFrame TimeFrame { get; set; } = TimeFrame.Daily;
 
     /// <summary>포지션 사이징 모드: "FixedRisk"(기본), "Kelly", "HalfKelly"</summary>
     public string SizingMode { get; set; } = "FixedRisk";

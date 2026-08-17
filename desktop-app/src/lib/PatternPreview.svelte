@@ -1,10 +1,12 @@
 <script>
-  import { onDestroy } from 'svelte'
+  import { createEventDispatcher, onDestroy } from 'svelte'
   import { Activity, AlertTriangle, CalendarDays, RefreshCw, Search, TrendingUp } from 'lucide-svelte'
   import { patternApi } from '../api/endpoints'
 
   export let pattern = null
   export let selectedRuleSummary = ''
+  export let timeFrame = 'Daily'
+  const dispatch = createEventDispatcher()
 
   const timeFrames = [
     { value: 'OneMinute', label: '1분봉' },
@@ -15,7 +17,6 @@
   ]
 
   let symbol = 'TQQQ'
-  let timeFrame = 'Daily'
   let toDate = isoDate(new Date())
   let fromDate = defaultFromDate(timeFrame, toDate)
   let loading = false
@@ -26,6 +27,7 @@
   let lastPatternKey = ''
   let lastSuccessfulContext = ''
   let requestVersion = 0
+  let observedTimeFrame = timeFrame
 
   const width = 960
   const height = 360
@@ -42,6 +44,18 @@
   $: chart = buildChart(result?.bars ?? [], result?.markers ?? [], result?.matches ?? [])
   $: presets = presetsFor(timeFrame)
   $: intraday = isIntraday(timeFrame)
+  $: if (timeFrame !== observedTimeFrame) {
+    const wasIntraday = isIntraday(observedTimeFrame)
+    observedTimeFrame = timeFrame
+    const nowIntraday = isIntraday(timeFrame)
+    const endDay = toDate.slice(0, 10)
+    toDate = nowIntraday ? `${endDay}T16:00` : endDay
+    fromDate = defaultFromDate(timeFrame, toDate)
+    if (nowIntraday) fromDate = `${fromDate}T09:30`
+    if (wasIntraday !== nowIntraday) error = ''
+    comparison = null
+    scheduleRefresh('filters', 0)
+  }
 
   onDestroy(() => clearTimeout(refreshTimer))
 
@@ -102,16 +116,8 @@
   }
 
   function changeTimeFrame(value) {
-    const wasIntraday = isIntraday(timeFrame)
     timeFrame = value
-    const nowIntraday = isIntraday(value)
-    const endDay = toDate.slice(0, 10)
-    toDate = nowIntraday ? `${endDay}T16:00` : endDay
-    fromDate = defaultFromDate(value, toDate)
-    if (nowIntraday) fromDate = `${fromDate}T09:30`
-    if (wasIntraday !== nowIntraday) error = ''
-    comparison = null
-    loadPreview('filters')
+    dispatch('timeframechange', { value })
   }
 
   function applyPreset(days) {

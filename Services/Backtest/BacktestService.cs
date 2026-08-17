@@ -98,8 +98,10 @@ public class BacktestService : IBacktestService
 
         if (request.EnableMonteCarlo && result.Trades.Count >= 2)
         {
-            result.MonteCarlo = MonteCarloSimulator.Run(
-                result.Trades, request.InitialCapital, request.MonteCarloSimulations);
+            var completedTradeCycles = PerformanceCalculator.AggregateTradeCycles(result.Trades);
+            if (completedTradeCycles.Count >= 2)
+                result.MonteCarlo = MonteCarloSimulator.Run(
+                    completedTradeCycles, request.InitialCapital, request.MonteCarloSimulations);
         }
 
         _logger.LogInformation(
@@ -149,6 +151,7 @@ public class BacktestService : IBacktestService
             TimeFrame.OneMinute     => 2,
             TimeFrame.FiveMinute    => 10,
             TimeFrame.FifteenMinute => 15,
+            TimeFrame.Weekly        => 365 * 5,
             _                       => 400
         };
 
@@ -255,6 +258,61 @@ public class BacktestService : IBacktestService
         var weightReducedCount = 0;
         // [BUG-PB-08] Kelly 사이징용 (결과 생성부에서 실제 계산, 루프 중에는 0 = FixedRisk)
         decimal kellyFraction = 0, halfKellyFraction = 0;
+        Dictionary<string, CustomStrategyRuntime> strategyRuntimes = null!;
+        var executionCosts = new Dictionary<TradeRecord, (decimal slippage, decimal commission)>();
+
+        void ApplyNewTradeCosts(int startIndex)
+        {
+            for (var tradeIndex = startIndex; tradeIndex < trades.Count; tradeIndex++)
+            {
+                var trade = trades[tradeIndex];
+                if (executionCosts.ContainsKey(trade)) continue;
+
+                decimal tradeSlippage;
+                if (slippageModel == SlippageModel.Adaptive && trade.EntryAtr > 0 && trade.EntryPrice > 0)
+                {
+                    var atrPct = trade.EntryAtr / trade.EntryPrice;
+                    var volatilityFactor = Math.Max(0.5m, Math.Min(3.0m, atrPct / 0.02m));
+                    var liquidityFactor = 1.0m;
+                    if (trade.EntryVolume > 0)
+                    {
+                        var orderRatio = (decimal)trade.Quantity / trade.EntryVolume;
+                        var sqrtImpact = (decimal)Math.Sqrt((double)Math.Max(0m, orderRatio));
+                        liquidityFactor = Math.Max(0.5m, Math.Min(3.0m, 1.0m + sqrtImpact * 2.0m));
+                    }
+                    var adaptivePct = slippagePercent / 100m * volatilityFactor * liquidityFactor;
+                    tradeSlippage = (trade.EntryPrice + trade.ExitPrice) * adaptivePct * trade.Quantity;
+                }
+                else
+                {
+                    tradeSlippage = (trade.EntryPrice + trade.ExitPrice)
+                        * (slippagePercent / 100m) * trade.Quantity;
+                }
+
+                trade.PnL -= tradeSlippage + commissionPerTrade;
+                trade.PnLPercent = trade.EntryPrice > 0 && trade.Quantity > 0
+                    ? trade.PnL / (trade.EntryPrice * trade.Quantity)
+                    : 0;
+                executionCosts[trade] = (tradeSlippage, commissionPerTrade);
+                currentEquity += trade.PnL;
+
+                if (!string.IsNullOrWhiteSpace(trade.CustomPatternName)
+                    && strategyRuntimes != null
+                    && strategyRuntimes.TryGetValue(trade.CustomPatternName, out var runtime))
+                {
+                    runtime.RealizedEquity += trade.PnL;
+                    if (runtime.RealizedEquity > runtime.PeakEquity)
+                        runtime.PeakEquity = runtime.RealizedEquity;
+                    if (runtime.CircuitBreaker.MaxDrawdownPercent > 0 && runtime.PeakEquity > 0)
+                    {
+                        var drawdownPercent = (runtime.PeakEquity - runtime.RealizedEquity)
+                            / runtime.PeakEquity * 100m;
+                        if (drawdownPercent >= runtime.CircuitBreaker.MaxDrawdownPercent)
+                            runtime.CircuitBreakerTripped = true;
+                    }
+                }
+            }
+        }
         // [A-1] NextOpen 진입 대기 시그널: (symbol → pending signal 정보)
         var pendingNextOpenSignals = new Dictionary<string, (decimal entryPrice, decimal stopLoss, decimal target, decimal stopDistance, decimal entryAtr, long entryVolume, decimal equityAtEntry, TradeSimulator.PatternExitProfile? customExit, decimal riskPerTradeSnap, decimal effectiveMaxPosSnap, string? customPatternName)>();
         var maxWindow = timeFrame switch
@@ -272,7 +330,7 @@ public class BacktestService : IBacktestService
             .GroupBy(detector => detector.Definition.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var strategyRuntimes = customDetectorsByName.ToDictionary(
+        strategyRuntimes = customDetectorsByName.ToDictionary(
             pair => pair.Key,
             pair => new CustomStrategyRuntime
             {
@@ -280,6 +338,7 @@ public class BacktestService : IBacktestService
                 CircuitBreaker = JsonSerializer.Deserialize<CircuitBreakerConfig>(pair.Value.Definition.CircuitBreakerJson, jsonOpts) ?? new(),
                 Reentry = JsonSerializer.Deserialize<ReentryConfig>(pair.Value.Definition.ReentryJson, jsonOpts) ?? new(),
                 Portfolio = JsonSerializer.Deserialize<PortfolioRulesConfig>(pair.Value.Definition.PortfolioRulesJson, jsonOpts) ?? new(),
+                RealizedEquity = initialCapital,
                 PeakEquity = initialCapital
             },
             StringComparer.OrdinalIgnoreCase);
@@ -288,6 +347,30 @@ public class BacktestService : IBacktestService
         var reentryCooldowns = new Dictionary<string, int>();
         // 스케일링 횟수 추적: (symbol → rule index → count)
         var positionScaleCounts = new Dictionary<string, Dictionary<int, int>>();
+        var latestPrices = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var equityCurve = new List<EquityPoint> { new(from, initialCapital) };
+        var peakMarkedEquity = initialCapital;
+        var maxDrawdown = 0m;
+
+        void RecordMarkedEquity(DateTime timestamp)
+        {
+            var unrealizedPnl = openPositions.Sum(pair =>
+                latestPrices.TryGetValue(pair.Key, out var price)
+                    ? (price - pair.Value.EntryPrice)
+                        * (pair.Value.CurrentQuantity > 0 ? pair.Value.CurrentQuantity : pair.Value.Quantity)
+                    : 0m);
+            var markedEquity = currentEquity + unrealizedPnl;
+            if (markedEquity > peakMarkedEquity) peakMarkedEquity = markedEquity;
+            var drawdown = peakMarkedEquity > 0
+                ? (peakMarkedEquity - markedEquity) / peakMarkedEquity
+                : 0m;
+            if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+
+            if (equityCurve.Count > 0 && equityCurve[^1].Date == timestamp)
+                equityCurve[^1] = new EquityPoint(timestamp, markedEquity);
+            else
+                equityCurve.Add(new EquityPoint(timestamp, markedEquity));
+        }
 
         // ── 참조 종목 데이터 준비 (RefSymbol 지원) ──
         Dictionary<string, OhlcvBar[]>? referenceData = null;
@@ -303,6 +386,11 @@ public class BacktestService : IBacktestService
             var date = allDates[timelineIndex];
             var tradingDay = DateOnly.FromDateTime(date);
             ct.ThrowIfCancellationRequested();
+            foreach (var (symbol, data) in symbolDataMap)
+            {
+                if (data.TimestampToIndex.TryGetValue(date, out var priceBarIndex))
+                    latestPrices[symbol] = data.Bars[priceBarIndex].Close;
+            }
             if (referenceData != null)
             {
                 var referenceAsOf = date;
@@ -339,93 +427,17 @@ public class BacktestService : IBacktestService
                         ? matchedRuntime
                         : null;
 
-                // ── 규칙 기반 청산 체크 (ATR 청산 전에 먼저 평가) ──
-                if (positionDetector != null && positionDetector.HasExitRules)
-                {
-                    var windowSize2 = Math.Min(barIdx + 1, maxWindow);
-                    var windowStart2 = barIdx + 1 - windowSize2;
-                    var windowBars2 = sd.Bars[windowStart2..(barIdx + 1)];
-
-                    if (positionDetector.ShouldExit(windowBars2))
-                    {
-                        var exitPrice = sd.Bars[barIdx].Close;
-                        trades.Add(TradeSimulator.CreateTradeRecord(
-                            symbol, pos, exitPrice, sd.Bars[barIdx].Timestamp,
-                            "규칙 청산", pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity));
-                        for (int ti = tradesBefore; ti < trades.Count; ti++)
-                            currentEquity += trades[ti].PnL;
-                        openPositions.Remove(symbol);
-                        positionScaleCounts.Remove(symbol);
-                        // 재진입 쿨다운 등록
-                        if (positionRuntime != null)
-                        {
-                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", barIdx, trades[^1], positionRuntime.Reentry, reentryCooldowns);
-                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilStep,
-                                timelineIndex, positionRuntime.CircuitBreaker);
-                        }
-                        continue;
-                    }
-                }
-
-                // ── 스케일링 체크 ──
-                if (positionDetector != null && positionDetector.HasScalingRules)
-                {
-                    var windowSize3 = Math.Min(barIdx + 1, maxWindow);
-                    var windowStart3 = barIdx + 1 - windowSize3;
-                    var windowBars3 = sd.Bars[windowStart3..(barIdx + 1)];
-                    var currentProfitPct = pos.EntryPrice > 0
-                        ? (sd.Bars[barIdx].Close - pos.EntryPrice) / pos.EntryPrice * 100
-                        : 0;
-                    if (!positionScaleCounts.TryGetValue(symbol, out var sc))
-                    {
-                        sc = new Dictionary<int, int>();
-                        positionScaleCounts[symbol] = sc;
-                    }
-                    var matchedScale = positionDetector.CheckScaling(windowBars3, currentProfitPct, sc);
-                    if (matchedScale != null)
-                    {
-                        var baseQty = pos.Quantity;
-                        var scaleQty = Math.Max(1, (int)(baseQty * matchedScale.Percent / 100m));
-
-                        if (matchedScale.Direction == "SCALE_IN")
-                        {
-                            var currentQty = pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity;
-                            var newQty = currentQty + scaleQty;
-                            var newTotalCost = pos.TotalCost + sd.Bars[barIdx].Close * scaleQty;
-                            pos.CurrentQuantity = newQty;
-                            pos.TotalCost = newTotalCost;
-                            pos.EntryPrice = newTotalCost / newQty;
-                        }
-                        else // SCALE_OUT
-                        {
-                            var curQty = pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity;
-                            var sellQty = Math.Min(scaleQty, curQty - 1);
-                            if (sellQty > 0)
-                            {
-                                trades.Add(TradeSimulator.CreateTradeRecord(
-                                    symbol, pos, sd.Bars[barIdx].Close,
-                                    sd.Bars[barIdx].Timestamp, $"스케일아웃({matchedScale.Percent}%)", sellQty));
-                                pos.CurrentQuantity = curQty - sellQty;
-                                pos.TotalCost = pos.EntryPrice * pos.CurrentQuantity;
-                                for (int ti = tradesBefore; ti < trades.Count; ti++)
-                                    currentEquity += trades[ti].PnL;
-                            }
-                        }
-                    }
-                }
-
-                // ── 기존 ATR 기반 청산 로직 ──
+                // 장중 가격으로 체결되는 손절/목표가를 종가 규칙과 분할매매보다 먼저 평가한다.
                 tradesBefore = trades.Count;
                 var exitResult = simulator.ProcessExitLogic(
                     pos, sd.Bars[barIdx], barIdx,
                     sd.Atr[barIdx], sd.Sma200[barIdx],
                     sd.CumulativeRsi2[barIdx], sd.CumulativeRsi2TrendMa[barIdx], cumulativeRsi2Config,
                     pepCache, exitOverrides, symbol, trades);
+                ApplyNewTradeCosts(tradesBefore);
 
                 if (exitResult == null)
                 {
-                    for (int ti = tradesBefore; ti < trades.Count; ti++)
-                        currentEquity += trades[ti].PnL;
                     openPositions.Remove(symbol);
                     positionScaleCounts.Remove(symbol);
                     // 재진입 쿨다운 등록
@@ -440,21 +452,90 @@ public class BacktestService : IBacktestService
                     }
                 }
                 else
-                    openPositions[symbol] = exitResult;
-            }
-
-            // ── 전략별 피크 에퀴티 + 최대낙폭 거래 중단 체크 ──
-            foreach (var runtime in strategyRuntimes.Values)
-            {
-                if (currentEquity > runtime.PeakEquity) runtime.PeakEquity = currentEquity;
-                if (runtime.CircuitBreaker.MaxDrawdownPercent > 0 && runtime.PeakEquity > 0)
                 {
-                    var dd = (runtime.PeakEquity - currentEquity) / runtime.PeakEquity * 100;
-                    if (dd >= runtime.CircuitBreaker.MaxDrawdownPercent)
-                        runtime.CircuitBreakerTripped = true;
+                    pos = exitResult;
+                    openPositions[symbol] = pos;
+
+                    var windowSize = Math.Min(barIdx + 1, maxWindow);
+                    var windowStart = barIdx + 1 - windowSize;
+                    var windowBars = sd.Bars[windowStart..(barIdx + 1)];
+
+                    // 종가로 판단하는 사용자 청산 규칙은 장중 스탑/목표가를 통과한 뒤 적용한다.
+                    if (positionDetector != null && positionDetector.HasExitRules
+                        && positionDetector.ShouldExit(windowBars))
+                    {
+                        tradesBefore = trades.Count;
+                        trades.Add(TradeSimulator.CreateTradeRecord(
+                            symbol, pos, sd.Bars[barIdx].Close, sd.Bars[barIdx].Timestamp,
+                            "규칙 청산", pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity));
+                        ApplyNewTradeCosts(tradesBefore);
+                        openPositions.Remove(symbol);
+                        positionScaleCounts.Remove(symbol);
+                        if (positionRuntime != null)
+                        {
+                            RegisterCooldown($"{pos.CustomPatternName}|{symbol}", barIdx, trades[^1], positionRuntime.Reentry, reentryCooldowns);
+                            UpdateCircuitBreaker(trades[^1], ref positionRuntime.ConsecutiveLosses, ref positionRuntime.CircuitBreakerUntilStep,
+                                timelineIndex, positionRuntime.CircuitBreaker);
+                        }
+                        continue;
+                    }
+
+                    // 추가 매수/분할 매도는 종가에서만 실행하며, 같은 봉의 이전 저가/고가에 소급 적용하지 않는다.
+                    if (positionDetector != null && positionDetector.HasScalingRules)
+                    {
+                        var currentProfitPct = pos.EntryPrice > 0
+                            ? (sd.Bars[barIdx].Close - pos.EntryPrice) / pos.EntryPrice * 100
+                            : 0;
+                        if (!positionScaleCounts.TryGetValue(symbol, out var scaleCounts))
+                        {
+                            scaleCounts = new Dictionary<int, int>();
+                            positionScaleCounts[symbol] = scaleCounts;
+                        }
+                        var matchedScale = positionDetector.CheckScaling(windowBars, currentProfitPct, scaleCounts);
+                        if (matchedScale != null)
+                        {
+                            var scaleQty = Math.Max(1, (int)(pos.Quantity * matchedScale.Percent / 100m));
+                            if (matchedScale.Direction == "SCALE_IN")
+                            {
+                                var scaleCapRatio = maxTotalPositions > 0 ? 1m / maxTotalPositions : 0.10m;
+                                if (positionRuntime?.Portfolio.MaxSinglePositionPercent > 0)
+                                    scaleCapRatio = Math.Min(scaleCapRatio,
+                                        positionRuntime.Portfolio.MaxSinglePositionPercent / 100m);
+                                var remainingCapital = Math.Max(0m,
+                                    currentEquity * scaleCapRatio - pos.TotalCost);
+                                var affordableScaleQty = sd.Bars[barIdx].Close > 0
+                                    ? (int)(remainingCapital / sd.Bars[barIdx].Close)
+                                    : 0;
+                                scaleQty = Math.Min(scaleQty, affordableScaleQty);
+                                if (scaleQty <= 0) continue;
+                                var currentQty = pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity;
+                                var newQty = currentQty + scaleQty;
+                                var newTotalCost = pos.TotalCost + sd.Bars[barIdx].Close * scaleQty;
+                                pos.CurrentQuantity = newQty;
+                                pos.TotalCost = newTotalCost;
+                                pos.EntryPrice = newTotalCost / newQty;
+                            }
+                            else
+                            {
+                                var currentQty = pos.CurrentQuantity > 0 ? pos.CurrentQuantity : pos.Quantity;
+                                var sellQty = Math.Min(scaleQty, currentQty - 1);
+                                if (sellQty > 0)
+                                {
+                                    tradesBefore = trades.Count;
+                                    trades.Add(TradeSimulator.CreateTradeRecord(
+                                        symbol, pos, sd.Bars[barIdx].Close,
+                                        sd.Bars[barIdx].Timestamp, $"분할 매도({matchedScale.Percent}%)", sellQty));
+                                    pos.CurrentQuantity = currentQty - sellQty;
+                                    pos.TotalCost = pos.EntryPrice * pos.CurrentQuantity;
+                                    ApplyNewTradeCosts(tradesBefore);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
+            // ── 전략별 피크 에퀴티 + 최대낙폭 거래 중단 체크 ──
             var dailyLossLimitReached =
                 dailyLossLimitPercent > 0 &&
                 dailyStartEquity > 0 &&
@@ -510,7 +591,7 @@ public class BacktestService : IBacktestService
                         : 0;
                     if (pendingMaxQty > 0) pendingQty = Math.Min(pendingQty, pendingMaxQty);
 
-                    openPositions[pendingSymbol] = new TradeSimulator.OpenPosition
+                    var pendingPosition = new TradeSimulator.OpenPosition
                     {
                         PatternType           = PatternType.Custom,
                         CustomPatternName     = pending.customPatternName,
@@ -525,12 +606,33 @@ public class BacktestService : IBacktestService
                         EntryBarIndex         = pendingBarIdx,
                         EntryAtr              = pending.entryAtr,
                         EntryVolume           = pending.entryVolume,
-                        HighestHighSinceEntry = pendingSd.Bars[pendingBarIdx].High,
-                        LowestLowSinceEntry   = pendingSd.Bars[pendingBarIdx].Low,
+                        HighestHighSinceEntry = nextOpen,
+                        LowestLowSinceEntry   = nextOpen,
                         RiskDistance          = newStopDistance,
                         EquityAtEntry         = pending.equityAtEntry,
                         CustomExitProfile     = pending.customExit
                     };
+
+                    // 다음 봉 시가에 진입했으므로 해당 진입 봉의 저가/고가도 실제 보유 구간이다.
+                    // 진입 봉을 건너뛰어 손절을 피하는 낙관적 편향을 방지한다.
+                    var pendingTradesBefore = trades.Count;
+                    var pendingExitResult = simulator.ProcessExitLogic(
+                        pendingPosition, pendingSd.Bars[pendingBarIdx], pendingBarIdx,
+                        pendingSd.Atr[pendingBarIdx], pendingSd.Sma200[pendingBarIdx],
+                        pendingSd.CumulativeRsi2[pendingBarIdx], pendingSd.CumulativeRsi2TrendMa[pendingBarIdx],
+                        cumulativeRsi2Config, pepCache, exitOverrides, pendingSymbol, trades);
+                    ApplyNewTradeCosts(pendingTradesBefore);
+                    if (pendingExitResult != null)
+                    {
+                        openPositions[pendingSymbol] = pendingExitResult;
+                    }
+                    else if (pendingRuntime != null && trades.Count > pendingTradesBefore)
+                    {
+                        RegisterCooldown($"{pending.customPatternName}|{pendingSymbol}", pendingBarIdx,
+                            trades[^1], pendingRuntime.Reentry, reentryCooldowns);
+                        UpdateCircuitBreaker(trades[^1], ref pendingRuntime.ConsecutiveLosses,
+                            ref pendingRuntime.CircuitBreakerUntilStep, timelineIndex, pendingRuntime.CircuitBreaker);
+                    }
 
                     pendingNextOpenSignals.Remove(pendingSymbol);
                     if (pendingRuntime != null)
@@ -542,9 +644,17 @@ public class BacktestService : IBacktestService
             }
 
             // ── 2b. 새 진입 ──
-            if (dailyLossLimitReached) continue;
+            if (dailyLossLimitReached)
+            {
+                RecordMarkedEquity(date);
+                continue;
+            }
 
-            if (openPositions.Count >= maxTotalPositions) continue;
+            if (openPositions.Count >= maxTotalPositions)
+            {
+                RecordMarkedEquity(date);
+                continue;
+            }
 
             foreach (var symbol in symbols)
             {
@@ -727,8 +837,8 @@ public class BacktestService : IBacktestService
                                 EntryBarIndex         = barIdx,
                                 EntryAtr              = entryAtr,
                                 EntryVolume           = sd.Bars[barIdx].Volume,
-                                HighestHighSinceEntry = sd.Bars[barIdx].High,
-                                LowestLowSinceEntry   = sd.Bars[barIdx].Low,
+                                HighestHighSinceEntry = signal.EntryPrice,
+                                LowestLowSinceEntry   = signal.EntryPrice,
                                 RiskDistance          = stopDistance,
                                 EquityAtEntry         = effectiveEquity,
                                 CustomExitProfile     = customExit
@@ -749,9 +859,12 @@ public class BacktestService : IBacktestService
                     }
                 }
             }
+
+            RecordMarkedEquity(date);
         }
 
         // ── 잔여 포지션 종가 청산 ──
+        var finalTradeStart = trades.Count;
         foreach (var (symbol, pos) in openPositions)
         {
             if (symbolDataMap.TryGetValue(symbol, out var sd) && sd.Bars.Length > 0)
@@ -762,83 +875,40 @@ public class BacktestService : IBacktestService
                     symbol, pos, lastBar.Close, lastBar.Timestamp, "기간 종료", exitQty));
             }
         }
+        ApplyNewTradeCosts(finalTradeStart);
+        if (trades.Count > 0)
+            RecordMarkedEquity(trades.Max(trade => trade.ExitTime));
 
         trades = trades.OrderBy(t => t.EntryTime).ToList();
+        var tradeCycles = PerformanceCalculator.AggregateTradeCycles(trades);
 
-        // ── Phase 3: Equity curve & drawdown (슬리피지 적용) ──
-        var equity = initialCapital;
-        var peakEquity = equity;
-        var maxDrawdown = 0m;
-        var totalSlippage = 0m;
-        var totalCommission = 0m;
-        var equityCurve = new List<EquityPoint> { new(from, initialCapital) };
+        // 비용은 거래가 끝나는 즉시 자본에 반영되고, 낙폭은 보유 포지션의 미실현 손익까지 포함한다.
+        var totalSlippage = executionCosts.Values.Sum(cost => cost.slippage);
+        var totalCommission = executionCosts.Values.Sum(cost => cost.commission);
 
-        foreach (var trade in trades)
-        {
-            decimal slippageCost;
-            if (slippageModel == SlippageModel.Adaptive && trade.EntryAtr > 0 && trade.EntryPrice > 0)
-            {
-                var atrPct = trade.EntryAtr / trade.EntryPrice;
-                var volatilityFactor = Math.Max(0.5m, Math.Min(3.0m, atrPct / 0.02m));
-
-                // [F-2] 시장 충격 모델 개선: sqrt(orderRatio) — Almgren-Chriss 계열 표준
-                var liquidityFactor = 1.0m;
-                if (trade.EntryVolume > 0)
-                {
-                    var orderRatio = (decimal)trade.Quantity / trade.EntryVolume;
-                    // sqrt 모델: 소규모 주문일수록 영향 감소 (선형보다 현실적)
-                    var sqrtImpact = (decimal)Math.Sqrt((double)Math.Max(0m, orderRatio));
-                    liquidityFactor = Math.Max(0.5m, Math.Min(3.0m, 1.0m + sqrtImpact * 2.0m));
-                }
-
-                var adaptiveSlippagePct = slippagePercent / 100m * volatilityFactor * liquidityFactor;
-                slippageCost = (trade.EntryPrice + trade.ExitPrice) * adaptiveSlippagePct * trade.Quantity;
-            }
-            else
-            {
-                slippageCost = (trade.EntryPrice + trade.ExitPrice) * (slippagePercent / 100m) * trade.Quantity;
-            }
-            var tradePnl = trade.PnL - slippageCost - commissionPerTrade;
-
-            trade.PnL = tradePnl;
-            trade.PnLPercent = trade.EntryPrice > 0
-                ? tradePnl / (trade.EntryPrice * trade.Quantity)
-                : 0;
-
-            totalSlippage += slippageCost;
-            totalCommission += commissionPerTrade;
-
-            equity += tradePnl;
-            if (equity > peakEquity) peakEquity = equity;
-            var drawdown = peakEquity > 0 ? (peakEquity - equity) / peakEquity : 0;
-            if (drawdown > maxDrawdown) maxDrawdown = drawdown;
-
-            equityCurve.Add(new EquityPoint(trade.ExitTime, equity));
-        }
-
-        var totalReturn = equity - initialCapital;
+        var totalReturn = currentEquity - initialCapital;
         var totalReturnPct = initialCapital > 0 ? totalReturn / initialCapital : 0;
-        var winCount = trades.Count(t => t.IsWin);
-        var overallWinRate = trades.Count > 0 ? (decimal)winCount / trades.Count : 0;
+        var winCount = tradeCycles.Count(t => t.IsWin);
+        var overallWinRate = tradeCycles.Count > 0 ? (decimal)winCount / tradeCycles.Count : 0;
 
         // ── [B-1] 고급 성과 지표 ──
-        var tradingDaysCount = trades.Count >= 2
-            ? Math.Max(1, (int)(trades.Max(t => t.ExitTime) - trades.Min(t => t.EntryTime)).TotalDays)
+        var calendarDaysCount = tradeCycles.Count > 0
+            ? Math.Max(1, (int)(tradeCycles.Max(t => t.ExitTime) - tradeCycles.Min(t => t.EntryTime)).TotalDays)
             : 1;
         var annualizedReturn = PerformanceCalculator.ComputeAnnualizedReturn(
-            totalReturnPct * 100, tradingDaysCount);
-        var sortinoRatio  = PerformanceCalculator.ComputeSortinoRatio(trades, timeFrame);
+            totalReturnPct * 100, calendarDaysCount);
+        var sortinoRatio  = PerformanceCalculator.ComputeSortinoRatio(tradeCycles, timeFrame);
         var calmarRatio   = PerformanceCalculator.ComputeCalmarRatio(annualizedReturn, maxDrawdown * 100);
-        var profitFactor  = PerformanceCalculator.ComputeProfitFactor(trades);
+        var profitFactor  = PerformanceCalculator.ComputeProfitFactor(tradeCycles);
 
         // ── [E-1] Kelly Criterion ──
-        var perPatternStats = PerformanceCalculator.ComputePerPatternStats(trades);
-        var perStrategyStats = PerformanceCalculator.ComputePerStrategyStats(trades);
+        var perPatternStats = PerformanceCalculator.ComputePerPatternStats(tradeCycles);
+        var perStrategyStats = PerformanceCalculator.ComputePerStrategyStats(tradeCycles);
         kellyFraction = 0; halfKellyFraction = 0;
-        if (trades.Count > 0)
+        if (tradeCycles.Count > 0)
         {
-            var allWins   = trades.Where(t => t.PnL > 0).ToList();
-            var allLosses = trades.Where(t => t.PnL < 0).ToList();
+            var allWins   = tradeCycles.Where(t => t.PnL > 0).ToList();
+            var allLosses = tradeCycles.Where(t => t.PnL < 0).ToList();
             var avgWinPct  = allWins.Count  > 0 ? allWins.Average(t  => t.PnLPercent * 100) : 0;
             var avgLossPct = allLosses.Count > 0 ? Math.Abs(allLosses.Average(t => t.PnLPercent * 100)) : 0;
             kellyFraction     = PerformanceCalculator.ComputeKellyFraction(overallWinRate, avgWinPct, avgLossPct);
@@ -846,14 +916,14 @@ public class BacktestService : IBacktestService
         }
 
         // ── [B-3] MAE/MFE 통계 ──
-        var (avgMae, avgMfe, medianMae, medianMfe) = PerformanceCalculator.ComputeMaeMfe(trades);
+        var (avgMae, avgMfe, medianMae, medianMfe) = PerformanceCalculator.ComputeMaeMfe(tradeCycles);
 
         // ── [F-1] 레짐별 성과 분해 ──
         // regimeByDate를 DateTime → bool 딕셔너리로 변환
         var spyAbove200Ma = regimeByDate.ToDictionary(
             kv => kv.Key.ToDateTime(TimeOnly.MinValue),
             kv => kv.Value.SpyAbove200Ma);
-        var perRegimeStats = PerformanceCalculator.ComputeRegimeStats(trades, spyAbove200Ma);
+        var perRegimeStats = PerformanceCalculator.ComputeRegimeStats(tradeCycles, spyAbove200Ma);
 
         // ── [A-2] 생존자 편향 경고 ──
         string? survivorshipWarning = null;
@@ -868,7 +938,7 @@ public class BacktestService : IBacktestService
         }
 
         // ── [G-1] 백테스트→라이브 권장 파라미터 (warnings에 정보성 메시지 추가) ──
-        if (kellyFraction > 0 && trades.Count >= 10)
+        if (kellyFraction > 0 && tradeCycles.Count >= 10)
         {
             var recommendedSize = Math.Round(halfKellyFraction * 100, 1);
             var winRatePct      = Math.Round(overallWinRate * 100, 1);
@@ -882,12 +952,12 @@ public class BacktestService : IBacktestService
             TotalReturn         = totalReturn,
             TotalReturnPercent  = totalReturnPct,
             MaxDrawdown         = maxDrawdown,
-            SharpeRatio         = PerformanceCalculator.ComputeSharpeRatio(trades, timeFrame),
-            TotalTrades         = trades.Count,
+            SharpeRatio         = PerformanceCalculator.ComputeSharpeRatio(tradeCycles, timeFrame),
+            TotalTrades         = tradeCycles.Count,
             OverallWinRate      = overallWinRate,
             PerPatternStats     = perPatternStats,
             PerStrategyStats    = perStrategyStats,
-            PerSymbolStats      = PerformanceCalculator.ComputePerSymbolStats(trades, initialCapital),
+            PerSymbolStats      = PerformanceCalculator.ComputePerSymbolStats(tradeCycles, initialCapital),
             EquityCurve         = equityCurve,
             TotalSlippageCost   = totalSlippage,
             TotalCommissionCost = totalCommission,
@@ -1010,6 +1080,7 @@ public class BacktestService : IBacktestService
             TimeFrame.OneMinute     => 2,
             TimeFrame.FiveMinute    => 10,
             TimeFrame.FifteenMinute => 15,
+            TimeFrame.Weekly        => 365 * 5,
             _                       => 400
         };
         var fetchFrom = DateOnly.FromDateTime(from.AddDays(-warmupDays));
@@ -1105,6 +1176,7 @@ public class BacktestService : IBacktestService
             TimeFrame.OneMinute     => 2,
             TimeFrame.FiveMinute    => 10,
             TimeFrame.FifteenMinute => 15,
+            TimeFrame.Weekly        => 365 * 5,
             _                       => 400
         };
         var wfFullDataMap = new Dictionary<string, SymbolPreparedData>();
@@ -1406,6 +1478,7 @@ public class BacktestService : IBacktestService
         public required PortfolioRulesConfig Portfolio { get; init; }
         public int ConsecutiveLosses;
         public int CircuitBreakerUntilStep;
+        public decimal RealizedEquity;
         public decimal PeakEquity;
         public bool CircuitBreakerTripped;
         public int DailyEntryCount;
@@ -1551,6 +1624,7 @@ public class BacktestService : IBacktestService
                 Models.Enums.TimeFrame.OneMinute     => 2,
                 Models.Enums.TimeFrame.FiveMinute    => 10,
                 Models.Enums.TimeFrame.FifteenMinute => 15,
+                Models.Enums.TimeFrame.Weekly        => 365 * 5,
                 _                                    => 400
             };
             var tfDataMap = new Dictionary<string, SymbolPreparedData>();

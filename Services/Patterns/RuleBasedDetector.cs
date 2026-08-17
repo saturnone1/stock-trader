@@ -1,5 +1,6 @@
 using System.Text.Json;
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 using StockTrader.Services.Indicators;
 
 namespace StockTrader.Services.Patterns;
@@ -111,13 +112,11 @@ public class RuleBasedDetector : IPatternDetector
                 var (passed, desc2) = EvaluateRule(rule, ctx);
                 results.Add((passed, desc2, rule.Weight));
                 if (isAnd && !passed) return Task.FromResult<PatternSignal?>(null);
-                if (!isAnd && passed) break;
             }
 
             entryPassed = isAnd ? results.All(r => r.passed) : results.Any(r => r.passed);
             matchedWeight = results.Where(r => r.passed).Sum(r => r.weight);
-            // OR 모드: 평가된 규칙만 분모, AND 모드: 전체 규칙
-            totalWeight = isAnd ? _rules.Sum(r => r.Weight) : results.Sum(r => r.weight);
+            totalWeight = _rules.Sum(r => r.Weight);
             details = string.Join(", ", results.Where(r => r.passed).Select(r => r.desc));
         }
 
@@ -275,8 +274,6 @@ public class RuleBasedDetector : IPatternDetector
             {
                 var (p, d) = EvaluateRule(rule, ctx);
                 ruleResults.Add((p, d, rule.Weight));
-                if (isInnerAnd && !p) break;
-                if (!isInnerAnd && p) break;
             }
 
             var groupPassed = isInnerAnd
@@ -293,8 +290,6 @@ public class RuleBasedDetector : IPatternDetector
                 allDescs.Add(label + string.Join(", ", ruleResults.Where(r => r.passed).Select(r => r.desc)));
             }
 
-            if (isGroupsAnd && !groupPassed) return (false, matchedWeightSum, totalWeightSum, "");
-            if (!isGroupsAnd && groupPassed) break;
         }
 
         var passed = isGroupsAnd
@@ -655,13 +650,13 @@ public class RuleBasedDetector : IPatternDetector
             {
                 // N봉 고점에서 현재가까지 내려온 거리 (%). 0에 가까울수록 고점 부근
                 var lookback = GetInt("period", 52);
-                var start = Math.Max(0, ci - lookback);
+                var start = Math.Max(0, ci - lookback + 1);
                 decimal high = 0;
                 for (int i = start; i <= ci; i++) if (bars[i].High > high) high = bars[i].High;
                 if (high == 0) return (0, 0);
                 var curr = (high - closes[ci]) / high * 100;
                 decimal prevHigh = 0;
-                var pStart = Math.Max(0, pi - lookback);
+                var pStart = Math.Max(0, pi - lookback + 1);
                 for (int i = pStart; i <= pi; i++) if (bars[i].High > prevHigh) prevHigh = bars[i].High;
                 var prev = prevHigh == 0 ? 0 : (prevHigh - closes[pi]) / prevHigh * 100;
                 return (curr, prev);
@@ -671,13 +666,13 @@ public class RuleBasedDetector : IPatternDetector
             {
                 // N일 저점 대비 현재가 거리 (%). 양수 = 저점 대비 상승
                 var lookback = GetInt("period", 52);
-                var start = Math.Max(0, ci - lookback);
+                var start = Math.Max(0, ci - lookback + 1);
                 decimal low = decimal.MaxValue;
                 for (int i = start; i <= ci; i++) if (bars[i].Low < low) low = bars[i].Low;
                 if (low == decimal.MaxValue || low == 0) return (0, 0);
                 var curr = (closes[ci] - low) / low * 100;
                 decimal prevLow = decimal.MaxValue;
-                var pStart = Math.Max(0, pi - lookback);
+                var pStart = Math.Max(0, pi - lookback + 1);
                 for (int i = pStart; i <= pi; i++) if (bars[i].Low < prevLow) prevLow = bars[i].Low;
                 var prev = (prevLow == decimal.MaxValue || prevLow == 0) ? 0
                     : (closes[pi] - prevLow) / prevLow * 100;
@@ -865,10 +860,11 @@ public class RuleBasedDetector : IPatternDetector
 
             case "VOLATILITY_20D":
             {
-                // 20일 역사적 변동성 (연율화 표준편차)
+                // 현재 시간축의 N봉 역사적 변동성 (해당 시간축 기준 연율화 표준편차)
                 var period = GetInt("period", 20);
                 if (ci < period) return (0, 0);
-                return (CalcVol(closes, ci, period), CalcVol(closes, pi, period));
+                return (CalcVol(closes, ci, period, bars[ci].TimeFrame),
+                        CalcVol(closes, pi, period, bars[pi].TimeFrame));
             }
 
             // ═══════════════════════════════════════════════════════════
@@ -993,7 +989,7 @@ public class RuleBasedDetector : IPatternDetector
 
     // ── 헬퍼 메서드 ──
 
-    private static decimal CalcVol(decimal[] closes, int endIdx, int period)
+    private static decimal CalcVol(decimal[] closes, int endIdx, int period, TimeFrame timeFrame)
     {
         if (endIdx < period) return 0;
         var returns = new decimal[period];
@@ -1005,7 +1001,15 @@ public class RuleBasedDetector : IPatternDetector
         }
         var mean = returns.Average();
         var variance = returns.Average(r => (r - mean) * (r - mean));
-        return (decimal)Math.Sqrt((double)variance) * (decimal)Math.Sqrt(252) * 100m;
+        var periodsPerYear = timeFrame switch
+        {
+            TimeFrame.OneMinute => 252 * 390,
+            TimeFrame.FiveMinute => 252 * 78,
+            TimeFrame.FifteenMinute => 252 * 26,
+            TimeFrame.Weekly => 52,
+            _ => 252
+        };
+        return (decimal)Math.Sqrt((double)variance) * (decimal)Math.Sqrt(periodsPerYear) * 100m;
     }
 
     private static decimal[] ComputeAdx(OhlcvBar[] bars, int period)

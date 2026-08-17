@@ -1,5 +1,6 @@
 using System.Text.Json;
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 
 namespace StockTrader.Services.Patterns;
 
@@ -39,6 +40,7 @@ public static class CustomPatternValidator
         if (pattern.PartialProfitR < 0) errors.Add("부분 익절 R은 0 이상이어야 합니다.");
         if (pattern.DefaultAllocationPercent is < 0 or > 100) errors.Add("기본 매수 비중은 0~100%여야 합니다.");
         if (!EntryModes.Contains(pattern.EntryMode)) errors.Add("매수 체결 시점이 올바르지 않습니다.");
+        if (!Enum.IsDefined(pattern.TimeFrame)) errors.Add("전략 기준 봉이 올바르지 않습니다.");
         if (!SizingModes.Contains(pattern.SizingMode)) errors.Add("주문 금액 계산법이 올바르지 않습니다.");
         ValidateLogic(pattern.EntryGroupsLogic, "매수 상황 결합", errors);
         ValidateLogic(pattern.ExitGroupsLogic, "매도 상황 결합", errors);
@@ -97,6 +99,18 @@ public static class CustomPatternValidator
         if (!TargetTypes.Contains(dynamicExit.TargetType)) errors.Add("목표가 계산 방식이 올바르지 않습니다.");
         ValidatePositiveParams(dynamicExit.StopParams, "손절가", errors);
         ValidatePositiveParams(dynamicExit.TargetParams, "목표가", errors);
+
+        // 현재 실시간 주문 엔진은 '완료된 일봉 신호 → 다음 거래일 시장가 진입'만
+        // 백테스트와 동일하게 보장한다. 지원하지 않는 설정을 묵시하고 주문하지 않도록 저장 단계에서 차단한다.
+        if (pattern.EnableLiveTrading)
+        {
+            if (pattern.TimeFrame != TimeFrame.Daily)
+                errors.Add("실시간 주문은 현재 일봉 전략만 안전하게 지원합니다.");
+            if (!pattern.EntryMode.Equals("NextOpen", StringComparison.OrdinalIgnoreCase))
+                errors.Add("실시간 주문은 완료된 일봉 신호를 사용하도록 '다음 봉 시가'만 지원합니다.");
+            if (pattern.PartialProfitR > 0 || scaling.Count > 0)
+                errors.Add("부분 익절·추가 매수·분할 매도가 있는 전략은 실시간 주문을 아직 켤 수 없습니다.");
+        }
 
         return errors.Distinct().ToArray();
     }

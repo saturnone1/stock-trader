@@ -1,6 +1,7 @@
 using FluentAssertions;
 using StockTrader.Services.Backtest;
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 
 namespace StockTrader.Tests;
 
@@ -42,5 +43,46 @@ public class PerformanceCalculatorTests
         result.Keys.Should().BeEquivalentTo("반등", "돌파");
         result["반등"].WinRate.Should().Be(1m);
         result["돌파"].WinRate.Should().Be(0m);
+    }
+
+    [Fact]
+    public void ComputeAnnualizedReturn_UsesCalendarDays()
+    {
+        var result = PerformanceCalculator.ComputeAnnualizedReturn(10m, 365);
+
+        result.Should().BeApproximately(10m, 0.02m);
+    }
+
+    [Fact]
+    public void AggregateTradeCycles_TreatsPartialExitsAsOneTrade()
+    {
+        var entryTime = new DateTime(2024, 1, 2);
+        var executions = new List<TradeRecord>
+        {
+            new() { Symbol = "TQQQ", PatternType = PatternType.Custom, CustomPatternName = "분할", EntryTime = entryTime, ExitTime = entryTime.AddDays(1), EntryPrice = 100m, ExitPrice = 110m, Quantity = 5, PnL = 50m, PnLPercent = 0.10m },
+            new() { Symbol = "TQQQ", PatternType = PatternType.Custom, CustomPatternName = "분할", EntryTime = entryTime, ExitTime = entryTime.AddDays(2), EntryPrice = 100m, ExitPrice = 95m, Quantity = 5, PnL = -25m, PnLPercent = -0.05m }
+        };
+
+        var cycles = PerformanceCalculator.AggregateTradeCycles(executions);
+
+        cycles.Should().ContainSingle();
+        cycles[0].PnL.Should().Be(25m);
+        cycles[0].PnLPercent.Should().Be(0.025m);
+        cycles[0].IsWin.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ComputeSortinoRatio_UsesObservedTradeFrequency()
+    {
+        var trades = Enumerable.Range(0, 12).Select(index => new TradeRecord
+        {
+            EntryTime = new DateTime(2024, 1, 1).AddMonths(index),
+            ExitTime = new DateTime(2024, 1, 2).AddMonths(index),
+            PnLPercent = index % 3 == 0 ? -0.02m : 0.01m
+        }).ToList();
+
+        var result = PerformanceCalculator.ComputeSortinoRatio(trades, TimeFrame.Weekly);
+
+        result.Should().BeInRange(0m, 2m);
     }
 }

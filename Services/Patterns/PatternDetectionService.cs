@@ -110,6 +110,8 @@ public class PatternDetectionService
             try
             {
                 if (CustomPatternValidator.Validate(definition).Count > 0) continue;
+                if (bars.Length == 0 || definition.TimeFrame != bars[^1].TimeFrame)
+                    continue;
                 var detector = new RuleBasedDetector(_indicators, definition);
                 var referenceData = await LoadReferenceDataAsync(definition, symbol, bars, ct);
                 detector.SetReferenceData(referenceData, bars[^1].Timestamp);

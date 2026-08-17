@@ -383,6 +383,7 @@ using (var scope = app.Services.CreateScope())
                     MaxHoldingBars INTEGER NOT NULL DEFAULT 10,
                     TrailingAtr REAL NOT NULL DEFAULT 0,
                     PartialProfitR REAL NOT NULL DEFAULT 0,
+                    TimeFrame INTEGER NOT NULL DEFAULT 3,
                     IsActive INTEGER NOT NULL DEFAULT 1,
                     CreatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
                     UpdatedAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'
@@ -433,6 +434,12 @@ using (var scope = app.Services.CreateScope())
         if (!existingCols.Contains("EnableLiveTrading"))
         {
             cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN EnableLiveTrading INTEGER NOT NULL DEFAULT 0";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (!existingCols.Contains("TimeFrame"))
+        {
+            // TimeFrame.Daily = 3. 기존 전략은 기존 실행 방식과 같은 일봉으로 이관한다.
+            cmd.CommandText = "ALTER TABLE CustomPatterns ADD COLUMN TimeFrame INTEGER NOT NULL DEFAULT 3";
             await cmd.ExecuteNonQueryAsync();
         }
 

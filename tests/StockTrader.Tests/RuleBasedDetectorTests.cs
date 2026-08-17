@@ -172,6 +172,34 @@ public class RuleBasedDetectorTests
         result.Should().NotBeNull();
     }
 
+    [Fact]
+    public async Task DetectAsync_OrConfidenceDoesNotDependOnRuleOrder()
+    {
+        var passing = new EntryRule { Indicator = "PRICE_CHANGE", Operator = ">", Value = -1m, Weight = 1m, Params = new() { ["bars"] = 1 } };
+        var failing = new EntryRule { Indicator = "PRICE_CHANGE", Operator = ">", Value = 50m, Weight = 3m, Params = new() { ["bars"] = 1 } };
+        var bars = CreateBars(Enumerable.Repeat(100m, 60).ToArray());
+
+        async Task<PatternSignal?> Detect(params EntryRule[] rules)
+        {
+            var definition = new CustomPatternDefinition
+            {
+                Name = "or-order",
+                EntryRulesJson = JsonSerializer.Serialize(rules),
+                EntryLogic = "OR"
+            };
+            return await new RuleBasedDetector(new IndicatorService(), definition)
+                .DetectAsync("AAPL", bars, BullRegime);
+        }
+
+        var first = await Detect(passing, failing);
+        var second = await Detect(failing, passing);
+
+        first.Should().NotBeNull();
+        second.Should().NotBeNull();
+        first!.Confidence.Should().Be(0.25m);
+        second!.Confidence.Should().Be(first.Confidence);
+    }
+
     private static RuleBasedDetector CreateSut(EntryRule rule)
     {
         var definition = new CustomPatternDefinition

@@ -63,6 +63,13 @@
 
   const operatorOptions = ['>', '<', '>=', '<=', 'crosses_above', 'crosses_below']
   const entryModeOptions = ['CurrentClose', 'NextOpen']
+  const timeFrameOptions = [
+    { value: 'OneMinute', label: '1분봉' },
+    { value: 'FiveMinute', label: '5분봉' },
+    { value: 'FifteenMinute', label: '15분봉' },
+    { value: 'Daily', label: '일봉' },
+    { value: 'Weekly', label: '주봉' }
+  ]
   const sizingModeOptions = ['FixedRisk', 'Kelly', 'HalfKelly']
   const logicOptions = ['AND', 'OR']
   const scalingDirectionOptions = ['SCALE_IN', 'SCALE_OUT']
@@ -372,6 +379,7 @@
       enableLiveTrading: raw.enableLiveTrading ?? false,
       requireBullRegime: !!raw.requireBullRegime,
       entryMode: raw.entryMode ?? 'CurrentClose',
+      timeFrame: raw.timeFrame ?? 'Daily',
       sizingMode: raw.sizingMode ?? 'FixedRisk',
       entryGroupsLogic: raw.entryGroupsLogic ?? raw.entryLogic ?? 'AND',
       exitGroupsLogic: raw.exitGroupsLogic ?? raw.exitRulesLogic ?? 'OR',
@@ -580,6 +588,7 @@
       enableLiveTrading: currentWorkspace.enableLiveTrading,
       requireBullRegime: currentWorkspace.requireBullRegime,
       entryMode: currentWorkspace.entryMode,
+      timeFrame: currentWorkspace.timeFrame,
       sizingMode: currentWorkspace.sizingMode,
       entryLogic: currentWorkspace.entryGroupsLogic,
       entryGroupsLogic: currentWorkspace.entryGroupsLogic,
@@ -675,6 +684,9 @@
 
     if (currentWorkspace.circuitBreaker.consecutiveLossLimit < 0 || currentWorkspace.circuitBreaker.cooldownBars < 0) issues.push('손실 횟수와 거래 중단 봉 수는 0 이상이어야 합니다.')
     if (currentWorkspace.circuitBreaker.maxDrawdownPercent < 0 || currentWorkspace.circuitBreaker.maxDrawdownPercent > 100) issues.push('최대 낙폭은 0~100%여야 합니다.')
+    if (currentWorkspace.enableLiveTrading && currentWorkspace.timeFrame !== 'Daily') issues.push('실시간 주문은 현재 일봉 전략만 지원합니다.')
+    if (currentWorkspace.enableLiveTrading && currentWorkspace.entryMode !== 'NextOpen') issues.push('실시간 주문은 완료된 일봉을 사용하는 ‘다음 봉 시가’만 지원합니다.')
+    if (currentWorkspace.enableLiveTrading && (currentWorkspace.partialProfitR > 0 || currentWorkspace.scalingRules.length > 0)) issues.push('부분 익절·추가 매수·분할 매도 전략은 실시간 주문을 아직 켤 수 없습니다.')
     if (currentWorkspace.reentry.cooldownBarsAfterLoss < 0 || currentWorkspace.reentry.cooldownBarsAfterWin < 0) issues.push('재매수 대기 봉 수는 0 이상이어야 합니다.')
     if (currentWorkspace.portfolioRules.maxTotalPositions < 0 || currentWorkspace.portfolioRules.maxEntriesPerDay < 0) issues.push('보유 종목 수와 하루 매수 횟수는 0 이상이어야 합니다.')
     if (currentWorkspace.portfolioRules.maxSinglePositionPercent < 0 || currentWorkspace.portfolioRules.maxSinglePositionPercent > 100) issues.push('한 종목 최대 비중은 0~100%여야 합니다.')
@@ -743,6 +755,8 @@
       error = validationIssues.join('\n')
       return
     }
+    if (workspace.enableLiveTrading && !workspace.raw?.enableLiveTrading
+      && !confirm('이 전략을 실시간 감시와 자동 주문에 연결합니다. 저장 후 실제 주문이 발생할 수 있습니다. 계속할까요?')) return
 
     saving = true
     try {
@@ -804,11 +818,8 @@
     if (index < 0) {
       workspace.exitGroups.push(blankExitGroup('매도 상황 1'))
       index = 0
-    } else {
-      workspace.exitGroups[index].rules.push(blankRule(template))
     }
-    if (workspace.enableLiveTrading && !workspace.raw?.enableLiveTrading
-      && !confirm('이 전략을 실시간 감시와 자동 주문에 연결합니다. 저장 후 실제 주문이 발생할 수 있습니다. 계속할까요?')) return
+    workspace.exitGroups[index].rules.push(blankRule(template))
     selectedNode = { type: 'exitRule', groupIndex: index, ruleIndex: workspace.exitGroups[index].rules.length - 1 }
     touch()
   }
@@ -1155,7 +1166,7 @@
           </div>
         {/if}
 
-        <PatternPreview pattern={previewPattern} selectedRuleSummary={previewSelectedSummary} />
+        <PatternPreview pattern={previewPattern} selectedRuleSummary={previewSelectedSummary} bind:timeFrame={workspace.timeFrame} on:timeframechange={touch} />
 
         <div class="mb-6 rounded-xl border border-gray-800 bg-gray-950 p-5">
           <button on:click={() => selectNode({ type: 'general' })} class={`w-full text-left ${selectedNode.type === 'general' ? 'text-blue-300' : 'text-white'}`}>
@@ -1168,6 +1179,7 @@
             <div class="mt-1 text-xl font-semibold">{workspace.name}</div>
             <div class="mt-2 flex flex-wrap gap-2 text-xs">
               <span class="rounded bg-gray-800 px-2 py-1">매수 시점: {displayEntryMode(workspace.entryMode)}</span>
+              <span class="rounded bg-gray-800 px-2 py-1">기준 봉: {timeFrameOptions.find((item) => item.value === workspace.timeFrame)?.label ?? workspace.timeFrame}</span>
               <span class="rounded bg-gray-800 px-2 py-1">주문 금액: {displaySizingMode(workspace.sizingMode)}</span>
               <span class="rounded bg-gray-800 px-2 py-1">{workspace.isActive ? '연구 사용 중' : '연구 제외'}</span>
               <span class={`rounded px-2 py-1 ${workspace.enableLiveTrading ? 'bg-amber-900/50 text-amber-200' : 'bg-gray-800'}`}>{workspace.enableLiveTrading ? '실시간 주문 연결' : '실시간 주문 꺼짐'}</span>
@@ -1405,6 +1417,13 @@
 
         <div class="grid grid-cols-2 gap-3">
           <label class="rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
+            <div class="mb-2 text-gray-500">전략 기준 봉</div>
+            <select bind:value={workspace.timeFrame} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
+              {#each timeFrameOptions as option}<option value={option.value}>{option.label}</option>{/each}
+            </select>
+            <div class="mt-2 text-xs text-gray-500">미리보기와 백테스트에 같은 봉을 사용합니다.</div>
+          </label>
+          <label class="rounded border border-gray-800 bg-gray-900 p-3 text-sm text-gray-300">
             <div title={tooltipFor('entryMode')} class="mb-2 cursor-help text-gray-500">언제 주문할까요?</div>
             <select bind:value={workspace.entryMode} on:change={touch} class="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-white">
               {#each entryModeOptions as option}<option value={option}>{displayEntryMode(option)}</option>{/each}
@@ -1474,7 +1493,7 @@
             <input type="checkbox" bind:checked={workspace.enableLiveTrading} on:change={touch} />
             실시간 감시와 자동 주문에 연결
           </span>
-          <span class="mt-2 block text-xs leading-5 text-amber-300/80">현재 실시간 실행은 관심종목을 일봉으로 판단합니다. 켜면 실제 주문 설정에 따라 주문이 발생할 수 있습니다. 추가 매수·부분 매도 표식은 미리보기와 백테스트에 적용되며, 실시간 브로커는 전량 청산만 지원합니다.</span>
+          <span class="mt-2 block text-xs leading-5 text-amber-300/80">현재 실시간 실행은 ‘일봉 + 다음 봉 시가 + 전량 청산’ 전략만 지원합니다. 추가 매수·부분 익절·분할 매도 전략은 미리보기와 백테스트에서 검증할 수 있지만 실시간 주문은 켤 수 없습니다.</span>
         </label>
       </div>
     {:else if selectedNode.type === 'group'}

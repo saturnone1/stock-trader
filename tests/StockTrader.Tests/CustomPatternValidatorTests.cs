@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using StockTrader.Models;
 using StockTrader.Services.Patterns;
+using StockTrader.Models.Enums;
 
 namespace StockTrader.Tests;
 
@@ -70,6 +71,22 @@ public class CustomPatternValidatorTests
         });
 
         CustomPatternValidator.Validate(pattern).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Validate_RejectsLiveSettingsThatCannotMatchBacktestExecution()
+    {
+        var pattern = ValidPattern();
+        pattern.EnableLiveTrading = true;
+        pattern.TimeFrame = TimeFrame.FiveMinute;
+        pattern.EntryMode = "CurrentClose";
+        pattern.PartialProfitR = 1.5m;
+
+        var errors = CustomPatternValidator.Validate(pattern);
+
+        errors.Should().Contain(error => error.Contains("일봉"));
+        errors.Should().Contain(error => error.Contains("다음 봉 시가"));
+        errors.Should().Contain(error => error.Contains("부분 익절"));
     }
 
     private static CustomPatternDefinition ValidPattern() => new()
