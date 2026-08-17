@@ -445,6 +445,34 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void ApiHostingUsesOneCanonicalContainerListener()
+    {
+        var repository = FindRepositoryRoot();
+        var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
+        var apiDockerfile = File.ReadAllText(Path.Combine(repository, "Dockerfile.api"));
+        var fullDockerfile = File.ReadAllText(Path.Combine(repository, "Dockerfile"));
+        var deployment = File.ReadAllText(Path.Combine(repository, "k8s/deployment-api.yaml"));
+        var productionCompose = File.ReadAllText(Path.Combine(repository, "docker-compose.prod.yml"));
+        var desktopCompose = File.ReadAllText(Path.Combine(repository, "docker-compose.desktop.yml"));
+
+        settings.Should().NotContain("\"Kestrel\"");
+        apiDockerfile.Should().Contain("ASPNETCORE_HTTP_PORTS=5239");
+        apiDockerfile.Should().Contain("EXPOSE 5239");
+        apiDockerfile.Should().NotContain("ASPNETCORE_URLS");
+        fullDockerfile.Should().Contain("ASPNETCORE_HTTP_PORTS=\"5239\"");
+        fullDockerfile.Should().NotContain("ASPNETCORE_URLS");
+        deployment.Should().NotContain("ASPNETCORE_URLS");
+        deployment.Should().Contain("containerPort: 5239");
+        deployment.Should().Contain("targetPort: 5239");
+        productionCompose.Should().Contain("\"3000:5239\"");
+        productionCompose.Should().Contain("http://api:5239");
+        productionCompose.Should().NotContain("ASPNETCORE_URLS");
+        desktopCompose.Should().Contain("\"3000:5239\"");
+        desktopCompose.Should().Contain("http://api:5239");
+        desktopCompose.Should().NotContain("ASPNETCORE_URLS");
+    }
+
+    [Fact]
     public void BacktestServiceDelegatesOptimizationShapeAndVariantLogic()
     {
         var repository = FindRepositoryRoot();

@@ -14,9 +14,9 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-ENV ASPNETCORE_URLS=http://+:3000
+ENV ASPNETCORE_HTTP_PORTS=5239
 ENV ASPNETCORE_ENVIRONMENT=Production
 
-EXPOSE 3000
+EXPOSE 5239
 
 ENTRYPOINT ["dotnet", "StockTrader.dll"]

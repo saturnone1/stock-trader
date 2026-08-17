@@ -120,6 +120,9 @@
   `--verify-ef-baseline` mode supports production preflight; tests cover empty creation, row-preserving
   baseline adoption, idempotency, and fail-closed handling of incomplete legacy schemas.
   `/api/health` reports the applied/latest EF migration, pending count, and synchronization state.
+- API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
+  and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
+  to the same container port, eliminating the former 8080/3000/5239 override chain.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

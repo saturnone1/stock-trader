@@ -66,10 +66,9 @@ COPY --from=frontend --chown=stocktrader:stocktrader /app/ClientApp/dist ./Clien
 USER stocktrader
 
 # ── Runtime configuration ────────────────────────────────────────────────────
-# ASPNETCORE_URLS   : bind to all interfaces on port 5239 (plain HTTP).
-#                     HTTPS is disabled in production per Program.cs logic.
+# ASPNETCORE_HTTP_PORTS : bind to the canonical container port 5239.
 # ASPNETCORE_ENVIRONMENT : default to Production; override with -e flag.
-ENV ASPNETCORE_URLS="http://+:5239" \
+ENV ASPNETCORE_HTTP_PORTS="5239" \
     ASPNETCORE_ENVIRONMENT="Production" \
     DOTNET_RUNNING_IN_CONTAINER="true" \
     TZ="America/New_York"

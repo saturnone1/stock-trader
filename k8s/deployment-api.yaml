@@ -22,8 +22,6 @@ spec:
         env:
         - name: ASPNETCORE_ENVIRONMENT
           value: "Production"
-        - name: ASPNETCORE_URLS
-          value: "http://+:3000"
         - name: ConnectionStrings__DefaultConnection
           value: "Data Source=/data/stocktrader.db"
         resources:
