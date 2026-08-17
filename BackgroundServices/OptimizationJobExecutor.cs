@@ -1,6 +1,7 @@
 using System.Text.Json;
 using StockTrader.Api;
 using StockTrader.Configuration;
+using StockTrader.Application.Backtesting;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -101,13 +102,7 @@ public class OptimizationJobExecutor
 
         foreach (var tf in timeFramesToLoad)
         {
-            var warmupDays = tf switch
-            {
-                TimeFrame.OneMinute     => 2,
-                TimeFrame.FiveMinute    => 10,
-                TimeFrame.FifteenMinute => 15,
-                _                       => 400
-            };
+            var warmupDays = BacktestTimeFramePolicy.Get(tf).WarmupCalendarDays;
 
             var tfDataMap = new Dictionary<string, BacktestService.SymbolPreparedData>();
 

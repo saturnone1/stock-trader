@@ -1,6 +1,7 @@
 using System.Text.Json;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Domain.MarketData;
 using StockTrader.Services.Indicators;
 
 namespace StockTrader.Services.Patterns;
@@ -1001,15 +1002,8 @@ public class RuleBasedDetector : IPatternDetector
         }
         var mean = returns.Average();
         var variance = returns.Average(r => (r - mean) * (r - mean));
-        var periodsPerYear = timeFrame switch
-        {
-            TimeFrame.OneMinute => 252 * 390,
-            TimeFrame.FiveMinute => 252 * 78,
-            TimeFrame.FifteenMinute => 252 * 26,
-            TimeFrame.Weekly => 52,
-            _ => 252
-        };
-        return (decimal)Math.Sqrt((double)variance) * (decimal)Math.Sqrt(periodsPerYear) * 100m;
+        var periodsPerYear = TimeFrameCatalog.AnnualizationPeriods(timeFrame);
+        return (decimal)Math.Sqrt((double)variance) * (decimal)Math.Sqrt((double)periodsPerYear) * 100m;
     }
 
     private static decimal[] ComputeAdx(OhlcvBar[] bars, int period)

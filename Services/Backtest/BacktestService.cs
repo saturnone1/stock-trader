@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Backtesting;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -146,14 +148,7 @@ public class BacktestService : IBacktestService
 
         // ── Phase 1: 모든 심볼 데이터 사전 로드 & 지표 계산 ──
         var symbolDataMap = new Dictionary<string, SymbolPreparedData>();
-        var warmupDays = timeFrame switch
-        {
-            TimeFrame.OneMinute     => 2,
-            TimeFrame.FiveMinute    => 10,
-            TimeFrame.FifteenMinute => 15,
-            TimeFrame.Weekly        => 365 * 5,
-            _                       => 400
-        };
+        var warmupDays = BacktestTimeFramePolicy.Get(timeFrame).WarmupCalendarDays;
 
         var symbolsToLoad = symbols
             .Concat(CollectReferenceSymbols(detectors))
@@ -170,7 +165,7 @@ public class BacktestService : IBacktestService
 
                 if (bars.Count < TradeSimulator.MinWarmupBars)
                 {
-                    string warning = timeFrame is TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute
+                    string warning = TimeFrameCatalog.IsIntraday(timeFrame)
                         ? $"{symbol}: 분봉 데이터 부족 ({bars.Count}개). 시작일을 조정하세요."
                         : $"{symbol}: 데이터 부족 ({bars.Count}개, 최소 {TradeSimulator.MinWarmupBars}개 필요)";
                     warnings.Add(warning);
@@ -315,13 +310,7 @@ public class BacktestService : IBacktestService
         }
         // [A-1] NextOpen 진입 대기 시그널: (symbol → pending signal 정보)
         var pendingNextOpenSignals = new Dictionary<string, (decimal entryPrice, decimal stopLoss, decimal target, decimal stopDistance, decimal entryAtr, long entryVolume, decimal equityAtEntry, TradeSimulator.PatternExitProfile? customExit, decimal riskPerTradeSnap, decimal effectiveMaxPosSnap, string? customPatternName)>();
-        var maxWindow = timeFrame switch
-        {
-            TimeFrame.OneMinute     => 800,
-            TimeFrame.FiveMinute    => 800,
-            TimeFrame.FifteenMinute => 600,
-            _                       => 260
-        };
+        var maxWindow = BacktestTimeFramePolicy.Get(timeFrame).SimulationWindowBars;
 
         // ── 커스텀 패턴 고급 기능: 상태 추적 ──
         // 서킷브레이커, 재진입 쿨다운, 스케일링 등에 사용
@@ -1075,14 +1064,7 @@ public class BacktestService : IBacktestService
         var toDate = DateOnly.FromDateTime(to);
 
         // warmupDays만큼 앞의 데이터가 필요하므로 from 이전 데이터도 포함
-        var warmupDays = timeFrame switch
-        {
-            TimeFrame.OneMinute     => 2,
-            TimeFrame.FiveMinute    => 10,
-            TimeFrame.FifteenMinute => 15,
-            TimeFrame.Weekly        => 365 * 5,
-            _                       => 400
-        };
+        var warmupDays = BacktestTimeFramePolicy.Get(timeFrame).WarmupCalendarDays;
         var fetchFrom = DateOnly.FromDateTime(from.AddDays(-warmupDays));
 
         var sliceSymbols = symbols
@@ -1171,14 +1153,7 @@ public class BacktestService : IBacktestService
 
         // ── 전체 기간 데이터 1회 사전 로드 (윈도우마다 API 재호출 방지) ──
         // 일봉 기준 warmup 400일치를 포함하여 충분히 이전 데이터부터 로드
-        var warmupDays = request.TimeFrame switch
-        {
-            TimeFrame.OneMinute     => 2,
-            TimeFrame.FiveMinute    => 10,
-            TimeFrame.FifteenMinute => 15,
-            TimeFrame.Weekly        => 365 * 5,
-            _                       => 400
-        };
+        var warmupDays = BacktestTimeFramePolicy.Get(request.TimeFrame).WarmupCalendarDays;
         var wfFullDataMap = new Dictionary<string, SymbolPreparedData>();
         var walkForwardSymbols = request.Symbols
             .Concat(CollectReferenceSymbols(detectors))
@@ -1619,14 +1594,7 @@ public class BacktestService : IBacktestService
 
         foreach (var tf in timeFramesToLoad)
         {
-            var warmupDays = tf switch
-            {
-                Models.Enums.TimeFrame.OneMinute     => 2,
-                Models.Enums.TimeFrame.FiveMinute    => 10,
-                Models.Enums.TimeFrame.FifteenMinute => 15,
-                Models.Enums.TimeFrame.Weekly        => 365 * 5,
-                _                                    => 400
-            };
+            var warmupDays = BacktestTimeFramePolicy.Get(tf).WarmupCalendarDays;
             var tfDataMap = new Dictionary<string, SymbolPreparedData>();
             var optimizationSymbols = request.Symbols
                 .Concat(CollectReferenceSymbols([new RuleBasedDetector(_indicators, request.BasePattern)]))

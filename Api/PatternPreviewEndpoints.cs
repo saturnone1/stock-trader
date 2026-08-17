@@ -2,6 +2,8 @@ using System.Text.Json;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Application.StrategyPreview;
+using StockTrader.Domain.MarketData;
 using StockTrader.Services.DataFeed;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
@@ -529,17 +531,10 @@ public static class PatternPreviewEndpoints
         public Dictionary<int, int> ScaleCounts { get; } = new();
     }
 
-    private static DateTime DefaultFrom(TimeFrame timeFrame, DateTime to) => timeFrame switch
-    {
-        TimeFrame.OneMinute => to.AddDays(-1),
-        TimeFrame.FiveMinute => to.AddDays(-5),
-        TimeFrame.FifteenMinute => to.AddDays(-20),
-        TimeFrame.Weekly => to.AddYears(-5),
-        _ => to.AddYears(-1)
-    };
+    private static DateTime DefaultFrom(TimeFrame timeFrame, DateTime to) =>
+        PreviewTimeFramePolicy.Get(timeFrame).DefaultFrom(to);
 
-    private static bool IsIntraday(TimeFrame timeFrame) => timeFrame is
-        TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute;
+    private static bool IsIntraday(TimeFrame timeFrame) => TimeFrameCatalog.IsIntraday(timeFrame);
 
     private static string DisplayMarketTime(DateTime value)
     {
@@ -557,39 +552,17 @@ public static class PatternPreviewEndpoints
         return $"{TimeZoneInfo.ConvertTimeFromUtc(utc, marketTimeZone):yyyy-MM-dd HH:mm} ET";
     }
 
-    private static TimeSpan MaximumRange(TimeFrame timeFrame) => timeFrame switch
-    {
-        TimeFrame.OneMinute => TimeSpan.FromDays(7),
-        TimeFrame.FiveMinute => TimeSpan.FromDays(31),
-        TimeFrame.FifteenMinute => TimeSpan.FromDays(120),
-        TimeFrame.Weekly => TimeSpan.FromDays(365 * 15),
-        _ => TimeSpan.FromDays(365 * 5)
-    };
+    private static TimeSpan MaximumRange(TimeFrame timeFrame) =>
+        PreviewTimeFramePolicy.Get(timeFrame).MaximumRange;
 
-    private static TimeSpan WarmupRange(TimeFrame timeFrame) => timeFrame switch
-    {
-        TimeFrame.OneMinute => TimeSpan.FromDays(3),
-        TimeFrame.FiveMinute => TimeSpan.FromDays(14),
-        TimeFrame.FifteenMinute => TimeSpan.FromDays(45),
-        TimeFrame.Weekly => TimeSpan.FromDays(365 * 5),
-        _ => TimeSpan.FromDays(400)
-    };
+    private static TimeSpan WarmupRange(TimeFrame timeFrame) =>
+        PreviewTimeFramePolicy.Get(timeFrame).WarmupRange;
 
-    private static TimeSpan CoverageTolerance(TimeFrame timeFrame) => timeFrame switch
-    {
-        TimeFrame.Weekly => TimeSpan.FromDays(14),
-        TimeFrame.Daily => TimeSpan.FromDays(5),
-        _ => TimeSpan.FromDays(4)
-    };
+    private static TimeSpan CoverageTolerance(TimeFrame timeFrame) =>
+        PreviewTimeFramePolicy.Get(timeFrame).CoverageTolerance;
 
-    private static string DisplayTimeFrame(TimeFrame timeFrame) => timeFrame switch
-    {
-        TimeFrame.OneMinute => "1분봉",
-        TimeFrame.FiveMinute => "5분봉",
-        TimeFrame.FifteenMinute => "15분봉",
-        TimeFrame.Weekly => "주봉",
-        _ => "일봉"
-    };
+    private static string DisplayTimeFrame(TimeFrame timeFrame) =>
+        TimeFrameCatalog.DisplayName(timeFrame);
 
     private static string DisplayRange(TimeSpan range) => range.TotalDays >= 365
         ? $"{Math.Floor(range.TotalDays / 365):N0}년"

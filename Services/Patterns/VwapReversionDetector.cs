@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Domain.MarketData;
 using StockTrader.Services.Indicators;
 
 namespace StockTrader.Services.Patterns;
@@ -23,7 +24,7 @@ public class VwapReversionDetector : IPatternDetector
         MarketRegime regime, CancellationToken ct = default)
     {
         if (bars.Length < 10) return Task.FromResult<PatternSignal?>(null);
-        if (bars[^1].TimeFrame is not (TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute))
+        if (!TimeFrameCatalog.IsIntraday(bars[^1].TimeFrame))
             return Task.FromResult<PatternSignal?>(null);
         if (!regime.SpyAbove200Ma) return Task.FromResult<PatternSignal?>(null);
 

@@ -1,4 +1,5 @@
 using StockTrader.Models;
+using StockTrader.Domain.MarketData;
 
 namespace StockTrader.Services.Indicators;
 
@@ -144,9 +145,7 @@ public class IndicatorService : IIndicatorService
 
         for (int i = 0; i < bars.Length; i++)
         {
-            var isIntraday = bars[i].TimeFrame is Models.Enums.TimeFrame.OneMinute
-                or Models.Enums.TimeFrame.FiveMinute
-                or Models.Enums.TimeFrame.FifteenMinute;
+            var isIntraday = TimeFrameCatalog.IsIntraday(bars[i].TimeFrame);
             if (isIntraday && i > 0 && bars[i].Timestamp.Date != bars[i - 1].Timestamp.Date)
             {
                 cumulativeTPV = 0;

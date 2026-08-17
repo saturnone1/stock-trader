@@ -1,4 +1,6 @@
 using StockTrader.Configuration;
+using StockTrader.Application.Backtesting;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Indicators;
@@ -43,7 +45,7 @@ internal sealed class TradeSimulator
         if (bars.Count < MinWarmupBars)
         {
             string warning;
-            if (timeFrame is TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute)
+            if (TimeFrameCatalog.IsIntraday(timeFrame))
             {
                 var limitDays = timeFrame == TimeFrame.OneMinute ? 7 : 60;
                 warning = $"{symbol}: 분봉 데이터 부족 ({bars.Count}개). " +
@@ -101,13 +103,7 @@ internal sealed class TradeSimulator
             if (openPosition != null) continue;
 
             // ── Entry logic ──
-            var maxWindow = timeFrame switch
-            {
-                TimeFrame.OneMinute     => 800,
-                TimeFrame.FiveMinute    => 800,
-                TimeFrame.FifteenMinute => 600,
-                _                       => 260
-            };
+            var maxWindow = BacktestTimeFramePolicy.Get(timeFrame).SimulationWindowBars;
             var windowSize = Math.Min(i + 1, maxWindow);
             var windowStart = i + 1 - windowSize;
             var windowBars = barsArray[windowStart..(i + 1)];
@@ -404,15 +400,7 @@ internal sealed class TradeSimulator
         };
     }
 
-    internal static string GetTimeFrameLabel(TimeFrame tf) => tf switch
-    {
-        TimeFrame.OneMinute     => "1분봉",
-        TimeFrame.FiveMinute    => "5분봉",
-        TimeFrame.FifteenMinute => "15분봉",
-        TimeFrame.Daily         => "일봉",
-        TimeFrame.Weekly        => "주봉",
-        _                       => tf.ToString()
-    };
+    internal static string GetTimeFrameLabel(TimeFrame tf) => TimeFrameCatalog.DisplayName(tf);
 
     internal static MarketRegime GetRegimeForDate(
         DateOnly date, Dictionary<DateOnly, MarketRegime> regimeByDate)

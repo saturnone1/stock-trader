@@ -4,6 +4,7 @@ using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Domain.MarketData;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.ML;
 
@@ -65,8 +66,7 @@ public class PatternDetectionService
         // 분봉 bars를 그대로 넘기면 5/10/20일 수익률·변동성 피처가 왜곡(분 단위 변동)되어
         // 클러스터 할당이 무의미해진다. 분봉인 경우 ML 레짐 분류를 스킵하고
         // 호출자가 전달한 regime(일봉 기반으로 계산된 값)을 그대로 사용한다.
-        var isIntraday = bars.Length > 0 && bars[0].TimeFrame is
-            TimeFrame.OneMinute or TimeFrame.FiveMinute or TimeFrame.FifteenMinute;
+        var isIntraday = bars.Length > 0 && TimeFrameCatalog.IsIntraday(bars[0].TimeFrame);
 
         var effectiveRegime = (!isIntraday && _regimeClassifier.IsModelLoaded)
             ? await _regimeClassifier.ClassifyAsync(bars, ct)
