@@ -18,15 +18,15 @@ public static class WebPipelineExtensions
                     .LogError(exception, "Unhandled exception occurred");
             }
 
-            if (app.Environment.IsDevelopment())
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/problem+json";
+            await context.Response.WriteAsJsonAsync(new
             {
-                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-                await context.Response.WriteAsync("An error occurred. Please try again later.");
-            }
-            else
-            {
-                context.Response.Redirect("/Error");
-            }
+                type = "about:blank",
+                title = "An unexpected server error occurred.",
+                status = StatusCodes.Status500InternalServerError,
+                traceId = context.TraceIdentifier
+            });
         }));
 
         app.UseSecurityHeaders();
@@ -41,7 +41,6 @@ public static class WebPipelineExtensions
 
         app.UseAuthentication();
         app.UseAuthorization();
-        app.UseAntiforgery();
         return app;
     }
 }

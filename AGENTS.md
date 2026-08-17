@@ -2,8 +2,8 @@
 
 ## Project status
 
-This is an active, production-deployed trading application. The canonical user interface is
-`desktop-app/` (Svelte). `Components/` is legacy Blazor UI and must not receive new features.
+This is an active, production-deployed trading application. `desktop-app/` (Svelte) is the only
+user interface. The backend is a JSON API and must not acquire server-rendered UI dependencies.
 
 Read `docs/architecture/README.md` before structural work. Architectural decisions live in
 `docs/architecture/adr/` and the staged refactoring plan lives in
@@ -59,6 +59,8 @@ cd desktop-app && npm run build
 
 For user-visible API or desktop changes, build and import the K3s images, roll out only the
 affected deployments, then verify `/api/health`, the desktop URL, pod status, and startup logs.
+The only supported local container path is `docker compose up --build`. The only supported K3s
+path is `scripts/deploy-k3s.sh`; do not add another root deployment script or compose variant.
 
 ## Change discipline
 

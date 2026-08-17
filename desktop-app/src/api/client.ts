@@ -1,22 +1,10 @@
 import axios from 'axios';
 
 function resolveApiBaseUrl() {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && (typeof window === 'undefined' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    return envUrl;
-  }
-
-  if (typeof window !== 'undefined') {
-    const { hostname } = window.location;
-
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:5239';
-    }
-
-    return '';
-  }
-
-  return '';
+  // Production ingress, the local container, and the Vite proxy all expose
+  // /api on the UI origin. An explicit build-time URL remains available for
+  // unusual standalone development setups.
+  return String(import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 }
 
 const API_BASE_URL = resolveApiBaseUrl();

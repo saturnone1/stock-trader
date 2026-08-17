@@ -450,26 +450,55 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
         var apiDockerfile = File.ReadAllText(Path.Combine(repository, "Dockerfile.api"));
-        var fullDockerfile = File.ReadAllText(Path.Combine(repository, "Dockerfile"));
         var deployment = File.ReadAllText(Path.Combine(repository, "k8s/deployment-api.yaml"));
-        var productionCompose = File.ReadAllText(Path.Combine(repository, "docker-compose.prod.yml"));
-        var desktopCompose = File.ReadAllText(Path.Combine(repository, "docker-compose.desktop.yml"));
+        var compose = File.ReadAllText(Path.Combine(repository, "docker-compose.yml"));
 
         settings.Should().NotContain("\"Kestrel\"");
         apiDockerfile.Should().Contain("ASPNETCORE_HTTP_PORTS=5239");
         apiDockerfile.Should().Contain("EXPOSE 5239");
         apiDockerfile.Should().NotContain("ASPNETCORE_URLS");
-        fullDockerfile.Should().Contain("ASPNETCORE_HTTP_PORTS=\"5239\"");
-        fullDockerfile.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().Contain("containerPort: 5239");
         deployment.Should().Contain("targetPort: 5239");
-        productionCompose.Should().Contain("\"3000:5239\"");
-        productionCompose.Should().Contain("http://api:5239");
-        productionCompose.Should().NotContain("ASPNETCORE_URLS");
-        desktopCompose.Should().Contain("\"3000:5239\"");
-        desktopCompose.Should().Contain("http://api:5239");
-        desktopCompose.Should().NotContain("ASPNETCORE_URLS");
+        compose.Should().Contain("\"5239:5239\"");
+        compose.Should().Contain("dockerfile: Dockerfile.api");
+        compose.Should().NotContain("ASPNETCORE_URLS");
+    }
+
+    [Fact]
+    public void SvelteAndSplitContainersAreTheOnlyUiAndDeploymentPaths()
+    {
+        var repository = FindRepositoryRoot();
+        var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
+        var project = File.ReadAllText(Path.Combine(repository, "StockTrader.csproj"));
+        var apiDeployment = File.ReadAllText(Path.Combine(repository, "k8s/deployment-api.yaml"));
+        var desktopNginx = File.ReadAllText(Path.Combine(repository, "desktop-app/nginx.conf"));
+
+        var legacyUiFiles = new[] { "Components", "wwwroot" }
+            .Select(folder => Path.Combine(repository, folder))
+            .Where(Directory.Exists)
+            .SelectMany(folder => Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories));
+        legacyUiFiles.Should().BeEmpty();
+        program.Should().NotContain("AddRazorComponents");
+        program.Should().NotContain("MapRazorComponents");
+        program.Should().NotContain("MapStaticAssets");
+        project.Should().NotContain("MudBlazor");
+        project.Should().NotContain("Blazor-ApexCharts");
+
+        Directory.EnumerateFiles(repository, "Dockerfile*")
+            .Select(Path.GetFileName)
+            .Should().BeEquivalentTo("Dockerfile.api", "Dockerfile.desktop");
+        Directory.EnumerateFiles(repository, "docker-compose*.yml")
+            .Select(Path.GetFileName)
+            .Should().Equal("docker-compose.yml");
+        File.Exists(Path.Combine(repository, "scripts/deploy-k3s.sh")).Should().BeTrue();
+        File.Exists(Path.Combine(repository, "deploy-k3s.sh")).Should().BeFalse();
+        File.Exists(Path.Combine(repository, "k8s/deployment.yaml")).Should().BeFalse();
+        File.Exists(Path.Combine(repository, "k8s/service.yaml")).Should().BeFalse();
+        File.Exists(Path.Combine(repository, "k8s/ingress.yaml")).Should().BeFalse();
+        apiDeployment.Should().Contain("type: Recreate");
+        desktopNginx.Should().Contain("location /api/");
+        desktopNginx.Should().Contain("proxy_pass http://api:5239");
     }
 
     [Fact]
@@ -791,12 +820,13 @@ public class ArchitectureDependencyTests
     {
         var repository = FindRepositoryRoot();
         var orders = File.ReadAllText(Path.Combine(repository, "Api/OrderEndpoints.cs"));
-        var portfolio = File.ReadAllText(Path.Combine(repository, "Components/Pages/Portfolio.razor"));
+        var portfolio = File.ReadAllText(Path.Combine(repository, "desktop-app/src/pages/Portfolio.svelte"));
+        var desktopEndpoints = File.ReadAllText(Path.Combine(repository, "desktop-app/src/api/endpoints.ts"));
 
         orders.Should().Contain("exits.SubmitAsync(");
-        portfolio.Should().Contain("ExitCoordinator.SubmitAsync(");
+        portfolio.Should().Contain("orderApi.closePosition(symbol)");
+        desktopEndpoints.Should().Contain("api.post('/api/orders/close-position'");
         orders.Should().NotContain("broker.ClosePositionAsync(");
-        portfolio.Should().NotContain("broker.ClosePositionAsync(");
     }
 
     [Fact]

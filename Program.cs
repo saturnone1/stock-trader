@@ -1,8 +1,6 @@
 using System.Text.Json.Serialization;
-using MudBlazor.Services;
 using Serilog;
 using StockTrader.Api;
-using StockTrader.Components;
 using StockTrader.Extensions;
 
 Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger();
@@ -17,8 +15,6 @@ try
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services));
 
-    builder.Services.AddRazorComponents().AddInteractiveServerComponents();
-    builder.Services.AddMudServices();
     builder.Services.AddMemoryCache();
     builder.Services.ConfigureHttpJsonOptions(options =>
         options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -35,12 +31,6 @@ try
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials()));
-    builder.Services.AddHttpClient("Auth", client =>
-    {
-        client.BaseAddress = new Uri("http://localhost:5239");
-        client.Timeout = TimeSpan.FromSeconds(10);
-    });
-
     var app = builder.Build();
     if (args.Contains("--verify-ef-baseline", StringComparer.Ordinal))
     {
@@ -50,8 +40,6 @@ try
     await app.InitializeStockTraderAsync();
     app.UseStockTraderPipeline();
     app.MapStockTraderApi();
-    app.MapStaticAssets();
-    app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
     app.Run();
 }
 catch (Exception exception)

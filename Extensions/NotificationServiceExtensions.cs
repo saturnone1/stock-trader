@@ -46,8 +46,8 @@ public static class NotificationServiceExtensions
         // NotificationDispatcher: 모든 채널에 병렬 발송 (DB 설정 우선)
         services.AddSingleton<INotificationDispatcher, NotificationDispatcher>();
 
-        // In-app notification (singleton for cross-component events)
-        services.AddSingleton<INotificationService, InAppNotificationService>();
+        // Backend notification facade and external dispatch coordinator
+        services.AddSingleton<INotificationService, BackendNotificationService>();
 
         // Streaming status (singleton for cross-service coordination)
         services.AddSingleton<IStreamingStatusService, StreamingStatusService>();

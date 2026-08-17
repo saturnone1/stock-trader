@@ -2,7 +2,7 @@ namespace StockTrader.Services.Auth;
 
 /// <summary>
 /// Adds defensive HTTP security headers to every response.
-/// Should be registered early in the pipeline, before static files.
+/// The API serves JSON only; the Svelte application owns its document policy.
 /// </summary>
 public sealed class SecurityHeadersMiddleware
 {
@@ -27,19 +27,9 @@ public sealed class SecurityHeadersMiddleware
         headers["Permissions-Policy"] =
             "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
 
-        // Content Security Policy — tuned for Blazor Server (requires inline scripts + SignalR WebSocket)
-        // 'unsafe-inline' on script-src is required by Blazor Server's blazor.server.js bootstrap
+        // The API does not serve executable documents or browser assets.
         headers["Content-Security-Policy"] =
-            "default-src 'self'; " +
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-            "font-src 'self' https://fonts.gstatic.com data:; " +
-            "img-src 'self' data: https:; " +
-            "connect-src 'self' wss: ws:; " +
-            "frame-ancestors 'none';";
-
-        // X-XSS-Protection is deprecated in modern browsers but harmless for older ones
-        headers["X-XSS-Protection"] = "1; mode=block";
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
         await _next(context);
     }

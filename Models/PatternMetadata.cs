@@ -210,19 +210,6 @@ public static class PatternMetadataMap
     public static string GetColorHex(PatternType type) => Get(type).ColorHex;
     public static string GetDescription(PatternType type) => Get(type).Description;
 
-    public static MudBlazor.Color GetMudColor(TradingStyle style) => style switch
-    {
-        TradingStyle.Scalping => MudBlazor.Color.Error,
-        TradingStyle.DayTrading => MudBlazor.Color.Warning,
-        TradingStyle.Swing => MudBlazor.Color.Success,
-        TradingStyle.Position => MudBlazor.Color.Info,
-        TradingStyle.Filter => MudBlazor.Color.Default,
-        _ => MudBlazor.Color.Default
-    };
-
-    public static MudBlazor.Color GetMudColor(PatternType type)
-        => GetMudColor(Get(type).Style);
-
     public static PatternStatus GetStatus(PatternType type) => Get(type).Status;
     public static string? GetStatusNote(PatternType type) => Get(type).StatusNote;
 
@@ -233,17 +220,4 @@ public static class PatternMetadataMap
         _ => ""
     };
 
-    public static MudBlazor.Color GetStatusColor(PatternStatus status) => status switch
-    {
-        PatternStatus.Untuned => MudBlazor.Color.Warning,
-        PatternStatus.Poor => MudBlazor.Color.Error,
-        _ => MudBlazor.Color.Default
-    };
-
-    public static string GetStatusIcon(PatternStatus status) => status switch
-    {
-        PatternStatus.Untuned => MudBlazor.Icons.Material.Filled.Science,
-        PatternStatus.Poor => MudBlazor.Icons.Material.Filled.Warning,
-        _ => ""
-    };
 }

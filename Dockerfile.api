@@ -1,22 +1,22 @@
-# API Server Only (No Blazor UI)
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-
 WORKDIR /src
-
 COPY ["StockTrader.csproj", "./"]
 RUN dotnet restore "StockTrader.csproj"
-
 COPY . .
-RUN dotnet publish "StockTrader.csproj" -c Release -o /app/publish
+RUN dotnet publish "StockTrader.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish .
-
 ENV ASPNETCORE_HTTP_PORTS=5239
 ENV ASPNETCORE_ENVIRONMENT=Production
-
+ENV ConnectionStrings__DefaultConnection="Data Source=/data/stocktrader.db"
+ENV TZ=America/New_York
+VOLUME ["/data"]
 EXPOSE 5239
-
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl --fail --silent http://localhost:5239/api/health || exit 1
 ENTRYPOINT ["dotnet", "StockTrader.dll"]

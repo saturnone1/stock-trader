@@ -123,6 +123,13 @@
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.
+- The legacy Blazor application, MudBlazor/ApexCharts packages, static assets, and server-rendered
+  routes have been removed. The backend now returns JSON problem details on failures and carries no
+  UI framework dependency; Svelte is the only operational UI.
+- Deployment now has one local Compose definition and one K3s deployment script. The broken legacy
+  full-stack Dockerfile, four competing Compose variants, single-process K3s manifests, and duplicate
+  build/deploy scripts were removed. Desktop uses same-origin `/api` routing in Vite, nginx, and K3s,
+  and API rollouts use `Recreate` so two application Pods never share the production SQLite file.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.
@@ -176,7 +183,7 @@ Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate 
 - Move state and commands out of large Svelte pages.
 - Split strategy builder and backtest screens by user task.
 - Remove frontend copies of backend catalogs.
-- Freeze and then remove legacy Blazor routes and packages after usage verification.
+- Keep the Svelte application as the only operational UI.
 
 Progress: `Backtest.svelte` now imports timing/factor research catalogs, symbol-set operations,
 formatters, whipsaw classification, and equity-curve volatility from
@@ -229,6 +236,9 @@ rendered by `PatternWorkspaceSidebar.svelte`, `PatternStrategyTree.svelte`, and
 shell, down from 1,630 lines, with server metadata, API state, validation, and command coordination
 kept in the parent.
 
+The legacy Blazor route tree and its MudBlazor/ApexCharts packages are removed. `Program.cs` maps
+only the JSON API, and the backend project no longer compiles or publishes a second UI.
+
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 
 ## Phase 6 — Operations cleanup
@@ -236,6 +246,10 @@ Exit gate: Svelte is the only operational UI and large pages are orchestration s
 - Consolidate Docker and compose files around supported deployment paths.
 - Make build scripts line-ending independent and non-interactive where safe.
 - Add migration, provider, database, and engine version health signals.
+
+Progress: local container operation is consolidated in `docker-compose.yml`; production K3s builds,
+imports, applies the split manifests, and verifies rollouts through `scripts/deploy-k3s.sh`. API and
+Desktop each have one Dockerfile. Obsolete single-process manifests and deployment scripts are gone.
 
 Exit gate: one documented local path and one documented K3s production path remain.
 

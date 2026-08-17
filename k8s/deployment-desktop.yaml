@@ -19,9 +19,6 @@ spec:
         imagePullPolicy: Never
         ports:
         - containerPort: 8000
-        env:
-        - name: VITE_API_URL
-          value: "http://stocktrader-api:3000"
         resources:
           requests:
             memory: "128Mi"
@@ -35,6 +32,12 @@ spec:
             port: 8000
           initialDelaySeconds: 10
           periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
 
 ---
 apiVersion: v1

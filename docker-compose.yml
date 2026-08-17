@@ -1,139 +1,33 @@
-# =============================================================================
-# docker-compose.yml  — Production service definition
-#
-# Usage:
-#   docker compose up -d
-#   docker compose down
-#   docker compose logs -f stocktrader
-#
-# API keys should be provided via a .env file (never committed to git) or
-# real environment variables in CI/CD.  See .env.example for the template.
-# =============================================================================
-
 services:
-  stocktrader:
-    image: stocktrader:latest
-    container_name: stocktrader
-
-    # Build the image from the project root Dockerfile.
+  api:
     build:
       context: .
-      dockerfile: Dockerfile
-      # Pass build-time args if needed (e.g., version tagging).
-      args:
-        BUILD_VERSION: "${BUILD_VERSION:-1.0.0}"
-
-    # ── Port mapping ─────────────────────────────────────────────────────────
-    # Host port 5239 → container port 5239.
-    # Access the UI at http://localhost:5239
+      dockerfile: Dockerfile.api
+    image: stock-trader/api:local
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Data Source=/data/stocktrader.db
+      Alpaca__ApiKey: ${ALPACA_API_KEY:-}
+      Alpaca__ApiSecret: ${ALPACA_API_SECRET:-}
+      Alpaca__IsPaper: ${ALPACA_IS_PAPER:-true}
+      Alpaca__EnableStreaming: ${ALPACA_ENABLE_STREAMING:-false}
     ports:
       - "5239:5239"
-
-    # ── Volumes ──────────────────────────────────────────────────────────────
-    # db_data   : SQLite database file persisted across container restarts.
-    # ml_models : Trained ML model zip files, shared with the host for
-    #             easy inspection and manual replacement.
     volumes:
-      - db_data:/data
-      - ml_models:/app/ml_models
-      - logs:/app/Logs
-
-    # ── Environment variables ────────────────────────────────────────────────
-    # Prefer a .env file (excluded by .gitignore) for secrets.
-    # All ASP.NET Core config sections can be overridden via
-    #   Section__Key=value  (double-underscore = config path separator)
-    environment:
-      ASPNETCORE_ENVIRONMENT: "Production"
-      TZ: "America/New_York"
-
-      # SQLite path inside the /data volume
-      ConnectionStrings__DefaultConnection: "Data Source=/data/stocktrader.db"
-
-      # ML model directory
-      ML__ModelDirectory: "/app/ml_models"
-
-      # ── Alpaca credentials ───────────────────────────────────────────────
-      # Set in .env file:  ALPACA_API_KEY=PKxxx  ALPACA_API_SECRET=xxx
-      Alpaca__ApiKey: "${ALPACA_API_KEY:-YOUR_ALPACA_API_KEY}"
-      Alpaca__ApiSecret: "${ALPACA_API_SECRET:-YOUR_ALPACA_API_SECRET}"
-      Alpaca__IsPaper: "${ALPACA_IS_PAPER:-true}"
-
-      # ── Polygon (optional) ───────────────────────────────────────────────
-      Polygon__ApiKey: "${POLYGON_API_KEY:-}"
-
-      # ── Notification channels (optional) ────────────────────────────────
-      Notification__EnableTelegram: "${NOTIFY_TELEGRAM:-false}"
-      Notification__TelegramBotToken: "${TELEGRAM_BOT_TOKEN:-}"
-      Notification__TelegramChatId: "${TELEGRAM_CHAT_ID:-}"
-      Notification__EnableDiscord: "${NOTIFY_DISCORD:-false}"
-      Notification__DiscordWebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
-      Notification__EnableEmail: "${NOTIFY_EMAIL:-false}"
-      Notification__SmtpHost: "${SMTP_HOST:-}"
-      Notification__SmtpPort: "${SMTP_PORT:-587}"
-      Notification__SmtpUsername: "${SMTP_USERNAME:-}"
-      Notification__SmtpPassword: "${SMTP_PASSWORD:-}"
-      Notification__EmailFrom: "${EMAIL_FROM:-}"
-      Notification__EmailTo: "${EMAIL_TO:-}"
-
-      # ── LS Securities (한국주식) ────────────────────────────────────────
-      LsSecurities__AppKey: "${LS_APP_KEY:-}"
-      LsSecurities__AppSecret: "${LS_APP_SECRET:-}"
-      LsSecurities__AccountNo: "${LS_ACCOUNT_NO:-}"
-      LsSecurities__AccountPassword: "${LS_ACCOUNT_PASSWORD:-}"
-      LsSecurities__IsPaper: "${LS_IS_PAPER:-true}"
-
-      # ── Trading parameters ───────────────────────────────────────────────
-      Trading__DefaultAccountSize: "${DEFAULT_ACCOUNT_SIZE:-100000}"
-      Trading__RiskPerTradePercent: "${RISK_PER_TRADE:-0.01}"
-      Trading__DailyLossLimitPercent: "${DAILY_LOSS_LIMIT:-0.03}"
-
-    # ── Restart policy ───────────────────────────────────────────────────────
-    # Restart unless the container was explicitly stopped by the user.
+      - stocktrader_data:/data
     restart: unless-stopped
 
-    # ── Healthcheck ──────────────────────────────────────────────────────────
-    # docker compose respects this alongside the Dockerfile HEALTHCHECK.
-    # Keeping both means "docker inspect" shows health status even when
-    # running without compose.
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5239/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+  desktop:
+    build:
+      context: .
+      dockerfile: Dockerfile.desktop
+    image: stock-trader/desktop:local
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
 
-    # ── Logging ──────────────────────────────────────────────────────────────
-    # Rotate logs automatically so the container doesn't fill the disk.
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
-
-    # ── Resource limits ──────────────────────────────────────────────────────
-    # Tune these to match your host machine.
-    # ML training can be CPU-intensive; allow at least 2 CPU cores.
-    deploy:
-      resources:
-        limits:
-          cpus: "4.0"
-          memory: "2G"
-        reservations:
-          cpus: "0.5"
-          memory: "256M"
-
-# =============================================================================
-# Named Volumes
-# =============================================================================
 volumes:
-  # SQLite database — persists trade history, settings, pattern stats.
-  db_data:
-    driver: local
-
-  # ML model zips — persists trained regime classifier and signal scorer.
-  ml_models:
-    driver: local
-
-  # Serilog structured log files — persisted for analysis.
-  logs:
-    driver: local
+  stocktrader_data:

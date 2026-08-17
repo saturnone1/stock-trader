@@ -26,7 +26,9 @@ infrastructure.
   warmup, and supported timeframes.
 - Strategy definitions: one typed aggregate compiled for preview, backtest, and live execution.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
-- Database shape: EF Core migrations only after the persistence migration phase begins.
+- Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
+- UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
+- Operations: `docker-compose.yml` locally and `scripts/deploy-k3s.sh` for K3s production.
 
 ## Current transition seams
 

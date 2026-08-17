@@ -5,6 +5,8 @@ metadata:
   namespace: stocktrader
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: stocktrader-api
@@ -24,6 +26,26 @@ spec:
           value: "Production"
         - name: ConnectionStrings__DefaultConnection
           value: "Data Source=/data/stocktrader.db"
+        - name: ALPACA__APIKEY
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-alpaca
+              key: Alpaca__ApiKey
+        - name: ALPACA__APISECRET
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-alpaca
+              key: Alpaca__ApiSecret
+        - name: ALPACA__ISPAPER
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-alpaca
+              key: Alpaca__IsPaper
+        - name: ALPACA__ENABLESTREAMING
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-alpaca
+              key: Alpaca__EnableStreaming
         resources:
           requests:
             memory: "256Mi"
@@ -66,24 +88,3 @@ spec:
     port: 3000
     targetPort: 5239
   type: ClusterIP
-
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: stocktrader-api
-  namespace: stocktrader
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: "web"
-spec:
-  rules:
-  - host: "stock.taewon"
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: stocktrader-api
-            port:
-              number: 3000
