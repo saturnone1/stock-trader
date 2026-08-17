@@ -53,6 +53,7 @@ public class PatternDetectionServiceTests
             Mock.Of<IOhlcvRepository>(),
             strategies,
             db,
+            TimeProvider.System,
             NullLogger<PatternDetectionService>.Instance);
     }
 

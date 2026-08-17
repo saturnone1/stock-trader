@@ -59,6 +59,7 @@ public class OptimizationJobExecutor
         var backtestService  = sp.GetRequiredService<BacktestService>();
         var dataPreparer     = sp.GetRequiredService<BacktestDataPreparer>();
         var indicators       = sp.GetRequiredService<IIndicatorService>();
+        var timeProvider     = sp.GetRequiredService<TimeProvider>();
         var patternSettings  = sp.GetRequiredService<IOptions<PatternSettings>>().Value;
         var repo             = sp.GetRequiredService<IOptimizationRepository>();
         var dataFeedFactory  = sp.GetRequiredService<IDataFeedServiceFactory>();
@@ -102,7 +103,7 @@ public class OptimizationJobExecutor
             ? request.OptimizeParams.TimeFrameOptions.Select(tf => (TimeFrame)tf).Distinct().ToList()
             : new List<TimeFrame> { request.TimeFrame };
 
-        var referenceSymbols = new RuleBasedDetector(indicators, request.BasePattern).Strategy.ReferenceSymbols;
+        var referenceSymbols = new RuleBasedDetector(indicators, request.BasePattern, timeProvider).Strategy.ReferenceSymbols;
         var optimizationSymbols = request.Symbols
             .Concat(referenceSymbols)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -204,7 +205,7 @@ public class OptimizationJobExecutor
 
             var chunkResults = await RunChunkAsync(
                 chunk, request, backtestService, indicators, fullDataMap, dataByTimeFrame,
-                regimeByDate, riskParams, isTo, ct);
+                regimeByDate, riskParams, isTo, timeProvider, ct);
 
             stage1Results.AddRange(chunkResults);
 
@@ -273,7 +274,7 @@ public class OptimizationJobExecutor
 
                     var chunkResults2 = await RunChunkAsync(
                         chunk2, request, backtestService, indicators, fullDataMap, dataByTimeFrame,
-                        regimeByDate, riskParams, isTo, ct);
+                        regimeByDate, riskParams, isTo, timeProvider, ct);
 
                     if (chunkResults2.Count > 0)
                     {
@@ -322,7 +323,7 @@ public class OptimizationJobExecutor
                 StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, snap);
                 var oosDetectors = new List<IPatternDetector>
                 {
-                    new RuleBasedDetector(indicators, patternCopy)
+                    new RuleBasedDetector(indicators, patternCopy, timeProvider)
                 };
 
                 var comboTf = snap.TimeFrame.HasValue
@@ -378,6 +379,7 @@ public class OptimizationJobExecutor
         Dictionary<DateOnly, MarketRegime> regimeByDate,
         BacktestRiskParameters riskParams,
         DateTime isTo,
+        TimeProvider timeProvider,
         CancellationToken ct)
     {
         var results = new List<OptimizeResultItem>(chunk.Count);
@@ -391,7 +393,7 @@ public class OptimizationJobExecutor
 
             var detectors = new List<IPatternDetector>
             {
-                new RuleBasedDetector(indicators, patternCopy)
+                new RuleBasedDetector(indicators, patternCopy, timeProvider)
             };
 
             try

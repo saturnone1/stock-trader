@@ -329,7 +329,7 @@ public class PositionExitManagerService : BackgroundService
         else if (customStrategy != null && recentBars is { Count: >= 50 })
         {
             strategyExit = null;
-            var detector = new RuleBasedDetector(_indicators, customStrategy);
+            var detector = new RuleBasedDetector(_indicators, customStrategy, _timeProvider);
             detector.SetReferenceData(await LoadReferenceDataAsync(customStrategy, position.Symbol, recentBars, ohlcvRepo, ct), UtcNow);
             if (detector.ShouldExit(recentBars.ToArray()))
                 strategyExit = new StrategyExitInstruction(position.CurrentPrice, $"{customStrategy.Name} 매도 조건 충족");

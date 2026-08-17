@@ -109,10 +109,10 @@ public class RuleBasedDetectorTests
             ExitGroupsLogic = "OR"
         };
 
-        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeTrue();
+        new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System).ShouldExit(bars).Should().BeTrue();
 
         definition.ExitGroupsLogic = "AND";
-        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeFalse();
+        new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System).ShouldExit(bars).Should().BeFalse();
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class RuleBasedDetectorTests
                 EntryRulesJson = JsonSerializer.Serialize(rules),
                 EntryLogic = "OR"
             };
-            return await new RuleBasedDetector(new IndicatorService(), definition)
+            return await new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System)
                 .DetectAsync("AAPL", bars, BullRegime);
         }
 
@@ -198,6 +198,34 @@ public class RuleBasedDetectorTests
         second.Should().NotBeNull();
         first!.Confidence.Should().Be(0.25m);
         second!.Confidence.Should().Be(first.Confidence);
+    }
+
+    [Fact]
+    public async Task DetectAsync_UsesTheExplicitClockForSignalObservationTime()
+    {
+        var observedAt = new DateTimeOffset(2025, 2, 3, 4, 5, 6, TimeSpan.Zero);
+        var definition = new CustomPatternDefinition
+        {
+            Name = "deterministic-clock",
+            EntryRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new EntryRule { Indicator = "PRICE_CHANGE", Operator = ">", Value = -1m }
+            }),
+            AtrStopMultiplier = 2m,
+            AtrTargetMultiplier = 3m
+        };
+        var detector = new RuleBasedDetector(
+            new IndicatorService(),
+            definition,
+            new FixedTimeProvider(observedAt));
+
+        var result = await detector.DetectAsync(
+            "AAPL",
+            CreateBars(Enumerable.Repeat(100m, 60).ToArray()),
+            BullRegime);
+
+        result.Should().NotBeNull();
+        result!.DetectedAt.Should().Be(observedAt.UtcDateTime);
     }
 
     private static RuleBasedDetector CreateSut(EntryRule rule)
@@ -212,7 +240,7 @@ public class RuleBasedDetectorTests
             DefaultAllocationPercent = 100m
         };
 
-        return new RuleBasedDetector(new IndicatorService(), definition);
+        return new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System);
     }
 
     private static OhlcvBar[] CreateBars(IReadOnlyList<decimal> closes)
@@ -227,5 +255,10 @@ public class RuleBasedDetectorTests
             Close = close,
             Volume = 100_000
         }).ToArray();
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

@@ -98,6 +98,18 @@
   embeds RSI, MACD, volatility, price-structure, volume, ADX, or stochastic calculations. Direct
   goldens lock catalog defaults, current/previous bar offsets, context-local caching, and neutral
   handling of unknown indicators while the existing detector suite preserves end-to-end behavior.
+- `RuleConditionEvaluator` now owns single-rule history guards, fixed/indicator thresholds,
+  consecutive/within-bar semantics, reference-symbol as-of filtering, and all six comparison
+  operators. `RuleGroupEvaluator` is the single owner of nested AND/OR composition, matched/total
+  weight accounting, and user-facing matched-condition explanations. These pure boundaries reduce
+  `RuleBasedDetector` further to entry/exit/scaling orchestration and dynamic price-level selection.
+- `DynamicExitPricePolicy` now owns custom-strategy ATR, percent, prior-range, moving-average,
+  Bollinger, and R-multiple initial stop/target selection. It reuses the rule evaluation context and
+  excludes the current bar from prior-range levels. `RuleBasedDetector` only rejects levels that are
+  invalid for a long entry and assembles the resulting signal.
+- Custom-rule signal timestamps now come from an explicitly supplied `TimeProvider`; the detector
+  no longer reads `DateTime.UtcNow`. Live scanning and preview receive the application clock, while
+  tests can replay an identical observation timestamp without changing strategy semantics.
 
 Remaining Phase 2 work is primarily residual runtime orchestration extraction from
 `BacktestSimulationEngine` and broader preview/backtest/live parity fixtures.

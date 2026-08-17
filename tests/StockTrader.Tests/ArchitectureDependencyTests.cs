@@ -239,15 +239,18 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var detectorPath = Path.Combine(repository, "Services/Patterns/RuleBasedDetector.cs");
         var evaluatorPath = Path.Combine(repository, "Services/Patterns/RuleIndicatorEvaluator.cs");
+        var conditionPath = Path.Combine(repository, "Services/Patterns/RuleConditionEvaluator.cs");
         var detector = File.ReadAllText(detectorPath);
         var evaluator = File.ReadAllText(evaluatorPath);
+        var conditions = File.ReadAllText(conditionPath);
         var evaluatorTests = File.ReadAllText(Path.Combine(
             repository, "tests/StockTrader.Tests/RuleIndicatorEvaluatorTests.cs"));
 
         File.ReadAllLines(detectorPath).Length.Should().BeLessThanOrEqualTo(500);
         File.ReadAllLines(evaluatorPath).Length.Should().BeLessThanOrEqualTo(660);
-        detector.Should().Contain("_indicatorEvaluator.Compute(");
         detector.Should().Contain("_indicatorEvaluator.CreateContext(");
+        detector.Should().Contain("new RuleConditionEvaluator(_indicatorEvaluator)");
+        conditions.Should().Contain("_indicators.Compute(");
         detector.Should().NotContain("switch (indicator.ToUpperInvariant())");
         detector.Should().NotContain("case \"RSI\"");
         detector.Should().NotContain("ComputeAdx(");
@@ -258,6 +261,60 @@ public class ArchitectureDependencyTests
         evaluatorTests.Should().Contain("CachesIndicatorWithinEvaluationContext");
         evaluatorTests.Should().Contain("DoesNotLeakCachedValuesAcrossSymbols");
         evaluatorTests.Should().Contain("PreservesCurrentAndPreviousBarOffsetContract");
+    }
+
+    [Fact]
+    public void RuleBasedDetectorDelegatesConditionComparisonAndGroupAggregation()
+    {
+        var repository = FindRepositoryRoot();
+        var detectorPath = Path.Combine(repository, "Services/Patterns/RuleBasedDetector.cs");
+        var conditionPath = Path.Combine(repository, "Services/Patterns/RuleConditionEvaluator.cs");
+        var groupPath = Path.Combine(repository, "Services/Patterns/RuleGroupEvaluator.cs");
+        var detector = File.ReadAllText(detectorPath);
+        var conditions = File.ReadAllText(conditionPath);
+        var groups = File.ReadAllText(groupPath);
+        var tests = File.ReadAllText(Path.Combine(
+            repository, "tests/StockTrader.Tests/RuleConditionEvaluatorTests.cs"));
+
+        File.ReadAllLines(detectorPath).Length.Should().BeLessThanOrEqualTo(340);
+        detector.Should().Contain("_conditionEvaluator.Evaluate(");
+        detector.Should().Contain("_groupEvaluator.Evaluate(");
+        detector.Should().NotContain("crosses_above\" =>");
+        detector.Should().NotContain("private (bool passed, string desc) EvaluateRule");
+        detector.Should().NotContain("private (bool passed, decimal matchedWeight");
+        conditions.Should().Contain("crosses_above\" =>");
+        conditions.Should().Contain("IndicatorCatalog.RequiredBars(");
+        conditions.Should().Contain("bar.Timestamp <= referenceAsOf.Value");
+        groups.Should().Contain("matchedWeight +=");
+        groups.Should().Contain("groupMatches.Count > 0");
+        tests.Should().Contain("Compare_PreservesOperatorBoundarySemantics");
+        tests.Should().Contain("ReferenceSymbolCannotReadPastTheExplicitAsOfBoundary");
+        tests.Should().Contain("GroupsOwnsNestedLogicWeightAndExplanationAggregation");
+    }
+
+    [Fact]
+    public void RuleBasedDetectorDelegatesDynamicExitPriceSelection()
+    {
+        var repository = FindRepositoryRoot();
+        var detectorPath = Path.Combine(repository, "Services/Patterns/RuleBasedDetector.cs");
+        var policyPath = Path.Combine(repository, "Services/Patterns/DynamicExitPricePolicy.cs");
+        var detector = File.ReadAllText(detectorPath);
+        var policy = File.ReadAllText(policyPath);
+        var tests = File.ReadAllText(Path.Combine(
+            repository, "tests/StockTrader.Tests/DynamicExitPricePolicyTests.cs"));
+
+        File.ReadAllLines(detectorPath).Length.Should().BeLessThanOrEqualTo(280);
+        detector.Should().Contain("DynamicExitPricePolicy.Resolve(");
+        detector.Should().Contain("_timeProvider.GetUtcNow().UtcDateTime");
+        detector.Should().NotContain("DateTime.UtcNow");
+        detector.Should().NotContain("\"BOLLINGER_LOWER\" =>");
+        detector.Should().NotContain("GetPrevLow(");
+        policy.Should().Contain("\"BOLLINGER_LOWER\" =>");
+        policy.Should().Contain("\"R_MULTIPLE\" =>");
+        policy.Should().Contain("current.Close - stop");
+        tests.Should().Contain("UsesStrategyAtrDefaultsWhenNoDynamicConfigurationExists");
+        tests.Should().Contain("PreviousRangeExcludesTheCurrentBar");
+        tests.Should().Contain("IndicatorBasedLevelsUseTheSharedEvaluationContext");
     }
 
     [Fact]

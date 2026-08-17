@@ -24,6 +24,7 @@ public class BacktestService : IBacktestService
     private readonly PatternSettings _basePatternSettings;
     private readonly ISettingsRepository _settingsRepo;
     private readonly ILogger<BacktestService> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public BacktestService(
         IDataFeedServiceFactory dataFeedFactory,
@@ -34,6 +35,7 @@ public class BacktestService : IBacktestService
         IOptions<TradingSettings> tradingSettings,
         IOptions<PatternSettings> patternSettings,
         ISettingsRepository settingsRepo,
+        TimeProvider timeProvider,
         ILogger<BacktestService> logger)
     {
         _dataFeedFactory = dataFeedFactory;
@@ -44,6 +46,7 @@ public class BacktestService : IBacktestService
         _tradingSettings = tradingSettings.Value;
         _basePatternSettings = patternSettings.Value;
         _settingsRepo = settingsRepo;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -441,7 +444,7 @@ public class BacktestService : IBacktestService
         {
             foreach (var cp in customPatterns)
             {
-                result.Add(new RuleBasedDetector(_indicators, cp));
+                result.Add(new RuleBasedDetector(_indicators, cp, _timeProvider));
             }
         }
 
@@ -529,7 +532,7 @@ public class BacktestService : IBacktestService
 
         var dataByTimeFrame = new Dictionary<Models.Enums.TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>>();
         var optimizationSymbols = request.Symbols
-            .Concat(CollectReferenceSymbols([new RuleBasedDetector(_indicators, request.BasePattern)]))
+            .Concat(CollectReferenceSymbols([new RuleBasedDetector(_indicators, request.BasePattern, _timeProvider)]))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -579,7 +582,7 @@ public class BacktestService : IBacktestService
 
             var detectors = new List<IPatternDetector>
             {
-                new RuleBasedDetector(_indicators, patternCopy)
+                new RuleBasedDetector(_indicators, patternCopy, _timeProvider)
             };
 
             try
@@ -632,7 +635,7 @@ public class BacktestService : IBacktestService
                 ct.ThrowIfCancellationRequested();
                 var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
                 StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, combo);
-                var detectors2 = new List<IPatternDetector> { new RuleBasedDetector(_indicators, patternCopy) };
+                var detectors2 = new List<IPatternDetector> { new RuleBasedDetector(_indicators, patternCopy, _timeProvider) };
                 try
                 {
                     var comboTf = combo.TimeFrame.HasValue
@@ -676,7 +679,7 @@ public class BacktestService : IBacktestService
                 ct.ThrowIfCancellationRequested();
                 var patternCopy = StrategyVariantFactory.ClonePatternDefinition(request.BasePattern);
                 StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, item.Params);
-                var oosDetectors = new List<IPatternDetector> { new RuleBasedDetector(_indicators, patternCopy) };
+                var oosDetectors = new List<IPatternDetector> { new RuleBasedDetector(_indicators, patternCopy, _timeProvider) };
 
                 var comboTf = item.Params.TimeFrame.HasValue
                     ? (Models.Enums.TimeFrame)item.Params.TimeFrame.Value

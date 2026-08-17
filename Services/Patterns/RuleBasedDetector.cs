@@ -15,6 +15,9 @@ namespace StockTrader.Services.Patterns;
 public class RuleBasedDetector : IPatternDetector
 {
     private readonly RuleIndicatorEvaluator _indicatorEvaluator;
+    private readonly RuleConditionEvaluator _conditionEvaluator;
+    private readonly RuleGroupEvaluator _groupEvaluator;
+    private readonly TimeProvider _timeProvider;
     private readonly CompiledStrategy _strategy;
     private readonly CustomPatternDefinition _definition;
     private readonly List<EntryRule> _rules;
@@ -37,14 +40,23 @@ public class RuleBasedDetector : IPatternDetector
     public CustomPatternDefinition Definition => _definition;
     public CompiledStrategy Strategy => _strategy;
 
-    public RuleBasedDetector(IIndicatorService indicators, CustomPatternDefinition definition)
-        : this(indicators, Compile(definition))
+    public RuleBasedDetector(
+        IIndicatorService indicators,
+        CustomPatternDefinition definition,
+        TimeProvider timeProvider)
+        : this(indicators, Compile(definition), timeProvider)
     {
     }
 
-    public RuleBasedDetector(IIndicatorService indicators, CompiledStrategy strategy)
+    public RuleBasedDetector(
+        IIndicatorService indicators,
+        CompiledStrategy strategy,
+        TimeProvider timeProvider)
     {
         _indicatorEvaluator = new RuleIndicatorEvaluator(indicators);
+        _conditionEvaluator = new RuleConditionEvaluator(_indicatorEvaluator);
+        _groupEvaluator = new RuleGroupEvaluator(_conditionEvaluator);
+        _timeProvider = timeProvider;
         _strategy = strategy;
         _definition = strategy.Source;
         _rules = strategy.EntryRules.ToList();
@@ -99,11 +111,12 @@ public class RuleBasedDetector : IPatternDetector
 
         if (_entryGroups.Count > 0)
         {
-            var (passed, mw, tw, desc) = EvaluateGroups(_entryGroups, _entryGroupsLogic, ctx);
-            entryPassed = passed;
-            matchedWeight = mw;
-            totalWeight = tw;
-            details = desc;
+            var result = _groupEvaluator.Evaluate(
+                _entryGroups, _entryGroupsLogic, ctx, _referenceData, _referenceAsOf);
+            entryPassed = result.IsMatch;
+            matchedWeight = result.MatchedWeight;
+            totalWeight = result.TotalWeight;
+            details = result.Details;
         }
         else
         {
@@ -113,9 +126,9 @@ public class RuleBasedDetector : IPatternDetector
 
             foreach (var rule in _rules)
             {
-                var (passed, desc2) = EvaluateRule(rule, ctx);
-                results.Add((passed, desc2, rule.Weight));
-                if (isAnd && !passed) return Task.FromResult<PatternSignal?>(null);
+                var result = _conditionEvaluator.Evaluate(rule, ctx, _referenceData, _referenceAsOf);
+                results.Add((result.IsMatch, result.Details, rule.Weight));
+                if (isAnd && !result.IsMatch) return Task.FromResult<PatternSignal?>(null);
             }
 
             entryPassed = isAnd ? results.All(r => r.passed) : results.Any(r => r.passed);
@@ -131,18 +144,15 @@ public class RuleBasedDetector : IPatternDetector
         var currentAtr = atr[^1];
         if (currentAtr <= 0) return Task.FromResult<PatternSignal?>(null);
 
-        // ── 동적 손절/목표 계산 ──
-        decimal stopLoss, target;
-        if (_dynamicExit != null)
-        {
-            stopLoss = ComputeDynamicStop(curr, bars, ctx, currentAtr);
-            target = ComputeDynamicTarget(curr, bars, ctx, currentAtr, curr.Close - stopLoss);
-        }
-        else
-        {
-            stopLoss = curr.Close - currentAtr * _definition.AtrStopMultiplier;
-            target = curr.Close + currentAtr * _definition.AtrTargetMultiplier;
-        }
+        var priceLevels = DynamicExitPricePolicy.Resolve(
+            _dynamicExit,
+            _definition.AtrStopMultiplier,
+            _definition.AtrTargetMultiplier,
+            bars,
+            ctx,
+            currentAtr);
+        var stopLoss = priceLevels.Stop;
+        var target = priceLevels.Target;
 
         if (stopLoss <= 0 || stopLoss >= curr.Close || target <= curr.Close)
             return Task.FromResult<PatternSignal?>(null);
@@ -161,10 +171,10 @@ public class RuleBasedDetector : IPatternDetector
                 var tierResults = new List<bool>();
                 foreach (var cond in tier.Conditions)
                 {
-                    var (passed, _) = EvaluateRule(cond, ctx);
-                    tierResults.Add(passed);
-                    if (tierIsAnd && !passed) break;
-                    if (!tierIsAnd && passed) break;
+                    var result = _conditionEvaluator.Evaluate(cond, ctx, _referenceData, _referenceAsOf);
+                    tierResults.Add(result.IsMatch);
+                    if (tierIsAnd && !result.IsMatch) break;
+                    if (!tierIsAnd && result.IsMatch) break;
                 }
                 var tierPassed = tierIsAnd
                     ? tierResults.All(r => r)
@@ -186,7 +196,7 @@ public class RuleBasedDetector : IPatternDetector
             Symbol = symbol,
             PatternType = PatternType.Custom,
             CustomPatternName = _definition.Name,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = _timeProvider.GetUtcNow().UtcDateTime,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
             TargetPrice = target,
@@ -207,15 +217,16 @@ public class RuleBasedDetector : IPatternDetector
         var ctx = _indicatorEvaluator.CreateContext(bars);
 
         if (_exitGroups.Count > 0)
-            return EvaluateGroups(_exitGroups, _exitGroupsLogic, ctx).passed;
+            return _groupEvaluator.Evaluate(
+                _exitGroups, _exitGroupsLogic, ctx, _referenceData, _referenceAsOf).IsMatch;
 
         var isOr = string.Equals(_definition.ExitRulesLogic, "OR", StringComparison.OrdinalIgnoreCase);
 
         foreach (var rule in _exitRules)
         {
-            var (passed, _) = EvaluateRule(rule, ctx);
-            if (isOr && passed) return true;
-            if (!isOr && !passed) return false;
+            var result = _conditionEvaluator.Evaluate(rule, ctx, _referenceData, _referenceAsOf);
+            if (isOr && result.IsMatch) return true;
+            if (!isOr && !result.IsMatch) return false;
         }
         return !isOr; // AND: all passed
     }
@@ -241,11 +252,11 @@ public class RuleBasedDetector : IPatternDetector
             var anyMatch = false;
             foreach (var cond in sr.Conditions)
             {
-                var (passed, _) = EvaluateRule(cond, ctx);
-                if (passed) anyMatch = true;
+                var result = _conditionEvaluator.Evaluate(cond, ctx, _referenceData, _referenceAsOf);
+                if (result.IsMatch) anyMatch = true;
                 else allMatch = false;
-                if (isAnd && !passed) break;
-                if (!isAnd && passed) break;
+                if (isAnd && !result.IsMatch) break;
+                if (!isAnd && result.IsMatch) break;
             }
             if ((isAnd && allMatch) || (!isAnd && anyMatch))
             {
@@ -258,225 +269,5 @@ public class RuleBasedDetector : IPatternDetector
 
     public bool HasExitRules => _exitGroups.Count > 0 || _exitRules.Count > 0;
     public bool HasScalingRules => _scalingRules.Count > 0;
-
-    /// <summary>그룹 기반 조건 평가. 각 그룹 내 규칙을 AND/OR로 평가하고, 그룹 간 결합을 적용.</summary>
-    private (bool passed, decimal matchedWeight, decimal totalWeight, string details) EvaluateGroups(
-        List<ConditionGroup> groups, string groupsLogic, EvalContext ctx)
-    {
-        var isGroupsAnd = string.Equals(groupsLogic, "AND", StringComparison.OrdinalIgnoreCase);
-        var groupResults = new List<(bool passed, string label)>();
-        decimal totalWeightSum = 0, matchedWeightSum = 0;
-        var allDescs = new List<string>();
-
-        foreach (var group in groups)
-        {
-            if (group.Rules.Count == 0) continue;
-            var isInnerAnd = string.Equals(group.Logic, "AND", StringComparison.OrdinalIgnoreCase);
-            var ruleResults = new List<(bool passed, string desc, decimal weight)>();
-
-            foreach (var rule in group.Rules)
-            {
-                var (p, d) = EvaluateRule(rule, ctx);
-                ruleResults.Add((p, d, rule.Weight));
-            }
-
-            var groupPassed = isInnerAnd
-                ? ruleResults.All(r => r.passed)
-                : ruleResults.Any(r => r.passed);
-
-            groupResults.Add((groupPassed, group.Label));
-            totalWeightSum += group.Rules.Sum(r => r.Weight);
-            matchedWeightSum += ruleResults.Where(r => r.passed).Sum(r => r.weight);
-
-            if (groupPassed)
-            {
-                var label = string.IsNullOrEmpty(group.Label) ? "" : $"[{group.Label}] ";
-                allDescs.Add(label + string.Join(", ", ruleResults.Where(r => r.passed).Select(r => r.desc)));
-            }
-
-        }
-
-        var passed = isGroupsAnd
-            ? groupResults.Count > 0 && groupResults.All(r => r.passed)
-            : groupResults.Any(r => r.passed);
-
-        return (passed, matchedWeightSum, totalWeightSum, string.Join(" | ", allDescs));
-    }
-
-    /// <summary>동적 손절가 계산</summary>
-    private decimal ComputeDynamicStop(OhlcvBar curr, OhlcvBar[] bars, EvalContext ctx, decimal currentAtr)
-    {
-        if (_dynamicExit == null) return curr.Close - currentAtr * _definition.AtrStopMultiplier;
-        var p = _dynamicExit.StopParams;
-        decimal GetP(string key, decimal def) => p.TryGetValue(key, out var v) ? v : def;
-
-        return _dynamicExit.StopType.ToUpperInvariant() switch
-        {
-            "BOLLINGER_LOWER" =>
-                ctx.GetBollinger((int)GetP("period", 20), GetP("stddev", 2.0m)).Lower[^1],
-            "SMA" =>
-                ctx.GetSma((int)GetP("period", 20))[^1],
-            "EMA" =>
-                ctx.GetEma((int)GetP("period", 20))[^1],
-            "PREV_LOW" =>
-                GetPrevLow(bars, (int)GetP("period", 5)),
-            "PERCENT" =>
-                curr.Close * (1 - GetP("percent", 2) / 100m),
-            _ => // ATR
-                curr.Close - currentAtr * GetP("multiplier", _definition.AtrStopMultiplier),
-        };
-    }
-
-    /// <summary>동적 목표가 계산</summary>
-    private decimal ComputeDynamicTarget(OhlcvBar curr, OhlcvBar[] bars, EvalContext ctx,
-        decimal currentAtr, decimal riskDistance)
-    {
-        if (_dynamicExit == null) return curr.Close + currentAtr * _definition.AtrTargetMultiplier;
-        var p = _dynamicExit.TargetParams;
-        decimal GetP(string key, decimal def) => p.TryGetValue(key, out var v) ? v : def;
-
-        return _dynamicExit.TargetType.ToUpperInvariant() switch
-        {
-            "BOLLINGER_UPPER" =>
-                ctx.GetBollinger((int)GetP("period", 20), GetP("stddev", 2.0m)).Upper[^1],
-            "SMA" =>
-                ctx.GetSma((int)GetP("period", 20))[^1],
-            "EMA" =>
-                ctx.GetEma((int)GetP("period", 20))[^1],
-            "PREV_HIGH" =>
-                GetPrevHigh(bars, (int)GetP("period", 5)),
-            "R_MULTIPLE" =>
-                curr.Close + riskDistance * GetP("multiple", 3.0m),
-            "PERCENT" =>
-                curr.Close * (1 + GetP("percent", 5) / 100m),
-            _ => // ATR
-                curr.Close + currentAtr * GetP("multiplier", _definition.AtrTargetMultiplier),
-        };
-    }
-
-    private static decimal GetPrevLow(OhlcvBar[] bars, int lookback)
-    {
-        decimal low = decimal.MaxValue;
-        for (int i = Math.Max(0, bars.Length - 1 - lookback); i < bars.Length - 1; i++)
-            if (bars[i].Low < low) low = bars[i].Low;
-        return low == decimal.MaxValue ? bars[^1].Close * 0.98m : low;
-    }
-
-    private static decimal GetPrevHigh(OhlcvBar[] bars, int lookback)
-    {
-        decimal high = 0;
-        for (int i = Math.Max(0, bars.Length - 1 - lookback); i < bars.Length - 1; i++)
-            if (bars[i].High > high) high = bars[i].High;
-        return high == 0 ? bars[^1].Close * 1.05m : high;
-    }
-
-    private (bool passed, string desc) EvaluateRule(EntryRule rule, EvalContext ctx)
-    {
-        try
-        {
-            // 참조 종목이 있으면 해당 종목의 EvalContext 사용
-            var evalCtx = ctx;
-            var refPrefix = "";
-            if (!string.IsNullOrWhiteSpace(rule.RefSymbol))
-            {
-                if (_referenceData == null || !_referenceData.TryGetValue(rule.RefSymbol.ToUpperInvariant(), out var refBars))
-                    return (false, $"{rule.RefSymbol}: 참조 데이터 없음");
-                var availableBars = _referenceAsOf.HasValue
-                    ? refBars.Where(bar => bar.Timestamp <= _referenceAsOf.Value).ToArray()
-                    : refBars;
-                if (availableBars.Length < 50)
-                    return (false, $"{rule.RefSymbol}: 참조 데이터 부족");
-                evalCtx = _indicatorEvaluator.CreateContext(availableBars);
-                refPrefix = $"{rule.RefSymbol}:";
-            }
-
-            // 비교 대상: 다른 지표 vs 고정값
-            decimal GetThresholds(int offset, out decimal prevThreshold)
-            {
-                if (!string.IsNullOrEmpty(rule.CompareIndicator))
-                {
-                    var (cmpCurr, cmpPrev) = _indicatorEvaluator.Compute(rule.CompareIndicator, rule.CompareParams ?? new(), evalCtx, offset);
-                    prevThreshold = cmpPrev;
-                    return cmpCurr;
-                }
-                prevThreshold = rule.Value;
-                return rule.Value;
-            }
-
-            var thresholdLabel = !string.IsNullOrEmpty(rule.CompareIndicator) ? rule.CompareIndicator : $"{rule.Value}";
-
-            // consecutiveBars: N봉 연속 조건 충족 필요
-            if (rule.ConsecutiveBars > 1)
-            {
-                for (int offset = 0; offset < rule.ConsecutiveBars; offset++)
-                {
-                    if (!HasSufficientRuleHistory(rule, evalCtx, offset))
-                        return (false, $"{refPrefix}{rule.Indicator} insufficient history for {rule.ConsecutiveBars} bars");
-
-                    var (val, prevVal) = _indicatorEvaluator.Compute(rule.Indicator, rule.Params, evalCtx, offset);
-                    var thr = GetThresholds(offset, out var prevThr);
-                    if (!Compare(val, prevVal, rule.Operator, thr, prevThr))
-                        return (false, $"{refPrefix}{rule.Indicator} not held {rule.ConsecutiveBars} bars");
-                }
-                var (lastVal, _) = _indicatorEvaluator.Compute(rule.Indicator, rule.Params, evalCtx, 0);
-                return (true, $"{refPrefix}{rule.Indicator}={lastVal:F2} held {rule.ConsecutiveBars} bars");
-            }
-
-            // withinBars: 최근 N봉 중 하나라도 조건 충족하면 통과
-            if (rule.WithinBars > 0)
-            {
-                var checkedBars = 0;
-                for (int offset = 0; offset < rule.WithinBars; offset++)
-                {
-                    if (!HasSufficientRuleHistory(rule, evalCtx, offset))
-                        break;
-
-                    checkedBars++;
-                    var (val, prevVal) = _indicatorEvaluator.Compute(rule.Indicator, rule.Params, evalCtx, offset);
-                    var thr = GetThresholds(offset, out var prevThr);
-                    if (Compare(val, prevVal, rule.Operator, thr, prevThr))
-                        return (true, $"{refPrefix}{rule.Indicator}={val:F2} {rule.Operator} {thresholdLabel} (within {rule.WithinBars})");
-                }
-                if (checkedBars == 0)
-                    return (false, $"{refPrefix}{rule.Indicator} insufficient history for within {rule.WithinBars}");
-                return (false, $"{refPrefix}{rule.Indicator} not met within {rule.WithinBars} bars");
-            }
-
-            if (!HasSufficientRuleHistory(rule, evalCtx, 0))
-                return (false, $"{refPrefix}{rule.Indicator} insufficient history");
-
-            var (currentVal, prev) = _indicatorEvaluator.Compute(rule.Indicator, rule.Params, evalCtx, 0);
-            var threshold = GetThresholds(0, out var prevThreshold2);
-            var passed = Compare(currentVal, prev, rule.Operator, threshold, prevThreshold2);
-            return (passed, $"{refPrefix}{rule.Indicator}={currentVal:F2} {rule.Operator} {thresholdLabel}");
-        }
-        catch
-        {
-            return (false, $"{rule.Indicator}: 평가 실패");
-        }
-    }
-
-    private static bool Compare(decimal current, decimal prev, string op, decimal threshold, decimal prevThreshold) => op switch
-    {
-        ">" => current > threshold,
-        "<" => current < threshold,
-        ">=" => current >= threshold,
-        "<=" => current <= threshold,
-        "crosses_above" => prev <= prevThreshold && current > threshold,
-        "crosses_below" => prev >= prevThreshold && current < threshold,
-        _ => false
-    };
-
-    private static bool HasSufficientRuleHistory(EntryRule rule, EvalContext ctx, int offset)
-    {
-        var requiredBars = GetRequiredBars(rule.Indicator, rule.Params);
-        if (!string.IsNullOrWhiteSpace(rule.CompareIndicator))
-            requiredBars = Math.Max(requiredBars, GetRequiredBars(rule.CompareIndicator, rule.CompareParams));
-
-        return ctx.Bars.Length - offset >= requiredBars;
-    }
-
-    private static int GetRequiredBars(string? indicator, Dictionary<string, decimal>? prms)
-        => IndicatorCatalog.RequiredBars(indicator, prms);
 
 }

@@ -93,4 +93,6 @@ the operator can request reconciliation but cannot force-clear an uncertain orde
 ## Decision records
 
 - `adr/0001-modular-monolith.md`: why a modular monolith is the target.
+- `adr/0002-custom-rule-evaluation-pipeline.md`: deterministic ownership of custom-rule indicators,
+  conditions, groups, dynamic price levels, reference history, and observation time.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -22,6 +22,7 @@ public class PatternDetectionService
     private readonly ICompiledStrategyRepository _strategies;
     private readonly AppDbContext _db;
     private readonly ILogger<PatternDetectionService> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public PatternDetectionService(
         IEnumerable<IPatternDetector> detectors,
@@ -33,6 +34,7 @@ public class PatternDetectionService
         IOhlcvRepository ohlcvRepository,
         ICompiledStrategyRepository strategies,
         AppDbContext db,
+        TimeProvider timeProvider,
         ILogger<PatternDetectionService> logger)
     {
         _detectors = detectors;
@@ -44,6 +46,7 @@ public class PatternDetectionService
         _ohlcvRepository = ohlcvRepository;
         _strategies = strategies;
         _db = db;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -113,7 +116,7 @@ public class PatternDetectionService
             {
                 if (bars.Length == 0 || strategy.TimeFrame != bars[^1].TimeFrame)
                     continue;
-                var detector = new RuleBasedDetector(_indicators, strategy);
+                var detector = new RuleBasedDetector(_indicators, strategy, _timeProvider);
                 var referenceData = await LoadReferenceDataAsync(strategy, symbol, bars, ct);
                 detector.SetReferenceData(referenceData, bars[^1].Timestamp);
                 var signal = await detector.DetectAsync(symbol, bars, effectiveRegime, ct);
