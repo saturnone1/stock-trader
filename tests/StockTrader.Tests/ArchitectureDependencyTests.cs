@@ -163,14 +163,20 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/pattern-builder/patternWorkspace.js"));
         var workspaceTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/patternWorkspace.test.js"));
+        var editorCommands = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternEditorCommands.js"));
+        var editorCommandTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternEditorCommands.test.js"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1260);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1170);
         page.Should().Contain("from '../features/pattern-builder/patternValidation'");
         page.Should().Contain("from '../features/pattern-builder/patternWorkspace'");
         page.Should().NotContain("function collectValidationIssues(");
         page.Should().NotContain("function buildWorkspace(");
         page.Should().NotContain("function buildPatternPayload(");
         page.Should().NotContain("function normalizeRule(");
+        page.Should().NotContain(".splice(");
+        page.Should().NotContain("JSON.parse(JSON.stringify");
         page.Should().Contain("collectPatternValidationIssues(workspace");
         page.Should().Contain("workspaceModel.configure({ indicatorFieldConfigs, dynamicExitFieldConfigs })");
         validation.Should().Contain("export function collectPatternValidationIssues(");
@@ -185,6 +191,11 @@ public class ArchitectureDependencyTests
         workspaceTests.Should().Contain("legacy flat rules are promoted");
         workspaceTests.Should().Contain("malformed optional JSON");
         workspaceTests.Should().Contain("round trip preserves grouped execution semantics");
+        editorCommands.Should().Contain("export function createPatternEditorCommands(");
+        editorCommands.Should().Contain("return { workspace, selectedNode, changed: false }");
+        editorCommandTests.Should().Contain("creates exactly the requested buy or sell condition");
+        editorCommandTests.Should().Contain("do not dirty state at list boundaries");
+        editorCommandTests.Should().Contain("safe no-ops");
     }
 
     [Theory]

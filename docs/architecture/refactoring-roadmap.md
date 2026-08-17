@@ -188,7 +188,12 @@ The page was initially reduced from 1,630 to 1,553 lines. Workspace hydration an
 serialization now live in `patternWorkspace.js`, configured from the server-provided indicator and
 dynamic-exit catalogs. Goldens cover legacy flat-rule promotion, malformed JSON recovery, parameter
 aliases, numeric sanitization, and grouped-strategy round trips. This reduces the page further to
-1,253 lines; editor commands and presentation panels remain as the next extraction boundaries.
+1,253 lines. Add, remove, move, duplicate, and nested-condition commands are now immutable state
+transitions in `patternEditorCommands.js`, reducing the page to 1,166 lines. Command goldens cover
+all list boundaries, parent reselection, deep-copy behavior, and invalid-index no-ops. They also fix
+a trust defect where adding the first condition after deleting every group silently inserted both a
+default condition and the requested condition. Presentation panels remain the next extraction
+boundary.
 
 Exit gate: Svelte is the only operational UI and large pages are orchestration shells.
 

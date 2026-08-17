@@ -5,8 +5,16 @@
   import PatternPreview from '../lib/PatternPreview.svelte'
   import { collectPatternValidationIssues } from '../features/pattern-builder/patternValidation'
   import { createPatternWorkspaceModel } from '../features/pattern-builder/patternWorkspace'
+  import { createPatternEditorCommands } from '../features/pattern-builder/patternEditorCommands'
 
   const workspaceModel = createPatternWorkspaceModel()
+  const editorCommands = createPatternEditorCommands({
+    blankRule: (...args) => workspaceModel.blankRule(...args),
+    blankGroup: (...args) => workspaceModel.blankGroup(...args),
+    blankExitGroup: (...args) => workspaceModel.blankExitGroup(...args),
+    blankWeightTier: (...args) => workspaceModel.blankWeightTier(...args),
+    blankScalingRule: (...args) => workspaceModel.blankScalingRule(...args)
+  })
 
   let indicatorPalette = []
   let operatorOptions = []
@@ -314,139 +322,44 @@
     }
   }
 
-  function selectedGroupIndex() {
-    if (selectedNode.type === 'group' || selectedNode.type === 'entryRule') return selectedNode.groupIndex
-    return workspace?.entryGroups?.length ? 0 : -1
-  }
-
-  function selectedExitGroupIndex() {
-    if (selectedNode.type === 'exitGroup' || selectedNode.type === 'exitRule') return selectedNode.groupIndex
-    return workspace?.exitGroups?.length ? 0 : -1
+  function applyEditorCommand(result) {
+    if (!result?.changed) return
+    workspace = result.workspace
+    selectedNode = result.selectedNode
+    dirty = true
   }
 
   function addRuleToGroup(template = {}) {
-    let index = selectedGroupIndex()
-    if (index < 0) {
-      workspace.entryGroups.push(blankGroup(`매수 상황 1`))
-      index = 0
-    }
-    workspace.entryGroups[index].rules.push(blankRule(template))
-    selectedNode = { type: 'entryRule', groupIndex: index, ruleIndex: workspace.entryGroups[index].rules.length - 1 }
-    touch()
+    applyEditorCommand(editorCommands.addEntryRule(workspace, selectedNode, template))
   }
 
   function addRuleToExitGroup(template = {}) {
-    let index = selectedExitGroupIndex()
-    if (index < 0) {
-      workspace.exitGroups.push(blankExitGroup('매도 상황 1'))
-      index = 0
-    }
-    workspace.exitGroups[index].rules.push(blankRule(template))
-    selectedNode = { type: 'exitRule', groupIndex: index, ruleIndex: workspace.exitGroups[index].rules.length - 1 }
-    touch()
+    applyEditorCommand(editorCommands.addExitRule(workspace, selectedNode, template))
   }
 
   function addNode(kind) {
-    if (!workspace) return
-
-    if (kind === 'group') {
-      workspace.entryGroups.push(blankGroup(`매수 상황 ${workspace.entryGroups.length + 1}`))
-      selectedNode = { type: 'group', groupIndex: workspace.entryGroups.length - 1 }
-    } else if (kind === 'exitGroup') {
-      workspace.exitGroups.push(blankExitGroup(`매도 상황 ${workspace.exitGroups.length + 1}`))
-      selectedNode = { type: 'exitGroup', groupIndex: workspace.exitGroups.length - 1 }
-    } else if (kind === 'weightTier') {
-      workspace.weightTiers.push(blankWeightTier())
-      workspace.useWeightTiers = true
-      selectedNode = { type: 'weightTier', tierIndex: workspace.weightTiers.length - 1 }
-    } else if (kind === 'scalingRule') {
-      workspace.scalingRules.push(blankScalingRule())
-      selectedNode = { type: 'scalingRule', scalingIndex: workspace.scalingRules.length - 1 }
-    }
-
-    touch()
+    applyEditorCommand(editorCommands.addNode(workspace, selectedNode, kind))
   }
 
   function addTierCondition(tierIndex) {
-    workspace.weightTiers[tierIndex].conditions.push(blankRule())
-    selectedNode = { type: 'tierRule', tierIndex, ruleIndex: workspace.weightTiers[tierIndex].conditions.length - 1 }
-    touch()
+    applyEditorCommand(editorCommands.addTierCondition(workspace, selectedNode, tierIndex))
   }
 
   function addScalingCondition(scalingIndex) {
-    workspace.scalingRules[scalingIndex].conditions.push(blankRule())
-    selectedNode = { type: 'scalingRuleCondition', scalingIndex, ruleIndex: workspace.scalingRules[scalingIndex].conditions.length - 1 }
-    touch()
+    applyEditorCommand(editorCommands.addScalingCondition(workspace, selectedNode, scalingIndex))
   }
 
   function removeNode(node) {
-    if (!workspace) return
-
-    if (node.type === 'group') {
-      workspace.entryGroups.splice(node.groupIndex, 1)
-      selectedNode = { type: 'general' }
-    } else if (node.type === 'entryRule') {
-      workspace.entryGroups[node.groupIndex].rules.splice(node.ruleIndex, 1)
-      selectedNode = { type: 'group', groupIndex: node.groupIndex }
-    } else if (node.type === 'exitGroup') {
-      workspace.exitGroups.splice(node.groupIndex, 1)
-      selectedNode = { type: 'general' }
-    } else if (node.type === 'exitRule') {
-      workspace.exitGroups[node.groupIndex].rules.splice(node.ruleIndex, 1)
-      selectedNode = { type: 'exitGroup', groupIndex: node.groupIndex }
-    } else if (node.type === 'weightTier') {
-      workspace.weightTiers.splice(node.tierIndex, 1)
-      selectedNode = { type: 'general' }
-    } else if (node.type === 'tierRule') {
-      workspace.weightTiers[node.tierIndex].conditions.splice(node.ruleIndex, 1)
-      selectedNode = { type: 'weightTier', tierIndex: node.tierIndex }
-    } else if (node.type === 'scalingRule') {
-      workspace.scalingRules.splice(node.scalingIndex, 1)
-      selectedNode = { type: 'general' }
-    } else if (node.type === 'scalingRuleCondition') {
-      workspace.scalingRules[node.scalingIndex].conditions.splice(node.ruleIndex, 1)
-      selectedNode = { type: 'scalingRule', scalingIndex: node.scalingIndex }
-    }
-
-    touch()
-  }
-
-  function cloneValue(value) {
-    return JSON.parse(JSON.stringify(value))
-  }
-
-  function moveItem(list, index, offset) {
-    const next = index + offset
-    if (next < 0 || next >= list.length) return index
-    const [item] = list.splice(index, 1)
-    list.splice(next, 0, item)
-    touch()
-    return next
+    applyEditorCommand(editorCommands.removeNode(workspace, selectedNode, node))
   }
 
   function moveNode(node, offset) {
-    if (node.type === 'group') selectedNode = { ...node, groupIndex: moveItem(workspace.entryGroups, node.groupIndex, offset) }
-    else if (node.type === 'entryRule') selectedNode = { ...node, ruleIndex: moveItem(workspace.entryGroups[node.groupIndex].rules, node.ruleIndex, offset) }
-    else if (node.type === 'exitGroup') selectedNode = { ...node, groupIndex: moveItem(workspace.exitGroups, node.groupIndex, offset) }
-    else if (node.type === 'exitRule') selectedNode = { ...node, ruleIndex: moveItem(workspace.exitGroups[node.groupIndex].rules, node.ruleIndex, offset) }
-    else if (node.type === 'weightTier') selectedNode = { ...node, tierIndex: moveItem(workspace.weightTiers, node.tierIndex, offset) }
-    else if (node.type === 'tierRule') selectedNode = { ...node, ruleIndex: moveItem(workspace.weightTiers[node.tierIndex].conditions, node.ruleIndex, offset) }
-    else if (node.type === 'scalingRule') selectedNode = { ...node, scalingIndex: moveItem(workspace.scalingRules, node.scalingIndex, offset) }
-    else if (node.type === 'scalingRuleCondition') selectedNode = { ...node, ruleIndex: moveItem(workspace.scalingRules[node.scalingIndex].conditions, node.ruleIndex, offset) }
+    applyEditorCommand(editorCommands.moveNode(workspace, selectedNode, node, offset))
   }
 
   function duplicateNode(node) {
-    if (node.type === 'entryRule') workspace.entryGroups[node.groupIndex].rules.splice(node.ruleIndex + 1, 0, cloneValue(workspace.entryGroups[node.groupIndex].rules[node.ruleIndex]))
-    else if (node.type === 'exitRule') workspace.exitGroups[node.groupIndex].rules.splice(node.ruleIndex + 1, 0, cloneValue(workspace.exitGroups[node.groupIndex].rules[node.ruleIndex]))
-    else if (node.type === 'tierRule') workspace.weightTiers[node.tierIndex].conditions.splice(node.ruleIndex + 1, 0, cloneValue(workspace.weightTiers[node.tierIndex].conditions[node.ruleIndex]))
-    else if (node.type === 'scalingRuleCondition') workspace.scalingRules[node.scalingIndex].conditions.splice(node.ruleIndex + 1, 0, cloneValue(workspace.scalingRules[node.scalingIndex].conditions[node.ruleIndex]))
-    else if (node.type === 'group') workspace.entryGroups.splice(node.groupIndex + 1, 0, cloneValue(workspace.entryGroups[node.groupIndex]))
-    else if (node.type === 'exitGroup') workspace.exitGroups.splice(node.groupIndex + 1, 0, cloneValue(workspace.exitGroups[node.groupIndex]))
-    else if (node.type === 'weightTier') workspace.weightTiers.splice(node.tierIndex + 1, 0, cloneValue(workspace.weightTiers[node.tierIndex]))
-    else if (node.type === 'scalingRule') workspace.scalingRules.splice(node.scalingIndex + 1, 0, cloneValue(workspace.scalingRules[node.scalingIndex]))
-    touch()
+    applyEditorCommand(editorCommands.duplicateNode(workspace, selectedNode, node))
   }
-
   function ruleSummary(rule) {
     const indicatorLabel = indicatorLabels[rule.indicator] ?? rule.indicator
     const params = Object.entries(rule.params || {}).map(([key, value]) => `${paramKeyLabels[key] ?? key}:${value}`).join(', ')
