@@ -22,19 +22,36 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/backtestResearch.js"));
         var resultSummary = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/BacktestResultSummary.svelte"));
+        var performanceBreakdown = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestPerformanceBreakdown.svelte"));
+        var validationResults = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestValidationResults.svelte"));
+        var tradeHistory = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestTradeHistory.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_910);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(1_735);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
+        page.Should().Contain("<BacktestPerformanceBreakdown");
+        page.Should().Contain("<BacktestValidationResults");
+        page.Should().Contain("<BacktestTradeHistory");
         page.Should().NotContain("백테스트 실패:");
         page.Should().NotContain("타이밍 리포트");
+        page.Should().NotContain("종목별 성과");
+        page.Should().NotContain(">워크포워드 결과</div>");
+        page.Should().NotContain(">최근 거래</div>");
         page.Should().NotContain("function getWhipsawStats(");
         page.Should().NotContain("const factorExperimentPresets = [");
         research.Should().Contain("export function getWhipsawStats(");
         research.Should().Contain("export function getEquityCurveVolatility(");
         resultSummary.Should().Contain("백테스트 실패:");
         resultSummary.Should().Contain("타이밍 리포트");
+        performanceBreakdown.Should().Contain("종목별 성과");
+        performanceBreakdown.Should().Contain("레짐별 성과");
+        validationResults.Should().Contain("워크포워드 결과");
+        validationResults.Should().Contain("몬테카를로 결과");
+        tradeHistory.Should().Contain("최근 거래");
     }
 
     [Theory]
