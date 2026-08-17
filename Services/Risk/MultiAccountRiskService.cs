@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using StockTrader.Application.Execution;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
@@ -120,14 +121,8 @@ public class MultiAccountRiskService : IRiskManagementService
 
     public decimal CalculatePositionSize(decimal accountSize, decimal riskPercent,
         decimal entryPrice, decimal stopLossPrice)
-    {
-        if (entryPrice == 0 || stopLossPrice == 0) return 0;
-
-        var stopLossPercent = Math.Abs(entryPrice - stopLossPrice) / entryPrice;
-        if (stopLossPercent == 0) return 0;
-
-        return accountSize * riskPercent / stopLossPercent;
-    }
+        => LongPositionSizingPolicy.CalculateRiskCapital(
+            accountSize, riskPercent, entryPrice, stopLossPrice);
 
     /// <summary>
     /// 모든 계좌의 PnL을 업데이트한다.

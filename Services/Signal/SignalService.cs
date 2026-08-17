@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Execution;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Data;
@@ -7,7 +8,6 @@ using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Services.Risk;
 using StockTrader.Services.Statistics;
-using StockTrader.Services.Backtest;
 
 namespace StockTrader.Services.Signal;
 
@@ -193,19 +193,13 @@ public class SignalService : ISignalService
             }
 
             // ── 5. 포지션 사이징 ──
-            var effectiveRisk = _tradingSettings.RiskPerTradePercent;
-            if (customDefinition != null && strategyTrades.Count >= 10
-                && customDefinition.SizingMode is "Kelly" or "HalfKelly")
-            {
-                var wins = strategyTrades.Where(trade => trade.PnL > 0).ToList();
-                var losses = strategyTrades.Where(trade => trade.PnL < 0).ToList();
-                var kelly = PerformanceCalculator.ComputeKellyFraction(
-                    (decimal)wins.Count / strategyTrades.Count,
-                    wins.Count > 0 ? wins.Average(trade => trade.PnLPercent) : 0,
-                    losses.Count > 0 ? Math.Abs(losses.Average(trade => trade.PnLPercent)) : 0);
-                if (kelly > 0)
-                    effectiveRisk = customDefinition.SizingMode == "HalfKelly" ? kelly / 2 : kelly;
-            }
+            var sizingTrades = strategyTrades
+                .Select(trade => new PositionSizingTradeSample(trade.PnL, trade.PnLPercent))
+                .ToArray();
+            var effectiveRisk = LongPositionSizingPolicy.ResolveRiskFraction(
+                _tradingSettings.RiskPerTradePercent,
+                customDefinition?.SizingMode,
+                sizingTrades);
             var positionSize = _riskService.CalculatePositionSize(
                 settings.AccountSize,
                 effectiveRisk,

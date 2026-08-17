@@ -1,3 +1,4 @@
+using StockTrader.Application.Execution;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -65,15 +66,7 @@ internal static class PerformanceCalculator
     /// 최대 25%로 상한 제한 (Half-Kelly 권장).
     /// </summary>
     public static decimal ComputeKellyFraction(decimal winRate, decimal avgWinPct, decimal avgLossPct)
-    {
-        if (avgWinPct <= 0 || avgLossPct <= 0) return 0;
-        var b = avgWinPct / avgLossPct; // 손익비
-        if (b <= 0) return 0;
-        var p = winRate;
-        var q = 1 - p;
-        var kelly = p - q / b;
-        return Math.Max(0, Math.Min(0.25m, kelly));
-    }
+        => LongPositionSizingPolicy.ComputeKellyFraction(winRate, avgWinPct, avgLossPct);
 
     // ── [B-3] MAE/MFE 통계 ────────────────────────────────────────────────
 

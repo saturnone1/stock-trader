@@ -13,6 +13,10 @@ public sealed record ExitMethodDescriptor(
 /// </summary>
 public static class StrategyCatalog
 {
+    public const string FixedRiskSizingMode = "FixedRisk";
+    public const string KellySizingMode = "Kelly";
+    public const string HalfKellySizingMode = "HalfKelly";
+
     private static IndicatorParameterDescriptor P(
         string key, string name, decimal value, decimal step = 1m) => new(key, name, value, step);
 
@@ -24,9 +28,9 @@ public static class StrategyCatalog
 
     public static IReadOnlyList<StrategyOptionDescriptor> SizingModes { get; } =
     [
-        new("FixedRisk", "손실 허용액 기준"),
-        new("Kelly", "켈리 공식"),
-        new("HalfKelly", "절반 켈리 공식")
+        new(FixedRiskSizingMode, "손실 허용액 기준"),
+        new(KellySizingMode, "켈리 공식"),
+        new(HalfKellySizingMode, "절반 켈리 공식")
     ];
 
     public static IReadOnlyList<StrategyOptionDescriptor> LogicModes { get; } =

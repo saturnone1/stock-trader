@@ -97,6 +97,28 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BacktestAndLiveRecommendationSharePositionSizingPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var engine = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSimulationEngine.cs"));
+        var signalService = File.ReadAllText(Path.Combine(
+            repository, "Services/Signal/SignalService.cs"));
+        var riskService = File.ReadAllText(Path.Combine(
+            repository, "Services/Risk/MultiAccountRiskService.cs"));
+        var performance = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/PerformanceCalculator.cs"));
+
+        engine.Should().Contain("new BacktestPortfolioState(");
+        engine.Should().Contain("LongPositionSizingPolicy.Calculate(");
+        signalService.Should().Contain("LongPositionSizingPolicy.ResolveRiskFraction(");
+        riskService.Should().Contain("LongPositionSizingPolicy.CalculateRiskCapital(");
+        performance.Should().Contain("LongPositionSizingPolicy.ComputeKellyFraction(");
+        engine.Should().NotContain("rollingAvgWin");
+        signalService.Should().NotContain("var kelly =");
+    }
+
+    [Fact]
     public void OptimizationExecutorDelegatesMarketDataPreparation()
     {
         var repository = FindRepositoryRoot();

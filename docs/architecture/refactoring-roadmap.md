@@ -33,10 +33,15 @@
   data loading, walk-forward, and optimization instead of owning the date-by-date portfolio loop.
   Execution costs are isolated in `BacktestExecutionCostLedger`, with regression tests covering
   fixed/adaptive slippage and exactly-once commission application. Result/metric construction is
-  isolated in `BacktestResultBuilder`; portfolio runtime state remains the next extraction target.
+  isolated in `BacktestResultBuilder`.
+- Realized/unrealized equity, daily loss limits, marked-equity drawdown, and open positions now live
+  in `BacktestPortfolioState`. `LongPositionSizingPolicy` is the shared owner for stop-risk capital,
+  portfolio caps, minimum Kelly samples, Kelly/Half-Kelly selection, and the 25% Kelly ceiling.
+  Daily, one-minute, and weekly golden simulations lock the same entry, target fill, quantity, and
+  portfolio return across timeframe variants.
 
-Remaining Phase 2 work is primarily the extraction of portfolio state and metric/result orchestration
-from `BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
+Remaining Phase 2 work is primarily the extraction of entry/exit orchestration from
+`BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
 and broader preview/backtest/live parity fixtures.
 
 ## Phase 0 — Guardrails and governance
