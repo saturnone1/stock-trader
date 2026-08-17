@@ -36,8 +36,8 @@ public interface IBrokerService
     /// </summary>
     /// <param name="symbol">종목 코드</param>
     /// <param name="ct">취소 토큰</param>
-    /// <returns>청산 성공 여부</returns>
-    Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default);
+    /// <returns>접수된 청산 주문. 제출 실패 시 null.</returns>
+    Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default);
 
     // ── 포지션 조회 ────────────────────────────────────────────────────────
 

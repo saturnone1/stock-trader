@@ -82,14 +82,14 @@ public class AlpacaBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    public async Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default)
     {
         // Alpaca의 DeletePositionAsync는 시장가 청산 + 연결된 주문 자동 취소.
         // 예외는 caller(Portfolio.razor, PositionExitManagerService)로 전파하여
         // 실제 오류 원인(시장 마감, 포지션 없음 등)이 사용자에게 노출되도록 한다.
-        await _tradingClient.DeletePositionAsync(new DeletePositionRequest(symbol), ct);
+        var order = await _tradingClient.DeletePositionAsync(new DeletePositionRequest(symbol), ct);
         _logger.LogInformation("[Alpaca] Position closed — {Symbol}", symbol);
-        return true;
+        return MapToModel(order);
     }
 
     /// <inheritdoc />

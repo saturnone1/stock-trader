@@ -82,7 +82,7 @@ public class LsSecuritiesBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public async Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    public async Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default)
     {
         try
         {
@@ -94,7 +94,7 @@ public class LsSecuritiesBrokerService : IBrokerService
             if (pos == null || pos.Quantity <= 0)
             {
                 _logger.LogWarning("[LS] 청산할 포지션 없음: {Symbol}", symbol);
-                return false;
+                return null;
             }
 
             var sellBody = new Dictionary<string, object>
@@ -117,23 +117,47 @@ public class LsSecuritiesBrokerService : IBrokerService
             var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
                 "CSPAT00600", sellBody, ct: ct);
             var response = await _http.SendAsync(request, ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
             {
-                var body = await response.Content.ReadAsStringAsync(ct);
                 _logger.LogError("[LS] 포지션 청산 실패: {Symbol} {Status} {Body}",
-                    symbol, response.StatusCode, body);
-                return false;
+                    symbol, response.StatusCode, json);
+                return null;
+            }
+
+            var orderId = string.Empty;
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.TryGetProperty("CSPAT00600OutBlock2", out var block)
+                    && block.TryGetProperty("OrdNo", out var orderNumber))
+                    orderId = orderNumber.ToString();
+            }
+            catch (JsonException ex)
+            {
+                // HTTP 주문 접수는 성공했다. 주문번호 파싱 실패를 제출 실패로 바꾸면
+                // 재시도 시 중복 매도가 될 수 있으므로 ID 미상 접수로 유지한다.
+                _logger.LogWarning(ex, "[LS] 청산 주문은 접수됐으나 주문번호를 읽지 못함: {Symbol}", symbol);
             }
 
             _logger.LogInformation("[LS] 포지션 청산 성공: {Symbol} {Qty}주",
                 symbol, pos.Quantity);
-            return true;
+            return new BrokerOrder
+            {
+                OrderId = orderId,
+                Symbol = symbol,
+                Direction = TradeDirection.Short,
+                Quantity = pos.Quantity,
+                Status = BrokerOrderStatus.Accepted,
+                OrderType = BrokerOrderType.Market,
+                SubmittedAt = DateTime.UtcNow,
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
-            return false;
+            return null;
         }
     }
 

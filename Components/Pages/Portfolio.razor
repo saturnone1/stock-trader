@@ -4,9 +4,11 @@
 @using StockTrader.Models.Enums
 @using StockTrader.Data.Repositories
 @using StockTrader.Services.Account
+@using StockTrader.Services.Order
 @inject ITradeRepository TradeRepo
 @inject IPatternStatsRepository StatsRepo
 @inject IAccountManager AccountManager
+@inject ILivePositionExitCoordinator ExitCoordinator
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @implements IDisposable
@@ -832,24 +834,22 @@
                 return;
             }
 
-            var success = await broker.ClosePositionAsync(symbol);
-            if (success)
+            var positions = await TradeRepo.GetOpenPositionsAsync();
+            var matchingPositions = positions.Where(item =>
+                item.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (matchingPositions.Length != 1)
             {
-                Snackbar.Add($"✓ {symbol} 청산 완료", Severity.Success);
-                // DB 포지션 ClosedAt 마킹 — PositionExitManagerService 재청산 시도 방지
-                var dbPositions = await TradeRepo.GetOpenPositionsAsync();
-                foreach (var dbPos in dbPositions.Where(p =>
-                    p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)))
-                {
-                    var tracked = await TradeRepo.GetPositionAsync(dbPos.Id);
-                    if (tracked != null && tracked.ClosedAt == null)
-                    {
-                        tracked.ClosedAt = DateTime.UtcNow;
-                        await TradeRepo.SavePositionAsync(tracked);
-                    }
-                }
-                // 브로커 응답을 기다리지 않고 즉시 UI에서 제거
-                _openPositions.RemoveAll(p => p.Symbol == symbol);
+                Snackbar.Add(matchingPositions.Length == 0
+                    ? $"{symbol}의 관리 중인 포지션을 찾을 수 없습니다."
+                    : $"{symbol} 포지션이 여러 계좌에 있어 계좌별 청산이 필요합니다.", Severity.Error);
+                return;
+            }
+
+            var submission = await ExitCoordinator.SubmitAsync(
+                matchingPositions[0], "사용자 수동 청산", broker);
+            if (submission.Status is LiveExitSubmissionStatus.Accepted or LiveExitSubmissionStatus.AlreadyPending)
+            {
+                Snackbar.Add($"✓ {symbol} 청산 주문 접수됨 · 체결 확인 중", Severity.Success);
             }
             else
             {

@@ -21,9 +21,13 @@
   `PositionExecutionStateMigration`; process restarts no longer discard initial risk, breakeven, or
   trailing activation. Market-open checks use the injected clock, and daily holding limits count
   observed market bars instead of approximating business days as calendar days.
+- Automatic and manual live exits share `LivePositionExitCoordinator`. It atomically claims the
+  database position before contacting a broker, persists the broker order ID, waits on ambiguous
+  states instead of resubmitting, and finalizes the position plus trade record in one transaction.
+  The broker port returns a trackable `BrokerOrder` instead of discarding it as a boolean.
 
 Remaining Phase 2 work is primarily the extraction of portfolio and metric orchestration from
-`BacktestService`, durable/idempotent live exit-order reconciliation, and broader
+`BacktestService`, operational visibility and recovery controls for pending live exits, and broader
 preview/backtest/live parity fixtures.
 
 ## Phase 0 — Guardrails and governance

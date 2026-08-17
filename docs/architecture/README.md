@@ -59,6 +59,11 @@ original risk distance and protective-stop flags survive restarts through an ord
 migration. Session checks receive a `TimeProvider`, and daily time exits count stored daily bars;
 workers must not embed exchange hours or approximate trading sessions from calendar-day ratios.
 
+Live exit submission is a use case, not a broker call hidden in a worker or UI. All automatic and
+manual exits first atomically claim the persisted position, then store the broker's order ID. A
+restart reconciles that order as filled, terminally failed, or still uncertain; uncertain orders
+are never blindly resubmitted. Position closure and its trade record commit atomically.
+
 ## Decision records
 
 - `adr/0001-modular-monolith.md`: why a modular monolith is the target.

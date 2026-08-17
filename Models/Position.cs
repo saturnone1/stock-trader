@@ -38,6 +38,15 @@ public class Position
     /// <summary>추적손절이 활성화됐는지 여부. 서비스 재시작 후에도 유지한다.</summary>
     public bool TrailingStopActivated { get; set; }
 
+    /// <summary>브로커 청산 주문 전에 기록하는 내구성 있는 주문 의도 시각.</summary>
+    public DateTime? ExitRequestedAt { get; set; }
+
+    /// <summary>청산 의도를 발생시킨 전략 사유.</summary>
+    public string? ExitRequestReason { get; set; }
+
+    /// <summary>브로커가 반환한 청산 주문 ID. 재시작 후 체결 재조정에 사용한다.</summary>
+    public string? ExitOrderId { get; set; }
+
     public bool IsOpen => ClosedAt == null;
     public decimal UnrealizedPnL => (CurrentPrice - EntryPrice) * Quantity;
     public decimal? RealizedPnL => ExitPrice.HasValue

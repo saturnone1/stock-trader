@@ -33,10 +33,10 @@ public class KoreaInvestmentBrokerService : IBrokerService
         return Task.FromResult(false);
     }
 
-    public Task<bool> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    public Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default)
     {
         _logger.LogWarning("[KIS] ClosePositionAsync({Symbol}): 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다.", symbol);
-        return Task.FromResult(false);
+        return Task.FromResult<BrokerOrder?>(null);
     }
 
     public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)

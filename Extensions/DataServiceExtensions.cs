@@ -23,6 +23,7 @@ public static class DataServiceExtensions
         services.AddScoped<ICompiledStrategyRepository, CompiledStrategyRepository>();
         services.AddScoped<IDatabaseMigration, LegacySchemaBaselineMigration>();
         services.AddScoped<IDatabaseMigration, PositionExecutionStateMigration>();
+        services.AddScoped<IDatabaseMigration, PositionExitIntentMigration>();
         services.AddScoped<DatabaseMigrationRunner>();
 
         // Data Feed - Keyed services for multiple providers

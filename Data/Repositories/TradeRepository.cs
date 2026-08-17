@@ -112,6 +112,96 @@ public class TradeRepository : ITradeRepository
         _cache.Remove(OpenPositionsCacheKey);
     }
 
+    public async Task<bool> TryClaimPositionExitAsync(
+        long positionId,
+        DateTime requestedAt,
+        string reason,
+        CancellationToken ct = default)
+    {
+        var updated = await _db.Positions
+            .Where(position => position.Id == positionId
+                && position.ClosedAt == null
+                && position.ExitRequestedAt == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(position => position.ExitRequestedAt, requestedAt)
+                .SetProperty(position => position.ExitRequestReason, reason)
+                .SetProperty(position => position.ExitOrderId, (string?)null), ct);
+        _cache.Remove(OpenPositionsCacheKey);
+        return updated == 1;
+    }
+
+    public async Task<bool> SetPositionExitOrderIdAsync(
+        long positionId,
+        DateTime requestedAt,
+        string? orderId,
+        CancellationToken ct = default)
+    {
+        var updated = await _db.Positions
+            .Where(position => position.Id == positionId
+                && position.ClosedAt == null
+                && position.ExitRequestedAt == requestedAt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(position => position.ExitOrderId, orderId), ct);
+        _cache.Remove(OpenPositionsCacheKey);
+        return updated == 1;
+    }
+
+    public async Task<bool> ReleasePositionExitClaimAsync(
+        long positionId,
+        DateTime requestedAt,
+        CancellationToken ct = default)
+    {
+        var updated = await _db.Positions
+            .Where(position => position.Id == positionId
+                && position.ClosedAt == null
+                && position.ExitRequestedAt == requestedAt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(position => position.ExitRequestedAt, (DateTime?)null)
+                .SetProperty(position => position.ExitRequestReason, (string?)null)
+                .SetProperty(position => position.ExitOrderId, (string?)null), ct);
+        _cache.Remove(OpenPositionsCacheKey);
+        return updated == 1;
+    }
+
+    public async Task<bool> TryCompletePositionExitAsync(
+        Position position,
+        TradeRecord trade,
+        CancellationToken ct = default)
+    {
+        if (!position.ExitRequestedAt.HasValue || !position.ClosedAt.HasValue || !position.ExitPrice.HasValue)
+            return false;
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var updated = await _db.Positions
+                .Where(stored => stored.Id == position.Id
+                    && stored.ClosedAt == null
+                    && stored.ExitRequestedAt == position.ExitRequestedAt)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(stored => stored.ClosedAt, position.ClosedAt)
+                    .SetProperty(stored => stored.ExitPrice, position.ExitPrice)
+                    .SetProperty(stored => stored.ExitOrderId, position.ExitOrderId), ct);
+            if (updated != 1)
+            {
+                await transaction.RollbackAsync(ct);
+                return false;
+            }
+
+            _db.TradeRecords.Add(trade);
+            await _db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            _cache.Remove(OpenPositionsCacheKey);
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            _db.Entry(trade).State = EntityState.Detached;
+            throw;
+        }
+    }
+
     public async Task<List<TradeRecommendation>> GetRecentRecommendationsAsync(int count = 20,
         CancellationToken ct = default)
     {

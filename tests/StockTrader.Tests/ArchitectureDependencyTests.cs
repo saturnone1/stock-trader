@@ -117,6 +117,21 @@ public class ArchitectureDependencyTests
         liveManager.Should().NotContain("DateTime.UtcNow");
         liveManager.Should().NotContain("TZConvert");
         liveManager.Should().NotContain("7.0 / 5.0");
+        liveManager.Should().Contain("exitCoordinator.SubmitAsync(");
+        liveManager.Should().NotContain("brokerService.ClosePositionAsync(");
+    }
+
+    [Fact]
+    public void AutomaticAndManualExitPathsUseTheSameSubmissionCoordinator()
+    {
+        var repository = FindRepositoryRoot();
+        var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
+        var portfolio = File.ReadAllText(Path.Combine(repository, "Components/Pages/Portfolio.razor"));
+
+        program.Should().Contain("exitCoordinator.SubmitAsync(");
+        portfolio.Should().Contain("ExitCoordinator.SubmitAsync(");
+        program.Should().NotContain("broker.ClosePositionAsync(");
+        portfolio.Should().NotContain("broker.ClosePositionAsync(");
     }
 
     private static string FindRepositoryRoot()

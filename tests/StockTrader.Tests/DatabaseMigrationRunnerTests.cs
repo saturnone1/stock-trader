@@ -86,6 +86,9 @@ public class DatabaseMigrationRunnerTests
                 InitialRiskDistance = 4.25m,
                 BreakevenApplied = true,
                 TrailingStopActivated = true,
+                ExitRequestedAt = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc),
+                ExitRequestReason = "손절",
+                ExitOrderId = "order-123",
             });
             await writeDb.SaveChangesAsync();
         }
@@ -96,6 +99,30 @@ public class DatabaseMigrationRunnerTests
         restored.InitialRiskDistance.Should().Be(4.25m);
         restored.BreakevenApplied.Should().BeTrue();
         restored.TrailingStopActivated.Should().BeTrue();
+        restored.ExitRequestReason.Should().Be("손절");
+        restored.ExitOrderId.Should().Be("order-123");
+    }
+
+    [Fact]
+    public async Task MigrateAsync_AddsDurableExitIntentWithoutChangingOpenPosition()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await ExecuteAsync(connection, """
+            CREATE TABLE Positions (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Symbol TEXT NOT NULL DEFAULT '',
+                ClosedAt TEXT);
+            INSERT INTO Positions (Symbol, ClosedAt) VALUES ('TQQQ', NULL);
+            """);
+        await using var db = CreateContext(connection);
+
+        await CreateRunner(db, new PositionExitIntentMigration()).MigrateAsync();
+
+        (await ColumnsAsync(connection, "Positions")).Should().Contain([
+            "ExitRequestedAt", "ExitRequestReason", "ExitOrderId"]);
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM Positions WHERE Symbol = 'TQQQ' AND ClosedAt IS NULL"))
+            .Should().Be(1);
     }
 
     [Fact]

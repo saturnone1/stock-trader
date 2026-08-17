@@ -13,6 +13,7 @@ using StockTrader.Services.Indicators;
 using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
+using StockTrader.Services.Order;
 using StockTrader.Services.Patterns;
 
 namespace StockTrader.BackgroundServices;
@@ -102,6 +103,7 @@ public class PositionExitManagerService : BackgroundService
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var liveParamService = scope.ServiceProvider.GetRequiredService<ILiveParameterService>();
         var strategies = scope.ServiceProvider.GetRequiredService<ICompiledStrategyRepository>();
+        var exitCoordinator = scope.ServiceProvider.GetRequiredService<ILivePositionExitCoordinator>();
 
         // DB에서 저장된 청산 파라미터 오버라이드 로드 (매 체크마다 갱신)
         _liveExitOverrides = await liveParamService.GetLiveOverridesAsync(ct);
@@ -124,6 +126,12 @@ public class PositionExitManagerService : BackgroundService
         {
             try
             {
+                if (position.ExitRequestedAt.HasValue)
+                {
+                    await ReconcilePendingExitAsync(position, brokerService, tradeRepo, ct);
+                    continue;
+                }
+
                 // 현재가 업데이트
                 if (brokerPriceMap.TryGetValue(position.Symbol, out var currentPrice) && currentPrice > 0)
                     position.CurrentPrice = currentPrice;
@@ -146,49 +154,18 @@ public class PositionExitManagerService : BackgroundService
                         position.Symbol, exitResult.Reason, position.EntryPrice,
                         position.CurrentPrice, position.CurrentPrice / position.EntryPrice - 1);
 
-                    var closeTime = UtcNow;
-                    var closed = await brokerService.ClosePositionAsync(position.Symbol, ct);
-                    if (closed)
-                    {
-                        // 브로커 체결가 조회 시도: 시장가 주문은 수초 내 체결되므로
-                        // 짧은 대기 후 최근 주문 내역에서 AverageFillPrice를 가져온다.
-                        // 조회 실패 또는 미체결 상태면 마지막 폴링 가격으로 폴백한다.
-                        var fillPrice = await TryGetFillPriceAsync(
-                            brokerService, position.Symbol, closeTime, ct);
+                    var submission = await exitCoordinator.SubmitAsync(
+                        position, exitResult.Reason, brokerService, ct);
+                    if (submission.Status != LiveExitSubmissionStatus.Accepted
+                        || submission.Order is null
+                        || !submission.RequestedAt.HasValue)
+                        continue;
 
-                        position.ClosedAt = closeTime;
-                        position.ExitPrice = fillPrice > 0 ? fillPrice : position.CurrentPrice;
-                        await tradeRepo.SavePositionAsync(position, ct);
-
-                        // 거래 기록 저장
-                        var exitPx = position.ExitPrice ?? position.CurrentPrice;
-                        var trade = new TradeRecord
-                        {
-                            Symbol = position.Symbol,
-                            PatternType = position.PatternType,
-                            CustomPatternName = position.CustomPatternName,
-                            EntryPrice = position.EntryPrice,
-                            ExitPrice = exitPx,
-                            Quantity = position.Quantity,
-                            EntryTime = position.OpenedAt,
-                            ExitTime = closeTime,
-                            PnL = (exitPx - position.EntryPrice) * position.Quantity,
-                            PnLPercent = exitPx / position.EntryPrice - 1,
-                            ExitReason = exitResult.Reason
-                        };
-                        await tradeRepo.AddTradeAsync(trade, ct);
-
-                        _notificationService.Notify(new TradeRecommendation
-                        {
-                            Symbol = position.Symbol,
-                            PatternType = position.PatternType,
-                            CustomPatternName = position.CustomPatternName,
-                            EntryPrice = position.EntryPrice,
-                            TargetPrice = position.CurrentPrice,
-                            ShareQuantity = position.Quantity,
-                            GeneratedAt = UtcNow
-                        });
-                    }
+                    var resolution = ExitOrderReconciliationPolicy.Resolve(
+                        position.Symbol, position.ExitOrderId, submission.RequestedAt.Value, [submission.Order]);
+                    if (resolution.Action == ExitOrderReconciliationAction.Wait)
+                        resolution = await WaitForExitResolutionAsync(position, brokerService, ct);
+                    await ApplyExitResolutionAsync(position, resolution, tradeRepo, ct);
                 }
                 else
                 {
@@ -210,6 +187,109 @@ public class PositionExitManagerService : BackgroundService
                 _logger.LogError(ex, "Error evaluating exit for {Symbol}", position.Symbol);
             }
         }
+    }
+
+    private async Task ReconcilePendingExitAsync(
+        Position position,
+        IBrokerService broker,
+        ITradeRepository trades,
+        CancellationToken ct)
+    {
+        var resolution = await ReadExitResolutionAsync(position, broker, ct);
+        await ApplyExitResolutionAsync(position, resolution, trades, ct);
+    }
+
+    private async Task<ExitOrderReconciliation> WaitForExitResolutionAsync(
+        Position position,
+        IBrokerService broker,
+        CancellationToken ct)
+    {
+        const int maxAttempts = 10;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            await Task.Delay(500, ct);
+            var resolution = await ReadExitResolutionAsync(position, broker, ct);
+            if (resolution.Action != ExitOrderReconciliationAction.Wait)
+                return resolution;
+        }
+        return new ExitOrderReconciliation(ExitOrderReconciliationAction.Wait);
+    }
+
+    private async Task<ExitOrderReconciliation> ReadExitResolutionAsync(
+        Position position,
+        IBrokerService broker,
+        CancellationToken ct)
+    {
+        var requestedAt = position.ExitRequestedAt!.Value;
+        var orders = await broker.GetOrderHistoryAsync(
+            requestedAt.AddSeconds(-2), UtcNow.AddSeconds(1), ct);
+        return ExitOrderReconciliationPolicy.Resolve(
+            position.Symbol, position.ExitOrderId, requestedAt, orders);
+    }
+
+    private async Task ApplyExitResolutionAsync(
+        Position position,
+        ExitOrderReconciliation resolution,
+        ITradeRepository trades,
+        CancellationToken ct)
+    {
+        if (resolution.Action == ExitOrderReconciliationAction.ReleaseForRetry)
+        {
+            _logger.LogWarning("[EXIT] {Symbol}: 청산 주문 {OrderId}가 {Status} 상태여서 재평가를 허용합니다.",
+                position.Symbol, resolution.Order?.OrderId, resolution.Order?.Status);
+            var requestedAt = position.ExitRequestedAt!.Value;
+            ClearExitIntent(position);
+            await trades.ReleasePositionExitClaimAsync(
+                position.Id, requestedAt, ct);
+            return;
+        }
+
+        if (resolution.Action != ExitOrderReconciliationAction.Finalize || resolution.Order is null)
+        {
+            _logger.LogDebug("[EXIT] {Symbol}: 청산 주문 {OrderId}의 확정 상태를 기다립니다.",
+                position.Symbol, position.ExitOrderId);
+            return;
+        }
+
+        var exitPrice = resolution.Order.AverageFillPrice!.Value;
+        var exitTime = resolution.Order.FilledAt ?? UtcNow;
+        position.ClosedAt = exitTime;
+        position.ExitPrice = exitPrice;
+        var trade = new TradeRecord
+        {
+            Symbol = position.Symbol,
+            PatternType = position.PatternType,
+            CustomPatternName = position.CustomPatternName,
+            EntryPrice = position.EntryPrice,
+            ExitPrice = exitPrice,
+            Quantity = position.Quantity,
+            EntryTime = position.OpenedAt,
+            ExitTime = exitTime,
+            PnL = (exitPrice - position.EntryPrice) * position.Quantity,
+            PnLPercent = exitPrice / position.EntryPrice - 1,
+            ExitReason = position.ExitRequestReason ?? "실시간 청산",
+        };
+        var completed = await trades.TryCompletePositionExitAsync(position, trade, ct);
+        if (!completed)
+            return;
+
+        _notificationService.Notify(new TradeRecommendation
+        {
+            Symbol = position.Symbol,
+            PatternType = position.PatternType,
+            CustomPatternName = position.CustomPatternName,
+            EntryPrice = position.EntryPrice,
+            TargetPrice = exitPrice,
+            ShareQuantity = position.Quantity,
+            GeneratedAt = UtcNow,
+        });
+    }
+
+    private static void ClearExitIntent(Position position)
+    {
+        position.ExitRequestedAt = null;
+        position.ExitRequestReason = null;
+        position.ExitOrderId = null;
     }
 
     private async Task<(bool ShouldExit, string Reason)> EvaluateExitAsync(
@@ -357,61 +437,6 @@ public class PositionExitManagerService : BackgroundService
                 .ToArray();
         }
         return result;
-    }
-
-    /// <summary>
-    /// 청산 주문 직후 브로커 주문 내역을 조회하여 실제 체결가(AverageFillPrice)를 가져온다.
-    /// 시장가 주문은 수초 내에 체결되므로 최대 5초 대기 후 조회한다.
-    /// 조회 실패 또는 fill price 없음 → 0 반환 (호출자가 폴백 처리).
-    /// </summary>
-    private async Task<decimal> TryGetFillPriceAsync(
-        IBrokerService brokerService,
-        string symbol,
-        DateTime orderSubmittedAt,
-        CancellationToken ct)
-    {
-        try
-        {
-            // 시장가 청산 주문이 체결될 때까지 최대 5초 대기 (500ms 간격으로 최대 10회 폴링)
-            const int maxAttempts = 10;
-            const int delayMs = 500;
-
-            for (int attempt = 0; attempt < maxAttempts; attempt++)
-            {
-                await Task.Delay(delayMs, ct);
-
-                var from = orderSubmittedAt.AddSeconds(-2); // 약간의 클럭 여유
-                var to = UtcNow.AddSeconds(1);
-
-                var orders = await brokerService.GetOrderHistoryAsync(from, to, ct);
-
-                var fillPrice = orders
-                    .Where(o => string.Equals(o.Symbol, symbol, StringComparison.OrdinalIgnoreCase)
-                                && o.Status == BrokerOrderStatus.Filled
-                                && o.AverageFillPrice.HasValue)
-                    .OrderByDescending(o => o.FilledAt ?? o.SubmittedAt)
-                    .Select(o => o.AverageFillPrice!.Value)
-                    .FirstOrDefault();
-
-                if (fillPrice > 0)
-                {
-                    _logger.LogDebug(
-                        "[EXIT-MGR] {Symbol}: 브로커 체결가 조회 성공 — {FillPrice:F4} (시도: {Attempt}/{Max})",
-                        symbol, fillPrice, attempt + 1, maxAttempts);
-                    return fillPrice;
-                }
-            }
-
-            _logger.LogDebug(
-                "[EXIT-MGR] {Symbol}: 체결가 조회 실패 — 마지막 폴링 가격으로 폴백",
-                symbol);
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "[EXIT-MGR] {Symbol}: 체결가 조회 중 오류 — 폴링 가격으로 폴백", symbol);
-            return 0;
-        }
     }
 
     private static decimal CalculateSimpleAtr(List<OhlcvBar> bars, int period)

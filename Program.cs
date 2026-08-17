@@ -9,6 +9,7 @@ using StockTrader.Api;
 using StockTrader.Components;
 using StockTrader.Configuration;
 using StockTrader.Data;
+using StockTrader.Data.Repositories;
 using StockTrader.Extensions;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -389,7 +390,11 @@ app.MapPost("/api/orders/execute-signal", async (HttpContext ctx, IOrderService 
         : Results.BadRequest(new { error = message });
 }).RequireRateLimiting("api").RequireAuthorization();
 
-app.MapPost("/api/orders/close-position", async (HttpContext ctx, StockTrader.Services.Account.IAccountManager accountManager) =>
+app.MapPost("/api/orders/close-position", async (
+    HttpContext ctx,
+    StockTrader.Services.Account.IAccountManager accountManager,
+    ITradeRepository trades,
+    StockTrader.Services.Order.ILivePositionExitCoordinator exitCoordinator) =>
 {
     if (!ctx.User.Identity?.IsAuthenticated ?? true)
         return Results.Unauthorized();
@@ -411,9 +416,19 @@ app.MapPost("/api/orders/close-position", async (HttpContext ctx, StockTrader.Se
     if (broker == null)
         return Results.BadRequest(new { error = "활성 브로커 계좌가 없습니다. 계좌 관리에서 계좌를 설정하세요." });
 
-    var success = await broker.ClosePositionAsync(symbol, ctx.RequestAborted);
-    return success
-        ? Results.Ok(new { message = $"{symbol} 청산 완료" })
+    var positions = await trades.GetOpenPositionsAsync(ctx.RequestAborted);
+    var matchingPositions = positions.Where(item =>
+        item.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)).ToArray();
+    if (matchingPositions.Length == 0)
+        return Results.BadRequest(new { error = $"{symbol}의 관리 중인 오픈 포지션을 찾을 수 없습니다." });
+    if (matchingPositions.Length > 1)
+        return Results.BadRequest(new { error = $"{symbol} 포지션이 여러 계좌에 있어 계좌별 청산 기능이 필요합니다." });
+
+    var submission = await exitCoordinator.SubmitAsync(
+        matchingPositions[0], "사용자 수동 청산", broker, ctx.RequestAborted);
+    return submission.Status is StockTrader.Services.Order.LiveExitSubmissionStatus.Accepted
+        or StockTrader.Services.Order.LiveExitSubmissionStatus.AlreadyPending
+        ? Results.Ok(new { message = $"{symbol} 청산 주문 접수됨" })
         : Results.BadRequest(new { error = $"{symbol} 청산 실패. 브로커 연결 상태 또는 보유 포지션을 확인하세요." });
 }).RequireRateLimiting("api").RequireAuthorization();
 
