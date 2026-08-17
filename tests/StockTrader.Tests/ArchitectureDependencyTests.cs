@@ -498,7 +498,7 @@ public class ArchitectureDependencyTests
         File.Exists(Path.Combine(repository, "k8s/ingress.yaml")).Should().BeFalse();
         apiDeployment.Should().Contain("type: Recreate");
         desktopNginx.Should().Contain("location /api/");
-        desktopNginx.Should().Contain("proxy_pass http://api:5239");
+        desktopNginx.Should().Contain("proxy_pass http://stocktrader-api:5239");
     }
 
     [Fact]

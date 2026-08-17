@@ -1,5 +1,5 @@
 services:
-  api:
+  stocktrader-api:
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile.desktop
     image: stock-trader/desktop:local
     depends_on:
-      api:
+      stocktrader-api:
         condition: service_healthy
     ports:
       - "8000:8000"
