@@ -87,7 +87,8 @@ public class RuleBasedDetector : ICustomStrategyDetector
     public Task<PatternSignal?> DetectAsync(string symbol, OhlcvBar[] bars,
         MarketRegime regime, CancellationToken ct = default)
     {
-        if (bars.Length < 50) return Task.FromResult<PatternSignal?>(null);
+        if (bars.Length < StrategyEvaluationPolicy.MinimumWarmupBars)
+            return Task.FromResult<PatternSignal?>(null);
         if (_definition.RequireBullRegime && !regime.SpyAbove200Ma)
             return Task.FromResult<PatternSignal?>(null);
 
@@ -206,6 +207,12 @@ public class RuleBasedDetector : ICustomStrategyDetector
             IsActive = true
         });
     }
+
+    public Task<PatternSignal?> EvaluateEntryAsync(
+        string symbol,
+        OhlcvBar[] bars,
+        MarketRegime regime,
+        CancellationToken ct = default) => DetectAsync(symbol, bars, regime, ct);
 
     /// <summary>
     /// 규칙 기반 청산 조건을 평가합니다. 조건 충족 시 true 반환.

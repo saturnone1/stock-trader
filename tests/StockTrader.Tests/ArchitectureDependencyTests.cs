@@ -566,7 +566,7 @@ public class ArchitectureDependencyTests
         var entryProcessor = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
         var preview = File.ReadAllText(Path.Combine(
-            repository, "Api/PatternPreviewEndpoints.cs"));
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
 
         engine.Should().Contain("positionExitProcessor.Process(");
         engine.Should().Contain("pendingEntryProcessor.Process(");
@@ -592,7 +592,8 @@ public class ArchitectureDependencyTests
         var engine = File.ReadAllText(enginePath);
         var entryProcessor = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
-        var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var signal = File.ReadAllText(Path.Combine(repository, "Services/Signal/SignalService.cs"));
 
         File.ReadAllLines(enginePath).Length.Should().BeLessThanOrEqualTo(450);
@@ -632,7 +633,7 @@ public class ArchitectureDependencyTests
         var sharedPolicy = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/StrategyEntryEligibilityPolicy.cs"));
         var preview = File.ReadAllText(Path.Combine(
-            repository, "Api/PatternPreviewEndpoints.cs"));
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var backtest = File.ReadAllText(Path.Combine(
             repository, "Application/Backtesting/BacktestEntryEligibilityPolicy.cs"));
         var live = File.ReadAllText(Path.Combine(
@@ -704,7 +705,8 @@ public class ArchitectureDependencyTests
     public void PreviewAndBacktestUseTheSameLongPositionExecutionPolicy()
     {
         var repository = FindRepositoryRoot();
-        var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
 
         preview.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
@@ -712,6 +714,53 @@ public class ArchitectureDependencyTests
         preview.Should().Contain("LongEntryFillPolicy.Reprice(");
         preview.Should().NotContain("current.Low <= position.StopPrice");
         preview.Should().NotContain("current.High >= position.TargetPrice");
+    }
+
+    [Fact]
+    public void PatternPreviewEndpointIsAThinHttpAdapterOverDeterministicSimulation()
+    {
+        var repository = FindRepositoryRoot();
+        var endpointPath = Path.Combine(repository, "Api/PatternPreviewEndpoints.cs");
+        var endpoint = File.ReadAllText(endpointPath);
+        var simulationPath = Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs");
+        var simulation = File.ReadAllText(simulationPath);
+        var servicePath = Path.Combine(
+            repository, "Services/StrategyPreview/PatternPreviewService.cs");
+
+        File.ReadAllLines(endpointPath).Length.Should().BeLessThanOrEqualTo(160);
+        File.ReadAllLines(servicePath).Length.Should().BeLessThanOrEqualTo(250);
+        File.ReadAllLines(simulationPath).Length.Should().BeLessThanOrEqualTo(500);
+        endpoint.Should().Contain("IPatternPreviewService preview");
+        endpoint.Should().NotContain("LongPositionExecutionPolicy");
+        endpoint.Should().NotContain("StrategyCompiler.Compile");
+        endpoint.Should().NotContain("IOhlcvRepository");
+        simulation.Should().NotContain("StockTrader.Data");
+        simulation.Should().NotContain("StockTrader.Services");
+        simulation.Should().NotContain("DateTime.UtcNow");
+        simulation.Should().NotContain("IResult");
+    }
+
+    [Fact]
+    public void StrategyWarmupRequirementHasOneCatalogOwner()
+    {
+        var repository = FindRepositoryRoot();
+        var owner = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/StrategyEvaluationPolicy.cs"));
+        var backtest = File.ReadAllText(Path.Combine(
+            repository, "Application/Backtesting/PreparedBacktestData.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Services/StrategyPreview/PatternPreviewService.cs"));
+        var detector = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/RuleBasedDetector.cs"));
+        var conditions = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/RuleConditionEvaluator.cs"));
+
+        owner.Should().Contain("public const int MinimumWarmupBars = 50;");
+        backtest.Should().Contain("StrategyEvaluationPolicy.MinimumWarmupBars");
+        preview.Should().Contain("StrategyEvaluationPolicy.MinimumWarmupBars");
+        detector.Should().Contain("StrategyEvaluationPolicy.MinimumWarmupBars");
+        conditions.Should().Contain("StrategyEvaluationPolicy.MinimumWarmupBars");
     }
 
     [Fact]
@@ -766,7 +815,8 @@ public class ArchitectureDependencyTests
     public void PreviewBacktestAndLiveShareTheExitPolicyCatalog()
     {
         var repository = FindRepositoryRoot();
-        var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var engine = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestSimulationEngine.cs"));
         var entryProcessor = File.ReadAllText(Path.Combine(

@@ -1,5 +1,6 @@
 using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using EvalContext = StockTrader.Services.Patterns.RuleIndicatorEvaluator.EvalContext;
 
@@ -38,7 +39,7 @@ internal sealed class RuleConditionEvaluator
                 var availableBars = referenceAsOf.HasValue
                     ? referenceBars.Where(bar => bar.Timestamp <= referenceAsOf.Value).ToArray()
                     : referenceBars;
-                if (availableBars.Length < 50)
+                if (availableBars.Length < StrategyEvaluationPolicy.MinimumWarmupBars)
                     return RuleConditionResult.Failed($"{rule.RefSymbol}: 참조 데이터 부족");
 
                 evaluationContext = _indicators.CreateContext(availableBars);

@@ -92,6 +92,12 @@
   Backtest bar indexes and live calendar dates remain adapter state; live evaluation now receives
   its observation time from `TimeProvider` rather than the system clock, and daily entry limits use
   the US market date rather than resetting early at UTC midnight.
+- Pattern preview is split into a 125-line HTTP adapter, a data-preparation use case, and a pure
+  prepared-bar simulation engine. The engine receives `ICompiledStrategyRuntime`, precomputed causal
+  ATR values, reference-data as-of boundaries, and the same long-position entry/exit policies used
+  by backtest. Goldens lock NextOpen gap repricing, entry-bar exits, prepared-indicator prefix
+  stability, and exclusion of a hidden repository-inclusive end bar. A cross-engine fixture also
+  compiles one strategy once and locks identical preview/backtest entry and exit events.
 - `CumulativeRsi2ExitDecisionPolicy` now owns the built-in strategy's trend-break-first and cumulative
   RSI threshold semantics. Backtest and live monitoring pass their independently prepared indicator
   snapshots into the same pure decision, including the same invalid-price boundary.
@@ -139,9 +145,9 @@
   accepts only an empty database or one with EF migration history and fails closed without writes
   for an unbaselined legacy database. EF Core is the sole schema mutation engine.
 
-Remaining Phase 2 work is primarily extracting the calculation-heavy pattern-preview endpoint into
-an application use case, reducing residual runtime orchestration, and broadening full-strategy
-preview/backtest/live parity fixtures beyond the shared entry and exit policy snapshots.
+Remaining Phase 2 work is primarily reducing residual runtime orchestration and broadening
+full-strategy preview/backtest/live parity fixtures beyond the shared entry/exit policies and the
+single-symbol preview simulation goldens.
 
 ## Phase 0 — Guardrails and governance
 

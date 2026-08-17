@@ -12,6 +12,8 @@ using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Signal;
 using StockTrader.Services.Statistics;
 using StockTrader.Services.Financial;
+using StockTrader.Services.StrategyPreview;
+using StockTrader.Application.StrategyPreview;
 
 namespace StockTrader.Extensions;
 
@@ -68,6 +70,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BacktestSimulationEngine>();
         services.AddScoped<BacktestService>();
         services.AddScoped<IBacktestService>(sp => sp.GetRequiredService<BacktestService>());
+        services.AddSingleton<PatternPreviewSimulationEngine>();
+        services.AddScoped<IPatternPreviewService, PatternPreviewService>();
         services.AddScoped<ILiveParameterService, LiveParameterService>();
         services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 

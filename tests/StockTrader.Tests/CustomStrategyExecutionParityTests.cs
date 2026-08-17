@@ -1,0 +1,136 @@
+using System.Text.Json;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using StockTrader.Application.Backtesting;
+using StockTrader.Application.Strategies;
+using StockTrader.Application.StrategyPreview;
+using StockTrader.Configuration;
+using StockTrader.Domain.Strategies;
+using StockTrader.Models;
+using StockTrader.Models.Enums;
+using StockTrader.Services.Backtest;
+using StockTrader.Services.Indicators;
+using StockTrader.Services.Patterns;
+
+namespace StockTrader.Tests;
+
+public class CustomStrategyExecutionParityTests
+{
+    [Fact]
+    public async Task PreviewAndBacktest_RunTheSameCompiledNextOpenStrategy()
+    {
+        var bars = Bars();
+        bars[51].Open = 105m;
+        bars[51].High = 120m;
+        bars[51].Low = 104m;
+        bars[51].Close = 115m;
+        var definition = new CustomPatternDefinition
+        {
+            Name = "compiled-strategy-parity",
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
+            EntryRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new EntryRule
+                {
+                    Indicator = "PRICE_CHANGE",
+                    Operator = ">=",
+                    Value = -100m,
+                    Params = new Dictionary<string, decimal> { ["bars"] = 1m }
+                }
+            }),
+            AtrStopMultiplier = 2m,
+            AtrTargetMultiplier = 3m,
+            MaxHoldingBars = 10
+        };
+        var compilation = StrategyCompiler.Compile(definition);
+        compilation.Errors.Should().BeEmpty();
+        var strategy = compilation.Strategy!;
+        var indicators = new IndicatorService();
+        var atr = indicators.ATR(bars, 14);
+        var factory = new CustomStrategyDetectorFactory(
+            indicators,
+            new FixedTimeProvider(
+                new DateTimeOffset(2024, 3, 1, 0, 0, 0, TimeSpan.Zero)));
+
+        var preview = await new PatternPreviewSimulationEngine().RunAsync(
+            new PatternPreviewSimulationInput(
+                "AAA",
+                TimeFrame.Daily,
+                bars[50].Timestamp,
+                bars[^1].Timestamp.AddDays(1),
+                bars,
+                atr,
+                new Dictionary<string, OhlcvBar[]>(),
+                [],
+                factory.Create(strategy)));
+
+        var backtest = await new BacktestSimulationEngine(
+                new BacktestSignalEntryProcessor(
+                    NullLogger<BacktestSignalEntryProcessor>.Instance))
+            .RunAsync(
+                ["AAA"],
+                new Dictionary<string, PreparedSymbolData>
+                {
+                    ["AAA"] = Prepared(bars, atr)
+                },
+                [factory.Create(strategy)],
+                [],
+                bars[50].Timestamp,
+                bars[^1].Timestamp,
+                100_000m,
+                0m,
+                0m,
+                TimeFrame.Daily,
+                new BacktestRiskParameters(0.01m, 0.03m, 10, 2),
+                null,
+                SlippageModel.Fixed,
+                [],
+                bars[0].Timestamp,
+                new BacktestExecutionAdapter(),
+                null,
+                new CumulativeRsi2Config(),
+                CancellationToken.None);
+
+        var previewEntry = preview!.Markers.Single(marker => marker.Type == "ENTRY");
+        var previewExit = preview.Markers.Single(marker => marker.Type == "EXIT");
+        var backtestTrade = backtest.Trades.Should().ContainSingle().Subject;
+        previewEntry.Date.Should().Be(backtestTrade.EntryTime);
+        previewEntry.Price.Should().Be(backtestTrade.EntryPrice);
+        previewExit.Date.Should().Be(backtestTrade.ExitTime);
+        previewExit.Price.Should().Be(backtestTrade.ExitPrice);
+        previewExit.Reason.Should().Be(backtestTrade.ExitReason);
+    }
+
+    private static PreparedSymbolData Prepared(OhlcvBar[] bars, decimal[] atr)
+    {
+        var closes = bars.Select(bar => bar.Close).ToArray();
+        return new PreparedSymbolData(
+            bars,
+            atr,
+            closes,
+            new decimal[bars.Length],
+            new decimal[bars.Length],
+            new decimal[bars.Length],
+            bars.Select((bar, index) => (bar.Timestamp, index))
+                .ToDictionary(pair => pair.Timestamp, pair => pair.index));
+    }
+
+    private static OhlcvBar[] Bars() => Enumerable.Range(0, 52)
+        .Select(index => new OhlcvBar
+        {
+            Symbol = "AAA",
+            TimeFrame = TimeFrame.Daily,
+            Timestamp = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(index),
+            Open = 100m,
+            High = 101m,
+            Low = 99m,
+            Close = 100m,
+            Volume = 1_000_000
+        })
+        .ToArray();
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+}

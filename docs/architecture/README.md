@@ -61,6 +61,16 @@ portfolio realized equity, and strategy runtime equity are applied exactly once.
 are closed by `BacktestTerminalPositionLiquidator`, which removes each settled position before the
 final marked-equity snapshot so realized and unrealized profit cannot be counted twice.
 
+Pattern preview now follows the same adapter/use-case/engine split. `PatternPreviewEndpoints` owns
+only HTTP status and response formatting, `PatternPreviewService` compiles the strategy and prepares
+provider data, and `PatternPreviewSimulationEngine` replays prepared bars without EF, HTTP, provider
+SDKs, or system time. `ICompiledStrategyRuntime` is the application-facing runtime port implemented
+by the custom detector. The engine treats `DataTo` as exclusive so a repository-inclusive boundary
+bar cannot alter a chart that does not display that bar.
+An end-to-end parity fixture compiles one NextOpen custom strategy once, creates fresh runtimes from
+that compiled object, and asserts identical preview/backtest entry time, repriced fill, exit time,
+exit price, and exit reason.
+
 Long-position execution now crosses a second named boundary in `Application/Execution`.
 Pattern preview and backtest must delegate entry repricing and per-bar exit ordering to this pure
 policy instead of implementing private OHLC rules. Because OHLC data does not reveal intrabar

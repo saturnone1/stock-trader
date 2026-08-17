@@ -24,7 +24,7 @@ public sealed record PreparedBacktestData(
 public static class BacktestDataPolicy
 {
     /// <summary>지표 워밍업과 체결 시뮬레이션에 필요한 최소 봉 수입니다.</summary>
-    public const int MinimumWarmupBars = 50;
+    public const int MinimumWarmupBars = Strategies.StrategyEvaluationPolicy.MinimumWarmupBars;
 }
 
 public static class BacktestTimeline
