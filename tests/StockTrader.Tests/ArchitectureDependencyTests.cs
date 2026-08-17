@@ -511,6 +511,40 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void CustomPatternHttpBoundaryDoesNotBindOrReturnEfEntities()
+    {
+        var repository = FindRepositoryRoot();
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/CustomPatternEndpoints.cs"));
+        var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/CustomPatternContracts.cs"));
+        var defaults = File.ReadAllText(Path.Combine(
+            repository, "Domain/Strategies/StrategyDocumentDefaults.cs"));
+        var model = File.ReadAllText(Path.Combine(repository, "Models/CustomPatternDefinition.cs"));
+
+        endpoints.Should().Contain("CustomPatternWriteRequest request");
+        endpoints.Should().Contain("value.ToResponse()");
+        endpoints.Should().NotContain("CustomPatternDefinition input");
+        endpoints.Should().NotContain("Results.Ok(pattern);");
+        preview.Should().Contain("CustomPatternWriteRequest Pattern");
+        preview.Should().Contain("request.Pattern.ToDefinition()");
+        contracts.Should().Contain("public sealed record CustomPatternResponse(");
+        contracts.Should().Contain("internal static class CustomPatternContractMapper");
+        contracts.Should().NotContain("public int Id { get; init;");
+        contracts.Should().NotContain("public DateTime CreatedAt { get; init;");
+        contracts.Should().NotContain("public DateTime UpdatedAt { get; init;");
+        defaults.Should().Contain("public static class StrategyDocumentDefaults");
+        contracts.Should().Contain("StrategyDocumentDefaults.EmptyListJson");
+        model.Should().Contain("StrategyDocumentDefaults.EmptyListJson");
+        var metadata = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/StrategyBuilderMetadataResponse.cs"));
+        var desktop = File.ReadAllText(Path.Combine(repository, "desktop-app/src/api/endpoints.ts"));
+        metadata.Should().Contain("DocumentVersion: StrategyDocumentVersions.Current");
+        desktop.Should().Contain("metadata.documentVersion");
+        desktop.Should().NotContain("documentVersion: 1");
+    }
+
+    [Fact]
     public void ApiHostingUsesOneCanonicalContainerListener()
     {
         var repository = FindRepositoryRoot();

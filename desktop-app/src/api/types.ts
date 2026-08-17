@@ -160,6 +160,48 @@ export interface FinancialPipelineStatus {
 }
 
 // Patterns
+export interface CustomPatternDocument {
+  id: number;
+  documentVersion: number;
+  name: string;
+  description: string | null;
+  entryRulesJson: string;
+  entryLogic: string;
+  requireBullRegime: boolean;
+  atrStopMultiplier: number;
+  atrTargetMultiplier: number;
+  maxHoldingBars: number;
+  trailingAtr: number;
+  partialProfitR: number;
+  useWeightTiers: boolean;
+  weightTiersJson: string;
+  defaultAllocationPercent: number;
+  exitRulesJson: string;
+  exitRulesLogic: string;
+  exitGroupsJson: string;
+  exitGroupsLogic: string;
+  scalingRulesJson: string;
+  timeFilterJson: string;
+  circuitBreakerJson: string;
+  reentryJson: string;
+  portfolioRulesJson: string;
+  entryGroupsJson: string;
+  entryGroupsLogic: string;
+  dynamicExitJson: string;
+  entryMode: string;
+  timeFrame: string;
+  sizingMode: string;
+  isActive: boolean;
+  enableLiveTrading: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CustomPatternWriteRequest = Omit<
+  CustomPatternDocument,
+  'id' | 'createdAt' | 'updatedAt'
+>;
+
 export interface Pattern {
   id: string;
   name: string;
@@ -167,7 +209,7 @@ export interface Pattern {
   rules?: PatternRule[];
   createdAt: string;
   updatedAt: string;
-  raw?: any;
+  raw?: CustomPatternDocument;
 }
 
 export interface PatternRule {

@@ -1,18 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using StockTrader.Api.Contracts;
 using StockTrader.Application.Strategies;
 using StockTrader.Data;
-using StockTrader.Models;
 using StockTrader.Services.Patterns;
 
 namespace StockTrader.Api;
-
-public record BacktestApplyRequest(
-    decimal? AtrStopMultiplier = null,
-    decimal? AtrTargetMultiplier = null,
-    int? MaxHoldingBars = null,
-    decimal? TrailingAtr = null,
-    decimal? PartialProfitR = null
-);
 
 public static class CustomPatternEndpoints
 {
@@ -21,18 +13,19 @@ public static class CustomPatternEndpoints
         var group = api.MapGroup("/custom-patterns").RequireAuthorization();
 
         group.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
-            await db.CustomPatterns.AsNoTracking()
+            (await db.CustomPatterns.AsNoTracking()
                 .OrderByDescending(p => p.UpdatedAt)
-                .ToListAsync(ct));
+                .ToListAsync(ct)).Select(value => value.ToResponse()).ToArray());
 
         group.MapGet("/{id:int}", async (int id, AppDbContext db, CancellationToken ct) =>
         {
             var pattern = await db.CustomPatterns.FindAsync([id], ct);
-            return pattern is null ? Results.NotFound() : Results.Ok(pattern);
+            return pattern is null ? Results.NotFound() : Results.Ok(pattern.ToResponse());
         });
 
-        group.MapPost("/", async (CustomPatternDefinition input, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
+        group.MapPost("/", async (CustomPatternWriteRequest request, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
+            var input = request.ToDefinition();
             var validationErrors = CustomPatternValidator.Validate(input);
             if (validationErrors.Count > 0)
                 return Results.BadRequest(new { error = validationErrors[0], errors = validationErrors });
@@ -48,11 +41,12 @@ public static class CustomPatternEndpoints
             input.UpdatedAt = input.CreatedAt;
             db.CustomPatterns.Add(input);
             await db.SaveChangesAsync(ct);
-            return Results.Created($"/api/custom-patterns/{input.Id}", input);
+            return Results.Created($"/api/custom-patterns/{input.Id}", input.ToResponse());
         });
 
-        group.MapPut("/{id:int}", async (int id, CustomPatternDefinition input, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
+        group.MapPut("/{id:int}", async (int id, CustomPatternWriteRequest request, AppDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
+            var input = request.ToDefinition();
             var validationErrors = CustomPatternValidator.Validate(input);
             if (validationErrors.Count > 0)
                 return Results.BadRequest(new { error = validationErrors[0], errors = validationErrors });
@@ -64,12 +58,12 @@ public static class CustomPatternEndpoints
             if (await db.CustomPatterns.AnyAsync(p => p.Id != id && p.Name.ToLower() == normalizedName, ct))
                 return Results.Conflict(new { error = "같은 이름의 전략이 이미 있습니다. 다른 이름을 사용하세요." });
 
-            CopyEditableFields(existing, input);
+            request.ApplyTo(existing);
             StrategyDocumentVersionPolicy.StampCurrent(existing);
             existing.Name = input.Name.Trim();
             existing.UpdatedAt = clock.GetUtcNow().UtcDateTime;
             await db.SaveChangesAsync(ct);
-            return Results.Ok(existing);
+            return Results.Ok(existing.ToResponse());
         });
 
         group.MapDelete("/{id:int}", async (int id, AppDbContext db, CancellationToken ct) =>
@@ -94,42 +88,9 @@ public static class CustomPatternEndpoints
             if (req.TrailingAtr.HasValue) pattern.TrailingAtr = req.TrailingAtr.Value;
             if (req.PartialProfitR.HasValue) pattern.PartialProfitR = req.PartialProfitR.Value;
             await db.SaveChangesAsync(ct);
-            return Results.Ok(pattern);
+            return Results.Ok(pattern.ToResponse());
         });
 
         return api;
-    }
-
-    private static void CopyEditableFields(CustomPatternDefinition target, CustomPatternDefinition source)
-    {
-        target.Description = source.Description;
-        target.EntryRulesJson = source.EntryRulesJson;
-        target.EntryLogic = source.EntryLogic;
-        target.RequireBullRegime = source.RequireBullRegime;
-        target.AtrStopMultiplier = source.AtrStopMultiplier;
-        target.AtrTargetMultiplier = source.AtrTargetMultiplier;
-        target.MaxHoldingBars = source.MaxHoldingBars;
-        target.TrailingAtr = source.TrailingAtr;
-        target.PartialProfitR = source.PartialProfitR;
-        target.UseWeightTiers = source.UseWeightTiers;
-        target.WeightTiersJson = source.WeightTiersJson;
-        target.DefaultAllocationPercent = source.DefaultAllocationPercent;
-        target.ExitRulesJson = source.ExitRulesJson;
-        target.ExitRulesLogic = source.ExitRulesLogic;
-        target.ExitGroupsJson = source.ExitGroupsJson;
-        target.ExitGroupsLogic = source.ExitGroupsLogic;
-        target.ScalingRulesJson = source.ScalingRulesJson;
-        target.TimeFilterJson = source.TimeFilterJson;
-        target.CircuitBreakerJson = source.CircuitBreakerJson;
-        target.ReentryJson = source.ReentryJson;
-        target.PortfolioRulesJson = source.PortfolioRulesJson;
-        target.EntryGroupsJson = source.EntryGroupsJson;
-        target.EntryGroupsLogic = source.EntryGroupsLogic;
-        target.DynamicExitJson = source.DynamicExitJson;
-        target.EntryMode = source.EntryMode;
-        target.TimeFrame = source.TimeFrame;
-        target.SizingMode = source.SizingMode;
-        target.IsActive = source.IsActive;
-        target.EnableLiveTrading = source.EnableLiveTrading;
     }
 }

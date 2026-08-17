@@ -135,6 +135,12 @@ their semantics. Existing rows are adopted through an ordered EF migration.
 The application exposes a migration-only process mode so deployment can back up SQLite, apply the
 ordered migration, and exit before the API starts. The canonical K3s script stops the sole writer,
 creates and integrity-checks a SQLite backup, runs that mode, and only then rolls out the API image.
+The custom-strategy HTTP boundary no longer binds or returns the EF entity. A write contract contains
+only client-editable fields, a response contract contains explicit public fields, and one mapper owns
+the translation used by create, update, list, detail, backtest-apply, and preview requests. Document
+defaults are shared by persistence and API contracts through `StrategyDocumentDefaults`.
+The current document version is emitted by strategy-builder metadata, so even the desktop's local
+preset uses the Domain-owned value instead of copying a version literal.
 
 ## Decision records
 

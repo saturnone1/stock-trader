@@ -144,6 +144,10 @@
 - Stored custom strategies now have an explicit `DocumentVersion`. Legacy unversioned API payloads
   remain readable, successful writes are stamped with the current version, unknown future versions
   fail compilation, and an ordered EF migration adopts existing rows without rewriting strategy JSON.
+- Custom-strategy create, update, read, and preview endpoints now use explicit write/response
+  contracts instead of accepting or returning the EF entity. Server-owned identity and audit fields
+  cannot be written by clients, and a single mapper plus central document defaults preserves the
+  existing JSON wire shape without coupling it to future database columns.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

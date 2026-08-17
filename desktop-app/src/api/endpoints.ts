@@ -1,10 +1,10 @@
 import { api } from './client';
-import type { DashboardData, Pattern, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus } from './types';
+import type { DashboardData, Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus } from './types';
 
 const CUMULATIVE_RSI_PRESET_ID = -1001
 const CUMULATIVE_RSI_PRESET_NAME = '누적 RSI 절대수익'
 
-function buildCumulativeRsiPreset() {
+function buildCumulativeRsiPreset(documentVersion: number): CustomPatternDocument {
   const timestamp = new Date().toISOString()
   const entryGroups = [
     {
@@ -78,6 +78,7 @@ function buildCumulativeRsiPreset() {
 
   return {
     id: CUMULATIVE_RSI_PRESET_ID,
+    documentVersion,
     name: CUMULATIVE_RSI_PRESET_NAME,
     description: '사이트에 소개된 누적 RSI 절대수익 전략. 2일 누적 RSI(2) 10 이하 + 200일선 위에서 진입하고, 65 이상 또는 200일선 이탈 시 청산합니다.',
     entryRulesJson: '[]',
@@ -93,6 +94,8 @@ function buildCumulativeRsiPreset() {
     defaultAllocationPercent: 100,
     exitRulesJson: JSON.stringify(exitRules),
     exitRulesLogic: 'OR',
+    exitGroupsJson: '[]',
+    exitGroupsLogic: 'OR',
     scalingRulesJson: '[]',
     timeFilterJson: '{}',
     circuitBreakerJson: '{}',
@@ -102,26 +105,28 @@ function buildCumulativeRsiPreset() {
     entryGroupsLogic: 'AND',
     dynamicExitJson: '{}',
     entryMode: 'CurrentClose',
+    timeFrame: 'Daily',
     sizingMode: 'FixedRisk',
     isActive: true,
+    enableLiveTrading: false,
     createdAt: timestamp,
     updatedAt: timestamp
   }
 }
 
-function withPresetPatterns(patterns: any[]) {
+function withPresetPatterns(patterns: CustomPatternDocument[], documentVersion: number) {
   if (patterns.some((pattern) => pattern?.name === CUMULATIVE_RSI_PRESET_NAME)) {
     return patterns
   }
 
-  return [buildCumulativeRsiPreset(), ...patterns]
+  return [buildCumulativeRsiPreset(documentVersion), ...patterns]
 }
 
 function isPresetPatternId(id: string) {
   return String(id) === String(CUMULATIVE_RSI_PRESET_ID)
 }
 
-function parsePatternRules(pattern: any) {
+function parsePatternRules(pattern: CustomPatternDocument) {
   try {
     const directRules = JSON.parse(pattern.entryRulesJson || '[]');
     if (Array.isArray(directRules) && directRules.length > 0) {
@@ -143,7 +148,7 @@ function parsePatternRules(pattern: any) {
   return [];
 }
 
-function normalizePattern(pattern: any): Pattern {
+function normalizePattern(pattern: CustomPatternDocument): Pattern {
   return {
     id: String(pattern.id),
     name: pattern.name,
@@ -212,8 +217,11 @@ export const dashboardApi = {
 
 export const patternApi = {
   list: async () => {
-    const response = await api.get('/api/custom-patterns');
-    const patterns = withPresetPatterns(response.data ?? [])
+    const [response, metadata] = await Promise.all([
+      api.get<CustomPatternDocument[]>('/api/custom-patterns'),
+      metadataApi.getStrategyBuilder()
+    ])
+    const patterns = withPresetPatterns(response.data ?? [], metadata.documentVersion)
     return {
       ...response,
       data: patterns.map(normalizePattern)
@@ -221,23 +229,24 @@ export const patternApi = {
   },
   get: async (id: string) => {
     if (isPresetPatternId(id)) {
+      const metadata = await metadataApi.getStrategyBuilder()
       return {
-        data: normalizePattern(buildCumulativeRsiPreset())
+        data: normalizePattern(buildCumulativeRsiPreset(metadata.documentVersion))
       };
     }
-    const response = await api.get(`/api/custom-patterns/${id}`);
+    const response = await api.get<CustomPatternDocument>(`/api/custom-patterns/${id}`);
     return {
       ...response,
       data: normalizePattern(response.data)
     };
   },
-  create: async (data: any) => {
+  create: async (data: { name: string; description?: string }) => {
     const starterGroup = [{
       label: '매수 상황 1',
       logic: 'AND',
       rules: [{ indicator: 'RSI', params: { period: 14 }, operator: '<=', value: 30, withinBars: 0, consecutiveBars: 0, refSymbol: '', compareIndicator: '', compareParams: {}, weight: 1 }]
     }]
-    const response = await api.post('/api/custom-patterns', {
+    const response = await api.post<CustomPatternDocument>('/api/custom-patterns', {
       name: data.name,
       description: data.description || '',
       entryRulesJson: '[]',
@@ -251,10 +260,10 @@ export const patternApi = {
       data: normalizePattern(response.data)
     };
   },
-  update: async (id: string, data: any) => {
+  update: async (id: string, data: CustomPatternWriteRequest) => {
     const response = isPresetPatternId(id)
-      ? await api.post('/api/custom-patterns', data)
-      : await api.put(`/api/custom-patterns/${id}`, data);
+      ? await api.post<CustomPatternDocument>('/api/custom-patterns', data)
+      : await api.put<CustomPatternDocument>(`/api/custom-patterns/${id}`, data);
     return {
       ...response,
       data: normalizePattern(response.data)
@@ -263,7 +272,7 @@ export const patternApi = {
   delete: (id: string) => isPresetPatternId(id)
     ? Promise.resolve({ data: null })
     : api.delete(`/api/custom-patterns/${id}`),
-  preview: (symbol: string, pattern: any, options: { timeFrame?: string; from?: string; to?: string } = {}) =>
+  preview: (symbol: string, pattern: CustomPatternWriteRequest, options: { timeFrame?: string; from?: string; to?: string } = {}) =>
     api.post('/api/custom-patterns/preview', { symbol, pattern, ...options }),
 };
 

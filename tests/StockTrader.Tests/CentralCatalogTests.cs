@@ -63,6 +63,7 @@ public class CentralCatalogTests
         var contract = StrategyBuilderMetadataResponse.Create();
 
         contract.SchemaVersion.Should().Be(2);
+        contract.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
         contract.LiveStrategyConstraints.SupportedEntryModes.Should().Contain("NextOpen");

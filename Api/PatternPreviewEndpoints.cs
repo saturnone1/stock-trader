@@ -1,5 +1,5 @@
 using StockTrader.Application.StrategyPreview;
-using StockTrader.Models;
+using StockTrader.Api.Contracts;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Market;
 
@@ -7,7 +7,7 @@ namespace StockTrader.Api;
 
 public sealed record PatternPreviewRequest(
     string Symbol,
-    CustomPatternDefinition Pattern,
+    CustomPatternWriteRequest Pattern,
     TimeFrame TimeFrame = TimeFrame.Daily,
     DateTime? From = null,
     DateTime? To = null);
@@ -30,7 +30,7 @@ public static class PatternPreviewEndpoints
         var outcome = await preview.PreviewAsync(
             new PatternPreviewQuery(
                 request.Symbol,
-                request.Pattern,
+                request.Pattern.ToDefinition(),
                 request.TimeFrame,
                 request.From,
                 request.To),

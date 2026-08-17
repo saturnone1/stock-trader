@@ -54,6 +54,7 @@ public sealed record LiveStrategyConstraintsMetadataResponse(
 
 public sealed record StrategyBuilderMetadataResponse(
     int SchemaVersion,
+    int DocumentVersion,
     IReadOnlyList<IndicatorMetadataResponse> Indicators,
     IReadOnlyList<TimeFrameMetadataResponse> TimeFrames,
     IReadOnlyList<DataProviderMetadataResponse> DataProviders,
@@ -68,6 +69,7 @@ public sealed record StrategyBuilderMetadataResponse(
 {
     public static StrategyBuilderMetadataResponse Create() => new(
         SchemaVersion: 2,
+        DocumentVersion: StrategyDocumentVersions.Current,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
             item.DisplayName,
