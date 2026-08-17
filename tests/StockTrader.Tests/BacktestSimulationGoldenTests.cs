@@ -143,6 +143,95 @@ public class BacktestSimulationGoldenTests
         result.TotalTrades.Should().Be(1);
     }
 
+    [Fact]
+    public async Task RunAsync_BearRegimeReducesQuantityThroughSharedAllocationPolicy()
+    {
+        var bars = Bars(TimeFrame.Daily, TimeSpan.FromDays(1));
+        var entryAt = bars[50].Timestamp;
+        var regimes = new Dictionary<DateOnly, MarketRegime>
+        {
+            [DateOnly.FromDateTime(entryAt)] = new()
+            {
+                SpyAbove200Ma = false,
+                SpyPrice = 90m,
+                Spy200Ma = 100m
+            }
+        };
+        var weightStrategy = new WeightStrategy { BearWeight = 0.5m };
+
+        var result = await RunBaselineAsync(
+            bars,
+            TimeFrame.Daily,
+            new SingleEntryDetector(entryAt),
+            regimes,
+            weightStrategy);
+
+        result.Trades.Should().ContainSingle(trade => trade.Quantity == 50);
+        result.TotalReturn.Should().Be(500m);
+        result.WeightReducedTrades.Should().Be(1);
+        result.WeightStrategyApplied.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunAsync_HighCorrelationBlocksSecondSymbol()
+    {
+        var firstBars = CorrelatedBars("FIRST");
+        var secondBars = CorrelatedBars("SECOND");
+        var entryAt = firstBars[50].Timestamp;
+        var definition = new CustomPatternDefinition
+        {
+            Name = "correlation-golden",
+            EntryRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new EntryRule
+                {
+                    Indicator = "PRICE_CHANGE",
+                    Operator = ">",
+                    Value = -100m,
+                    Params = new Dictionary<string, decimal> { ["bars"] = 1m }
+                }
+            }),
+            AtrStopMultiplier = 2m,
+            AtrTargetMultiplier = 10m,
+            MaxHoldingBars = 100,
+            PortfolioRulesJson = JsonSerializer.Serialize(new PortfolioRulesConfig
+            {
+                MaxCorrelation = 0.8m
+            })
+        };
+        var detector = new RuleBasedDetector(new IndicatorService(), definition);
+
+        var result = await new BacktestSimulationEngine(
+                NullLogger<BacktestSimulationEngine>.Instance)
+            .RunAsync(
+                ["FIRST", "SECOND"],
+                new Dictionary<string, PreparedSymbolData>
+                {
+                    ["FIRST"] = Prepared(firstBars),
+                    ["SECOND"] = Prepared(secondBars)
+                },
+                [detector],
+                [],
+                entryAt,
+                firstBars[^1].Timestamp,
+                100_000m,
+                0m,
+                0m,
+                TimeFrame.Daily,
+                new BacktestRiskParameters(0.01m, 0.03m, 10, 2),
+                null,
+                SlippageModel.Fixed,
+                [],
+                firstBars[0].Timestamp,
+                new BacktestExecutionAdapter(),
+                null,
+                new CumulativeRsi2Config(),
+                CancellationToken.None);
+
+        result.Trades.Should().OnlyContain(trade => trade.Symbol == "FIRST");
+        result.TotalTrades.Should().Be(1);
+    }
+
     private static OhlcvBar[] Bars(TimeFrame timeFrame, TimeSpan interval)
     {
         var start = new DateTime(2024, 1, 1, 9, 30, 0, DateTimeKind.Utc);
@@ -158,6 +247,26 @@ public class BacktestSimulationGoldenTests
                 High = isExitBar ? 111m : 101m,
                 Low = 99m,
                 Close = isExitBar ? 110m : 100m,
+                Volume = 1_000_000
+            };
+        }).ToArray();
+    }
+
+    private static OhlcvBar[] CorrelatedBars(string symbol)
+    {
+        var close = 100m;
+        return Enumerable.Range(0, 52).Select(index =>
+        {
+            close *= 1m + (index % 5 - 2) / 1_000m;
+            return new OhlcvBar
+            {
+                Symbol = symbol,
+                TimeFrame = TimeFrame.Daily,
+                Timestamp = new DateTime(2024, 1, 1).AddDays(index),
+                Open = close,
+                High = close + 0.5m,
+                Low = close - 0.5m,
+                Close = close,
                 Volume = 1_000_000
             };
         }).ToArray();
@@ -180,7 +289,9 @@ public class BacktestSimulationGoldenTests
     private static Task<BacktestResult> RunBaselineAsync(
         OhlcvBar[] bars,
         TimeFrame timeFrame,
-        IPatternDetector detector)
+        IPatternDetector detector,
+        Dictionary<DateOnly, MarketRegime>? regimes = null,
+        WeightStrategy? weightStrategy = null)
     {
         var entryAt = bars[50].Timestamp;
         return new BacktestSimulationEngine(NullLogger<BacktestSimulationEngine>.Instance)
@@ -188,7 +299,7 @@ public class BacktestSimulationGoldenTests
                 ["AAA"],
                 new Dictionary<string, PreparedSymbolData> { ["AAA"] = Prepared(bars) },
                 [detector],
-                [],
+                regimes ?? [],
                 entryAt,
                 bars[^1].Timestamp,
                 100_000m,
@@ -201,7 +312,7 @@ public class BacktestSimulationGoldenTests
                 [],
                 bars[0].Timestamp,
                 new BacktestExecutionAdapter(),
-                null,
+                weightStrategy,
                 new CumulativeRsi2Config(),
                 CancellationToken.None);
     }

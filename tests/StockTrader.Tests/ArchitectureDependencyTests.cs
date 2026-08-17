@@ -147,6 +147,24 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void EntryAllocationAndCorrelationHaveApplicationPolicyOwners()
+    {
+        var repository = FindRepositoryRoot();
+        var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
+        var engine = File.ReadAllText(enginePath);
+        var preview = File.ReadAllText(Path.Combine(repository, "Api/PatternPreviewEndpoints.cs"));
+        var signal = File.ReadAllText(Path.Combine(repository, "Services/Signal/SignalService.cs"));
+
+        File.ReadAllLines(enginePath).Length.Should().BeLessThanOrEqualTo(450);
+        engine.Should().Contain("PositionAllocationPolicy.Apply(");
+        engine.Should().Contain("PortfolioCorrelationPolicy.ExceedsLimit(");
+        engine.Should().NotContain("GetWeightScale(");
+        engine.Should().NotContain("ComputePearsonCorrelation(");
+        preview.Should().Contain("PositionAllocationPolicy.NormalizeScale(");
+        signal.Should().Contain("PositionAllocationPolicy.NormalizeScale(");
+    }
+
+    [Fact]
     public void OptimizationExecutorDelegatesMarketDataPreparation()
     {
         var repository = FindRepositoryRoot();

@@ -384,7 +384,7 @@ public static class PatternPreviewEndpoints
                 EntryAtr = entryAtr > 0 ? entryAtr : fill.RiskDistance,
                 InvestedCapital = fill.EntryPrice * 100,
                 AllocationScale = Math.Min(
-                    signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m,
+                    PositionAllocationPolicy.NormalizeScale(signal.AllocationScale),
                     portfolioRules.MaxSinglePositionPercent > 0 ? portfolioRules.MaxSinglePositionPercent / 100m : 1m)
             };
             entriesToday++;

@@ -235,47 +235,24 @@ public sealed class BacktestSimulationEngine
                         var stopDistance = Math.Abs(signal.EntryPrice - signal.StopLossPrice);
                         if (stopDistance <= 0) continue;
 
-                        var effectiveEquity = Math.Max(portfolio.CurrentEquity, initialCapital * 0.10m);
+                        var baseEquity = Math.Max(portfolio.CurrentEquity, initialCapital * 0.10m);
+                        var regimeScale = weightStrategy != null && regime != null
+                            ? PositionAllocationPolicy.ResolveRegimeScale(regime, weightStrategy)
+                            : 1m;
+                        var allocation = PositionAllocationPolicy.Apply(
+                            baseEquity, regimeScale, signal.AllocationScale);
+                        var effectiveEquity = allocation.EffectiveEquity;
+                        portfolio.RegisterWeightReductions(allocation.ReductionCount);
 
-                        // ── 비중 전략 적용 ──
-                        if (weightStrategy != null && regime != null)
+                        if (portfolioRules?.MaxCorrelation > 0
+                            && PortfolioCorrelationPolicy.ExceedsLimit(
+                                symbol,
+                                openPositions.Keys,
+                                symbolDataMap,
+                                date,
+                                portfolioRules.MaxCorrelation))
                         {
-                            var wScale = GetWeightScale(regime, weightStrategy);
-                            effectiveEquity *= wScale;
-                            if (wScale < 1.0m) portfolio.RegisterWeightReduction();
-                        }
-
-                        // ── 커스텀 패턴 비중 단계 적용 ──
-                        if (signal.AllocationScale != 1.0m && signal.AllocationScale > 0)
-                        {
-                            effectiveEquity *= signal.AllocationScale;
-                            if (signal.AllocationScale < 1.0m) portfolio.RegisterWeightReduction();
-                        }
-
-                        // [E-2] 포트폴리오 상관관계 필터
-                        if (portfolioRules != null && portfolioRules.MaxCorrelation > 0
-                            && openPositions.Count > 0)
-                        {
-                            bool correlationBlocked = false;
-                            foreach (var existingSymbol in openPositions.Keys)
-                            {
-                                if (!symbolDataMap.TryGetValue(existingSymbol, out var existingSd)) continue;
-                                if (!symbolDataMap.TryGetValue(symbol, out var newSd)) continue;
-
-                                // 최근 60개 수익률로 Pearson 상관계수 계산
-                                const int corrWindow = 60;
-                                var corrCorr = ComputePearsonCorrelation(
-                                    existingSd.Closes, existingSd.TimestampToIndex,
-                                    newSd.Closes, newSd.TimestampToIndex,
-                                    date, corrWindow);
-
-                                if (corrCorr > (double)portfolioRules.MaxCorrelation)
-                                {
-                                    correlationBlocked = true;
-                                    break;
-                                }
-                            }
-                            if (correlationBlocked) continue;
+                            continue;
                         }
 
                         // 완료된 과거 거래만 사용해 켈리 비율 계산 (미래 거래 누출 방지)
@@ -409,84 +386,6 @@ public sealed class BacktestSimulationEngine
             WeightReducedTrades = portfolio.WeightReducedTrades,
             ActualDataFrom = actualDataFrom
         });
-    }
-
-    /// <summary>
-    /// 시장 레짐에 따른 비중 스케일링 계수 계산.
-    /// SPY vs SMA 위치에 따라 포지션 크기를 조절합니다.
-    /// </summary>
-    private static decimal GetWeightScale(MarketRegime regime, WeightStrategy ws)
-    {
-        if (regime.Spy200Ma <= 0) return 1.0m;
-
-        var ratio = regime.SpyPrice / regime.Spy200Ma;
-
-        // 약세장 (지수 < SMA)
-        if (!regime.SpyAbove200Ma)
-            return ws.BearWeight;
-
-        // 과열2단계 (지수가 SMA 대비 OverheatStage2Pct 이상)
-        if (ratio >= ws.OverheatStage2Pct)
-            return ws.Overheat2Weight;
-
-        // 과열1단계
-        if (ratio >= ws.OverheatStage1Pct)
-            return ws.Overheat1Weight;
-
-        // 정상 강세장
-        return ws.BullWeight;
-    }
-
-    /// <summary>
-    /// [E-2] 두 심볼의 최근 N봉 일간 수익률 Pearson 상관계수 계산.
-    /// </summary>
-    private static double ComputePearsonCorrelation(
-        decimal[] closesA, Dictionary<DateTime, int> idxA,
-        decimal[] closesB, Dictionary<DateTime, int> idxB,
-        DateTime refDate, int window)
-    {
-        // refDate 기준으로 최근 window+1개 공통 날짜 수집 → window개의 수익률
-        var returnsA = new List<double>(window);
-        var returnsB = new List<double>(window);
-
-        var dates = idxA.Keys
-            .Where(d => d <= refDate && idxB.ContainsKey(d))
-            .OrderByDescending(d => d)
-            .Take(window + 1)
-            .OrderBy(d => d)
-            .ToList();
-
-        for (int i = 1; i < dates.Count; i++)
-        {
-            var d = dates[i];
-            var prev = dates[i - 1];
-            if (!idxA.TryGetValue(d, out var ia) || !idxA.TryGetValue(prev, out var ia0)) continue;
-            if (!idxB.TryGetValue(d, out var ib) || !idxB.TryGetValue(prev, out var ib0)) continue;
-            if (closesA[ia0] <= 0 || closesB[ib0] <= 0) continue;
-
-            returnsA.Add((double)((closesA[ia] - closesA[ia0]) / closesA[ia0]));
-            returnsB.Add((double)((closesB[ib] - closesB[ib0]) / closesB[ib0]));
-        }
-
-        int n = Math.Min(returnsA.Count, returnsB.Count);
-        if (n < 10) return 0; // 데이터 부족 시 상관없음으로 처리
-
-        double meanA = 0, meanB = 0;
-        for (int i = 0; i < n; i++) { meanA += returnsA[i]; meanB += returnsB[i]; }
-        meanA /= n; meanB /= n;
-
-        double cov = 0, stdA = 0, stdB = 0;
-        for (int i = 0; i < n; i++)
-        {
-            var da = returnsA[i] - meanA;
-            var db = returnsB[i] - meanB;
-            cov  += da * db;
-            stdA += da * da;
-            stdB += db * db;
-        }
-
-        var denom = Math.Sqrt(stdA * stdB);
-        return denom > 0 ? cov / denom : 0;
     }
 
 }

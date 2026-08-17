@@ -53,8 +53,13 @@
   `BacktestExecutionAdapter`, matching its remaining responsibility instead of implying a second engine.
   End-to-end golden fixtures also lock same-bar stop priority and partial-profit aggregation without
   double-counting the remaining position.
+- `PositionAllocationPolicy` owns regime and strategy allocation scaling for backtest, preview, and
+  live recommendation paths. `PortfolioCorrelationPolicy` computes aligned historical returns with
+  an explicit 60-bar window and 10-return minimum. The simulation engine is now 391 lines and delegates
+  correlation blocking instead of calculating Pearson statistics inline. Golden fixtures cover bear
+  weight reduction and rejection of a second highly correlated symbol.
 
-Remaining Phase 2 work is primarily correlation/weight entry-policy extraction from
+Remaining Phase 2 work is primarily entry eligibility/runtime orchestration extraction from
 `BacktestSimulationEngine`, operational visibility and recovery controls for pending live exits,
 and broader preview/backtest/live parity fixtures.
 

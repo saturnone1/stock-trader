@@ -205,7 +205,7 @@ public class SignalService : ISignalService
                 effectiveRisk,
                 signal.EntryPrice,
                 signal.StopLossPrice);
-            positionSize *= signal.AllocationScale is > 0 and <= 1 ? signal.AllocationScale : 1m;
+            positionSize *= PositionAllocationPolicy.NormalizeScale(signal.AllocationScale);
 
             positionSize = LongPositionSizingPolicy.ApplyPositionCapitalCap(
                 positionSize,

@@ -70,5 +70,5 @@ internal sealed class BacktestPortfolioState(decimal initialCapital, DateTime st
             EquityCurve.Add(new EquityPoint(timestamp, markedEquity));
     }
 
-    public void RegisterWeightReduction() => WeightReducedTrades++;
+    public void RegisterWeightReductions(int count = 1) => WeightReducedTrades += Math.Max(0, count);
 }
