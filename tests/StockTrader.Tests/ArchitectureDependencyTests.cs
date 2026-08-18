@@ -2004,7 +2004,9 @@ public class ArchitectureDependencyTests
         foreach (var path in endpointPaths)
         {
             var source = File.ReadAllText(Path.Combine(repository, path));
-            source.Should().Contain("OpenPositionResponseMapper.Map(");
+            source.Should().Contain("IOpenPositionQuery");
+            source.Should().Contain("OpenPositionResponseMapper.Map");
+            source.Should().NotContain("IOpenPositionStore");
             source.Should().NotContain("HoldingDays    = (DateTime.UtcNow");
         }
 
@@ -2024,6 +2026,17 @@ public class ArchitectureDependencyTests
         contract.Should().Contain("bool HasBrokerOrderId");
         contract.Should().NotContain("string ExitStatus");
         contract.Should().NotContain("bool HasExitOrderId");
+        contract.Should().Contain("Map(OpenPositionSnapshot position)");
+        contract.Should().NotContain("Map(Position position");
+        var queryContract = File.ReadAllText(Path.Combine(
+            repository, "Application/Portfolio/OpenPositionQueryContracts.cs"));
+        var query = File.ReadAllText(Path.Combine(
+            repository, "Services/Portfolio/OpenPositionQuery.cs"));
+        queryContract.Should().Contain("interface IOpenPositionQuery");
+        queryContract.Should().NotContain("StockTrader.Models");
+        query.Should().Contain("LivePositionOrderStatusPolicy.Evaluate(position, observedAt)");
+        query.Should().Contain("timeProvider.GetUtcNow()");
+        query.Should().NotContain("DateTime.UtcNow");
         portfolio.Should().Contain("orderKindLabel(row.orderKind)");
         portfolio.Should().NotContain("row.exitStatus");
     }
@@ -2295,7 +2308,8 @@ public class ArchitectureDependencyTests
         queryContract.Should().NotContain("StockTrader.Models");
         queryContract.Should().NotContain("EntityFrameworkCore");
         projection.Should().NotContain("DateTime.UtcNow");
-        query.Should().Contain("TimeProvider");
+        query.Should().Contain("IOpenPositionQuery");
+        query.Should().NotContain("IOpenPositionStore");
         query.Should().Contain("PositionRiskProjectionPolicy.Evaluate");
         query.Should().NotContain("DateTime.UtcNow");
         riskService.Should().Contain("legacyPositionAccountId");
@@ -2306,6 +2320,42 @@ public class ArchitectureDependencyTests
         registrations.Should().Contain("AddScoped<IRiskOverviewQuery, RiskOverviewQuery>");
         registrations.Should().Contain("RiskMonitorMaxConsecutiveFailures");
         registrations.Should().Contain("ValidateOnStart()");
+    }
+
+    [Fact]
+    public void PortfolioPerformanceHasAThinApiAndDeterministicApplicationPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var endpointsPath = Path.Combine(repository, "Api/PortfolioEndpoints.cs");
+        var endpoints = File.ReadAllText(endpointsPath);
+        var contract = File.ReadAllText(Path.Combine(
+            repository, "Application/Portfolio/PortfolioPerformanceContracts.cs"));
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Portfolio/PortfolioPerformancePolicy.cs"));
+        var query = File.ReadAllText(Path.Combine(
+            repository, "Services/Portfolio/PortfolioPerformanceQuery.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+
+        endpoints.Should().Contain("IPortfolioPerformanceQuery");
+        endpoints.Should().Contain("Produces<PortfolioPerformanceResponse>");
+        endpoints.Should().NotContain("IPatternStatsRepository");
+        endpoints.Should().NotContain("Average(t => t.PnLPercent)");
+        endpoints.Should().NotContain("var maxDrawdown");
+        File.ReadAllLines(endpointsPath).Length.Should().BeLessThanOrEqualTo(45);
+
+        contract.Should().Contain("interface IPortfolioPerformanceQuery");
+        contract.Should().NotContain("StockTrader.Models");
+        contract.Should().NotContain("EntityFrameworkCore");
+        policy.Should().Contain("initialAccountEquity");
+        policy.Should().Contain("ThenBy(trade => trade.Id)");
+        policy.Should().NotContain("DateTime.UtcNow");
+        query.Should().Contain("take: int.MaxValue");
+        query.Should().Contain("PortfolioPerformancePolicy.Evaluate(");
+        query.Should().NotContain("Task.WhenAll");
+        registrations.Should().Contain(
+            "AddScoped<IPortfolioPerformanceQuery, PortfolioPerformanceQuery>");
+        registrations.Should().Contain("AddScoped<IOpenPositionQuery, OpenPositionQuery>");
     }
 
     private static string FindRepositoryRoot()

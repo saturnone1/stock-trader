@@ -165,7 +165,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["PortfolioHoldingsResponse"];
+                    };
                 };
             };
         };
@@ -198,7 +200,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["PortfolioPerformanceResponse"];
+                    };
                 };
             };
         };
@@ -304,7 +308,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["OpenPositionsResponse"];
+                    };
                 };
             };
         };
@@ -2955,6 +2961,49 @@ export interface components {
             filledQuantity: null | number;
             brokerOrderIdPersisted: null | boolean;
         };
+        OpenPositionResponse: {
+            /** Format: int64 */
+            id: number;
+            symbol: string;
+            sector: string;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: double */
+            entryPrice: number;
+            /** Format: double */
+            currentPrice: number;
+            /** Format: double */
+            stopLossPrice: number;
+            /** Format: double */
+            targetPrice: number;
+            pattern: string;
+            /** Format: double */
+            unrealizedPnL: number;
+            /** Format: int32 */
+            accountId: number;
+            /** Format: double */
+            highSinceEntry: number;
+            /** Format: double */
+            entryAtr: number;
+            /** Format: int32 */
+            holdingDays: number;
+            openedAt: string;
+            orderStatus: string;
+            orderRequestedAt: null | string;
+            orderReason: null | string;
+            orderKind: null | string;
+            hasBrokerOrderId: boolean;
+            /** Format: int64 */
+            orderPendingSeconds: number;
+            /** Format: int32 */
+            orderQuantity: number;
+            orderMarksPartialProfit: boolean;
+        };
+        OpenPositionsResponse: {
+            /** Format: int32 */
+            count: number;
+            positions: components["schemas"]["OpenPositionResponse"][];
+        };
         OptimizeParams: {
             atrStopMultiplier?: null | components["schemas"]["ParamRange"];
             atrTargetMultiplier?: null | components["schemas"]["ParamRange"];
@@ -3314,6 +3363,57 @@ export interface components {
         };
         /** @enum {unknown} */
         PatternType: "GapUpPullback" | "Breakout" | "VwapReversion" | "RsiMeanReversion" | "TrendPullback" | "OpeningRangeBreakout" | "VolumeSpikeContinuation" | "EarningsDrift" | "IndexRegimeFilter" | "VolatilityExpansion" | "MomentumReversal" | "MultiTimeframeTrend" | "MeanReversionChannel" | "Rsi2Bollinger" | "VolatilityBreakout" | "Tqqq200Sma" | "CumulativeRsi2" | "Custom";
+        PortfolioEquityPointResponse: {
+            date: string;
+            symbol: string;
+            pattern: string;
+            /** Format: double */
+            pnL: number;
+            /** Format: double */
+            pnLPercent: number;
+            /** Format: double */
+            cumulativePnL: number;
+        };
+        PortfolioHoldingsResponse: {
+            positions: components["schemas"]["OpenPositionResponse"][];
+            /** Format: double */
+            totalUnrealizedPnL: number;
+            /** Format: int32 */
+            positionCount: number;
+        };
+        PortfolioPatternStatisticsResponse: {
+            pattern: string;
+            symbol: null | string;
+            /** Format: int32 */
+            sampleSize: number;
+            /** Format: double */
+            winRate: number;
+            /** Format: double */
+            avgWinPercent: number;
+            /** Format: double */
+            avgLossPercent: number;
+            /** Format: double */
+            maxDrawdownPercent: number;
+            /** Format: double */
+            expectancy: number;
+            /** Format: double */
+            profitFactor: number;
+            lastUpdated: string;
+        };
+        PortfolioPerformanceResponse: {
+            /** Format: int32 */
+            totalTrades: number;
+            /** Format: double */
+            winRate: number;
+            /** Format: double */
+            avgWinPercent: number;
+            /** Format: double */
+            avgLossPercent: number;
+            /** Format: double */
+            maxDrawdown: number;
+            patternStats: components["schemas"]["PortfolioPatternStatisticsResponse"][];
+            equityCurve: components["schemas"]["PortfolioEquityPointResponse"][];
+        };
         PositionRiskResponse: {
             symbol: string;
             pattern: string;

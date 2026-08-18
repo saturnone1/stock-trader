@@ -21,6 +21,8 @@ using StockTrader.Application.Optimization;
 using StockTrader.Application.SymbolProfiles;
 using StockTrader.Application.Research;
 using StockTrader.Application.Risk;
+using StockTrader.Application.Portfolio;
+using StockTrader.Services.Portfolio;
 
 namespace StockTrader.Extensions;
 
@@ -100,6 +102,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISignalService, SignalService>();
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IRiskOverviewQuery, RiskOverviewQuery>();
+        services.AddScoped<IPortfolioPerformanceQuery, PortfolioPerformanceQuery>();
+        services.AddScoped<IOpenPositionQuery, OpenPositionQuery>();
         services.AddScoped<ManualOrderWorkflow>();
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<IOrderService, OrderService>();
