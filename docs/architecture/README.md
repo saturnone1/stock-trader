@@ -246,4 +246,6 @@ the same factory applies baseline or request-override settings without a second 
   move indicator snapshot composition behind a focused boundary, and configure analysis operations.
 - `adr/0021-own-market-data-identity-in-domain.md`: make Domain the sole owner of timeframe and data
   provider identity while preserving persisted integer and JSON enum compatibility.
+- `adr/0022-register-rule-indicator-calculators.md`: bind every central indicator descriptor to one
+  runtime calculator and split evaluation caching, dispatch, categories, and math.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

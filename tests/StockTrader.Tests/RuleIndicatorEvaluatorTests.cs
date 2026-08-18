@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
@@ -8,6 +9,14 @@ namespace StockTrader.Tests;
 
 public class RuleIndicatorEvaluatorTests
 {
+    [Fact]
+    public void CalculatorRegistryCoversEveryCentralCatalogIndicatorExactlyOnce()
+    {
+        RuleIndicatorCalculatorRegistry.Codes.Should().BeEquivalentTo(
+            IndicatorCatalog.All.Select(descriptor => descriptor.Code));
+        RuleIndicatorCalculatorRegistry.Codes.Should().OnlyHaveUniqueItems();
+    }
+
     [Fact]
     public void Compute_UsesCatalogDefaultsAndCachesIndicatorWithinEvaluationContext()
     {

@@ -2,7 +2,7 @@ using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
 using StockTrader.Application.Strategies;
 using StockTrader.Models;
-using EvalContext = StockTrader.Services.Patterns.RuleIndicatorEvaluator.EvalContext;
+using EvalContext = StockTrader.Services.Patterns.RuleIndicatorEvaluationContext;
 
 namespace StockTrader.Services.Patterns;
 

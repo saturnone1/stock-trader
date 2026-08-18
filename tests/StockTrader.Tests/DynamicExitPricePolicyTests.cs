@@ -82,7 +82,7 @@ public class DynamicExitPricePolicyTests
         TargetParams = new Dictionary<string, decimal> { ["period"] = 20m, ["stddev"] = 2m }
     };
 
-    private static (OhlcvBar[] Bars, RuleIndicatorEvaluator.EvalContext Context) Context(
+    private static (OhlcvBar[] Bars, RuleIndicatorEvaluationContext Context) Context(
         decimal[]? closes = null)
     {
         closes ??= Enumerable.Repeat(100m, 60).ToArray();
