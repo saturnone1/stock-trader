@@ -1357,9 +1357,46 @@
         "tags": [
           "OrderEndpoints"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionSymbolRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1369,9 +1406,36 @@
         "tags": [
           "OrderEndpoints"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PositionSymbolRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1393,7 +1457,44 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrderErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3171,6 +3272,75 @@
           }
         }
       },
+      "LiveOrderErrorResponse": {
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "status": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LiveOrderResponse": {
+        "required": [
+          "status",
+          "message",
+          "requestedAt",
+          "brokerStatus",
+          "fillPrice",
+          "filledQuantity",
+          "brokerOrderIdPersisted"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "brokerStatus": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fillPrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "filledQuantity": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "brokerOrderIdPersisted": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
       "OptimizeParams": {
         "type": "object",
         "properties": {
@@ -4568,6 +4738,20 @@
           "CumulativeRsi2",
           "Custom"
         ]
+      },
+      "PositionSymbolRequest": {
+        "required": [
+          "symbol"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "ResearchFacetResponse": {
         "required": [

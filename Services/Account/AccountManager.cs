@@ -185,7 +185,17 @@ public sealed class AccountManager : IAccountManager
 
     public async Task<AccountBrokerContext?> GetBrokerContextForReconciliationAsync(
         int accountId,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        await GetStoredBrokerContextAsync(accountId, ct);
+
+    public async Task<AccountBrokerContext?> GetBrokerContextForPositionExitAsync(
+        int accountId,
+        CancellationToken ct = default) =>
+        await GetStoredBrokerContextAsync(accountId, ct);
+
+    private async Task<AccountBrokerContext?> GetStoredBrokerContextAsync(
+        int accountId,
+        CancellationToken ct)
     {
         var account = await _store.LoadByIdAsync(accountId, ct);
         if (account is null)

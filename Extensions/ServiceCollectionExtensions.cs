@@ -15,6 +15,7 @@ using StockTrader.Services.Statistics;
 using StockTrader.Services.Financial;
 using StockTrader.Services.StrategyPreview;
 using StockTrader.Application.StrategyPreview;
+using StockTrader.Application.Execution;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Optimization;
 using StockTrader.Application.SymbolProfiles;
@@ -84,6 +85,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
+        services.AddScoped<ILiveOrderManagement, LiveOrderManagement>();
         services.AddScoped<LivePositionExecutionEvaluator>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<ISymbolProfileStore, SymbolProfileStore>();
