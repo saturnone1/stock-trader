@@ -10,7 +10,6 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Domain.MarketData;
 using StockTrader.Services.Indicators;
-using StockTrader.Services.ML;
 using StockTrader.Services.Backtest;
 using Microsoft.Extensions.Options;
 

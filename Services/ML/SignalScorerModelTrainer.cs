@@ -1,6 +1,7 @@
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using Microsoft.ML.Trainers.FastTree;
+using StockTrader.Application.MachineLearning;
 using StockTrader.Models;
 
 namespace StockTrader.Services.ML;
@@ -81,11 +82,9 @@ internal sealed class SignalScorerModelTrainer(MLContext mlContext)
 
         var total = raw.Sum();
         return SignalScoringFeatureCatalog.All
-            .Select((descriptor, index) => new FeatureImportance
-            {
-                FeatureName = descriptor.DisplayName,
-                Importance = total > 0 ? raw[index] / total : 0,
-            })
+            .Select((descriptor, index) => new FeatureImportance(
+                descriptor.DisplayName,
+                total > 0 ? raw[index] / total : 0))
             .OrderByDescending(feature => feature.Importance)
             .ThenBy(feature => feature.FeatureName, StringComparer.Ordinal)
             .ToList();

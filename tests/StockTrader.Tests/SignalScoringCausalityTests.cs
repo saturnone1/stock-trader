@@ -132,17 +132,20 @@ public sealed class SignalScoringCausalityTests
 
             trained.Should().BeTrue();
             legacy.IsModelLoaded.Should().BeTrue();
-            legacy.TrainingSamples.Should().Be(100);
-            legacy.FeatureImportances.Should().HaveCount(
+            var trainedStatus = legacy.GetStatus();
+            trainedStatus.TrainingSamples.Should().Be(100);
+            trainedStatus.FeatureImportances.Should().HaveCount(
                 SignalScoringFeatureSchema.FeatureCount);
             File.Exists(Path.Combine(directory, "signal.zip.manifest.json"))
                 .Should().BeTrue();
 
             var reloaded = CreateScorer(settings);
             reloaded.IsModelLoaded.Should().BeTrue();
-            reloaded.TrainingSamples.Should().Be(100);
-            reloaded.LastAccuracy.Should().Be(legacy.LastAccuracy);
-            reloaded.LastAuc.Should().Be(legacy.LastAuc);
+            var reloadedStatus = reloaded.GetStatus();
+            reloadedStatus.TrainingSamples.Should().Be(100);
+            reloadedStatus.ValidationAccuracy.Should().Be(
+                trainedStatus.ValidationAccuracy);
+            reloadedStatus.ValidationAuc.Should().Be(trainedStatus.ValidationAuc);
 
             await File.AppendAllTextAsync(Path.Combine(directory, "signal.zip"), "tampered");
             CreateScorer(settings).IsModelLoaded.Should().BeFalse(

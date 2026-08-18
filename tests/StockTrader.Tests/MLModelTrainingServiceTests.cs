@@ -1,7 +1,5 @@
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using StockTrader.Application.MachineLearning;
 using StockTrader.Configuration;
@@ -37,19 +35,13 @@ public class MLModelTrainingServiceTests
         var samples = new Mock<ISignalScoringTrainingStore>();
         samples.Setup(value => value.GetRecentAsync(5000, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<SignalScoringTrainingSample>());
-        var services = new ServiceCollection()
-            .AddScoped(_ => feeds.Object)
-            .AddScoped(_ => samples.Object)
-            .BuildServiceProvider();
         var service = new MLModelTrainingService(
             new Mock<IMarketRegimeClassifier>().Object,
             new Mock<ISignalScorer>().Object,
-            services.GetRequiredService<IServiceScopeFactory>(),
-            Options.Create(new MLSettings
-            {
-                MinTrainingSamples = 3,
-                RegimeTrainingDays = 90
-            }),
+            new MarketRegimeTrainingDataSource(feeds.Object),
+            samples.Object,
+            new MlTrainingRunState(),
+            new MlTrainingOptions(3, 90, 5000),
             new FixedTimeProvider(observedAt),
             NullLogger<MLModelTrainingService>.Instance);
 
@@ -60,6 +52,86 @@ public class MLModelTrainingServiceTests
         result.TrainingDuration.Should().Be(TimeSpan.Zero);
         result.Message.Should().Contain("최소 3개 인과적 샘플 필요");
         feed.VerifyAll();
+    }
+
+    [Fact]
+    public void StatusQueryProjectsOneApplicationOwnedModelSnapshot()
+    {
+        var regime = new Mock<IMarketRegimeClassifier>();
+        regime.SetupGet(value => value.IsModelLoaded).Returns(true);
+        regime.Setup(value => value.GetStatus()).Returns(
+            new MarketRegimeClassifierStatus(
+                true,
+                new DateTime(2026, 8, 19, 1, 0, 0, DateTimeKind.Utc),
+                250,
+                new Dictionary<uint, string> { [1] = "강세장" }));
+        var scorer = new Mock<ISignalScorer>();
+        scorer.SetupGet(value => value.IsModelLoaded).Returns(true);
+        scorer.Setup(value => value.GetStatus()).Returns(
+            new SignalScorerStatus(
+                true,
+                null,
+                120,
+                0.75,
+                0.82,
+                [new FeatureImportance("RSI", 0.4)]));
+        var query = new MlModelStatusQuery(
+            regime.Object,
+            scorer.Object,
+            new MlTrainingRunState());
+
+        var status = query.GetStatus();
+
+        status.RegimeClusterLabels.Should().Contain(1, "강세장");
+        status.SignalScorerAccuracy.Should().Be(0.75);
+        status.SignalScorerAuc.Should().Be(0.82);
+        status.SignalScorerFeatureImportances.Should()
+            .ContainSingle(value => value.FeatureName == "RSI" && value.Importance == 0.4);
+    }
+
+    [Fact]
+    public async Task ScopedUseCasesShareOneGlobalTrainingClaim()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var regimeData = new Mock<IMarketRegimeTrainingDataSource>();
+        regimeData.Setup(value => value.LoadAsync(
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                entered.SetResult();
+                await release.Task;
+                return new MarketRegimeTrainingSet("SPY", []);
+            });
+        var store = new Mock<ISignalScoringTrainingStore>();
+        store.Setup(value => value.GetRecentAsync(5000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var runState = new MlTrainingRunState();
+        MLModelTrainingService CreateService() => new(
+            Mock.Of<IMarketRegimeClassifier>(),
+            Mock.Of<ISignalScorer>(),
+            regimeData.Object,
+            store.Object,
+            runState,
+            new MlTrainingOptions(3, 90, 5000),
+            TimeProvider.System,
+            NullLogger<MLModelTrainingService>.Instance);
+
+        var first = CreateService().TrainAllAsync();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var second = await CreateService().TrainAllAsync();
+
+        second.Success.Should().BeFalse();
+        second.Message.Should().Contain("이미 학습이 진행 중");
+        runState.Snapshot().IsTraining.Should().BeTrue();
+
+        release.SetResult();
+        await first;
+        runState.Snapshot().IsTraining.Should().BeFalse();
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

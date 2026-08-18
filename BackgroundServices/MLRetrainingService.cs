@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Analysis;
+using StockTrader.Application.MachineLearning;
 using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
 using StockTrader.Domain.MarketData;
-using StockTrader.Services.ML;
 using StockTrader.Services.Notification;
 
 namespace StockTrader.BackgroundServices;

@@ -1,3 +1,5 @@
+using StockTrader.Models;
+
 namespace StockTrader.Application.MachineLearning;
 
 public static class SignalScoringFeatureSchema
@@ -38,4 +40,33 @@ public interface ISignalScoringTrainingStore
     Task<IReadOnlyList<SignalScoringTrainingSample>> GetRecentAsync(
         int limit,
         CancellationToken ct = default);
+}
+
+public sealed record FeatureImportance(
+    string FeatureName,
+    double Importance);
+
+public sealed record SignalScorerStatus(
+    bool IsModelLoaded,
+    DateTime? TrainedAt,
+    int TrainingSamples,
+    double ValidationAccuracy,
+    double ValidationAuc,
+    IReadOnlyList<FeatureImportance> FeatureImportances);
+
+public interface ISignalScorer
+{
+    Task<SignalScoringResult> EvaluateAsync(
+        PatternSignal signal,
+        OhlcvBar[] bars,
+        MarketRegime regime,
+        decimal historicalWinRate = 0.5m,
+        CancellationToken ct = default);
+
+    Task<bool> TrainAsync(
+        IReadOnlyList<SignalScoringTrainingSample> samples,
+        CancellationToken ct = default);
+
+    bool IsModelLoaded { get; }
+    SignalScorerStatus GetStatus();
 }

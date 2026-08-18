@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
@@ -146,6 +147,8 @@ public static class ServiceCollectionExtensions
                 + $"{MarketRegimeClusterCatalog.RequiredClusterCount}")
             .Validate(settings => settings.RegimeTrainingDays > 0,
                 "RegimeTrainingDays must be positive")
+            .Validate(settings => settings.SignalTrainingSampleLimit > 0,
+                "SignalTrainingSampleLimit must be positive")
             .Validate(settings => settings.MlScoreBlendWeight is >= 0 and <= 1,
                 "MlScoreBlendWeight must be in [0, 1]")
             .Validate(settings => settings.AutoRetrainIntervalHours > 0,
@@ -242,7 +245,20 @@ public static class ServiceCollectionExtensions
         // ML Services
         services.AddSingleton<IMarketRegimeClassifier, MarketRegimeClassifier>();
         services.AddSingleton<ISignalScorer, SignalScorer>();
-        services.AddSingleton<IMLModelTrainingService, MLModelTrainingService>();
+        services.AddScoped<IMarketRegimeTrainingDataSource, MarketRegimeTrainingDataSource>();
+        services.AddSingleton(serviceProvider =>
+        {
+            var settings = serviceProvider
+                .GetRequiredService<IOptions<MLSettings>>()
+                .Value;
+            return new MlTrainingOptions(
+                settings.MinTrainingSamples,
+                settings.RegimeTrainingDays,
+                settings.SignalTrainingSampleLimit);
+        });
+        services.AddSingleton<MlTrainingRunState>();
+        services.AddSingleton<IMlModelStatusQuery, MlModelStatusQuery>();
+        services.AddScoped<IMLModelTrainingService, MLModelTrainingService>();
         services.AddScoped<ISignalScoringTrainingStore, SignalScoringTrainingStore>();
 
         // Business Services

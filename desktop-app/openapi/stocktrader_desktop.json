@@ -672,7 +672,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlStatusResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -684,7 +691,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlTrainingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlTrainingErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4371,6 +4395,170 @@
           },
           "supportsScaling": {
             "type": "boolean"
+          }
+        }
+      },
+      "MlFeatureImportanceResponse": {
+        "required": [
+          "featureName",
+          "importance"
+        ],
+        "type": "object",
+        "properties": {
+          "featureName": {
+            "type": "string"
+          },
+          "importance": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "MlRegimeClassifierStatusResponse": {
+        "required": [
+          "isRegimeModelLoaded",
+          "trainedAt",
+          "regimeTrainingSamples",
+          "clusterLabels"
+        ],
+        "type": "object",
+        "properties": {
+          "isRegimeModelLoaded": {
+            "type": "boolean"
+          },
+          "trainedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "regimeTrainingSamples": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "clusterLabels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MlSignalScorerStatusResponse": {
+        "required": [
+          "isSignalScorerLoaded",
+          "trainedAt",
+          "signalScorerTrainingSamples",
+          "signalScorerAccuracy",
+          "signalScorerAuc",
+          "featureImportances"
+        ],
+        "type": "object",
+        "properties": {
+          "isSignalScorerLoaded": {
+            "type": "boolean"
+          },
+          "trainedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "signalScorerTrainingSamples": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "signalScorerAccuracy": {
+            "type": "number",
+            "format": "double"
+          },
+          "signalScorerAuc": {
+            "type": "number",
+            "format": "double"
+          },
+          "featureImportances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MlFeatureImportanceResponse"
+            }
+          }
+        }
+      },
+      "MlStatusResponse": {
+        "required": [
+          "regimeClassifier",
+          "signalScorer",
+          "isTraining",
+          "trainingStatus"
+        ],
+        "type": "object",
+        "properties": {
+          "regimeClassifier": {
+            "$ref": "#/components/schemas/MlRegimeClassifierStatusResponse"
+          },
+          "signalScorer": {
+            "$ref": "#/components/schemas/MlSignalScorerStatusResponse"
+          },
+          "isTraining": {
+            "type": "boolean"
+          },
+          "trainingStatus": {
+            "type": "string"
+          }
+        }
+      },
+      "MlTrainingErrorResponse": {
+        "required": [
+          "success",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "MlTrainingResponse": {
+        "required": [
+          "success",
+          "message",
+          "regimeSamples",
+          "signalSamples",
+          "signalScorerAccuracy",
+          "signalScorerAuc",
+          "trainingDurationSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "regimeSamples": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "signalSamples": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "signalScorerAccuracy": {
+            "type": "number",
+            "format": "double"
+          },
+          "signalScorerAuc": {
+            "type": "number",
+            "format": "double"
+          },
+          "trainingDurationSeconds": {
+            "type": "number",
+            "format": "double"
           }
         }
       },

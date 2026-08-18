@@ -1,3 +1,5 @@
+using StockTrader.Models;
+
 namespace StockTrader.Application.MachineLearning;
 
 /// <summary>시장 레짐 모델 입력 벡터의 영속 스키마입니다.</summary>
@@ -30,3 +32,23 @@ public sealed record MarketRegimeFeatures(
     float VolumeChangeRate,
     float MaSlopePercent,
     float Rsi);
+
+public sealed record MarketRegimeClassifierStatus(
+    bool IsModelLoaded,
+    DateTime? TrainedAt,
+    int TrainingSamples,
+    IReadOnlyDictionary<uint, string> ClusterLabels);
+
+public interface IMarketRegimeClassifier
+{
+    Task<MarketRegime> ClassifyAsync(
+        OhlcvBar[] benchmarkBars,
+        CancellationToken ct = default);
+
+    Task<bool> TrainAsync(
+        OhlcvBar[] benchmarkBars,
+        CancellationToken ct = default);
+
+    bool IsModelLoaded { get; }
+    MarketRegimeClassifierStatus GetStatus();
+}

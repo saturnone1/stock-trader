@@ -824,7 +824,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["MlStatusResponse"];
+                    };
                 };
             };
         };
@@ -859,7 +861,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["MlTrainingResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MlTrainingErrorResponse"];
+                    };
                 };
             };
         };
@@ -3304,6 +3317,55 @@ export interface components {
             supportedEntryModes: string[];
             supportsPartialExit: boolean;
             supportsScaling: boolean;
+        };
+        MlFeatureImportanceResponse: {
+            featureName: string;
+            /** Format: double */
+            importance: number;
+        };
+        MlRegimeClassifierStatusResponse: {
+            isRegimeModelLoaded: boolean;
+            trainedAt: null | string;
+            /** Format: int32 */
+            regimeTrainingSamples: number;
+            clusterLabels: {
+                [key: string]: string;
+            };
+        };
+        MlSignalScorerStatusResponse: {
+            isSignalScorerLoaded: boolean;
+            trainedAt: null | string;
+            /** Format: int32 */
+            signalScorerTrainingSamples: number;
+            /** Format: double */
+            signalScorerAccuracy: number;
+            /** Format: double */
+            signalScorerAuc: number;
+            featureImportances: components["schemas"]["MlFeatureImportanceResponse"][];
+        };
+        MlStatusResponse: {
+            regimeClassifier: components["schemas"]["MlRegimeClassifierStatusResponse"];
+            signalScorer: components["schemas"]["MlSignalScorerStatusResponse"];
+            isTraining: boolean;
+            trainingStatus: string;
+        };
+        MlTrainingErrorResponse: {
+            success: boolean;
+            message: string;
+        };
+        MlTrainingResponse: {
+            success: boolean;
+            message: string;
+            /** Format: int32 */
+            regimeSamples: number;
+            /** Format: int32 */
+            signalSamples: number;
+            /** Format: double */
+            signalScorerAccuracy: number;
+            /** Format: double */
+            signalScorerAuc: number;
+            /** Format: double */
+            trainingDurationSeconds: number;
         };
         OpenPositionResponse: {
             /** Format: int64 */
