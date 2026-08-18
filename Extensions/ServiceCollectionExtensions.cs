@@ -31,6 +31,7 @@ using StockTrader.Application.Dashboard;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Trading;
 using StockTrader.Application.MarketData;
+using StockTrader.Application.MachineLearning;
 using StockTrader.Services.Dashboard;
 using StockTrader.Services.DataFeed;
 
@@ -239,6 +240,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMarketRegimeClassifier, MarketRegimeClassifier>();
         services.AddSingleton<ISignalScorer, SignalScorer>();
         services.AddSingleton<IMLModelTrainingService, MLModelTrainingService>();
+        services.AddScoped<ISignalScoringTrainingStore, SignalScoringTrainingStore>();
 
         // Business Services
         services.AddScoped<IStatisticsService, StatisticsService>();

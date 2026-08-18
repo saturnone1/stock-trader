@@ -26,6 +26,7 @@ public static class LiveEntryPositionFactory
 
         return new Position
         {
+            SourceSignalId = recommendation.SourceSignalId,
             AccountId = accountId,
             Symbol = recommendation.Symbol,
             Quantity = filledQuantity,

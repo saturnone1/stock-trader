@@ -6,6 +6,9 @@ public class Position
 {
     public long Id { get; set; }
 
+    /// <summary>이 포지션을 만든 인과적 신호. ML 학습 레이블을 원래 피처에 연결합니다.</summary>
+    public long? SourceSignalId { get; set; }
+
     /// <summary>
     /// 이 포지션을 소유하는 TradingAccount.Id.
     /// 0은 계좌 미지정(레거시 데이터 또는 단일 계좌 운용).

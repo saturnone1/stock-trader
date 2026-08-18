@@ -225,6 +225,7 @@ public sealed class LivePositionExecutionStore(IDbContextFactory<AppDbContext> d
 
     private static TradeRecord ToEntity(PositionExecutionTrade trade) => new()
     {
+        SourceSignalId = trade.SourceSignalId,
         Symbol = trade.Symbol,
         PatternType = trade.PatternType,
         CustomPatternName = trade.CustomPatternName,

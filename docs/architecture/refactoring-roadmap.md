@@ -2,6 +2,14 @@
 
 ## Current progress
 
+- ML signal scoring now captures a versioned feature snapshot before a signal is persisted and
+  carries the source-signal identity through broker-confirmed positions and realized trades.
+  Training groups partial exits into one original decision outcome, excludes legacy rows without
+  causal evidence, and validates on the newest chronological holdout instead of a random split.
+  Feature math delegates to the common indicator service, planned stop/target geometry supplies R:R,
+  permutation tests replace invented importance weights, and model manifests bind schema, metrics,
+  sample count, and content hash. Legacy artifacts fail closed until enough new causal samples exist.
+  Container deployments store model artifacts under the existing persistent `/data` volume.
 - The 523-line LS broker adapter is now a thin facade over purpose-specific order, account, and
   order-history clients. A central protocol catalog owns the current order/cancel TR codes and
   official balance request fields, while one tolerant parser accepts documented numeric and string

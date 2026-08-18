@@ -30,6 +30,21 @@ public class PatternSignal
     public bool IsSuperseded { get; set; }
 
     /// <summary>
+    /// 진입 판단 시점에 계산한 ML 피처 스키마입니다. null인 기존 행은 학습에서 제외됩니다.
+    /// 피처는 결과가 알려지기 전에 기록되어야 하며 청산 정보로 다시 계산하지 않습니다.
+    /// </summary>
+    public int? ScoringFeatureVersion { get; set; }
+    public float? ScoringRsi { get; set; }
+    public float? ScoringBollingerPosition { get; set; }
+    public float? ScoringVolumeRatio { get; set; }
+    public float? ScoringMarketRegimeCode { get; set; }
+    public float? ScoringAtrPercent { get; set; }
+    public float? ScoringHistoricalWinRate { get; set; }
+    public float? ScoringRiskRewardRatio { get; set; }
+    public float? ScoringPriceVsLongMovingAverage { get; set; }
+    public float? ScoringLongTrendHistoryAvailable { get; set; }
+
+    /// <summary>
     /// 비중 단계에 의한 투자 비중 스케일 (0.0~1.0). 기본 1.0 = 100%.
     /// DB에 저장하지 않으며, 백테스트 시뮬레이션에서만 사용합니다.
     /// </summary>

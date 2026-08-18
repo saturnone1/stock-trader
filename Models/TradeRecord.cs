@@ -5,6 +5,9 @@ namespace StockTrader.Models;
 public class TradeRecord
 {
     public long Id { get; set; }
+    /// <summary>이 실현 거래를 만든 원래 진입 신호. 부분청산은 같은 값을 공유합니다.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public long? SourceSignalId { get; set; }
     public string Symbol { get; set; } = string.Empty;
     public PatternType PatternType { get; set; }
     public string? CustomPatternName { get; set; }

@@ -7,6 +7,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Data Source=/data/stocktrader.db
+      ML__ModelDirectory: /data/ml_models
       Alpaca__ApiKey: ${ALPACA_API_KEY:-}
       Alpaca__ApiSecret: ${ALPACA_API_SECRET:-}
       Alpaca__IsPaper: ${ALPACA_IS_PAPER:-true}

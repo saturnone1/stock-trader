@@ -1179,10 +1179,13 @@ public class ArchitectureDependencyTests
         deployment.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().Contain("containerPort: 5239");
         deployment.Should().Contain("targetPort: 5239");
+        deployment.Should().Contain("name: ML__ModelDirectory");
+        deployment.Should().Contain("value: \"/data/ml_models\"");
         deployment.Split("timeoutSeconds: 3", StringSplitOptions.None).Length.Should().Be(3,
             "readiness와 liveness 모두 초기 SQLite 상태 조회에 충분한 제한 시간을 가져야 합니다");
         compose.Should().Contain("\"5239:5239\"");
         compose.Should().Contain("dockerfile: Dockerfile.api");
+        compose.Should().Contain("ML__ModelDirectory: /data/ml_models");
         compose.Should().NotContain("ASPNETCORE_URLS");
     }
 
@@ -1873,6 +1876,8 @@ public class ArchitectureDependencyTests
             repository, "Services/ML/MarketRegimeClassifier.cs"));
         var signalScorer = File.ReadAllText(Path.Combine(
             repository, "Services/ML/SignalScorer.cs"));
+        var scoringFeatures = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/SignalScoringFeatureFactory.cs"));
         var analysis = File.ReadAllText(Path.Combine(
             repository, "Services/Analysis/StockAnalysisService.cs"));
         var snapshotFactory = File.ReadAllText(Path.Combine(
@@ -1896,12 +1901,75 @@ public class ArchitectureDependencyTests
         live.Should().NotContain("IIndicatorService");
         ml.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
         ml.Should().NotContain("private readonly IIndicatorService");
-        signalScorer.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
-        signalScorer.Should().NotContain("TakeLast(200)");
+        scoringFeatures.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
+        scoringFeatures.Should().NotContain("TakeLast(200)");
         analysis.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
         analysis.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
         snapshotFactory.Should().NotContain("CreateLongTrend(");
         settings.Should().NotContain("MinimumRegimeBars");
+    }
+
+    [Fact]
+    public void SignalScoringUsesCausalPersistedFeaturesAndFutureValidation()
+    {
+        var repository = FindRepositoryRoot();
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/SignalScoringContracts.cs"));
+        var factory = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/SignalScoringFeatureFactory.cs"));
+        var scorerPath = Path.Combine(repository, "Services/ML/SignalScorer.cs");
+        var scorer = File.ReadAllText(scorerPath);
+        var trainerPath = Path.Combine(
+            repository, "Services/ML/SignalScorerModelTrainer.cs");
+        var trainer = File.ReadAllText(trainerPath);
+        var artifactsPath = Path.Combine(
+            repository, "Services/ML/SignalScorerModelArtifactStore.cs");
+        var artifacts = File.ReadAllText(artifactsPath);
+        var dataset = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/SignalScoringDatasetPolicy.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/SignalScoringTrainingStore.cs"));
+        var training = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/MLModelTrainingService.cs"));
+        var entryFactory = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LiveEntryPositionFactory.cs"));
+        var execution = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/LivePositionExecutionCoordinator.cs"));
+        var executionStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/LivePositionExecutionStore.cs"));
+
+        contracts.Should().Contain("ISignalScoringTrainingStore");
+        contracts.Should().NotContain("StockTrader.Services");
+        contracts.Should().NotContain("StockTrader.Data");
+        factory.Should().Contain("bar.Timestamp <= asOf.Value");
+        factory.Should().Contain("indicators.RSI(");
+        factory.Should().Contain("indicators.BollingerBands(");
+        factory.Should().Contain("indicators.ATR(");
+        factory.Should().Contain("RiskRewardRatioPolicy.CalculateWithAbsoluteStopDistance(");
+        factory.Should().NotContain("ExitPrice");
+        scorer.Should().Contain("SignalScoringDatasetPolicy.TrySplit(");
+        scorer.Should().NotContain("TrainTestSplit(");
+        scorer.Should().NotContain("GetApproxImportance");
+        scorer.Should().NotContain("TradeRecord");
+        scorer.Should().NotContain("ExitPrice");
+        File.ReadAllLines(scorerPath).Length.Should().BeLessThanOrEqualTo(180);
+        trainer.Should().Contain("ComputePermutationImportances(");
+        trainer.Should().NotContain("GetApproxImportance");
+        File.ReadAllLines(trainerPath).Length.Should().BeLessThanOrEqualTo(150);
+        artifacts.Should().Contain("ModelSha256");
+        artifacts.Should().Contain("ComputeSha256(");
+        File.ReadAllLines(artifactsPath).Length.Should().BeLessThanOrEqualTo(180);
+        dataset.Should().Contain("OrderBy(sample => sample.SignalBarAt)");
+        dataset.Should().Contain("ordered[trainingCount..]");
+        store.Should().Contain("GroupBy(trade => trade.SourceSignalId!.Value)");
+        store.Should().Contain("group.Sum(trade => trade.PnL)");
+        store.Should().NotContain("StockTrader.Services");
+        training.Should().Contain("ISignalScoringTrainingStore");
+        training.Should().NotContain("ITradeHistoryStore");
+        training.Should().NotContain("TradeRecord");
+        entryFactory.Should().Contain("SourceSignalId = recommendation.SourceSignalId");
+        execution.Should().Contain("position.SourceSignalId");
+        executionStore.Should().Contain("SourceSignalId = trade.SourceSignalId");
     }
 
     [Fact]

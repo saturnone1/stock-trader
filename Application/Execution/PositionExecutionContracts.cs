@@ -28,6 +28,7 @@ public sealed record PositionExecutionFill(
 
 /// <summary>매도 체결과 함께 원자적으로 기록할 실현 거래 값.</summary>
 public sealed record PositionExecutionTrade(
+    long? SourceSignalId,
     string Symbol,
     PatternType PatternType,
     string? CustomPatternName,

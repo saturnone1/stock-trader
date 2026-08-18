@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
-using StockTrader.Application.Trading;
+using StockTrader.Application.MachineLearning;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
@@ -121,21 +121,22 @@ public class MLModelTrainingService : IMLModelTrainingService
             }
 
             // ── Phase 2: 시그널 스코어러 학습 ────────────────────────────
-            _trainingStatus = "거래 내역 로딩 중...";
+            _trainingStatus = "인과적 시그널 학습 샘플 로딩 중...";
             _logger.LogInformation("ML 학습: 시그널 스코어러");
 
             using var tradeScope = _scopeFactory.CreateScope();
-            var tradeHistory = tradeScope.ServiceProvider.GetRequiredService<ITradeHistoryStore>();
-            var trades = await tradeHistory.GetRecentAsync(limit: 5000, ct: ct);
+            var trainingStore = tradeScope.ServiceProvider
+                .GetRequiredService<ISignalScoringTrainingStore>();
+            var samples = await trainingStore.GetRecentAsync(limit: 5000, ct: ct);
 
             bool scorerTrained = false;
             double accuracy = 0;
             double auc = 0;
 
-            if (trades.Count >= _mlSettings.MinTrainingSamples)
+            if (samples.Count >= _mlSettings.MinTrainingSamples)
             {
-                _trainingStatus = $"시그널 스코어러 학습 중... ({trades.Count}개 거래 내역)";
-                scorerTrained = await _signalScorer.TrainAsync(trades, ct);
+                _trainingStatus = $"시그널 스코어러 학습 중... ({samples.Count}개 인과적 샘플)";
+                scorerTrained = await _signalScorer.TrainAsync(samples, ct);
 
                 if (scorerTrained)
                 {
@@ -145,7 +146,9 @@ public class MLModelTrainingService : IMLModelTrainingService
             }
             else
             {
-                _logger.LogWarning("거래 내역 부족으로 시그널 스코어러 학습 건너뜀 ({Count}개)", trades.Count);
+                _logger.LogWarning(
+                    "인과적 피처·결과 샘플 부족으로 시그널 스코어러 학습 건너뜀 ({Count}개)",
+                    samples.Count);
             }
 
             var duration = _timeProvider.GetUtcNow().UtcDateTime - startTime;
@@ -158,7 +161,7 @@ public class MLModelTrainingService : IMLModelTrainingService
                 scorerTrained,
                 regimeSymbol,
                 regimeBars.Length,
-                trades.Count,
+                samples.Count,
                 _mlSettings.MinTrainingSamples);
 
             _logger.LogInformation("ML 학습 완료: {Duration:F1}초, 레짐={Regime}, 스코어러={Scorer}",
@@ -169,7 +172,7 @@ public class MLModelTrainingService : IMLModelTrainingService
                 Success = anySuccess,
                 Message = message,
                 RegimeSamples = regimeSamples,
-                SignalSamples = trades.Count,
+                SignalSamples = samples.Count,
                 SignalScorerAccuracy = accuracy,
                 SignalScorerAuc = auc,
                 TrainingDuration = duration
@@ -226,9 +229,9 @@ public class MLModelTrainingService : IMLModelTrainingService
             parts.Add("레짐 분류기 건너뜀 (데이터 부족)");
 
         if (scorerTrained)
-            parts.Add($"시그널 스코어러 학습 완료 ({tradeSamples}개 거래)");
+            parts.Add($"시그널 스코어러 학습 완료 ({tradeSamples}개 인과적 샘플)");
         else
-            parts.Add($"시그널 스코어러 건너뜀 (최소 {minimumTrainingSamples}개 거래 필요, 현재 {tradeSamples}개)");
+            parts.Add($"시그널 스코어러 건너뜀 (최소 {minimumTrainingSamples}개 인과적 샘플 필요, 현재 {tradeSamples}개)");
 
         return string.Join(" | ", parts);
     }

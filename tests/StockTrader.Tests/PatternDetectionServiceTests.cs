@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.MachineLearning;
 using StockTrader.Application.Settings;
 using StockTrader.Configuration;
 using StockTrader.Application.Statistics;
@@ -33,6 +34,19 @@ public class PatternDetectionServiceTests
 
         // ML 모델 기본값: 비활성
         _signalScorerMock.Setup(s => s.IsModelLoaded).Returns(false);
+        _signalScorerMock
+            .Setup(s => s.EvaluateAsync(
+                It.IsAny<PatternSignal>(),
+                It.IsAny<OhlcvBar[]>(),
+                It.IsAny<MarketRegime>(),
+                It.IsAny<decimal>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PatternSignal signal, OhlcvBar[] _, MarketRegime _,
+                decimal _, CancellationToken _) =>
+                new SignalScoringResult(signal.Confidence, null));
+        _patternStatisticsMock
+            .Setup(query => query.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatternStatisticsSnapshot>());
         _regimeClassifierMock.Setup(r => r.IsModelLoaded).Returns(false);
     }
 
@@ -391,7 +405,7 @@ public class PatternDetectionServiceTests
     [Fact]
     public async Task ScanSymbol_SignalScorerLoaded_EnhancesConfidence()
     {
-        // Arrange: SignalScorer 활성화 → Confidence가 ScoreAsync 반환값으로 교체됨
+        // Arrange: SignalScorer 활성화 → Confidence가 EvaluateAsync 결과로 교체됨
         SetupSettings(PatternType.GapUpPullback);
 
         const decimal originalConfidence = 0.6m;
@@ -399,13 +413,13 @@ public class PatternDetectionServiceTests
 
         _signalScorerMock.Setup(s => s.IsModelLoaded).Returns(true);
         _signalScorerMock
-            .Setup(s => s.ScoreAsync(
+            .Setup(s => s.EvaluateAsync(
                 It.IsAny<PatternSignal>(),
                 It.IsAny<OhlcvBar[]>(),
                 It.IsAny<MarketRegime>(),
                 It.IsAny<decimal>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mlEnhancedConfidence);
+            .ReturnsAsync(new SignalScoringResult(mlEnhancedConfidence, null));
 
         // PatternStats 조회 → WinRate 반환
         _patternStatisticsMock
@@ -436,7 +450,7 @@ public class PatternDetectionServiceTests
         signals[0].Confidence.Should().Be(mlEnhancedConfidence);
 
         _signalScorerMock.Verify(
-            s => s.ScoreAsync(
+            s => s.EvaluateAsync(
                 It.IsAny<PatternSignal>(),
                 It.IsAny<OhlcvBar[]>(),
                 It.IsAny<MarketRegime>(),
@@ -446,15 +460,35 @@ public class PatternDetectionServiceTests
     }
 
     [Fact]
-    public async Task ScanSymbol_SignalScorerNotLoaded_KeepsOriginalConfidence()
+    public async Task ScanSymbol_SignalScorerNotLoaded_StillCapturesCausalFeatures()
     {
-        // Arrange: SignalScorer 비활성 → ScoreAsync 미호출, 원본 Confidence 유지
+        // 모델이 없어도 향후 학습을 위한 진입 시점 피처 생성 경계는 호출됩니다.
         SetupSettings(PatternType.GapUpPullback);
 
         _signalScorerMock.Setup(s => s.IsModelLoaded).Returns(false);
 
         const decimal originalConfidence = 0.72m;
         var signal = MakeSignal("AAPL", PatternType.GapUpPullback, confidence: originalConfidence);
+        var features = new SignalScoringFeatures(
+            SignalScoringFeatureSchema.CurrentVersion,
+            (float)PatternType.GapUpPullback,
+            0.4f,
+            0.3f,
+            1.2f,
+            0f,
+            0.02f,
+            0.5f,
+            2f,
+            0.1f,
+            1f);
+        _signalScorerMock
+            .Setup(s => s.EvaluateAsync(
+                signal,
+                It.IsAny<OhlcvBar[]>(),
+                It.IsAny<MarketRegime>(),
+                It.IsAny<decimal>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SignalScoringResult(originalConfidence, features));
         var detector = MakeDetector(PatternType.GapUpPullback, signal);
 
         var sut = CreateSut(new[] { detector.Object });
@@ -465,30 +499,35 @@ public class PatternDetectionServiceTests
         // Assert: Confidence 원본값 유지
         signals.Should().HaveCount(1);
         signals[0].Confidence.Should().Be(originalConfidence);
+        signals[0].ScoringFeatureVersion.Should().Be(features.SchemaVersion);
+        signals[0].ScoringRsi.Should().Be(features.Rsi);
+        signals[0].ScoringRiskRewardRatio.Should().Be(features.RiskRewardRatio);
+        signals[0].ScoringPriceVsLongMovingAverage
+            .Should().Be(features.PriceVsLongMovingAverage);
 
         _signalScorerMock.Verify(
-            s => s.ScoreAsync(
+            s => s.EvaluateAsync(
                 It.IsAny<PatternSignal>(), It.IsAny<OhlcvBar[]>(),
                 It.IsAny<MarketRegime>(), It.IsAny<decimal>(),
                 It.IsAny<CancellationToken>()),
-            Times.Never);
+            Times.Once);
     }
 
     [Fact]
     public async Task ScanSymbol_StatsNotFound_UsesDefaultWinRate()
     {
-        // Arrange: PatternStats 없음 → WinRate 기본값 0.5로 ScoreAsync 호출
+        // Arrange: PatternStats 없음 → WinRate 기본값 0.5로 EvaluateAsync 호출
         SetupSettings(PatternType.Breakout);
 
         _signalScorerMock.Setup(s => s.IsModelLoaded).Returns(true);
         _signalScorerMock
-            .Setup(s => s.ScoreAsync(
+            .Setup(s => s.EvaluateAsync(
                 It.IsAny<PatternSignal>(),
                 It.IsAny<OhlcvBar[]>(),
                 It.IsAny<MarketRegime>(),
                 0.5m, // 기본 WinRate
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0.7m);
+            .ReturnsAsync(new SignalScoringResult(0.7m, null));
 
         // Stats 없음 (null 반환)
         _patternStatisticsMock
@@ -503,10 +542,10 @@ public class PatternDetectionServiceTests
         // Act
         var signals = await sut.ScanSymbolAsync("AAPL", MakeBars(), MakeRegime());
 
-        // Assert: WinRate=0.5로 ScoreAsync가 호출됨
+        // Assert: WinRate=0.5로 EvaluateAsync가 호출됨
         signals.Should().HaveCount(1);
         _signalScorerMock.Verify(
-            s => s.ScoreAsync(
+            s => s.EvaluateAsync(
                 It.IsAny<PatternSignal>(),
                 It.IsAny<OhlcvBar[]>(),
                 It.IsAny<MarketRegime>(),
@@ -521,13 +560,13 @@ public class PatternDetectionServiceTests
         SetupSettings(PatternType.Breakout);
         _signalScorerMock.Setup(scorer => scorer.IsModelLoaded).Returns(true);
         _signalScorerMock
-            .Setup(scorer => scorer.ScoreAsync(
+            .Setup(scorer => scorer.EvaluateAsync(
                 It.IsAny<PatternSignal>(),
                 It.IsAny<OhlcvBar[]>(),
                 It.IsAny<MarketRegime>(),
                 0.61m,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0.79m);
+            .ReturnsAsync(new SignalScoringResult(0.79m, null));
         _patternStatisticsMock
             .Setup(query => query.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[]
@@ -548,7 +587,7 @@ public class PatternDetectionServiceTests
 
         signals.Should().ContainSingle()
             .Which.Confidence.Should().Be(0.79m);
-        _signalScorerMock.Verify(scorer => scorer.ScoreAsync(
+        _signalScorerMock.Verify(scorer => scorer.EvaluateAsync(
             It.IsAny<PatternSignal>(),
             It.IsAny<OhlcvBar[]>(),
             It.IsAny<MarketRegime>(),

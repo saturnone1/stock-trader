@@ -20,6 +20,7 @@ public class LiveEntryPositionFactoryTests
             OpenedAt);
 
         position.AccountId.Should().Be(42);
+        position.SourceSignalId.Should().Be(88);
         position.Quantity.Should().Be(7);
         position.EntryPrice.Should().Be(108m);
         position.CurrentPrice.Should().Be(108m);
@@ -50,6 +51,7 @@ public class LiveEntryPositionFactoryTests
 
     private static TradeRecommendation Recommendation() => new()
     {
+        SourceSignalId = 88,
         Symbol = "TQQQ",
         PatternType = PatternType.GapUpPullback,
         ShareQuantity = 10,
