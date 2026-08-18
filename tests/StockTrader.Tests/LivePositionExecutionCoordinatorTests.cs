@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Moq;
 using StockTrader.Application.Execution;
-using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Broker;
@@ -16,8 +15,8 @@ public class LivePositionExecutionCoordinatorTests
     [Fact]
     public async Task SubmitFullExitAsync_DoesNotCallBrokerWhenAnotherWorkerOwnsClaim()
     {
-        var trades = new Mock<ITradeRepository>();
-        trades.Setup(repo => repo.TryClaimPositionExecutionAsync(
+        var trades = new Mock<ILivePositionExecutionStore>();
+        trades.Setup(repo => repo.TryClaimAsync(
                 It.IsAny<PositionExecutionClaim>(), default))
             .ReturnsAsync(false);
         var broker = new Mock<IBrokerService>();
@@ -31,14 +30,14 @@ public class LivePositionExecutionCoordinatorTests
     [Fact]
     public async Task UnsupportedBrokerDoesNotClaimOrSubmitPositionOrder()
     {
-        var trades = new Mock<ITradeRepository>();
+        var trades = new Mock<ILivePositionExecutionStore>();
         var broker = new Mock<IBrokerService>();
         broker.SetupGet(item => item.BrokerType).Returns(BrokerType.KoreaInvestment);
 
         var result = await Create(trades).SubmitFullExitAsync(Position(), "손절", broker.Object);
 
         result.Status.Should().Be(LivePositionExecutionSubmissionStatus.Unsupported);
-        trades.Verify(item => item.TryClaimPositionExecutionAsync(
+        trades.Verify(item => item.TryClaimAsync(
             It.IsAny<PositionExecutionClaim>(), It.IsAny<CancellationToken>()), Times.Never);
         broker.Verify(item => item.ClosePositionAsync(
             It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -48,7 +47,7 @@ public class LivePositionExecutionCoordinatorTests
     public async Task SubmitFullExitAsync_PersistsTrackableBrokerOrder()
     {
         var trades = ClaimingRepository(PositionExecutionKind.FullExit, 10);
-        trades.Setup(repo => repo.SetPositionExecutionOrderIdAsync(
+        trades.Setup(repo => repo.SetOrderEvidenceAsync(
                 1, Now.UtcDateTime, "order-1", default))
             .ReturnsAsync(true);
         var broker = new Mock<IBrokerService>();
@@ -65,7 +64,7 @@ public class LivePositionExecutionCoordinatorTests
     public async Task SubmitAsync_ScaleInUsesTrackableBuyOrderAndPersistsRule()
     {
         var trades = ClaimingRepository(PositionExecutionKind.ScaleIn, 3, ruleIndex: 2);
-        trades.Setup(repo => repo.SetPositionExecutionOrderIdAsync(
+        trades.Setup(repo => repo.SetOrderEvidenceAsync(
                 1, Now.UtcDateTime, "order-1", default))
             .ReturnsAsync(true);
         var broker = new Mock<IBrokerService>();
@@ -90,7 +89,7 @@ public class LivePositionExecutionCoordinatorTests
     public async Task SubmitAsync_ScaleOutUsesQuantitySellOrder()
     {
         var trades = ClaimingRepository(PositionExecutionKind.ScaleOut, 4, ruleIndex: 1);
-        trades.Setup(repo => repo.SetPositionExecutionOrderIdAsync(
+        trades.Setup(repo => repo.SetOrderEvidenceAsync(
                 1, Now.UtcDateTime, "order-1", default))
             .ReturnsAsync(true);
         var broker = new Mock<IBrokerService>();
@@ -111,7 +110,7 @@ public class LivePositionExecutionCoordinatorTests
     public async Task SubmitAsync_ReleasesClaimWhenBrokerRejectsSubmission()
     {
         var trades = ClaimingRepository(PositionExecutionKind.ScaleIn, 3, ruleIndex: 0);
-        trades.Setup(repo => repo.ReleasePositionExecutionClaimAsync(1, Now.UtcDateTime, default))
+        trades.Setup(repo => repo.ReleaseClaimAsync(1, Now.UtcDateTime, default))
             .ReturnsAsync(true);
         var broker = new Mock<IBrokerService>();
         broker.Setup(service => service.IncreasePositionAsync("TQQQ", 3, default))
@@ -124,7 +123,7 @@ public class LivePositionExecutionCoordinatorTests
             broker.Object);
 
         result.Status.Should().Be(LivePositionExecutionSubmissionStatus.Failed);
-        trades.Verify(repo => repo.ReleasePositionExecutionClaimAsync(
+        trades.Verify(repo => repo.ReleaseClaimAsync(
             1, Now.UtcDateTime, default), Times.Once);
     }
 
@@ -132,7 +131,7 @@ public class LivePositionExecutionCoordinatorTests
     public async Task SubmitAsync_ReleasesClaimWhenBrokerReturnsMismatchedOrder()
     {
         var trades = ClaimingRepository(PositionExecutionKind.ScaleIn, 3, ruleIndex: 0);
-        trades.Setup(repo => repo.ReleasePositionExecutionClaimAsync(1, Now.UtcDateTime, default))
+        trades.Setup(repo => repo.ReleaseClaimAsync(1, Now.UtcDateTime, default))
             .ReturnsAsync(true);
         var broker = new Mock<IBrokerService>();
         broker.Setup(service => service.IncreasePositionAsync("TQQQ", 3, default))
@@ -145,7 +144,7 @@ public class LivePositionExecutionCoordinatorTests
             broker.Object);
 
         result.Status.Should().Be(LivePositionExecutionSubmissionStatus.Failed);
-        trades.Verify(repo => repo.ReleasePositionExecutionClaimAsync(
+        trades.Verify(repo => repo.ReleaseClaimAsync(
             1, Now.UtcDateTime, default), Times.Once);
     }
 
@@ -163,18 +162,18 @@ public class LivePositionExecutionCoordinatorTests
 
         result.Status.Should().Be(LivePositionExecutionSubmissionStatus.Accepted);
         result.BrokerOrderIdPersisted.Should().BeFalse();
-        trades.Verify(repo => repo.SetPositionExecutionOrderIdAsync(
+        trades.Verify(repo => repo.SetOrderEvidenceAsync(
             It.IsAny<long>(), It.IsAny<DateTime>(), It.IsAny<string?>(), default), Times.Never);
     }
 
     [Fact]
     public async Task ReconcileAsync_ScaleInAppliesWeightedAverageAndCountAfterProvenFill()
     {
-        var trades = new Mock<ITradeRepository>();
+        var trades = new Mock<ILivePositionExecutionStore>();
         PositionExecutionFill? savedFill = null;
-        trades.Setup(repo => repo.TryApplyPositionExecutionFillAsync(
+        trades.Setup(repo => repo.CommitFillAsync(
                 It.IsAny<PositionExecutionFill>(), null, default))
-            .Callback<PositionExecutionFill, TradeRecord?, CancellationToken>(
+            .Callback<PositionExecutionFill, PositionExecutionTrade?, CancellationToken>(
                 (fill, _, _) => savedFill = fill)
             .ReturnsAsync(true);
         var position = Pending(PositionExecutionKind.ScaleIn, quantity: 4, ruleIndex: 2);
@@ -196,11 +195,11 @@ public class LivePositionExecutionCoordinatorTests
     [Fact]
     public async Task ReconcileAsync_ScaleOutReducesQuantityAndCreatesRealizedTrade()
     {
-        var trades = new Mock<ITradeRepository>();
-        TradeRecord? savedTrade = null;
-        trades.Setup(repo => repo.TryApplyPositionExecutionFillAsync(
-                It.IsAny<PositionExecutionFill>(), It.IsAny<TradeRecord>(), default))
-            .Callback<PositionExecutionFill, TradeRecord?, CancellationToken>(
+        var trades = new Mock<ILivePositionExecutionStore>();
+        PositionExecutionTrade? savedTrade = null;
+        trades.Setup(repo => repo.CommitFillAsync(
+                It.IsAny<PositionExecutionFill>(), It.IsAny<PositionExecutionTrade>(), default))
+            .Callback<PositionExecutionFill, PositionExecutionTrade?, CancellationToken>(
                 (_, trade, _) => savedTrade = trade)
             .ReturnsAsync(true);
         var position = Pending(PositionExecutionKind.ScaleOut, quantity: 4, ruleIndex: 1);
@@ -221,7 +220,7 @@ public class LivePositionExecutionCoordinatorTests
     [Fact]
     public async Task ReconcileAsync_RejectsWrongDirectionAndMismatchedFillQuantity()
     {
-        var trades = new Mock<ITradeRepository>();
+        var trades = new Mock<ILivePositionExecutionStore>();
         var position = Pending(PositionExecutionKind.ScaleIn, quantity: 4, ruleIndex: 0);
         var coordinator = Create(trades);
 
@@ -237,17 +236,17 @@ public class LivePositionExecutionCoordinatorTests
         wrongDirection.Status.Should().Be(LivePositionExecutionReconciliationStatus.AwaitingBroker);
         wrongQuantity.Status.Should().Be(
             LivePositionExecutionReconciliationStatus.BrokerFillMismatch);
-        trades.Verify(repo => repo.TryApplyPositionExecutionFillAsync(
-            It.IsAny<PositionExecutionFill>(), It.IsAny<TradeRecord?>(), default), Times.Never);
+        trades.Verify(repo => repo.CommitFillAsync(
+            It.IsAny<PositionExecutionFill>(), It.IsAny<PositionExecutionTrade?>(), default), Times.Never);
     }
 
-    private static Mock<ITradeRepository> ClaimingRepository(
+    private static Mock<ILivePositionExecutionStore> ClaimingRepository(
         PositionExecutionKind kind,
         int quantity,
         int? ruleIndex = null)
     {
-        var trades = new Mock<ITradeRepository>();
-        trades.Setup(repo => repo.TryClaimPositionExecutionAsync(
+        var trades = new Mock<ILivePositionExecutionStore>();
+        trades.Setup(repo => repo.TryClaimAsync(
                 It.Is<PositionExecutionClaim>(claim =>
                     claim.Kind == kind
                     && claim.Quantity == quantity
@@ -257,7 +256,8 @@ public class LivePositionExecutionCoordinatorTests
         return trades;
     }
 
-    private static LivePositionExecutionCoordinator Create(Mock<ITradeRepository> trades) =>
+    private static LivePositionExecutionCoordinator Create(
+        Mock<ILivePositionExecutionStore> trades) =>
         new(trades.Object, new FixedTimeProvider(Now));
 
     private static Position Position() => new()

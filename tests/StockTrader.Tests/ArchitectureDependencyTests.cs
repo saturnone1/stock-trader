@@ -2029,6 +2029,36 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void LivePositionExecutionUsesPurposeBuiltAtomicStore()
+    {
+        var repository = FindRepositoryRoot();
+        var coordinatorPath = Path.Combine(
+            repository, "Services/Order/LivePositionExecutionCoordinator.cs");
+        var coordinator = File.ReadAllText(coordinatorPath);
+        var contract = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/PositionExecutionContracts.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/LivePositionExecutionStore.cs"));
+        var broadRepositoryPath = Path.Combine(
+            repository, "Data/Repositories/TradeRepository.cs");
+        var broadContract = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/ITradeRepository.cs"));
+
+        coordinator.Should().Contain("ILivePositionExecutionStore");
+        coordinator.Should().Contain("_store.CommitFillAsync(");
+        coordinator.Should().NotContain("ITradeRepository");
+        coordinator.Should().NotContain("TradeRecord");
+        coordinator.Should().NotContain("EntityFramework");
+        contract.Should().Contain("public interface ILivePositionExecutionStore");
+        contract.Should().Contain("PositionExecutionTrade");
+        store.Should().Contain("IDbContextFactory<AppDbContext>");
+        store.Should().Contain("BeginTransactionAsync(");
+        broadContract.Should().NotContain("PositionExecutionClaim");
+        broadContract.Should().NotContain("PositionExecutionFill");
+        File.ReadAllLines(broadRepositoryPath).Length.Should().BeLessThanOrEqualTo(350);
+    }
+
+    [Fact]
     public void AutomaticAndManualExitPathsUseTheSameSubmissionCoordinator()
     {
         var repository = FindRepositoryRoot();

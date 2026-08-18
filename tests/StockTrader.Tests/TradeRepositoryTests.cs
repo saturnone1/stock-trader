@@ -25,6 +25,8 @@ public class TradeRepositoryTests
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var repository = new TradeRepository(db, cache);
+        var executionStore = new LivePositionExecutionStore(
+            new TestDbContextFactory(options), cache);
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -35,21 +37,14 @@ public class TradeRepositoryTests
         await repository.SavePositionAsync(position);
         var requestedAt = new DateTime(2026, 8, 18, 13, 59, 0, DateTimeKind.Utc);
         var claim = new PositionExecutionClaim(position.Id, requestedAt, "목표 도달", 2, 2);
-        (await repository.TryClaimPositionExecutionAsync(claim)).Should().BeTrue();
+        (await executionStore.TryClaimAsync(claim)).Should().BeTrue();
         var filledAt = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc);
         var fill = new PositionExecutionFill(
             position.Id, requestedAt, 2, 2, 55m, filledAt, "exit-1");
-        var trade = new TradeRecord
-        {
-            Symbol = "TQQQ",
-            EntryPrice = 50m,
-            ExitPrice = 55m,
-            Quantity = 2,
-            ExitReason = "목표 도달",
-        };
+        var trade = ExecutionTrade("TQQQ", 50m, 55m, 2, "목표 도달");
 
-        (await repository.TryApplyPositionExecutionFillAsync(fill, trade)).Should().BeTrue();
-        (await repository.TryApplyPositionExecutionFillAsync(fill, trade)).Should().BeFalse();
+        (await executionStore.CommitFillAsync(fill, trade)).Should().BeTrue();
+        (await executionStore.CommitFillAsync(fill, trade)).Should().BeFalse();
 
         var stored = await db.Positions.AsNoTracking().SingleAsync();
         stored.ClosedAt.Should().Be(filledAt);
@@ -68,6 +63,8 @@ public class TradeRepositoryTests
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var repository = new TradeRepository(db, cache);
+        var executionStore = new LivePositionExecutionStore(
+            new TestDbContextFactory(options), cache);
         var position = new Position { Symbol = "TQQQ", Quantity = 10, InitialQuantity = 10 };
         await repository.SavePositionAsync(position);
         var first = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc);
@@ -75,10 +72,10 @@ public class TradeRepositoryTests
         var firstClaim = new PositionExecutionClaim(
             position.Id, first, "1차 이익실현", 10, 4,
             PositionExecutionKind.PartialProfit, MarksPartialProfit: true);
-        (await repository.TryClaimPositionExecutionAsync(
+        (await executionStore.TryClaimAsync(
             firstClaim with { ExpectedPositionQuantity = 9 })).Should().BeFalse();
-        (await repository.TryClaimPositionExecutionAsync(firstClaim)).Should().BeTrue();
-        (await repository.TryClaimPositionExecutionAsync(
+        (await executionStore.TryClaimAsync(firstClaim)).Should().BeTrue();
+        (await executionStore.TryClaimAsync(
             firstClaim with { RequestedAt = first.AddSeconds(1) }))
             .Should().BeFalse();
 
@@ -97,6 +94,8 @@ public class TradeRepositoryTests
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var repository = new TradeRepository(db, cache);
+        var executionStore = new LivePositionExecutionStore(
+            new TestDbContextFactory(options), cache);
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -111,21 +110,14 @@ public class TradeRepositoryTests
         var claim = new PositionExecutionClaim(
             position.Id, requestedAt, "1차 이익실현", 10, 4,
             PositionExecutionKind.PartialProfit, MarksPartialProfit: true);
-        (await repository.TryClaimPositionExecutionAsync(claim)).Should().BeTrue();
+        (await executionStore.TryClaimAsync(claim)).Should().BeTrue();
         var fill = new PositionExecutionFill(
             position.Id, requestedAt, 10, 4, 55m, requestedAt.AddMinutes(1), "exit-2",
             PositionExecutionKind.PartialProfit, MarksPartialProfit: true);
-        var trade = new TradeRecord
-        {
-            Symbol = "TQQQ",
-            EntryPrice = 50m,
-            ExitPrice = 55m,
-            Quantity = 4,
-            ExitReason = "1차 이익실현",
-        };
+        var trade = ExecutionTrade("TQQQ", 50m, 55m, 4, "1차 이익실현");
 
-        (await repository.TryApplyPositionExecutionFillAsync(fill, trade)).Should().BeTrue();
-        (await repository.TryApplyPositionExecutionFillAsync(fill, trade)).Should().BeFalse();
+        (await executionStore.CommitFillAsync(fill, trade)).Should().BeTrue();
+        (await executionStore.CommitFillAsync(fill, trade)).Should().BeFalse();
 
         var stored = await db.Positions.AsNoTracking().SingleAsync();
         stored.Quantity.Should().Be(6);
@@ -154,6 +146,8 @@ public class TradeRepositoryTests
             await firstDb.Database.EnsureCreatedAsync();
             using var firstCache = new MemoryCache(new MemoryCacheOptions());
             var firstRepository = new TradeRepository(firstDb, firstCache);
+            var firstExecutionStore = new LivePositionExecutionStore(
+                new TestDbContextFactory(options), firstCache);
             var position = new Position
             {
                 Symbol = "TQQQ",
@@ -166,8 +160,8 @@ public class TradeRepositoryTests
             var claim = new PositionExecutionClaim(
                 position.Id, requestedAt, "1차 이익실현", 10, 4,
                 PositionExecutionKind.PartialProfit, MarksPartialProfit: true);
-            (await firstRepository.TryClaimPositionExecutionAsync(claim)).Should().BeTrue();
-            (await firstRepository.SetPositionExecutionOrderIdAsync(
+            (await firstExecutionStore.TryClaimAsync(claim)).Should().BeTrue();
+            (await firstExecutionStore.SetOrderEvidenceAsync(
                 position.Id, requestedAt, "exit-restart")).Should().BeTrue();
         }
 
@@ -175,9 +169,11 @@ public class TradeRepositoryTests
         {
             using var restartedCache = new MemoryCache(new MemoryCacheOptions());
             var restartedRepository = new TradeRepository(restartedDb, restartedCache);
+            var restartedExecutionStore = new LivePositionExecutionStore(
+                new TestDbContextFactory(options), restartedCache);
             var restored = (await restartedRepository.GetOpenPositionsAsync()).Single();
             var coordinator = new LivePositionExecutionCoordinator(
-                restartedRepository,
+                restartedExecutionStore,
                 new FixedTimeProvider(new DateTimeOffset(requestedAt.AddMinutes(1), TimeSpan.Zero)));
             var broker = Mock.Of<IBrokerService>();
             var filledOrder = new BrokerOrder
@@ -218,6 +214,8 @@ public class TradeRepositoryTests
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var repository = new TradeRepository(db, cache);
+        var executionStore = new LivePositionExecutionStore(
+            new TestDbContextFactory(options), cache);
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -231,20 +229,13 @@ public class TradeRepositoryTests
         var claim = new PositionExecutionClaim(
             position.Id, requestedAt, "수동 일부 매도", 10, 4,
             PositionExecutionKind.PartialProfit, MarksPartialProfit: false);
-        (await repository.TryClaimPositionExecutionAsync(claim)).Should().BeTrue();
+        (await executionStore.TryClaimAsync(claim)).Should().BeTrue();
 
-        var applied = await repository.TryApplyPositionExecutionFillAsync(
+        var applied = await executionStore.CommitFillAsync(
             new PositionExecutionFill(
                 position.Id, requestedAt, 10, 4, 52m, requestedAt, "manual-1",
                 PositionExecutionKind.PartialProfit),
-            new TradeRecord
-            {
-                Symbol = "TQQQ",
-                EntryPrice = 50m,
-                ExitPrice = 52m,
-                Quantity = 4,
-                ExitReason = "수동 일부 매도",
-            });
+            ExecutionTrade("TQQQ", 50m, 52m, 4, "수동 일부 매도"));
 
         applied.Should().BeTrue();
         var stored = await db.Positions.AsNoTracking().SingleAsync();
@@ -264,6 +255,8 @@ public class TradeRepositoryTests
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var repository = new TradeRepository(db, cache);
+        var executionStore = new LivePositionExecutionStore(
+            new TestDbContextFactory(options), cache);
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -277,30 +270,23 @@ public class TradeRepositoryTests
             position.Id, scaleInAt, "추가 매수", 10, 4,
             PositionExecutionKind.ScaleIn, ScalingRuleIndex: 2);
 
-        (await repository.TryClaimPositionExecutionAsync(scaleInClaim)).Should().BeTrue();
+        (await executionStore.TryClaimAsync(scaleInClaim)).Should().BeTrue();
         var scaleInFill = new PositionExecutionFill(
             position.Id, scaleInAt, 10, 4, 55m, scaleInAt.AddMinutes(1), "buy-1",
             PositionExecutionKind.ScaleIn, ScalingRuleIndex: 2);
-        (await repository.TryApplyPositionExecutionFillAsync(scaleInFill, null)).Should().BeTrue();
-        (await repository.TryApplyPositionExecutionFillAsync(scaleInFill, null)).Should().BeFalse();
+        (await executionStore.CommitFillAsync(scaleInFill, null)).Should().BeTrue();
+        (await executionStore.CommitFillAsync(scaleInFill, null)).Should().BeFalse();
 
         var scaleOutAt = scaleInAt.AddMinutes(2);
         var scaleOutClaim = new PositionExecutionClaim(
             position.Id, scaleOutAt, "분할 매도", 14, 3,
             PositionExecutionKind.ScaleOut, ScalingRuleIndex: 1);
-        (await repository.TryClaimPositionExecutionAsync(scaleOutClaim)).Should().BeTrue();
+        (await executionStore.TryClaimAsync(scaleOutClaim)).Should().BeTrue();
         var scaleOutFill = new PositionExecutionFill(
             position.Id, scaleOutAt, 14, 3, 60m, scaleOutAt.AddMinutes(1), "sell-1",
             PositionExecutionKind.ScaleOut, ScalingRuleIndex: 1);
-        var trade = new TradeRecord
-        {
-            Symbol = "TQQQ",
-            EntryPrice = 51.428571m,
-            ExitPrice = 60m,
-            Quantity = 3,
-            ExitReason = "분할 매도",
-        };
-        (await repository.TryApplyPositionExecutionFillAsync(scaleOutFill, trade)).Should().BeTrue();
+        var trade = ExecutionTrade("TQQQ", 51.428571m, 60m, 3, "분할 매도");
+        (await executionStore.CommitFillAsync(scaleOutFill, trade)).Should().BeTrue();
 
         var stored = await db.Positions
             .AsNoTracking()
@@ -323,6 +309,8 @@ public class TradeRepositoryTests
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var repository = new TradeRepository(db, cache);
+        var executionStore = new LivePositionExecutionStore(
+            new TestDbContextFactory(options), cache);
         var position = new Position { Symbol = "TQQQ", Quantity = 10, InitialQuantity = 10 };
         await repository.SavePositionAsync(position);
 
@@ -330,7 +318,7 @@ public class TradeRepositoryTests
             position.Id, DateTime.UtcNow, "추가 매수", 10, 2,
             PositionExecutionKind.ScaleIn);
 
-        (await repository.TryClaimPositionExecutionAsync(claim)).Should().BeFalse();
+        (await executionStore.TryClaimAsync(claim)).Should().BeFalse();
         (await db.Positions.AsNoTracking().SingleAsync()).ExecutionRequestedAt.Should().BeNull();
     }
 
@@ -445,8 +433,32 @@ public class TradeRepositoryTests
         ShareQuantity = 10,
     };
 
+    private static PositionExecutionTrade ExecutionTrade(
+        string symbol,
+        decimal entryPrice,
+        decimal exitPrice,
+        int quantity,
+        string reason) => new(
+            symbol,
+            PatternType.GapUpPullback,
+            null,
+            entryPrice,
+            exitPrice,
+            quantity,
+            DateTime.UnixEpoch,
+            DateTime.UnixEpoch,
+            (exitPrice - entryPrice) * quantity,
+            entryPrice > 0 ? exitPrice / entryPrice - 1 : 0,
+            reason);
+
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options)
+        : IDbContextFactory<AppDbContext>
+    {
+        public AppDbContext CreateDbContext() => new(options);
     }
 }

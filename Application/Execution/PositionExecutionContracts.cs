@@ -25,3 +25,31 @@ public sealed record PositionExecutionFill(
     PositionExecutionKind Kind = PositionExecutionKind.FullExit,
     int? ScalingRuleIndex = null,
     bool MarksPartialProfit = false);
+
+/// <summary>매도 체결과 함께 원자적으로 기록할 실현 거래 값.</summary>
+public sealed record PositionExecutionTrade(
+    string Symbol,
+    PatternType PatternType,
+    string? CustomPatternName,
+    decimal EntryPrice,
+    decimal ExitPrice,
+    int Quantity,
+    DateTime EntryTime,
+    DateTime ExitTime,
+    decimal PnL,
+    decimal PnLPercent,
+    string ExitReason);
+
+/// <summary>실시간 포지션 주문의 선점·증거·체결 커밋만 소유하는 저장 포트.</summary>
+public interface ILivePositionExecutionStore
+{
+    Task<bool> TryClaimAsync(PositionExecutionClaim claim, CancellationToken ct = default);
+    Task<bool> SetOrderEvidenceAsync(
+        long positionId, DateTime requestedAt, string? orderId,
+        CancellationToken ct = default);
+    Task<bool> ReleaseClaimAsync(
+        long positionId, DateTime requestedAt, CancellationToken ct = default);
+    Task<bool> CommitFillAsync(
+        PositionExecutionFill fill, PositionExecutionTrade? trade,
+        CancellationToken ct = default);
+}

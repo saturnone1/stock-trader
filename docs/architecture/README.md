@@ -34,6 +34,8 @@ infrastructure.
 - Order execution modes and their operator-facing meaning: one domain catalog.
 - Broker identity and operation-specific capabilities: one domain catalog used by account metadata,
   adapters, workers, and live execution guards.
+- Live position order state: one application execution port for conditional claim, broker evidence,
+  release, and atomic position/realized-trade fill commit.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -321,4 +323,6 @@ defaults, active-profile selection, and modification time have one application o
   reconcile uncertain outcomes without permitting duplicate retries.
 - `adr/0033-centralize-broker-capabilities.md`: expose operation-specific broker support and reject
   unsupported live actions before they mutate durable execution state.
+- `adr/0034-isolate-live-position-execution-store.md`: remove live position execution from the broad
+  trade repository and commit fills through an isolated atomic persistence adapter.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

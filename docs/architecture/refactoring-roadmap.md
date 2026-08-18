@@ -300,6 +300,10 @@ position, history, entry, scaling, exit, and cancellation capabilities now have 
 the API and desktop project it, and live coordinators reject unsupported operations before claiming
 durable state. The unused keyed-DI/default-broker construction path has been removed. Remaining Phase
 2 work is further narrowing orchestration boundaries around the shared strategy and execution policy.
+Live position execution now depends on `ILivePositionExecutionStore`, a four-operation application
+port for claim, broker evidence, release, and atomic fill commit. Its SQLite adapter owns isolated
+contexts and transaction handling; `ITradeRepository` no longer exposes execution lifecycle methods
+or forces the coordinator to construct an EF `TradeRecord` entity.
 
 ## Phase 0 — Guardrails and governance
 
