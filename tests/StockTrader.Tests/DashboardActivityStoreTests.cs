@@ -16,11 +16,16 @@ public sealed class DashboardActivityStoreTests
             .Options;
         await using (var db = new AppDbContext(options))
         {
-            db.PatternSignals.AddRange(Signal(true), Signal(true), Signal(false));
+            db.PatternSignals.AddRange(
+                Signal(true),
+                Signal(true),
+                Signal(false),
+                Signal(true, superseded: true));
             db.TradeRecommendations.AddRange(
                 Recommendation("OLDER", 1, Utc(11)),
                 Recommendation("LOW-ID", 2, Utc(12)),
-                Recommendation("HIGH-ID", 3, Utc(12)));
+                Recommendation("HIGH-ID", 3, Utc(12)),
+                Recommendation("SUPERSEDED", 4, Utc(13), superseded: true));
             await db.SaveChangesAsync();
         }
         var store = new DashboardActivityStore(new TestDbContextFactory(options));
@@ -33,18 +38,20 @@ public sealed class DashboardActivityStoreTests
         result.RecentRecommendations[0].RiskRewardRatio.Should().Be(2m);
     }
 
-    private static PatternSignal Signal(bool active) => new()
+    private static PatternSignal Signal(bool active, bool superseded = false) => new()
     {
         Symbol = Guid.NewGuid().ToString("N"),
         PatternType = PatternType.Breakout,
         IsActive = active,
+        IsSuperseded = superseded,
         DetectedAt = Utc(10)
     };
 
     private static TradeRecommendation Recommendation(
         string symbol,
         long id,
-        DateTime generatedAt) => new()
+        DateTime generatedAt,
+        bool superseded = false) => new()
     {
         Id = id,
         Symbol = symbol,
@@ -52,7 +59,8 @@ public sealed class DashboardActivityStoreTests
         EntryPrice = 100m,
         StopLossPrice = 97m,
         TargetPrice = 106m,
-        GeneratedAt = generatedAt
+        GeneratedAt = generatedAt,
+        IsSuperseded = superseded
     };
 
     private static DateTime Utc(int hour) =>

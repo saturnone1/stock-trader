@@ -403,6 +403,41 @@ public class TradingDataStoreTests
         duplicate.EntryOrderId.Should().Be("entry-81");
     }
 
+    [Fact]
+    public async Task ActivityStoresExcludeSupersededLegacyRowsWithoutDeletingAuditHistory()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"activity-{Guid.NewGuid()}")
+            .Options;
+        await using var db = new AppDbContext(options);
+        var visibleSignal = Signal(
+            "AAPL", PatternType.Breakout, null, DateTime.UtcNow, DateTime.UtcNow);
+        var hiddenSignal = Signal(
+            "MSFT", PatternType.Breakout, null, DateTime.UtcNow, DateTime.UtcNow);
+        hiddenSignal.IsSuperseded = true;
+        db.PatternSignals.AddRange(visibleSignal, hiddenSignal);
+        var visibleRecommendation = Recommendation(90, 100m);
+        var hiddenRecommendation = Recommendation(91, 101m);
+        hiddenRecommendation.IsSuperseded = true;
+        db.TradeRecommendations.AddRange(visibleRecommendation, hiddenRecommendation);
+        await db.SaveChangesAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var signalStore = new PatternSignalStore(new TestDbContextFactory(options), cache);
+        var recommendationStore = new TradeRecommendationStore(
+            new TestDbContextFactory(options), cache);
+        var manualSignalStore = new ManualOrderSignalStore(
+            new TestDbContextFactory(options));
+
+        (await signalStore.GetActiveSignalsAsync()).Should().ContainSingle()
+            .Which.Id.Should().Be(visibleSignal.Id);
+        (await recommendationStore.GetRecentRecommendationsAsync()).Should().ContainSingle()
+            .Which.Id.Should().Be(visibleRecommendation.Id);
+        (await manualSignalStore.LoadAsync(visibleSignal.Id)).Should().NotBeNull();
+        (await manualSignalStore.LoadAsync(hiddenSignal.Id)).Should().BeNull();
+        (await db.PatternSignals.CountAsync()).Should().Be(2);
+        (await db.TradeRecommendations.CountAsync()).Should().Be(2);
+    }
+
     private static PatternSignal Signal(
         string symbol,
         PatternType patternType,

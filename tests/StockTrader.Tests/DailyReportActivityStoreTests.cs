@@ -22,7 +22,8 @@ public sealed class DailyReportActivityStoreTests
                 Trade("BOUNDARY", Utc(1, 12), Utc(19, 4)));
             db.TradeRecommendations.AddRange(
                 Signal("AAPL", Utc(18, 12)),
-                Signal("MSFT", Utc(19, 3)));
+                Signal("MSFT", Utc(19, 3)),
+                Signal("SUPERSEDED", Utc(19, 3), superseded: true));
             await db.SaveChangesAsync();
         }
         var store = new DailyReportActivityStore(new TestDbContextFactory(options));
@@ -47,12 +48,16 @@ public sealed class DailyReportActivityStoreTests
         ExitReason = "Test"
     };
 
-    private static TradeRecommendation Signal(string symbol, DateTime generatedAt) => new()
+    private static TradeRecommendation Signal(
+        string symbol,
+        DateTime generatedAt,
+        bool superseded = false) => new()
     {
         Symbol = symbol,
         PatternType = PatternType.Breakout,
         GeneratedAt = generatedAt,
-        EntryPrice = 100m
+        EntryPrice = 100m,
+        IsSuperseded = superseded
     };
 
     private static DateTime Utc(int day, int hour) =>

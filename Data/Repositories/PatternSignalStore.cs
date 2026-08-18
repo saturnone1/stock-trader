@@ -21,7 +21,7 @@ public sealed class PatternSignalStore(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var signals = await db.PatternSignals
             .AsNoTracking()
-            .Where(signal => signal.IsActive)
+            .Where(signal => signal.IsActive && !signal.IsSuperseded)
             .OrderByDescending(signal => signal.DetectedAt)
             .ToListAsync(ct);
         cache.Set(TradeReadCache.ActiveSignals, signals, CacheTtl);

@@ -47,6 +47,8 @@ infrastructure.
   activity store, one active-account projection, and an explicit generated desktop contract.
 - Trade activity reads: one storage-independent recommendation/history query, one focused activity
   store, validated pagination, and explicit generated desktop contracts.
+- Legacy signal/recommendation compatibility: deterministic EF-owned supersession preserves raw
+  audit rows while every operational reader excludes repeated pre-identity activity.
 - Stock-analysis responses: one explicit generated contract with central pattern names and
   unit-correct percentage presentation in the desktop.
 - Live built-in configuration: one database-backed application service; entry detection and exit
@@ -366,4 +368,6 @@ defaults, active-profile selection, and modification time have one application o
   pagination behind a storage-independent application read boundary.
 - `adr/0044-type-stock-analysis-contract.md`: replace the anonymous analysis response and
   casing/unit fallbacks with one generated desktop contract.
+- `adr/0045-supersede-legacy-activity-duplicates.md`: preserve pre-identity activity rows while
+  excluding deterministic same-day duplicates from operational reads.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

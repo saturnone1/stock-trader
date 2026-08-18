@@ -14,9 +14,10 @@ public sealed class DashboardActivityStore(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var activeSignalCount = await db.PatternSignals
             .AsNoTracking()
-            .CountAsync(signal => signal.IsActive, ct);
+            .CountAsync(signal => signal.IsActive && !signal.IsSuperseded, ct);
         var rows = await db.TradeRecommendations
             .AsNoTracking()
+            .Where(recommendation => !recommendation.IsSuperseded)
             .OrderByDescending(recommendation => recommendation.GeneratedAt)
             .ThenByDescending(recommendation => recommendation.Id)
             .Take(Math.Max(0, recommendationCount))

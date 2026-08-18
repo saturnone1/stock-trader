@@ -13,6 +13,7 @@ public sealed class TradeActivityStore(IDbContextFactory<AppDbContext> dbFactory
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.TradeRecommendations
             .AsNoTracking()
+            .Where(row => !row.IsSuperseded)
             .OrderByDescending(row => row.GeneratedAt)
             .ThenByDescending(row => row.Id)
             .Take(count)

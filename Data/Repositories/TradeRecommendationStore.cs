@@ -24,6 +24,7 @@ public sealed class TradeRecommendationStore(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var recommendations = await db.TradeRecommendations
             .AsNoTracking()
+            .Where(recommendation => !recommendation.IsSuperseded)
             .OrderByDescending(recommendation => recommendation.GeneratedAt)
             .Take(count)
             .ToListAsync(ct);
@@ -68,7 +69,8 @@ public sealed class TradeRecommendationStore(
         CancellationToken ct) => db.TradeRecommendations
             .AsNoTracking()
             .SingleOrDefaultAsync(
-                recommendation => recommendation.SourceSignalId == sourceSignalId,
+                recommendation => !recommendation.IsSuperseded
+                    && recommendation.SourceSignalId == sourceSignalId,
                 ct);
 
     private static void CopyPersistedIdentity(

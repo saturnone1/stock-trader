@@ -43,6 +43,7 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<PatternSignal>(entity =>
         {
+            entity.HasIndex(s => new { s.IsActive, s.IsSuperseded, s.DetectedAt });
             entity.HasIndex(s => new { s.Symbol, s.PatternType, s.SignalBarAt })
                 .IsUnique()
                 .HasFilter("\"CustomPatternName\" IS NULL AND \"SignalBarAt\" IS NOT NULL");
@@ -61,6 +62,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TradeRecommendation>(entity =>
         {
             entity.HasIndex(r => r.GeneratedAt);
+            entity.HasIndex(r => new { r.IsSuperseded, r.GeneratedAt });
             entity.HasIndex(r => new { r.WasExecuted, r.EntryRequestedAt });
             entity.HasIndex(r => r.SourceSignalId)
                 .IsUnique()

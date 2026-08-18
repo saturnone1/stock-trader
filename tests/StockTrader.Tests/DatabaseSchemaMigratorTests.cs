@@ -330,6 +330,58 @@ public class DatabaseSchemaMigratorTests
             """)).Should().Be(2);
     }
 
+    [Fact]
+    public async Task LegacyActivityMigrationPreservesRowsAndSupersedesOnlySafeSameDayDuplicates()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+        var previousMigration = db.Database.GetMigrations().Single(value =>
+            value.EndsWith("_AddDurableEntryExecutionState", StringComparison.Ordinal));
+        await db.GetService<IMigrator>().MigrateAsync(previousMigration);
+        await ExecuteAsync(connection, """
+            INSERT INTO PatternSignals (
+                Symbol, PatternType, CustomPatternName, SignalBarAt, DetectedAt,
+                EntryPrice, StopLossPrice, TargetPrice, Confidence, Details, IsActive)
+            VALUES
+                ('TSLA', 2, NULL, NULL, '2026-08-17T14:00:00Z', 100, 95, 110, 0.8, '', 1),
+                ('TSLA', 2, NULL, NULL, '2026-08-17T15:00:00Z', 100, 95, 110, 0.8, '', 1),
+                ('TSLA', 2, NULL, NULL, '2026-08-18T14:00:00Z', 100, 95, 110, 0.8, '', 1);
+
+            INSERT INTO TradeRecommendations (
+                SourceSignalId, Symbol, PatternType, CustomPatternName, GeneratedAt,
+                EntryPrice, StopLossPrice, TargetPrice, PositionSize, ShareQuantity,
+                Expectancy, WasExecuted, Mode, EntryRequestedAt, EntryOrderId)
+            VALUES
+                (NULL, 'TSLA', 2, NULL, '2026-08-17T14:00:00Z',
+                    100, 95, 110, 1000, 10, 0, 0, 0, NULL, NULL),
+                (NULL, 'TSLA', 2, NULL, '2026-08-17T15:00:00Z',
+                    100, 95, 110, 1000, 10, 0, 0, 0, NULL, NULL),
+                (NULL, 'TSLA', 2, NULL, '2026-08-18T14:00:00Z',
+                    100, 95, 110, 1000, 10, 0, 0, 0, NULL, NULL),
+                (NULL, 'TSLA', 2, NULL, '2026-08-17T13:00:00Z',
+                    100, 95, 110, 1000, 10, 0, 1, 0, NULL, 'filled'),
+                (NULL, 'TSLA', 2, NULL, '2026-08-17T13:30:00Z',
+                    100, 95, 110, 1000, 10, 0, 0, 0, '2026-08-17T13:31:00Z', 'pending');
+            """);
+
+        await CreateMigrator(db).MigrateAsync();
+
+        (await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM PatternSignals"))
+            .Should().Be(3);
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM PatternSignals WHERE IsSuperseded = 1"))
+            .Should().Be(1);
+        (await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM TradeRecommendations"))
+            .Should().Be(5);
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM TradeRecommendations WHERE IsSuperseded = 1"))
+            .Should().Be(1);
+        (await ScalarAsync<long>(connection, """
+            SELECT COUNT(*) FROM TradeRecommendations
+            WHERE (WasExecuted = 1 OR EntryRequestedAt IS NOT NULL) AND IsSuperseded = 1
+            """)).Should().Be(0);
+    }
+
     private static DatabaseSchemaMigrator CreateMigrator(AppDbContext db) =>
         new(db, NullLogger<DatabaseSchemaMigrator>.Instance);
 

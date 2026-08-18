@@ -22,6 +22,7 @@ public sealed class LiveEntryExecutionStore(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var updated = await db.TradeRecommendations
             .Where(item => item.Id == recommendation.Id
+                && !item.IsSuperseded
                 && !item.WasExecuted
                 && item.EntryRequestedAt == null)
             .ExecuteUpdateAsync(setters => setters
@@ -126,7 +127,9 @@ public sealed class LiveEntryExecutionStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.TradeRecommendations.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Id == recommendationId, ct);
+            .SingleOrDefaultAsync(
+                item => item.Id == recommendationId && !item.IsSuperseded,
+                ct);
     }
 
     public async Task<IReadOnlyList<TradeRecommendation>> LoadPendingAsync(
@@ -135,7 +138,9 @@ public sealed class LiveEntryExecutionStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.TradeRecommendations.AsNoTracking()
-            .Where(item => !item.WasExecuted && item.EntryRequestedAt != null)
+            .Where(item => !item.IsSuperseded
+                && !item.WasExecuted
+                && item.EntryRequestedAt != null)
             .OrderBy(item => item.EntryRequestedAt)
             .Take(Math.Clamp(count, 1, 500))
             .ToListAsync(ct);

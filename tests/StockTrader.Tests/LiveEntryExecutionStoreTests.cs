@@ -113,6 +113,28 @@ public sealed class LiveEntryExecutionStoreTests
     }
 
     [Fact]
+    public async Task SupersededRecommendationCannotBeLoadedOrClaimedForExecution()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var store = new LiveEntryExecutionStore(database.Factory, cache);
+        var recommendation = Recommendation();
+        recommendation.IsSuperseded = true;
+        await using (var seed = database.Factory.CreateDbContext())
+        {
+            seed.TradeRecommendations.Add(recommendation);
+            await seed.SaveChangesAsync();
+        }
+
+        (await store.LoadAsync(recommendation.Id)).Should().BeNull();
+        (await store.TryClaimAsync(recommendation, 27, DateTime.UtcNow)).Should().BeFalse();
+        (await store.LoadPendingAsync()).Should().BeEmpty();
+
+        await using var verify = database.Factory.CreateDbContext();
+        (await verify.TradeRecommendations.SingleAsync()).IsSuperseded.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ManualSignalLookupIsDetachedAndPurposeSpecific()
     {
         await using var database = await TestDatabase.CreateAsync();
