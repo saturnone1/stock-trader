@@ -1,9 +1,9 @@
 using Alpaca.Markets;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
-using TimeZoneConverter;
 using TimeFrame = StockTrader.Domain.MarketData.TimeFrame;
 
 namespace StockTrader.Services.DataFeed;
@@ -12,12 +12,15 @@ public class AlpacaDataFeedService : IDataFeedService
 {
     private readonly IAlpacaDataClient _dataClient;
     private readonly ILogger<AlpacaDataFeedService> _logger;
+    private readonly IMarketCalendar _marketCalendar;
     private readonly bool _isPaper;
 
     public AlpacaDataFeedService(IOptions<AlpacaSettings> settings,
-        ILogger<AlpacaDataFeedService> logger)
+        ILogger<AlpacaDataFeedService> logger,
+        IMarketCalendar marketCalendar)
     {
         _logger = logger;
+        _marketCalendar = marketCalendar;
         var config = settings.Value;
         _isPaper = config.IsPaper;
         var secretKey = new SecretKey(config.ApiKey, config.ApiSecret);
@@ -90,14 +93,17 @@ public class AlpacaDataFeedService : IDataFeedService
     {
         try
         {
-            var market = MarketRegionCatalog.Get(MarketRegion.UnitedStates);
-            var eastern = TZConvert.GetTimeZoneInfo(market.TimeZoneId);
-            var sessionDate = DateTime.SpecifyKind(date.Date, DateTimeKind.Unspecified);
-            var marketOpenEt = sessionDate.Add(market.RegularOpen);
-            var marketCloseEt = sessionDate.Add(market.RegularClose);
-            var from = TimeZoneInfo.ConvertTimeToUtc(marketOpenEt, eastern);
-            var to = TimeZoneInfo.ConvertTimeToUtc(marketCloseEt, eastern);
-            var request = new HistoricalBarsRequest(symbol, from, to, BarTimeFrame.Minute)
+            var market = DataProviderCatalog.Get(DataSource.Alpaca).MarketRegion;
+            var session = RegularMarketSessionWindowPolicy.Resolve(
+                DateOnly.FromDateTime(date),
+                _marketCalendar.GetTimeZone(market),
+                _marketCalendar.GetMarketOpen(market),
+                _marketCalendar.GetMarketClose(market));
+            var request = new HistoricalBarsRequest(
+                symbol,
+                session.StartUtc,
+                session.EndUtc,
+                BarTimeFrame.Minute)
             {
                 Adjustment = Adjustment.SplitsAndDividends
             };
