@@ -215,6 +215,8 @@ public class RuleFieldOverrideEntry
 /// </summary>
 public class OptimizeResultItem
 {
+    /// <summary>저장된 백그라운드 최적화 결과 ID. 동기 실행 결과는 null입니다.</summary>
+    public int? Id { get; set; }
     public int Rank { get; set; }
     public OptimizeParamSnapshot Params { get; set; } = new();
     public decimal TotalReturn { get; set; }

@@ -194,7 +194,12 @@
   owns pause, resume, and cancel legality through a pure transition policy. Its SQLite port applies
   status-guarded updates, so concurrent operator commands cannot overwrite one another, and startup
   recovery no longer resolves the broad optimization repository. Optimization job API timestamps
-  and elapsed-time projections now use the injected application clock.
+  and elapsed-time projections now use the injected application clock. Creation, list/detail
+  queries, settings, result reads, and conditional terminal deletion now use
+  `OptimizationJobManagementService`; the HTTP module is down from 462 to 212 lines and no longer
+  imports persistence entities, repositories, or JSON. Combination counting and progress/remaining
+  projections are application policies. The SQLite mapper now preserves each stored result ID,
+  fixing manual result application that previously sent `null` and selected the automatic candidate.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

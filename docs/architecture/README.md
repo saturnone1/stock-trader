@@ -187,6 +187,11 @@ commit in one SQLite transaction; a restart therefore observes either the whole 
 none of it. User pause, resume, and cancel commands also cross `OptimizationJobControlService` and a
 status-guarded persistence port. Their legal transitions live in an application policy, concurrent
 commands cannot overwrite each other, and startup recovery uses the same purpose-specific boundary.
+Creation, list/detail projection, settings updates, result reads, and terminal deletion now cross
+`OptimizationJobManagementService` and `IOptimizationJobManagementStore`. The 212-line endpoint
+module contains no persistence entity, repository, result JSON, combination-count formula, or job
+projection math. The SQLite adapter returns the stored result ID explicitly, so selecting “apply
+this result” identifies the chosen row instead of silently falling back to the automatic candidate.
 
 ## Decision records
 
@@ -219,4 +224,6 @@ commands cannot overwrite each other, and startup recovery uses the same purpose
   chunk with its restart checkpoint.
 - `adr/0015-control-optimization-jobs-conditionally.md`: own user control transitions in the
   application layer and persist them with status-guarded updates.
+- `adr/0016-isolate-optimization-job-management.md`: separate job administration and projections
+  from EF entities and preserve result identity across the HTTP boundary.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -24,7 +24,7 @@ public sealed class OptimizationJobControlStore : IOptimizationJobControlStore
             .Where(job => job.Id == jobId)
             .Select(job => (OptimizationJobStatus?)job.Status)
             .SingleOrDefaultAsync(cancellationToken);
-        return state.HasValue ? ToControlState(state.Value) : null;
+        return state.HasValue ? OptimizationJobStateMapper.ToApplication(state.Value) : null;
     }
 
     public async Task<bool> TryTransitionAsync(
@@ -33,19 +33,21 @@ public sealed class OptimizationJobControlStore : IOptimizationJobControlStore
         CancellationToken cancellationToken = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
-        var from = ToStorageState(transition.From);
+        var from = OptimizationJobStateMapper.ToStorage(transition.From);
         var target = db.OptimizationJobs
             .Where(job => job.Id == jobId && job.Status == from);
         var affected = transition.CompletedAt.HasValue
             ? await target.ExecuteUpdateAsync(
                 update => update
-                    .SetProperty(job => job.Status, ToStorageState(transition.To))
+                    .SetProperty(
+                        job => job.Status,
+                        OptimizationJobStateMapper.ToStorage(transition.To))
                     .SetProperty(job => job.CompletedAt, transition.CompletedAt),
                 cancellationToken)
             : await target.ExecuteUpdateAsync(
                 update => update.SetProperty(
                     job => job.Status,
-                    ToStorageState(transition.To)),
+                    OptimizationJobStateMapper.ToStorage(transition.To)),
                 cancellationToken);
         return affected == 1;
     }
@@ -67,27 +69,4 @@ public sealed class OptimizationJobControlStore : IOptimizationJobControlStore
                 cancellationToken);
     }
 
-    private static OptimizationJobControlState ToControlState(OptimizationJobStatus state) =>
-        state switch
-        {
-            OptimizationJobStatus.Pending => OptimizationJobControlState.Pending,
-            OptimizationJobStatus.Running => OptimizationJobControlState.Running,
-            OptimizationJobStatus.Paused => OptimizationJobControlState.Paused,
-            OptimizationJobStatus.Completed => OptimizationJobControlState.Completed,
-            OptimizationJobStatus.Cancelled => OptimizationJobControlState.Cancelled,
-            OptimizationJobStatus.Failed => OptimizationJobControlState.Failed,
-            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
-        };
-
-    private static OptimizationJobStatus ToStorageState(OptimizationJobControlState state) =>
-        state switch
-        {
-            OptimizationJobControlState.Pending => OptimizationJobStatus.Pending,
-            OptimizationJobControlState.Running => OptimizationJobStatus.Running,
-            OptimizationJobControlState.Paused => OptimizationJobStatus.Paused,
-            OptimizationJobControlState.Completed => OptimizationJobStatus.Completed,
-            OptimizationJobControlState.Cancelled => OptimizationJobStatus.Cancelled,
-            OptimizationJobControlState.Failed => OptimizationJobStatus.Failed,
-            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
-        };
 }

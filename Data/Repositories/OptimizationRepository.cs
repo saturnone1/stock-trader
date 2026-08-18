@@ -23,30 +23,12 @@ public class OptimizationRepository : IOptimizationRepository
         return job;
     }
 
-    public async Task<OptimizationJob?> GetJobAsync(int id)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.OptimizationJobs
-            .AsNoTracking()
-            .Include(j => j.Results.OrderBy(r => r.Rank).Take(50))
-            .FirstOrDefaultAsync(j => j.Id == id);
-    }
-
     public async Task<OptimizationJob?> GetJobSummaryAsync(int id)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.OptimizationJobs
             .AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == id);
-    }
-
-    public async Task<List<OptimizationJob>> GetJobsAsync(OptimizationJobStatus? status = null)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var query = db.OptimizationJobs.AsNoTracking();
-        if (status.HasValue)
-            query = query.Where(j => j.Status == status.Value);
-        return await query.OrderByDescending(j => j.CreatedAt).ToListAsync();
     }
 
     public async Task<OptimizationJobStatus?> GetJobStatusAsync(int id)
@@ -140,17 +122,6 @@ public class OptimizationRepository : IOptimizationRepository
         job.ErrorMessage = null;
 
         await db.SaveChangesAsync();
-    }
-
-    public async Task DeleteJobAsync(int id)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var job = await db.OptimizationJobs.FindAsync(id);
-        if (job != null)
-        {
-            db.OptimizationJobs.Remove(job);
-            await db.SaveChangesAsync();
-        }
     }
 
     // ── 결과 관리 ─────────────────────────────────────────────────────────────

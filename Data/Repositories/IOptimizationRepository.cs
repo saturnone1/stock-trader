@@ -7,9 +7,7 @@ public interface IOptimizationRepository
 {
     // Job CRUD
     Task<OptimizationJob> CreateJobAsync(OptimizationJob job);
-    Task<OptimizationJob?> GetJobAsync(int id);
     Task<OptimizationJob?> GetJobSummaryAsync(int id);
-    Task<List<OptimizationJob>> GetJobsAsync(OptimizationJobStatus? status = null);
     Task<OptimizationJobStatus?> GetJobStatusAsync(int id);
 
     /// <summary>
@@ -24,8 +22,6 @@ public interface IOptimizationRepository
         DateTime? lastProgressAt,
         long? totalCombinations = null);
     Task RequeueContinuousJobAsync(int id, string requestJson);
-    Task DeleteJobAsync(int id);
-
     // 결과 관리
 
     /// <summary>

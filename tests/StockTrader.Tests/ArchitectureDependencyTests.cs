@@ -164,6 +164,10 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/optimization/OptimizationJobForm.svelte"));
         var jobs = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/optimization/OptimizationJobList.svelte"));
+        var endpoints = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/endpoints.ts"));
+        var apiTypes = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/types.ts"));
 
         File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(400);
         page.Should().Contain("<OptimizationJobForm");
@@ -174,6 +178,9 @@ public class ArchitectureDependencyTests
         page.Should().NotContain("formatSignedPercent(");
         form.Should().Contain("estimatedCombinationCount(form)");
         jobs.Should().Contain("resultInsights(result, results)");
+        endpoints.Should().Contain("id: result.id");
+        apiTypes.Should().Contain("id: number;");
+        apiTypes.Should().Contain("'Paused'");
         model.Should().Contain("export function buildOptimizationJob(");
         model.Should().Contain("export function formatSignedPercent(");
         modelTests.Should().Contain("without a runtime error");
@@ -425,7 +432,6 @@ public class ArchitectureDependencyTests
         var program = File.ReadAllText(Path.Combine(repository, "Program.cs"));
         var initialization = File.ReadAllText(Path.Combine(
             repository, "Extensions/ApplicationInitializationExtensions.cs"));
-
         program.Should().Contain("InitializeStockTraderAsync(");
         initialization.Should().Contain("DatabaseSchemaMigrator");
         initialization.Should().NotContain("DatabaseMigrationRunner");
@@ -671,6 +677,8 @@ public class ArchitectureDependencyTests
         var codec = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizeRequestJsonCodec.cs"));
         var jobEndpoints = File.ReadAllText(Path.Combine(repository, "Api/OptimizeJobEndpoints.cs"));
+        var jobManagement = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationJobManagementService.cs"));
         var jobExecutor = File.ReadAllText(Path.Combine(
             repository, "BackgroundServices/OptimizationJobExecutor.cs"));
         var autoTune = File.ReadAllText(Path.Combine(
@@ -695,7 +703,8 @@ public class ArchitectureDependencyTests
         persistenceMapper.Should().Contain("StoredStrategy ToStoredStrategy(this CustomPatternDefinition value)");
         codec.Should().Contain("TryGetProperty(basePattern, \"id\"");
         codec.Should().Contain("request.BasePattern.StoredStrategyId = id");
-        jobEndpoints.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
+        jobManagement.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
+        jobEndpoints.Should().NotContain("OptimizeRequestJsonCodec.Serialize(");
         jobExecutor.Should().Contain("OptimizeRequestJsonCodec.Deserialize(");
         autoTune.Should().Contain("OptimizeRequestJsonCodec.Deserialize(");
         autoTune.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
@@ -1028,6 +1037,16 @@ public class ArchitectureDependencyTests
             repository, "Api/OptimizeJobEndpoints.cs"));
         var initialization = File.ReadAllText(Path.Combine(
             repository, "Extensions/ApplicationInitializationExtensions.cs"));
+        var managementUseCase = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationJobManagementService.cs"));
+        var managementStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationJobManagementStore.cs"));
+        var jobApiMapper = File.ReadAllText(Path.Combine(
+            repository, "Api/OptimizationJobApiMapper.cs"));
+        var optimizationModels = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationModels.cs"));
+        var repositoryContract = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/IOptimizationRepository.cs"));
 
         source.Should().Contain("IOptimizationEvaluationContextPreparer");
         source.Should().Contain("IOptimizationJobExecutionStore");
@@ -1083,6 +1102,35 @@ public class ArchitectureDependencyTests
         jobEndpoints.Should().NotContain("DateTime.UtcNow");
         jobEndpoints.Should().NotContain("job.Status = OptimizationJobStatus.Paused");
         jobEndpoints.Should().NotContain("job.Status = OptimizationJobStatus.Cancelled");
+        jobEndpoints.Should().Contain("OptimizationJobManagementService jobs");
+        jobEndpoints.Should().NotContain("IOptimizationRepository");
+        jobEndpoints.Should().NotContain("StockTrader.Data");
+        jobEndpoints.Should().NotContain("StockTrader.Models");
+        jobEndpoints.Should().NotContain("JsonSerializer");
+        jobEndpoints.Should().NotContain("CalculateTotalCombinations(");
+        File.ReadAllLines(Path.Combine(repository, "Api/OptimizeJobEndpoints.cs"))
+            .Length.Should().BeLessThanOrEqualTo(250);
+        File.ReadAllLines(Path.Combine(
+                repository,
+                "Application/Optimization/OptimizationJobManagementService.cs"))
+            .Length.Should().BeLessThanOrEqualTo(400);
+        File.ReadAllLines(Path.Combine(
+                repository,
+                "Data/Repositories/OptimizationJobManagementStore.cs"))
+            .Length.Should().BeLessThanOrEqualTo(250);
+        managementUseCase.Should().Contain("IOptimizationJobManagementStore");
+        managementUseCase.Should().Contain("OptimizationCombinationCountPolicy.Calculate(");
+        managementUseCase.Should().NotContain("StockTrader.Data");
+        managementUseCase.Should().NotContain("StockTrader.Models");
+        managementUseCase.Should().NotContain("DateTime.UtcNow");
+        managementStore.Should().Contain("JsonSerializer.Deserialize<OptimizeParamSnapshot>(");
+        managementStore.Should().Contain("Id = result.Id");
+        managementStore.Should().Contain("ExecuteDeleteAsync(");
+        jobApiMapper.Should().Contain("OptimizationJobSummaryView");
+        optimizationModels.Should().Contain("public int? Id { get; set; }");
+        repositoryContract.Should().NotContain("GetJobAsync(");
+        repositoryContract.Should().NotContain("GetJobsAsync(");
+        repositoryContract.Should().NotContain("DeleteJobAsync(");
         initialization.Should().Contain("RecoverInterruptedAsync()");
         initialization.Should().NotContain("IOptimizationRepository");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");

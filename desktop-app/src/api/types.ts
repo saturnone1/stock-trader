@@ -188,7 +188,7 @@ export interface PatternRule {
 export interface OptimizationJob {
   id: string;
   name: string;
-  status: 'Pending' | 'Running' | 'Completed' | 'Failed' | 'Cancelled';
+    status: 'Pending' | 'Running' | 'Paused' | 'Completed' | 'Failed' | 'Cancelled';
   priority: number;
   progress: number;
   completedCombinations?: number;
@@ -200,7 +200,8 @@ export interface OptimizationJob {
 }
 
 export interface OptimizationResult {
-  rank: number;
+    id: number;
+    rank: number;
   sharpeRatio: number;
   sortinoRatio: number;
   totalReturn: number;

@@ -143,7 +143,7 @@ public class OptimizationAutoTuneServiceTests
         savedJob.LastAutoApplyMessage.Should().Contain("자동 반영 완료");
         savedJob.AppliedResultCount.Should().Be(1);
 
-        var jobs = await assertRepo.GetJobsAsync();
+        var jobs = await assertDb.OptimizationJobs.AsNoTracking().ToListAsync();
         jobs.Should().HaveCount(1);
         var recycledJob = jobs.Single();
         recycledJob.Id.Should().Be(job.Id);
