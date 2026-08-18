@@ -1,4 +1,5 @@
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 using StockTrader.Models;
 using StockTrader.Services.Patterns;
 
@@ -103,13 +104,21 @@ internal sealed class BacktestStrategyRuntimeRegistry
         var runtime = Find(strategyName);
         if (runtime == null || string.IsNullOrWhiteSpace(strategyName)) return;
 
-        BacktestStrategyTransitionPolicy.RegisterClosedTrade(
-            Key(strategyName, symbol),
-            currentBarIndex,
-            currentTimelineStep,
-            trade,
-            runtime,
-            _reentryCooldowns);
+        var transition = StrategyTradeTransitionPolicy.Apply(
+            new StrategyTradeTransitionState(
+                runtime.ConsecutiveLosses,
+                GetCooldownUntil(strategyName, symbol) ?? 0,
+                runtime.CircuitBreakerUntilStep),
+            new StrategyTradeTransitionRequest(
+                currentBarIndex,
+                currentTimelineStep,
+                trade.PnL,
+                runtime.Reentry,
+                runtime.CircuitBreaker));
+        runtime.ConsecutiveLosses = transition.ConsecutiveLosses;
+        runtime.CircuitBreakerUntilStep = transition.CircuitBreakerBlockedUntilStep;
+        if (transition.ReentryBlockedUntilStep > 0)
+            _reentryCooldowns[Key(strategyName, symbol)] = transition.ReentryBlockedUntilStep;
     }
 
     public void ApplyRealizedTrade(TradeRecord trade)
@@ -118,16 +127,12 @@ internal sealed class BacktestStrategyRuntimeRegistry
         if (runtime == null) return;
 
         runtime.RealizedEquity += trade.PnL;
-        if (runtime.RealizedEquity > runtime.PeakEquity)
-            runtime.PeakEquity = runtime.RealizedEquity;
-
-        if (runtime.CircuitBreaker.MaxDrawdownPercent <= 0 || runtime.PeakEquity <= 0)
-            return;
-
-        var drawdownPercent = (runtime.PeakEquity - runtime.RealizedEquity)
-            / runtime.PeakEquity * 100m;
-        if (drawdownPercent >= runtime.CircuitBreaker.MaxDrawdownPercent)
-            runtime.CircuitBreakerTripped = true;
+        var drawdown = StrategyDrawdownPolicy.Observe(
+            new StrategyDrawdownState(runtime.PeakEquity, runtime.CircuitBreakerTripped),
+            runtime.RealizedEquity,
+            runtime.CircuitBreaker.MaxDrawdownPercent);
+        runtime.PeakEquity = drawdown.PeakEquity;
+        runtime.CircuitBreakerTripped = drawdown.IsBlocked;
     }
 
     private static string Key(string strategyName, string symbol) =>

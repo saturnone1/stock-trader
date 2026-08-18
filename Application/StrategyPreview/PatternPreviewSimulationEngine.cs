@@ -69,11 +69,8 @@ public sealed class PatternPreviewSimulationEngine
         decimal compoundedReturn = 1m;
         var completedTrades = 0;
         var winningTrades = 0;
-        var consecutiveLosses = 0;
-        var circuitBreakerUntilIndex = 0;
-        var reentryUntilIndex = 0;
-        var drawdownTripped = false;
-        var peakCompoundedReturn = 1m;
+        var tradeTransition = new StrategyTradeTransitionState();
+        var drawdown = new StrategyDrawdownState(PeakEquity: 1m);
         var currentEntryDay = DateOnly.MinValue;
         var entriesToday = 0;
         var safetyBlockedEntries = 0;
@@ -213,28 +210,18 @@ public sealed class PatternPreviewSimulationEngine
                 if (closeReason is not null)
                 {
                     Complete(position, closePrice);
-                    var wasLoss = position.RealizedPnl < 0;
-                    var reentryBars = wasLoss
-                        ? reentry.CooldownBarsAfterLoss
-                        : reentry.CooldownBarsAfterWin;
-                    if (reentryBars > 0) reentryUntilIndex = index + reentryBars + 1;
-
-                    consecutiveLosses = wasLoss ? consecutiveLosses + 1 : 0;
-                    if (circuitBreaker.ConsecutiveLossLimit > 0
-                        && consecutiveLosses >= circuitBreaker.ConsecutiveLossLimit)
-                    {
-                        circuitBreakerUntilIndex = index + circuitBreaker.CooldownBars + 1;
-                        consecutiveLosses = 0;
-                    }
-
-                    peakCompoundedReturn = Math.Max(peakCompoundedReturn, compoundedReturn);
-                    if (circuitBreaker.MaxDrawdownPercent > 0
-                        && peakCompoundedReturn > 0
-                        && (peakCompoundedReturn - compoundedReturn)
-                            / peakCompoundedReturn * 100m >= circuitBreaker.MaxDrawdownPercent)
-                    {
-                        drawdownTripped = true;
-                    }
+                    tradeTransition = StrategyTradeTransitionPolicy.Apply(
+                        tradeTransition,
+                        new StrategyTradeTransitionRequest(
+                            index,
+                            index,
+                            position.RealizedPnl,
+                            reentry,
+                            circuitBreaker));
+                    drawdown = StrategyDrawdownPolicy.Observe(
+                        drawdown,
+                        compoundedReturn,
+                        circuitBreaker.MaxDrawdownPercent);
 
                     markers.Add(new PatternPreviewMarker(
                         current.Timestamp, "EXIT", closePrice, Reason: closeReason));
@@ -268,11 +255,12 @@ public sealed class PatternPreviewSimulationEngine
                     DefaultMaxPositions: 1,
                     StrategyMaxPositions: portfolioRules.MaxTotalPositions,
                     OpenPositionCount: 0,
-                    DrawdownBlocked: drawdownTripped,
-                    ConsecutiveLossBlocked: index < circuitBreakerUntilIndex,
+                    DrawdownBlocked: drawdown.IsBlocked,
+                    ConsecutiveLossBlocked:
+                        index < tradeTransition.CircuitBreakerBlockedUntilStep,
                     MaxEntriesPerSession: portfolioRules.MaxEntriesPerDay,
                     EntriesThisSession: entriesToday,
-                    ReentryBlocked: index < reentryUntilIndex));
+                    ReentryBlocked: index < tradeTransition.ReentryBlockedUntilStep));
             if (!entryEligibility.CanEnter)
             {
                 safetyBlockedEntries++;

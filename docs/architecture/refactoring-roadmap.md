@@ -255,6 +255,16 @@
   OOS Sharpe field now reports the explicitly labelled average of window OOS Sharpe values. A date
   range too short for one complete IS/OOS window is surfaced as a warning rather than a zero-valued
   analysis.
+- Completed-trade state transitions now live in the application-owned
+  `StrategyTradeTransitionPolicy` and `StrategyDrawdownPolicy`. Preview and backtest use the same
+  bar/step transition for loss versus win cooldowns, trailing-loss reset, circuit-breaker duration,
+  peak equity, and permanent maximum-drawdown blocking. Live recommendation eligibility projects
+  persisted trades through `StrategyHistoricalCooldownPolicy` and the same drawdown policy, with a
+  weekday-aware adapter for its calendar-based polling model. Goldens lock independent symbol and
+  global timelines, weekend boundaries, exact drawdown thresholds, and a full preview sequence of
+  loss, re-entry delay, consecutive-loss halt, and resumed entry. The consolidation also corrected
+  a live-only off-by-one defect that previously released a two-session cooldown after only one full
+  trading day.
 
 Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
 remaining orchestration services and extending broker-order parity around the shared compiled

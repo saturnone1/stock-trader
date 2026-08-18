@@ -1102,6 +1102,11 @@ public class ArchitectureDependencyTests
         preview.Should().Contain("StrategyEntryEligibilityPolicy.Evaluate(");
         backtest.Should().Contain("StrategyEntryEligibilityPolicy.Evaluate(");
         live.Should().Contain("StrategyEntryEligibilityPolicy.Evaluate(");
+        live.Should().Contain("StrategyHistoricalCooldownPolicy.Evaluate(");
+        live.Should().Contain("StrategyDrawdownPolicy.EvaluateHistory(");
+        live.Should().NotContain("EvaluateLiveCooldowns(");
+        live.Should().NotContain("ComputeStrategyDrawdown(");
+        live.Should().NotContain("AddTradingDays(");
         live.Should().NotContain("DateTime.UtcNow");
     }
 
@@ -1127,7 +1132,19 @@ public class ArchitectureDependencyTests
         engine.Should().Contain("runtimeRegistry.BeginStep(");
         engine.Should().NotContain("runtime.RealizedEquity +=");
         tradeLedger.Should().Contain("_runtimeRegistry.ApplyRealizedTrade(");
-        registry.Should().Contain("BacktestStrategyTransitionPolicy.RegisterClosedTrade(");
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
+        var transitionPolicyPath = Path.Combine(
+            repository, "Application/Execution/StrategyTradeTransitionPolicy.cs");
+        var transitionPolicy = File.ReadAllText(transitionPolicyPath);
+        registry.Should().Contain("StrategyTradeTransitionPolicy.Apply(");
+        registry.Should().Contain("StrategyDrawdownPolicy.Observe(");
+        preview.Should().Contain("StrategyTradeTransitionPolicy.Apply(");
+        preview.Should().Contain("StrategyDrawdownPolicy.Observe(");
+        preview.Should().NotContain("consecutiveLosses++");
+        preview.Should().NotContain("peakCompoundedReturn");
+        transitionPolicy.Should().NotContain("StockTrader.Services");
+        File.ReadAllLines(transitionPolicyPath).Length.Should().BeLessThanOrEqualTo(180);
         entry.Should().Contain("context.RuntimeRegistry");
         pending.Should().Contain("context.RuntimeRegistry");
         exit.Should().Contain("context.RuntimeRegistry");

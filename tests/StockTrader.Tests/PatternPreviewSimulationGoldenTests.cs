@@ -147,6 +147,52 @@ public class PatternPreviewSimulationGoldenTests
             "the bar exactly at DataTo is outside the requested interval even when the repository returns it");
     }
 
+    [Fact]
+    public async Task RunAsync_UsesSharedLossCooldownAndCircuitBreakerTransitions()
+    {
+        var bars = Bars(60);
+        foreach (var bar in bars)
+            bar.Low = 90m;
+        var strategy = Compile(new StrategyDocument
+        {
+            Name = "shared-loss-transition-golden",
+            EntryMode = StrategyCatalog.CurrentCloseEntryMode,
+            EntryRulesJson =
+                """[{"indicator":"PRICE_CHANGE","operator":">=","value":-100,"params":{"bars":1}}]""",
+            ReentryJson = """{"cooldownBarsAfterLoss":2,"cooldownBarsAfterWin":0}""",
+            CircuitBreakerJson =
+                """{"consecutiveLossLimit":2,"cooldownBars":3,"maxDrawdownPercent":0}""",
+            AtrStopMultiplier = 1m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0
+        });
+
+        var result = await new PatternPreviewSimulationEngine().RunAsync(
+            new PatternPreviewSimulationInput(
+                "AAA",
+                TimeFrame.Daily,
+                bars[49].Timestamp,
+                bars[59].Timestamp,
+                bars,
+                Enumerable.Repeat(5m, bars.Length).ToArray(),
+                new Dictionary<string, OhlcvBar[]>(),
+                [],
+                new AlwaysSignalRuntime(strategy)));
+
+        result.Should().NotBeNull();
+        result!.Markers.Where(marker => marker.Type == "ENTRY")
+            .Select(marker => marker.Date)
+            .Should().Equal(
+                bars[49].Timestamp,
+                bars[53].Timestamp,
+                bars[58].Timestamp);
+        result.Markers.Where(marker => marker.Type == "EXIT")
+            .Select(marker => marker.Date)
+            .Should().Equal(bars[50].Timestamp, bars[54].Timestamp);
+        result.Summary.SafetyBlockedEntries.Should().Be(7);
+        result.Summary.OpenPosition.Should().BeTrue();
+    }
+
     private static CompiledStrategy Compile(StrategyDocument definition)
     {
         var result = StrategyCompiler.Compile(definition);
@@ -154,7 +200,7 @@ public class PatternPreviewSimulationGoldenTests
         return result.Strategy!;
     }
 
-    private static OhlcvBar[] Bars() => Enumerable.Range(0, 52)
+    private static OhlcvBar[] Bars(int count = 52) => Enumerable.Range(0, count)
         .Select(index => new OhlcvBar
         {
             Symbol = "AAA",
@@ -203,6 +249,40 @@ public class PatternPreviewSimulationGoldenTests
                 : null;
             return Task.FromResult(signal);
         }
+
+        public bool ShouldExit(OhlcvBar[] bars) => false;
+
+        public ScalingRuleMatch? EvaluateScaling(
+            OhlcvBar[] bars,
+            decimal currentProfitPercent,
+            IReadOnlyDictionary<int, int> scaleCounts) => null;
+    }
+
+    private sealed class AlwaysSignalRuntime(CompiledStrategy strategy) : ICompiledStrategyRuntime
+    {
+        public CompiledStrategy Strategy => strategy;
+        public bool HasExitRules => false;
+        public bool HasScalingRules => false;
+
+        public void SetReferenceData(
+            Dictionary<string, OhlcvBar[]> referenceData,
+            DateTime? asOf = null)
+        {
+        }
+
+        public Task<PatternSignal?> EvaluateEntryAsync(
+            string symbol,
+            OhlcvBar[] bars,
+            MarketRegime regime,
+            CancellationToken ct = default) => Task.FromResult<PatternSignal?>(new PatternSignal
+        {
+            Symbol = symbol,
+            EntryPrice = bars[^1].Close,
+            StopLossPrice = 95m,
+            TargetPrice = 600m,
+            AllocationScale = 1m,
+            Details = "always"
+        });
 
         public bool ShouldExit(OhlcvBar[] bars) => false;
 

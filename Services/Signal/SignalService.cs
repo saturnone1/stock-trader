@@ -70,6 +70,7 @@ public class SignalService : ISignalService
             : await _db.TradeRecords.AsNoTracking()
                 .Where(trade => trade.CustomPatternName != null && customNames.Contains(trade.CustomPatternName))
                 .OrderBy(trade => trade.ExitTime)
+                .ThenBy(trade => trade.Id)
                 .ToListAsync(ct);
         var openCustomPositions = customNames.Count == 0
             ? []
@@ -128,15 +129,20 @@ public class SignalService : ISignalService
                 continue;
             if (customStrategy is not null)
             {
-                var cooldowns = EvaluateLiveCooldowns(
-                    strategyTrades, reentryRules, breakerRules, marketDate);
+                var cooldowns = StrategyHistoricalCooldownPolicy.Evaluate(
+                    strategyTrades,
+                    reentryRules ?? new ReentryConfig(),
+                    breakerRules ?? new CircuitBreakerConfig(),
+                    marketDate);
                 var entriesToday = executedToday.Count(rec => string.Equals(
                         rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase))
                     + recommendations.Count(rec => string.Equals(
                         rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase));
                 var drawdownBlocked = breakerRules?.MaxDrawdownPercent > 0
-                    && ComputeStrategyDrawdown(strategyTrades, settings.AccountSize)
-                        >= breakerRules.MaxDrawdownPercent;
+                    && StrategyDrawdownPolicy.EvaluateHistory(
+                        settings.AccountSize,
+                        strategyTrades.OrderBy(trade => trade.ExitTime).Select(trade => trade.PnL),
+                        breakerRules.MaxDrawdownPercent).IsBlocked;
                 var entryEligibility = StrategyEntryEligibilityPolicy.Evaluate(
                     new StrategyEntryEligibilityRequest(
                         _tradingSettings.MaxTotalPositions,
@@ -273,28 +279,6 @@ public class SignalService : ISignalService
         return recommendations;
     }
 
-    private static (bool ReentryBlocked, bool ConsecutiveLossBlocked) EvaluateLiveCooldowns(
-        List<TradeRecord> trades,
-        ReentryConfig? reentry,
-        CircuitBreakerConfig? breaker,
-        DateTime todayUtc)
-    {
-        if (trades.Count == 0) return (false, false);
-        var latest = trades[^1];
-        var waitDays = latest.PnL < 0 ? reentry?.CooldownBarsAfterLoss ?? 0 : reentry?.CooldownBarsAfterWin ?? 0;
-        var reentryBlocked = waitDays > 0
-            && todayUtc < AddTradingDays(latest.ExitTime.Date, waitDays);
-
-        var consecutiveLossBlocked = false;
-        if (breaker?.ConsecutiveLossLimit > 0)
-        {
-            var consecutiveLosses = trades.AsEnumerable().Reverse().TakeWhile(trade => trade.PnL < 0).Count();
-            consecutiveLossBlocked = consecutiveLosses >= breaker.ConsecutiveLossLimit
-                && todayUtc < AddTradingDays(latest.ExitTime.Date, breaker.CooldownBars);
-        }
-        return (reentryBlocked, consecutiveLossBlocked);
-    }
-
     private static string DescribeEntryBlock(StrategyEntryBlockReason reason) => reason switch
     {
         StrategyEntryBlockReason.PositionLimit => "보유 한도 도달",
@@ -305,28 +289,4 @@ public class SignalService : ISignalService
         _ => "진입 제한"
     };
 
-    private static DateTime AddTradingDays(DateTime date, int tradingDays)
-    {
-        var result = date.Date;
-        var remaining = Math.Max(0, tradingDays);
-        while (remaining > 0)
-        {
-            result = result.AddDays(1);
-            if (result.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) continue;
-            remaining--;
-        }
-        return result;
-    }
-
-    private static decimal ComputeStrategyDrawdown(List<TradeRecord> trades, decimal accountSize)
-    {
-        decimal equity = Math.Max(1m, accountSize), peak = equity, maximum = 0m;
-        foreach (var trade in trades.OrderBy(trade => trade.ExitTime))
-        {
-            equity += trade.PnL;
-            peak = Math.Max(peak, equity);
-            if (peak > 0) maximum = Math.Max(maximum, (peak - equity) / peak * 100m);
-        }
-        return maximum;
-    }
 }
