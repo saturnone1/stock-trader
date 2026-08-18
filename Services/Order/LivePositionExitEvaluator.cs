@@ -17,6 +17,10 @@ public sealed record LivePositionExitDecision(LiveLongPositionExecutionIntent? I
     public string Reason => Intent?.Reason ?? string.Empty;
 }
 
+internal sealed record LiveCustomStrategyInstructions(
+    StrategyExitInstruction? Exit,
+    LongPositionScalingInstruction? Scaling);
+
 /// <summary>
 /// 실시간 포지션의 지표 스냅샷을 준비하고 공통 롱 포지션 정책으로 청산 여부를 평가합니다.
 /// 백그라운드 워커는 조회 주기와 주문 조정만 담당합니다.
@@ -48,7 +52,9 @@ public sealed class LivePositionExitEvaluator
         CompiledStrategy? customStrategy,
         IOhlcvRepository repository,
         PatternParameterOverrides? liveOverrides,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        decimal currentEquity = 0m,
+        int maxTotalPositions = 0)
     {
         var customPattern = customStrategy?.Source;
         var exitPolicy = customPattern == null
@@ -127,15 +133,17 @@ public sealed class LivePositionExitEvaluator
             if (trend.Length > 0) currentCumulativeRsi2TrendMa = trend[^1];
         }
 
-        var strategyExit = await ResolveStrategyExitAsync(
-            position,
-            customStrategy,
-            recentBars,
-            repository,
-            cumulativeRsi2,
-            currentCumulativeRsi2,
-            currentCumulativeRsi2TrendMa,
-            ct);
+        var customInstructions = await ResolveCustomInstructionsAsync(
+            position, customStrategy, recentBars, repository,
+            currentEquity, maxTotalPositions, ct);
+        var strategyExit = position.PatternType == PatternType.CumulativeRsi2
+            ? CumulativeRsi2ExitDecisionPolicy.Resolve(
+                position.CurrentPrice,
+                currentCumulativeRsi2,
+                currentCumulativeRsi2TrendMa,
+                cumulativeRsi2.ExitThreshold,
+                cumulativeRsi2.LongTrendMaPeriod)
+            : customInstructions.Exit;
         var stopDistance = Math.Abs(position.EntryPrice - position.StopLossPrice);
         if (stopDistance <= 0)
         {
@@ -169,7 +177,9 @@ public sealed class LivePositionExitEvaluator
             exitPolicy,
             timeExitReached,
             strategyExit,
-            dynamicStopFloor);
+            dynamicStopFloor,
+            customInstructions.Scaling,
+            position.ScalingExecutionCounts);
 
         position.HighSinceEntry = decision.State.HighestPrice;
         position.StopLossPrice = decision.State.StopPrice;
@@ -186,37 +196,50 @@ public sealed class LivePositionExitEvaluator
         return new LivePositionExitDecision(decision.Intent);
     }
 
-    private async Task<StrategyExitInstruction?> ResolveStrategyExitAsync(
+    private async Task<LiveCustomStrategyInstructions> ResolveCustomInstructionsAsync(
         Position position,
         CompiledStrategy? strategy,
         List<OhlcvBar>? recentBars,
         IOhlcvRepository repository,
-        CumulativeRsi2Config cumulativeRsi2,
-        decimal currentCumulativeRsi2,
-        decimal currentCumulativeRsi2TrendMa,
+        decimal currentEquity,
+        int maxTotalPositions,
         CancellationToken ct)
     {
-        if (position.PatternType == PatternType.CumulativeRsi2)
-        {
-            return CumulativeRsi2ExitDecisionPolicy.Resolve(
-                position.CurrentPrice,
-                currentCumulativeRsi2,
-                currentCumulativeRsi2TrendMa,
-                cumulativeRsi2.ExitThreshold,
-                cumulativeRsi2.LongTrendMaPeriod);
-        }
         if (strategy is null || recentBars is not { Count: >= StrategyEvaluationPolicy.MinimumWarmupBars })
-            return null;
+            return new LiveCustomStrategyInstructions(null, null);
 
         var detector = _customDetectors.Create(strategy);
         detector.SetReferenceData(
             await LoadReferenceDataAsync(
                 strategy, position.Symbol, recentBars, repository, ct),
             UtcNow);
-        return detector.ShouldExit(recentBars.ToArray())
+        var bars = recentBars.ToArray();
+        var exit = detector.HasExitRules && detector.ShouldExit(bars)
             ? new StrategyExitInstruction(
                 position.CurrentPrice, $"{strategy.Name} 매도 조건 충족")
             : null;
+        LongPositionScalingInstruction? scaling = null;
+        if (detector.HasScalingRules)
+        {
+            var profitPercent = position.EntryPrice > 0
+                ? (position.CurrentPrice - position.EntryPrice) / position.EntryPrice * 100m
+                : 0m;
+            var match = detector.EvaluateScaling(
+                bars, profitPercent, position.ScalingExecutionCounts);
+            if (match is not null)
+            {
+                var maxPositionCost = PositionScaleInCapacityPolicy.CalculateMaxPositionCost(
+                    currentEquity,
+                    maxTotalPositions,
+                    strategy.PortfolioRules.MaxSinglePositionPercent);
+                scaling = new LongPositionScalingInstruction(
+                    match.RuleIndex,
+                    match.Rule.Direction,
+                    match.Rule.Percent,
+                    maxPositionCost);
+            }
+        }
+        return new LiveCustomStrategyInstructions(exit, scaling);
     }
 
     private async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(

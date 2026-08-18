@@ -108,6 +108,39 @@ public class LiveLongPositionExecutionAdapterTests
             MarksPartialProfit: false));
     }
 
+    [Fact]
+    public void Evaluate_PersistsProtectiveStopBeforeSubmittingScalingIntent()
+    {
+        var scaling = new LongPositionScalingInstruction(
+            0, "SCALE_IN", 50m, MaxPositionCost: 2_000m);
+
+        var protectiveUpdate = LiveLongPositionExecutionAdapter.Evaluate(
+            State(),
+            10,
+            110m,
+            2m,
+            Policy with { EnableTargetExit = false },
+            false,
+            scaling: scaling);
+
+        protectiveUpdate.Intent.Should().BeNull();
+        protectiveUpdate.StopUpdate.Should().NotBeNull();
+        protectiveUpdate.State.StopPrice.Should().Be(106m);
+
+        var scalingDecision = LiveLongPositionExecutionAdapter.Evaluate(
+            protectiveUpdate.State,
+            10,
+            110m,
+            2m,
+            Policy with { EnableTargetExit = false },
+            false,
+            scaling: scaling);
+
+        scalingDecision.Intent!.Kind.Should().Be(
+            StockTrader.Models.Enums.PositionExecutionKind.ScaleIn);
+        scalingDecision.Intent.Quantity.Should().Be(5);
+    }
+
     private static LiveLongPositionExecutionDecision Evaluate(
         LongPositionExecutionState state,
         decimal currentPrice,

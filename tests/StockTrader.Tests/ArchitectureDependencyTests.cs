@@ -1045,7 +1045,7 @@ public class ArchitectureDependencyTests
         exitProcessor.Should().Contain("BacktestStrategyExecutionInstructionResolver.Resolve(");
         pendingEntryProcessor.Should().Contain("BacktestStrategyExecutionInstructionResolver.Resolve(");
         instructionResolver.Should().Contain("detector.EvaluateScaling(");
-        instructionResolver.Should().Contain("BacktestScaleInCapacityPolicy.CalculateMaxPositionCost(");
+        instructionResolver.Should().Contain("PositionScaleInCapacityPolicy.CalculateMaxPositionCost(");
         preview.Should().NotContain("LongPositionScalingPolicy.Apply(");
         preview.Should().NotContain("LongPositionScalingPolicy.RegisterExecution(");
         exitProcessor.Should().NotContain("LongPositionScalingPolicy.Apply(");
@@ -1447,7 +1447,7 @@ public class ArchitectureDependencyTests
         parity.Should().Contain("PreviewAndBacktest_RunTheSameCompiledFractionalScaleOut");
         parity.Should().Contain("PreviewAndBacktest_ApplyCustomExitOnTheNextOpenEntryBar");
         parity.Should().Contain("PreviewAndBacktest_ApplyScaleOutOnTheNextOpenEntryBar");
-        parity.Should().Contain("ScalingStrategy_IsRejectedForLiveUntilBrokerExecutionHasParity");
+        parity.Should().Contain("ScalingStrategy_IsAcceptedForLiveAfterBrokerExecutionParity");
         executionParity.Should().Contain("CommonSessionAndLiveAdapter_AgreeOnPartialProfitIntent");
         parity.Should().Contain("previewEntry.StopPrice.Should().Be(livePosition.StopLossPrice)");
         parity.Should().Contain("liveExit.Reason.Should().Be(previewExit.Reason)");
@@ -1617,6 +1617,8 @@ public class ArchitectureDependencyTests
         liveManager.Should().Contain("exitEvaluator.EvaluateAsync(");
         liveManager.Should().NotContain("LiveLongPositionExecutionAdapter.Evaluate(");
         evaluator.Should().Contain("LiveLongPositionExecutionAdapter.Evaluate(");
+        evaluator.Should().Contain("detector.EvaluateScaling(");
+        evaluator.Should().Contain("PositionScaleInCapacityPolicy.CalculateMaxPositionCost(");
         evaluator.Should().NotContain("EnablePartialProfit = false");
         evaluator.Should().NotContain("position.CurrentPrice <= position.StopLossPrice");
         evaluator.Should().NotContain("position.CurrentPrice >= position.TargetPrice");

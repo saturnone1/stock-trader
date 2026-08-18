@@ -47,7 +47,7 @@ internal static class BacktestStrategyExecutionInstructionResolver
             if (match is not null)
             {
                 var runtime = runtimeRegistry.Find(position.CustomPatternName);
-                var maxPositionCost = BacktestScaleInCapacityPolicy.CalculateMaxPositionCost(
+                var maxPositionCost = PositionScaleInCapacityPolicy.CalculateMaxPositionCost(
                     currentEquity,
                     maxTotalPositions,
                     runtime?.Portfolio.MaxSinglePositionPercent ?? 0m);

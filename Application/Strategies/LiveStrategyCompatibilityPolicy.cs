@@ -10,7 +10,7 @@ public static class LiveStrategyCompatibilityPolicy
     public static IReadOnlyList<string> SupportedEntryModes { get; } =
         [StrategyCatalog.NextOpenEntryMode];
     public const bool SupportsPartialExit = true;
-    public const bool SupportsScaling = false;
+    public const bool SupportsScaling = true;
 
     public static IReadOnlyList<string> Validate(CompiledStrategy strategy)
     {
