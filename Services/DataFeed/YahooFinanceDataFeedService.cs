@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -12,6 +13,7 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly YahooFinanceSettings _settings;
+    private readonly IMarketCalendar _marketCalendar;
     private readonly ILogger<YahooFinanceDataFeedService> _logger;
     // Yahoo Finance는 동시 3개 요청까지 안정적으로 처리 가능.
     // 병렬 분석(StockAnalysisService.MaxParallelAnalyses=3)과 일치시킴.
@@ -27,10 +29,12 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
     public YahooFinanceDataFeedService(
         HttpClient httpClient,
         IOptions<YahooFinanceSettings> settings,
+        IMarketCalendar marketCalendar,
         ILogger<YahooFinanceDataFeedService> logger)
     {
         _httpClient = httpClient;
         _settings = settings.Value;
+        _marketCalendar = marketCalendar;
         _logger = logger;
     }
 
@@ -104,10 +108,14 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
     {
         try
         {
-            var from = date.Date.AddHours(13).AddMinutes(30); // 9:30 ET in UTC
-            var to = date.Date.AddHours(20); // 4:00 PM ET in UTC
-            var period1 = new DateTimeOffset(from).ToUnixTimeSeconds();
-            var period2 = new DateTimeOffset(to).ToUnixTimeSeconds();
+            var market = DataProviderCatalog.Get(DataSource.Yahoo).MarketRegion;
+            var session = RegularMarketSessionWindowPolicy.Resolve(
+                DateOnly.FromDateTime(date),
+                _marketCalendar.GetTimeZone(market),
+                _marketCalendar.GetMarketOpen(market),
+                _marketCalendar.GetMarketClose(market));
+            var period1 = new DateTimeOffset(session.StartUtc).ToUnixTimeSeconds();
+            var period2 = new DateTimeOffset(session.EndUtc).ToUnixTimeSeconds();
 
             var url = $"/v8/finance/chart/{symbol}?period1={period1}&period2={period2}&interval=1m";
             var result = await FetchChartAsync(url, ct);

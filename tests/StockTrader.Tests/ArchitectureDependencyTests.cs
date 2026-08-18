@@ -2204,6 +2204,35 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void UnitedStatesDataAdaptersShareTheCentralRegularSessionWindowPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var policy = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/MarketData/RegularMarketSessionWindowPolicy.cs"));
+        var adapters = new[]
+        {
+            "Services/DataFeed/AlpacaDataFeedService.cs",
+            "Services/DataFeed/YahooFinanceDataFeedService.cs"
+        };
+
+        policy.Should().Contain("TimeZoneInfo.ConvertTimeToUtc(");
+        policy.Should().NotContain("StockTrader.Services");
+        policy.Should().NotContain("TimeZoneConverter");
+
+        foreach (var path in adapters)
+        {
+            var adapter = File.ReadAllText(Path.Combine(repository, path));
+            adapter.Should().Contain("RegularMarketSessionWindowPolicy.Resolve(");
+            adapter.Should().Contain("DataProviderCatalog.Get(");
+            adapter.Should().Contain("IMarketCalendar");
+            adapter.Should().NotContain("AddHours(13)");
+            adapter.Should().NotContain("AddHours(20)");
+            adapter.Should().NotContain("TZConvert");
+        }
+    }
+
+    [Fact]
     public void DailyDataSyncWorkerOnlySchedulesTheProviderMarketCycle()
     {
         var repository = FindRepositoryRoot();

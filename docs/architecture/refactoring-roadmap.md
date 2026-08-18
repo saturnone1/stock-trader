@@ -25,6 +25,11 @@
   retry/circuit breaker. Callback admission and retained batches live in
   `IRealtimeBarIngestionBuffer`, persistence/publication in `IRealtimeBarBatchSink`, and the Alpaca
   worker is below 400 lines. Regression tests lock provider-market and provider-stream isolation.
+- Dated US intraday requests now use one `RegularMarketSessionWindowPolicy`. Alpaca and Yahoo obtain
+  market identity, time zone, and regular-session bounds from the central catalogs instead of
+  embedding offsets in provider code. This corrects Yahoo's winter window, which previously started
+  one hour early and omitted the final regular-session hour; summer/winter request goldens prevent
+  DST drift from returning.
 - Pending live entries now reconcile through `ILiveEntryReconciliationCycle`; the 43-line hosted
   worker owns only scope creation and clocked scheduling. The cycle groups durable entries by owning
   account, shares one observation boundary, isolates broker failures per account, and never falls
