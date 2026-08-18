@@ -179,7 +179,9 @@
   injected `TimeProvider` for timestamps and polling. `IOptimizationCandidateEvaluator` now owns the
   shared strategy-variant, timeframe-selection, prepared-simulation, and failure-handling path for
   synchronous and background IS/fine/OOS runs; `OptimizationResultProjection` owns their metric units.
-  `OptimizationJobExecutor` has dropped from 579 to 439 lines and is guarded by a 450-line cap.
+  `IOptimizationEvaluationContextPreparer` supplies both modes with one resolved feed, central regime
+  benchmark, reference-symbol set, timeframe data map, and risk input. `OptimizationJobExecutor` has
+  dropped from 579 to 382 lines and is guarded by a 400-line cap.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

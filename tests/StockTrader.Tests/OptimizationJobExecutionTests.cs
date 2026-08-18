@@ -5,6 +5,7 @@ using StockTrader.Application.Optimization;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 
 namespace StockTrader.Tests;
 
@@ -180,6 +181,32 @@ public class OptimizationJobExecutionTests
         item.OosSortinoRatio.Should().Be(item.SortinoRatio);
         item.OosTotalTrades.Should().Be(item.TotalTrades);
         item.OosAnnualizedReturn.Should().Be(item.AnnualizedReturn);
+    }
+
+    [Fact]
+    public void DataPreparationPolicy_DeduplicatesRequestedTimeFramesAndReferenceSymbols()
+    {
+        var request = new OptimizeRequest
+        {
+            Symbols = ["TQQQ", "spy"],
+            TimeFrame = TimeFrame.Daily,
+            OptimizeParams = new OptimizeParams
+            {
+                TimeFrameOptions =
+                [
+                    (int)TimeFrame.Daily,
+                    (int)TimeFrame.Weekly,
+                    (int)TimeFrame.Daily
+                ]
+            }
+        };
+
+        var timeFrames = OptimizationDataPreparationPolicy.ResolveTimeFrames(request);
+        var symbols = OptimizationDataPreparationPolicy.ResolveSymbols(
+            request, ["SPY", "VIX"]);
+
+        timeFrames.Should().Equal(TimeFrame.Daily, TimeFrame.Weekly);
+        symbols.Should().Equal("TQQQ", "spy", "VIX");
     }
 
     private static OptimizeParamSnapshot CreateSnapshot(decimal atrStop)

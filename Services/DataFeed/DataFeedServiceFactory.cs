@@ -9,7 +9,14 @@ public interface IDataFeedServiceFactory
 {
     Task<IDataFeedService> GetServiceAsync(CancellationToken ct = default);
     IDataFeedService GetService(DataSource dataSource);
+    Task<DataFeedSelection> SelectAsync(
+        DataSource? requestedSource,
+        CancellationToken ct = default);
 }
+
+public sealed record DataFeedSelection(
+    DataSource Source,
+    IDataFeedService Service);
 
 public class DataFeedServiceFactory : IDataFeedServiceFactory
 {
@@ -30,10 +37,20 @@ public class DataFeedServiceFactory : IDataFeedServiceFactory
         _logger = logger;
     }
 
-    public async Task<IDataFeedService> GetServiceAsync(CancellationToken ct = default)
+    public async Task<IDataFeedService> GetServiceAsync(CancellationToken ct = default) =>
+        (await SelectAsync(null, ct)).Service;
+
+    public async Task<DataFeedSelection> SelectAsync(
+        DataSource? requestedSource,
+        CancellationToken ct = default)
     {
-        var settings = await _settingsRepo.GetAsync(ct);
-        return GetService(settings.PreferredDataSource);
+        var source = requestedSource
+            ?? (await _settingsRepo.GetAsync(ct)).PreferredDataSource;
+        var resolvedSource = source == DataSource.Alpaca
+                             && !_alpacaSettings.HasConfiguredCredentials
+            ? DataSource.Yahoo
+            : source;
+        return new DataFeedSelection(resolvedSource, GetService(source));
     }
 
     public IDataFeedService GetService(DataSource dataSource)

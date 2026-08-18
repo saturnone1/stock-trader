@@ -76,6 +76,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BacktestPreparedSimulationRunner>();
         services.AddScoped<IOptimizationCandidateEvaluator, OptimizationCandidateEvaluator>();
         services.AddScoped<BacktestRegimeMapBuilder>();
+        services.AddScoped<IOptimizationEvaluationContextPreparer, OptimizationEvaluationContextPreparer>();
         services.AddScoped<BacktestOptimizationService>();
         services.AddScoped<BacktestService>();
         services.AddScoped<IBacktestService>(sp => sp.GetRequiredService<BacktestService>());

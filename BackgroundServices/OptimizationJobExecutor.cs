@@ -1,24 +1,16 @@
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
-using StockTrader.Configuration;
-using StockTrader.Application.Backtesting;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
-using StockTrader.Models.Enums;
-using StockTrader.Services.Backtest;
-using StockTrader.Services.DataFeed;
-using StockTrader.Services.Indicators;
-using StockTrader.Services.Patterns;
 
 namespace StockTrader.BackgroundServices;
 
 /// <summary>
 /// 단일 OptimizationJob을 실제로 실행하는 Executor.
-/// Singleton 수명이며 Scoped 서비스(BacktestService, IOptimizationRepository)는
+/// Singleton 수명이며 Scoped 애플리케이션 서비스와 저장소는
 /// IServiceScopeFactory로 per-job scope를 생성하여 접근합니다.
-/// BacktestService의 internal 메서드를 직접 재사용하여 데이터 1회 로드 후 청크 단위로 진행합니다.
+/// 준비된 평가 컨텍스트 위에서 청크·저장·중단 상태만 조정합니다.
 /// </summary>
 public class OptimizationJobExecutor
 {
@@ -47,17 +39,13 @@ public class OptimizationJobExecutor
         _logger.LogInformation("[Optimization] Job {Id} ({Name}) 실행 시작 — 청크크기={Chunk}",
             job.Id, job.Name, job.ChunkSize);
 
-        // per-job scope: BacktestService, IOptimizationRepository, IDataFeedServiceFactory
+        // per-job scope: application use cases and repository
         await using var scope = _scopeFactory.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 
-        var backtestService  = sp.GetRequiredService<BacktestService>();
-        var dataPreparer     = sp.GetRequiredService<BacktestDataPreparer>();
-        var customDetectors  = sp.GetRequiredService<ICustomStrategyDetectorFactory>();
+        var contextPreparer = sp.GetRequiredService<IOptimizationEvaluationContextPreparer>();
         var candidateEvaluator = sp.GetRequiredService<IOptimizationCandidateEvaluator>();
-        var patternSettings  = sp.GetRequiredService<IOptions<PatternSettings>>().Value;
         var repo             = sp.GetRequiredService<IOptimizationRepository>();
-        var dataFeedFactory  = sp.GetRequiredService<IDataFeedServiceFactory>();
 
         // ── 1. RequestJson 역직렬화 ──
         OptimizeRequest request;
@@ -75,47 +63,13 @@ public class OptimizationJobExecutor
         var period = OptimizationJobExecutionPolicy.SplitPeriod(
             request.From, request.To, request.OosPercent);
 
-        // ── 3. 데이터 피드 및 레짐 맵 1회 준비 ──
-        var dataFeed = request.DataSource.HasValue
-            ? dataFeedFactory.GetService(request.DataSource.Value)
-            : await dataFeedFactory.GetServiceAsync(ct);
+        // ── 3. 데이터 피드·레짐·타임프레임별 데이터 1회 준비 ──
+        var preparation = await contextPreparer.PrepareAsync(request, ct);
+        if (!preparation.IsSuccess)
+            throw new InvalidOperationException(preparation.Message);
+        var evaluation = preparation.Context!;
 
-        var regimeSymbol = request.DataSource == DataSource.LsSecurities ? "069500" : "SPY";
-        var regimeByDate = await backtestService.BuildRegimeMapAsync(
-            dataFeed, request.From, request.To, regimeSymbol, ct);
-
-        if (regimeByDate == null)
-            throw new InvalidOperationException("레짐 맵 빌드 실패 — SPY/069500 데이터를 확인하세요");
-
-        // ── 4. 심볼 데이터 사전 로드 (타임프레임별) ──
-        var timeFramesToLoad = request.OptimizeParams.TimeFrameOptions is { Count: > 0 }
-            ? request.OptimizeParams.TimeFrameOptions.Select(tf => (TimeFrame)tf).Distinct().ToList()
-            : new List<TimeFrame> { request.TimeFrame };
-
-        var referenceSymbols = customDetectors.Create(request.BasePattern).Strategy.ReferenceSymbols;
-        var optimizationSymbols = request.Symbols
-            .Concat(referenceSymbols)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var dataByTimeFrame = new Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>>();
-
-        foreach (var tf in timeFramesToLoad)
-        {
-            var prepared = await dataPreparer.PrepareAsync(
-                dataFeed, optimizationSymbols, tf, request.From, request.To,
-                patternSettings.CumulativeRsi2, patternSettings.Tqqq200Sma, ct);
-            if (prepared.HasData)
-                dataByTimeFrame[tf] = prepared.Symbols;
-        }
-
-        if (dataByTimeFrame.Count == 0)
-            throw new InvalidOperationException("유효한 심볼 데이터 없음 — 데이터 피드/심볼을 확인하세요");
-
-        var fullDataMap = dataByTimeFrame.ContainsKey(request.TimeFrame)
-            ? dataByTimeFrame[request.TimeFrame]
-            : dataByTimeFrame.Values.First();
-
-        // ── 5. 전체 조합 생성 / TotalCombinations 업데이트 ──
+        // ── 4. 전체 조합 생성 / TotalCombinations 업데이트 ──
         var allCombinations = StrategyOptimizationSpace.GenerateOptimizeCombinations(request.OptimizeParams);
         if (job.TotalCombinations == 0)
         {
@@ -133,20 +87,9 @@ public class OptimizationJobExecutor
         var stage1Combinations = searchPlan.Stage1Combinations;
         var stage2Budget = searchPlan.Stage2Budget;
 
-        var riskParams  = backtestService.DefaultRiskParams;
-        var evaluation = new OptimizationEvaluationContext(
-            request,
-            dataByTimeFrame,
-            fullDataMap,
-            regimeByDate,
-            new OptimizationRiskParameters(
-                riskParams.RiskPerTradePercent,
-                riskParams.DailyLossLimitPercent,
-                riskParams.MaxTotalPositions,
-                riskParams.MaxPositionsPerSector));
         var startedAt   = job.StartedAt ?? UtcNow;
 
-        // ── 6. Stage 1 청크 반복 ──
+        // ── 5. Stage 1 청크 반복 ──
         int chunkSize   = Math.Max(1, job.ChunkSize);
         int totalChunks = (int)Math.Ceiling(stage1Combinations.Count / (double)chunkSize);
         var stage1Results = new List<OptimizeResultItem>();
@@ -219,7 +162,7 @@ public class OptimizationJobExecutor
                 job.Id, chunkIdx + 1, totalChunks, job.TestedCombinations);
         }
 
-        // ── 7. Stage 2: 상위 5개 이웃 탐색 ──
+        // ── 6. Stage 2: 상위 5개 이웃 탐색 ──
         if (stage2Budget > 0)
         {
                 var neighbors = await BuildStage2NeighborsAsync(
@@ -290,7 +233,7 @@ public class OptimizationJobExecutor
             }
         }
 
-        // ── 8. OOS 검증: DB 상위 N개 재백테스트 ──
+        // ── 7. OOS 검증: DB 상위 N개 재백테스트 ──
         if (period.HasOutOfSample)
         {
             _logger.LogInformation("[Optimization] Job {Id}: OOS 검증 시작", job.Id);

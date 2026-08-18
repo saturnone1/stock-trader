@@ -1,44 +1,23 @@
 using System.Diagnostics;
-using Microsoft.Extensions.Options;
-using StockTrader.Application.Backtesting;
 using StockTrader.Application.Optimization;
-using StockTrader.Configuration;
 using StockTrader.Models;
-using StockTrader.Models.Enums;
-using StockTrader.Services.DataFeed;
-using StockTrader.Services.Patterns;
 
 namespace StockTrader.Services.Backtest;
 
 /// <summary>파라미터 후보 준비, IS/OOS 실행과 결과 랭킹을 조정하는 최적화 유스케이스입니다.</summary>
 public sealed class BacktestOptimizationService
 {
-    private readonly IDataFeedServiceFactory _dataFeeds;
-    private readonly ICustomStrategyDetectorFactory _detectors;
-    private readonly BacktestDataPreparer _dataPreparer;
+    private readonly IOptimizationEvaluationContextPreparer _contextPreparer;
     private readonly IOptimizationCandidateEvaluator _candidateEvaluator;
-    private readonly BacktestRegimeMapBuilder _regimes;
-    private readonly TradingSettings _tradingSettings;
-    private readonly PatternSettings _patternSettings;
     private readonly ILogger<BacktestOptimizationService> _logger;
 
     public BacktestOptimizationService(
-        IDataFeedServiceFactory dataFeeds,
-        ICustomStrategyDetectorFactory detectors,
-        BacktestDataPreparer dataPreparer,
+        IOptimizationEvaluationContextPreparer contextPreparer,
         IOptimizationCandidateEvaluator candidateEvaluator,
-        BacktestRegimeMapBuilder regimes,
-        IOptions<TradingSettings> tradingSettings,
-        IOptions<PatternSettings> patternSettings,
         ILogger<BacktestOptimizationService> logger)
     {
-        _dataFeeds = dataFeeds;
-        _detectors = detectors;
-        _dataPreparer = dataPreparer;
+        _contextPreparer = contextPreparer;
         _candidateEvaluator = candidateEvaluator;
-        _regimes = regimes;
-        _tradingSettings = tradingSettings.Value;
-        _patternSettings = patternSettings.Value;
         _logger = logger;
     }
 
@@ -64,36 +43,13 @@ public sealed class BacktestOptimizationService
 
         var period = OptimizationJobExecutionPolicy.SplitPeriod(
             request.From, request.To, request.OosPercent);
-        var dataFeed = request.DataSource.HasValue
-            ? _dataFeeds.GetService(request.DataSource.Value)
-            : await _dataFeeds.GetServiceAsync(ct);
-        var regimeSymbol = request.DataSource == DataSource.LsSecurities ? "069500" : "SPY";
-        var regimeByDate = await _regimes.BuildAsync(
-            dataFeed, request.From, request.To, regimeSymbol, ct);
-        if (regimeByDate is null)
-            return Empty(totalCombinations, stopwatch.ElapsedMilliseconds);
-
-        var dataByTimeFrame = await PrepareDataAsync(request, dataFeed, ct);
-        if (dataByTimeFrame.Count == 0)
+        var preparation = await _contextPreparer.PrepareAsync(request, ct);
+        if (!preparation.IsSuccess)
         {
-            _logger.LogWarning("최적화: 유효한 심볼 데이터 없음");
+            _logger.LogWarning("최적화 준비 실패: {Message}", preparation.Message);
             return Empty(totalCombinations, stopwatch.ElapsedMilliseconds);
         }
-
-        var defaultData = dataByTimeFrame.TryGetValue(request.TimeFrame, out var requestedData)
-            ? requestedData
-            : dataByTimeFrame.Values.First();
-        var risk = new OptimizationRiskParameters(
-            _tradingSettings.RiskPerTradePercent,
-            _tradingSettings.DailyLossLimitPercent,
-            _tradingSettings.MaxTotalPositions,
-            _tradingSettings.MaxPositionsPerSector);
-        var evaluation = new OptimizationEvaluationContext(
-            request,
-            dataByTimeFrame,
-            defaultData,
-            regimeByDate,
-            risk);
+        var evaluation = preparation.Context!;
         var results = new List<OptimizeResultItem>(coarseCombinations.Count + fineBudget);
         results.AddRange(await _candidateEvaluator.EvaluateBatchAsync(
             evaluation,
@@ -160,39 +116,6 @@ public sealed class BacktestOptimizationService
             OosFrom = period.HasOutOfSample ? period.OutOfSampleFrom : null,
             OosTo = period.HasOutOfSample ? period.OutOfSampleTo : null
         };
-    }
-
-    private async Task<Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>>> PrepareDataAsync(
-        OptimizeRequest request,
-        IDataFeedService dataFeed,
-        CancellationToken ct)
-    {
-        var timeFrames = request.OptimizeParams.TimeFrameOptions is { Count: > 0 }
-            ? request.OptimizeParams.TimeFrameOptions
-                .Select(value => (TimeFrame)value)
-                .Distinct()
-                .ToList()
-            : [request.TimeFrame];
-        var symbols = request.Symbols
-            .Concat(BacktestDetectorMetadata.CollectReferenceSymbols(
-                [_detectors.Create(request.BasePattern)]))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var result = new Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>>();
-        foreach (var timeFrame in timeFrames)
-        {
-            var prepared = await _dataPreparer.PrepareAsync(
-                dataFeed,
-                symbols,
-                timeFrame,
-                request.From,
-                request.To,
-                _patternSettings.CumulativeRsi2,
-                _patternSettings.Tqqq200Sma,
-                ct);
-            if (prepared.HasData) result[timeFrame] = prepared.Symbols;
-        }
-        return result;
     }
 
     private static OptimizeResponse Empty(int total, long elapsed) => new()

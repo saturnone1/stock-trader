@@ -1,4 +1,5 @@
 using StockTrader.Application.Strategies;
+using StockTrader.Application.Backtesting;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -24,7 +25,7 @@ public sealed class BacktestRegimeMapBuilder
         IDataFeedService dataFeed,
         DateTime from,
         DateTime to,
-        string regimeSymbol = "SPY",
+        string regimeSymbol = MarketRegimeBenchmarkPolicy.UnitedStatesBenchmark,
         CancellationToken ct = default)
     {
         var lookbackFrom = from.AddDays(

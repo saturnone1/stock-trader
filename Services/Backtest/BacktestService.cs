@@ -68,10 +68,9 @@ public class BacktestService : IBacktestService
         _logger.LogInformation(
             "백테스트 시작: {Symbols} ({From:d} ~ {To:d}) [타임프레임: {TimeFrame}]",
             string.Join(", ", request.Symbols), request.From, request.To, request.TimeFrame);
-        var dataFeed = request.DataSource.HasValue
-            ? _dataFeedFactory.GetService(request.DataSource.Value)
-            : await _dataFeedFactory.GetServiceAsync(ct);
-        var regimeSymbol = request.DataSource == DataSource.LsSecurities ? "069500" : "SPY";
+        var feedSelection = await _dataFeedFactory.SelectAsync(request.DataSource, ct);
+        var dataFeed = feedSelection.Service;
+        var regimeSymbol = MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source);
         var regimes = await BuildRegimeMapAsync(
             dataFeed, request.From, request.To, regimeSymbol, ct);
         if (regimes is null) return new BacktestResult();
@@ -219,7 +218,7 @@ public class BacktestService : IBacktestService
         IDataFeedService dataFeed,
         DateTime from,
         DateTime to,
-        string regimeSymbol = "SPY",
+        string regimeSymbol = MarketRegimeBenchmarkPolicy.UnitedStatesBenchmark,
         CancellationToken ct = default) =>
         _regimeMapBuilder.BuildAsync(dataFeed, from, to, regimeSymbol, ct);
 

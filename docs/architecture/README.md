@@ -173,7 +173,9 @@ of reading system time. Both modes also call `IOptimizationCandidateEvaluator` f
 creation, timeframe data selection, prepared simulation, and candidate failure handling.
 `OptimizationResultProjection` owns fractional-to-percent metric conversion for IS and OOS results;
 the executor coordinates job lifecycle, chunks, persistence, and cancellation around that application
-port and remains capped below 450 lines.
+port. `IOptimizationEvaluationContextPreparer` now supplies both modes with the same resolved feed,
+central market-regime benchmark, reference symbols, requested timeframe data, and risk settings.
+The executor remains a 382-line job coordinator capped below 400 lines.
 
 ## Decision records
 
@@ -196,4 +198,6 @@ port and remains capped below 450 lines.
   clocks, and candidate execution assumptions deterministic across optimization modes.
 - `adr/0010-share-optimization-candidate-evaluation.md`: route synchronous and background candidate
   simulation plus result-unit projection through one application boundary.
+- `adr/0011-prepare-optimization-evaluation-context.md`: resolve feed identity, regime benchmark,
+  prepared symbols, timeframe data, and risk settings through one optimization preparation port.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

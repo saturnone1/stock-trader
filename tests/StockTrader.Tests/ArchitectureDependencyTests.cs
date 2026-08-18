@@ -1002,8 +1002,33 @@ public class ArchitectureDependencyTests
             repository, "Services/Backtest/OptimizationCandidateEvaluator.cs"));
         var projection = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizationResultProjection.cs"));
+        var preparationPort = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/IOptimizationEvaluationContextPreparer.cs"));
+        var preparer = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/OptimizationEvaluationContextPreparer.cs"));
+        var benchmarkPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Backtesting/MarketRegimeBenchmarkPolicy.cs"));
+        var backtest = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestService.cs"));
 
-        source.Should().Contain("BacktestDataPreparer");
+        source.Should().Contain("IOptimizationEvaluationContextPreparer");
+        synchronous.Should().Contain("IOptimizationEvaluationContextPreparer");
+        source.Should().NotContain("BacktestDataPreparer");
+        source.Should().NotContain("IDataFeedServiceFactory");
+        source.Should().NotContain("ICustomStrategyDetectorFactory");
+        synchronous.Should().NotContain("BacktestDataPreparer");
+        synchronous.Should().NotContain("IDataFeedServiceFactory");
+        preparationPort.Should().Contain("OptimizationPreparationResult");
+        preparationPort.Should().Contain("OptimizationDataPreparationPolicy");
+        preparer.Should().Contain("BacktestDataPreparer");
+        preparer.Should().Contain("BacktestRegimeMapBuilder");
+        preparer.Should().Contain("_dataFeeds.SelectAsync(request.DataSource, ct)");
+        preparer.Should().Contain("MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source)");
+        benchmarkPolicy.Should().Contain("UnitedStatesBenchmark = \"SPY\"");
+        benchmarkPolicy.Should().Contain("KoreaBenchmark = \"069500\"");
+        backtest.Should().Contain("_dataFeedFactory.SelectAsync(request.DataSource, ct)");
+        backtest.Should().Contain("MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source)");
+        backtest.Should().NotContain("request.DataSource == DataSource.LsSecurities");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
         source.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
         source.Should().Contain("TimeProvider");
@@ -1034,7 +1059,7 @@ public class ArchitectureDependencyTests
         source.Should().NotContain("0.05m, 1.00m");
         File.ReadAllLines(Path.Combine(
                 repository, "BackgroundServices/OptimizationJobExecutor.cs"))
-            .Length.Should().BeLessThanOrEqualTo(450);
+            .Length.Should().BeLessThanOrEqualTo(400);
         source.Should().NotContain("GetHistoricalBarsAsync");
         source.Should().NotContain("IndicatorService.ExtractCloses");
         source.Should().NotContain("new PatternSettings()");
