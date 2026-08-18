@@ -165,6 +165,12 @@
 - Strategy CRUD and promotion now use `StoredStrategy` through `ICustomPatternStore`. EF strategy
   rows are translated only inside the SQLite adapter; application and API source cannot reference
   the persistence entity, and mapper round-trip tests protect every strategy field.
+- `LongPositionScalingPolicy` now owns original-entry-based scale quantity rounding, scale-in
+  weighted-average price, scale-out remaining cost, and adapter-supplied capital caps. Preview and
+  backtest no longer disagree between nearest-share rounding and truncation, and backtest preserves
+  the original quantity after partial exits. Rule execution counts advance only after an actual
+  scaling fill. Live execution remains explicitly rejected until broker
+  partial-order reconciliation can honor the same contract.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

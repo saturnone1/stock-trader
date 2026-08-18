@@ -121,6 +121,9 @@ internal sealed class BacktestExecutionAdapter
             StopLoss = state.StopPrice,
             Target = source.Target,
             Quantity = quantityBecomesRemaining ? state.CurrentQuantity : source.Quantity,
+            InitialQuantity = source.InitialQuantity > 0
+                ? source.InitialQuantity
+                : source.Quantity,
             CurrentQuantity = state.CurrentQuantity,
             TotalCost = quantityBecomesRemaining ? source.EntryPrice * state.CurrentQuantity : source.TotalCost,
             EntryTime = source.EntryTime,
@@ -205,6 +208,8 @@ internal sealed class BacktestExecutionAdapter
         public decimal OriginalStop { get; init; }
         public decimal Target { get; init; }
         public int Quantity { get; init; }
+        /// <summary>스케일링 퍼센트의 고정 기준이 되는 최초 진입 수량</summary>
+        public int InitialQuantity { get; init; }
         public DateTime EntryTime { get; init; }
         public int EntryBarIndex { get; init; }
         public decimal EntryAtr { get; init; }

@@ -162,42 +162,50 @@ public sealed class PatternPreviewSimulationEngine
                     var profitPercent = position.EntryPrice > 0
                         ? (current.Close - position.EntryPrice) / position.EntryPrice * 100m
                         : 0;
-                    var scaling = input.Runtime.CheckScaling(
+                    var scalingMatch = input.Runtime.EvaluateScaling(
                         window, profitPercent, position.ScaleCounts);
-                    if (scaling is not null)
+                    if (scalingMatch is not null)
                     {
-                        var amount = Math.Max(
-                            1,
-                            (int)Math.Round(position.InitialQuantity * scaling.Percent / 100m));
-                        if (string.Equals(
-                                scaling.Direction,
-                                StrategyCatalog.ScalingInDirection,
-                                StringComparison.OrdinalIgnoreCase))
+                        var scaling = scalingMatch.Rule;
+                        var scalingDecision = LongPositionScalingPolicy.Apply(
+                            new LongPositionScalingState(
+                                position.InitialQuantity,
+                                position.CurrentQuantity,
+                                position.EntryPrice,
+                                position.TotalCost),
+                            scaling.Direction,
+                            scaling.Percent,
+                            current.Close);
+                        if (scalingDecision?.Action == LongPositionScalingAction.ScaleIn)
                         {
-                            var totalCost = position.EntryPrice * position.CurrentQuantity
-                                + current.Close * amount;
-                            position.InvestedCapital += current.Close * amount;
-                            position.CurrentQuantity += amount;
-                            position.EntryPrice = totalCost / position.CurrentQuantity;
+                            LongPositionScalingPolicy.RegisterExecution(
+                                position.ScaleCounts, scalingMatch.RuleIndex);
+                            position.InvestedCapital +=
+                                current.Close * scalingDecision.ExecutedQuantity;
+                            position.CurrentQuantity = scalingDecision.State.CurrentQuantity;
+                            position.EntryPrice = scalingDecision.State.EntryPrice;
+                            position.TotalCost = scalingDecision.State.TotalCost;
                             markers.Add(new PatternPreviewMarker(
                                 current.Timestamp,
                                 StrategyCatalog.ScalingInDirection,
                                 current.Close,
-                                Details: $"최초 수량의 {scaling.Percent:F0}% 추가 매수 · 새 평균가 {position.EntryPrice:F2}"));
+                                Details: $"최초 수량의 {scaling.Percent:F0}% 추가 매수"
+                                    + $"({scalingDecision.ExecutedQuantity}주) · 새 평균가 {position.EntryPrice:F2}"));
                         }
-                        else
+                        else if (scalingDecision?.Action == LongPositionScalingAction.ScaleOut)
                         {
-                            var sold = Math.Min(amount, position.CurrentQuantity - 1);
-                            if (sold > 0)
-                            {
-                                Realize(position, current.Close, sold);
-                                position.CurrentQuantity -= sold;
-                                markers.Add(new PatternPreviewMarker(
-                                    current.Timestamp,
-                                    StrategyCatalog.ScalingOutDirection,
-                                    current.Close,
-                                    Details: $"최초 수량의 {scaling.Percent:F0}% 일부 매도"));
-                            }
+                            LongPositionScalingPolicy.RegisterExecution(
+                                position.ScaleCounts, scalingMatch.RuleIndex);
+                            Realize(position, current.Close, scalingDecision.ExecutedQuantity);
+                            position.CurrentQuantity = scalingDecision.State.CurrentQuantity;
+                            position.EntryPrice = scalingDecision.State.EntryPrice;
+                            position.TotalCost = scalingDecision.State.TotalCost;
+                            markers.Add(new PatternPreviewMarker(
+                                current.Timestamp,
+                                StrategyCatalog.ScalingOutDirection,
+                                current.Close,
+                                Details: $"최초 수량의 {scaling.Percent:F0}% 일부 매도"
+                                    + $"({scalingDecision.ExecutedQuantity}주)"));
                         }
                     }
                 }
@@ -308,6 +316,7 @@ public sealed class PatternPreviewSimulationEngine
                 InitialRisk = fill.RiskDistance,
                 EntryAtr = entryAtr > 0 ? entryAtr : fill.RiskDistance,
                 InvestedCapital = fill.EntryPrice * PreviewQuantity,
+                TotalCost = fill.EntryPrice * PreviewQuantity,
                 AllocationScale = Math.Min(
                     PositionAllocationPolicy.NormalizeScale(signal.AllocationScale),
                     portfolioRules.MaxSinglePositionPercent > 0
@@ -414,16 +423,19 @@ public sealed class PatternPreviewSimulationEngine
         public bool BreakevenApplied { get; set; }
         public bool TrailingActivated { get; set; }
         public decimal InvestedCapital { get; set; }
+        public decimal TotalCost { get; set; }
         public decimal RealizedPnl { get; set; }
         public decimal AllocationScale { get; init; } = 1m;
         public Dictionary<int, int> ScaleCounts { get; } = [];
 
         public void Apply(LongPositionExecutionState state)
         {
+            var quantityChanged = CurrentQuantity != state.CurrentQuantity;
             StopPrice = state.StopPrice;
             HighestPrice = state.HighestPrice;
             LowestPrice = state.LowestPrice;
             CurrentQuantity = state.CurrentQuantity;
+            if (quantityChanged) TotalCost = state.EntryPrice * state.CurrentQuantity;
             PartialProfitTaken = state.PartialProfitTaken;
             BreakevenApplied = state.BreakevenApplied;
             TrailingActivated = state.TrailingActivated;

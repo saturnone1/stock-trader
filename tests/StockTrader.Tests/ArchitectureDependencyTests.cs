@@ -845,6 +845,12 @@ public class ArchitectureDependencyTests
             repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
         var preview = File.ReadAllText(Path.Combine(
             repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
+        var exitProcessor = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPositionExitProcessor.cs"));
+        var scalingPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LongPositionScalingPolicy.cs"));
+        var ruleRuntime = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/RuleBasedDetector.cs"));
 
         engine.Should().Contain("positionExitProcessor.Process(");
         engine.Should().Contain("pendingEntryProcessor.Process(");
@@ -859,7 +865,14 @@ public class ArchitectureDependencyTests
         engine.Should().NotContain("LongEntryFillPolicy.Reprice(");
         executionAdapter.Should().NotContain("SimulateSymbolAsync(");
         executionAdapter.Should().NotContain("DetectAsync(");
-        preview.Should().Contain("StrategyCatalog.ScalingInDirection");
+        preview.Should().Contain("LongPositionScalingPolicy.Apply(");
+        preview.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
+        exitProcessor.Should().Contain("LongPositionScalingPolicy.Apply(");
+        exitProcessor.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
+        preview.Should().NotContain("Math.Round(position.InitialQuantity");
+        exitProcessor.Should().NotContain("position.Quantity * scaling.Percent");
+        scalingPolicy.Should().Contain("Math.Floor(rawQuantity)");
+        ruleRuntime.Should().NotContain("scaleCounts[i] =");
     }
 
     [Fact]
@@ -999,6 +1012,8 @@ public class ArchitectureDependencyTests
         order.Should().NotContain("actualEntry - stopDistance");
         order.Should().NotContain("actualEntry + targetDistance");
         parity.Should().Contain("PreviewBacktestAndLiveFill_RunTheSameCompiledNextOpenStrategy");
+        parity.Should().Contain("PreviewAndBacktest_RunTheSameCompiledFractionalScaleOut");
+        parity.Should().Contain("ScalingStrategy_IsRejectedForLiveUntilBrokerExecutionHasParity");
         parity.Should().Contain("previewEntry.StopPrice.Should().Be(liveFill.StopPrice)");
         parity.Should().Contain("liveExit.Reason.Should().Be(previewExit.Reason)");
         preview.Should().NotContain("current.Low <= position.StopPrice");

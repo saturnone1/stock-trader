@@ -206,9 +206,9 @@ public class PatternPreviewSimulationGoldenTests
 
         public bool ShouldExit(OhlcvBar[] bars) => false;
 
-        public ScalingRule? CheckScaling(
+        public ScalingRuleMatch? EvaluateScaling(
             OhlcvBar[] bars,
             decimal currentProfitPercent,
-            Dictionary<int, int> scaleCounts) => null;
+            IReadOnlyDictionary<int, int> scaleCounts) => null;
     }
 }

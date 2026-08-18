@@ -16,7 +16,7 @@ namespace StockTrader.Tests;
 public class BacktestPositionExitProcessorTests
 {
     [Fact]
-    public void Process_AppliesScaleOutAfterIntrabarExitPolicyKeepsPositionOpen()
+    public void Process_ScaleOutUsesOriginalEntryQuantityAfterEarlierPartialExit()
     {
         var bars = Enumerable.Range(0, 60).Select(index => new OhlcvBar
         {
@@ -53,9 +53,10 @@ public class BacktestPositionExitProcessorTests
             OriginalStop = 50m,
             StopLoss = 50m,
             Target = 200m,
-            Quantity = 10,
-            CurrentQuantity = 10,
-            TotalCost = 1_000m,
+            Quantity = 5,
+            InitialQuantity = 10,
+            CurrentQuantity = 5,
+            TotalCost = 500m,
             EntryTime = bars[0].Timestamp,
             EntryBarIndex = 0,
             EntryAtr = 5m,
@@ -88,10 +89,10 @@ public class BacktestPositionExitProcessorTests
 
         tradeLedger.Trades.Should().ContainSingle(trade =>
             trade.ExitReason == "분할 매도(50%)"
-            && trade.Quantity == 5
+            && trade.Quantity == 4
             && trade.ExitPrice == 110m);
-        portfolio.OpenPositions["AAA"].CurrentQuantity.Should().Be(5);
-        portfolio.OpenPositions["AAA"].TotalCost.Should().Be(500m);
+        portfolio.OpenPositions["AAA"].CurrentQuantity.Should().Be(1);
+        portfolio.OpenPositions["AAA"].TotalCost.Should().Be(100m);
     }
 
     private static EntryRule PassingRule() => new()

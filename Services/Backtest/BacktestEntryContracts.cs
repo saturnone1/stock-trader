@@ -84,6 +84,7 @@ internal static class BacktestOpenPositionFactory
         StopLoss = stopPrice,
         Target = targetPrice,
         Quantity = quantity,
+        InitialQuantity = quantity,
         CurrentQuantity = quantity,
         TotalCost = entryPrice * quantity,
         EntryTime = entryBar.Timestamp,

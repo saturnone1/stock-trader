@@ -22,6 +22,142 @@ namespace StockTrader.Tests;
 public class CustomStrategyExecutionParityTests
 {
     [Fact]
+    public async Task PreviewAndBacktest_RunTheSameCompiledFractionalScaleOut()
+    {
+        var bars = Bars();
+        bars[51].Open = 100m;
+        bars[51].High = 111m;
+        bars[51].Low = 99m;
+        bars[51].Close = 110m;
+        var definition = new StrategyDocument
+        {
+            Name = "compiled-scaling-parity",
+            EntryMode = StrategyCatalog.CurrentCloseEntryMode,
+            EntryRulesJson = JsonSerializer.Serialize(new[] { PassingPriceChangeRule() }),
+            ScalingRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new ScalingRule
+                {
+                    Direction = StrategyCatalog.ScalingOutDirection,
+                    Percent = 1.5m,
+                    MaxCount = 1,
+                    Conditions = [PassingPriceChangeRule()]
+                }
+            }),
+            AtrStopMultiplier = 10m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0
+        };
+        var compilation = StrategyCompiler.Compile(definition);
+        compilation.Errors.Should().BeEmpty();
+        var strategy = compilation.Strategy!;
+        var indicators = new IndicatorService();
+        var atr = Enumerable.Repeat(1m, bars.Length).ToArray();
+        var factory = new CustomStrategyDetectorFactory(
+            indicators,
+            new FixedTimeProvider(
+                new DateTimeOffset(2024, 3, 1, 0, 0, 0, TimeSpan.Zero)));
+
+        var preview = await new PatternPreviewSimulationEngine().RunAsync(
+            new PatternPreviewSimulationInput(
+                "AAA",
+                TimeFrame.Daily,
+                bars[50].Timestamp,
+                bars[^1].Timestamp.AddDays(1),
+                bars,
+                atr,
+                new Dictionary<string, OhlcvBar[]>(),
+                [],
+                factory.Create(strategy)));
+
+        var backtest = await new BacktestSimulationEngine(
+                new BacktestSignalEntryProcessor(
+                    NullLogger<BacktestSignalEntryProcessor>.Instance))
+            .RunAsync(
+                ["AAA"],
+                new Dictionary<string, PreparedSymbolData>
+                {
+                    ["AAA"] = Prepared(bars, atr)
+                },
+                [factory.Create(strategy)],
+                [],
+                bars[50].Timestamp,
+                bars[^1].Timestamp,
+                10_000m,
+                0m,
+                0m,
+                TimeFrame.Daily,
+                new BacktestRiskParameters(1m, 0m, 1, 1),
+                null,
+                SlippageModel.Fixed,
+                [],
+                bars[0].Timestamp,
+                new BacktestExecutionAdapter(),
+                null,
+                new CumulativeRsi2Config(),
+                CancellationToken.None);
+
+        preview.Should().NotBeNull();
+        var previewScaleOut = preview!.Markers.Should().ContainSingle(marker =>
+            marker.Type == StrategyCatalog.ScalingOutDirection).Subject;
+        var backtestScaleOut = backtest.Trades.Should().ContainSingle(trade =>
+            trade.ExitReason == "분할 매도(1.5%)").Subject;
+        previewScaleOut.Date.Should().Be(backtestScaleOut.ExitTime);
+        previewScaleOut.Price.Should().Be(backtestScaleOut.ExitPrice);
+        previewScaleOut.Details.Should().Contain("(1주)");
+        backtestScaleOut.Quantity.Should().Be(1);
+        (preview.Summary.TotalReturnPercent / 100m)
+            .Should().BeApproximately(backtest.TotalReturnPercent, 0.0000001m);
+    }
+
+    [Fact]
+    public void ScalingStrategy_IsRejectedForLiveUntilBrokerExecutionHasParity()
+    {
+        var definition = new StrategyDocument
+        {
+            Name = "scaling-live-boundary",
+            TimeFrame = TimeFrame.Daily,
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
+            EnableLiveTrading = true,
+            EntryRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new EntryRule
+                {
+                    Indicator = "PRICE_CHANGE",
+                    Operator = ">=",
+                    Value = -100m,
+                    Params = new Dictionary<string, decimal> { ["bars"] = 1m }
+                }
+            }),
+            ScalingRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new ScalingRule
+                {
+                    Direction = StrategyCatalog.ScalingInDirection,
+                    Percent = 15m,
+                    MaxCount = 1,
+                    Conditions =
+                    [
+                        new EntryRule
+                        {
+                            Indicator = "PRICE_CHANGE",
+                            Operator = ">=",
+                            Value = -100m,
+                            Params = new Dictionary<string, decimal> { ["bars"] = 1m }
+                        }
+                    ]
+                }
+            })
+        };
+
+        var compilation = StrategyCompiler.Compile(definition);
+
+        compilation.Strategy.Should().BeNull();
+        compilation.Errors.Should().ContainSingle(error =>
+            error.Contains("추가 매수·분할 매도", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task PreviewBacktestAndLiveFill_RunTheSameCompiledNextOpenStrategy()
     {
         var bars = Bars();
@@ -173,6 +309,14 @@ public class CustomStrategyExecutionParityTests
             bars.Select((bar, index) => (bar.Timestamp, index))
                 .ToDictionary(pair => pair.Timestamp, pair => pair.index));
     }
+
+    private static EntryRule PassingPriceChangeRule() => new()
+    {
+        Indicator = "PRICE_CHANGE",
+        Operator = ">=",
+        Value = -100m,
+        Params = new Dictionary<string, decimal> { ["bars"] = 1m }
+    };
 
     private static OhlcvBar[] Bars() => Enumerable.Range(0, 52)
         .Select(index => new OhlcvBar

@@ -61,6 +61,7 @@ public class BacktestExecutionAdapterTests
         stillOpen.Should().NotBeNull();
         stillOpen!.CurrentQuantity.Should().Be(5);
         stillOpen.Quantity.Should().Be(5);
+        stillOpen.InitialQuantity.Should().Be(10);
         stillOpen.EquityAtEntry.Should().Be(25_000m);
         trades.Should().ContainSingle(trade => trade.ExitReason == "부분 익절(1R)" && trade.Quantity == 5);
     }

@@ -239,9 +239,12 @@ public class RuleBasedDetector : ICustomStrategyDetector
     }
 
     /// <summary>
-    /// 스케일링 조건을 평가합니다. 매칭된 스케일링 규칙 반환 (없으면 null).
+    /// 스케일링 조건을 평가합니다. 실제 체결이 확정되기 전에는 실행 횟수를 변경하지 않습니다.
     /// </summary>
-    public ScalingRule? CheckScaling(OhlcvBar[] bars, decimal currentProfitPct, Dictionary<int, int> scaleCounts)
+    public ScalingRuleMatch? EvaluateScaling(
+        OhlcvBar[] bars,
+        decimal currentProfitPct,
+        IReadOnlyDictionary<int, int> scaleCounts)
     {
         for (int i = 0; i < _scalingRules.Count; i++)
         {
@@ -266,10 +269,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
                 if (!isAnd && result.IsMatch) break;
             }
             if ((isAnd && allMatch) || (!isAnd && anyMatch))
-            {
-                scaleCounts[i] = count + 1;
-                return sr;
-            }
+                return new ScalingRuleMatch(i, sr);
         }
         return null;
     }

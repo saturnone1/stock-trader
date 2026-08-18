@@ -78,34 +78,50 @@ internal sealed class BacktestPositionExitProcessor
                 _positionScaleCounts[symbol] = scaleCounts;
             }
 
-            var scaling = detector.CheckScaling(windowBars, currentProfitPercent, scaleCounts);
-            if (scaling == null) continue;
+            var scalingMatch = detector.EvaluateScaling(
+                windowBars, currentProfitPercent, scaleCounts);
+            if (scalingMatch == null) continue;
+            var scaling = scalingMatch.Rule;
 
-            var scaleQuantity = Math.Max(1, (int)(position.Quantity * scaling.Percent / 100m));
-            if (scaling.Direction == StrategyCatalog.ScalingInDirection)
+            var initialQuantity = position.InitialQuantity > 0
+                ? position.InitialQuantity
+                : position.Quantity;
+            var close = data.Bars[barIndex].Close;
+            var maxScaleInQuantity = ResolveMaxScaleInQuantity(
+                position,
+                close,
+                context.RuntimeRegistry.Find(position.CustomPatternName),
+                context);
+            var scalingDecision = LongPositionScalingPolicy.Apply(
+                new LongPositionScalingState(
+                    initialQuantity,
+                    CurrentQuantity(position),
+                    position.EntryPrice,
+                    position.TotalCost),
+                scaling.Direction,
+                scaling.Percent,
+                close,
+                maxScaleInQuantity);
+            if (scalingDecision is null) continue;
+
+            LongPositionScalingPolicy.RegisterExecution(
+                scaleCounts, scalingMatch.RuleIndex);
+
+            if (scalingDecision.Action == LongPositionScalingAction.ScaleIn)
             {
-                ApplyScaleIn(
-                    position,
-                    data.Bars[barIndex].Close,
-                    scaleQuantity,
-                    context.RuntimeRegistry.Find(position.CustomPatternName),
-                    context);
+                ApplyScalingState(position, scalingDecision.State);
                 continue;
             }
-
-            var sellQuantity = Math.Min(scaleQuantity, CurrentQuantity(position) - 1);
-            if (sellQuantity <= 0) continue;
 
             tradesBefore = context.TradeLedger.Count;
             context.TradeLedger.Trades.Add(BacktestExecutionAdapter.CreateTradeRecord(
                 symbol,
                 position,
-                data.Bars[barIndex].Close,
+                close,
                 data.Bars[barIndex].Timestamp,
                 $"분할 매도({scaling.Percent}%)",
-                sellQuantity));
-            position.CurrentQuantity = CurrentQuantity(position) - sellQuantity;
-            position.TotalCost = position.EntryPrice * position.CurrentQuantity;
+                scalingDecision.ExecutedQuantity));
+            ApplyScalingState(position, scalingDecision.State);
             context.TradeLedger.SettleSince(tradesBefore);
         }
     }
@@ -129,10 +145,9 @@ internal sealed class BacktestPositionExitProcessor
             context.TradeLedger.Trades[^1]);
     }
 
-    private static void ApplyScaleIn(
+    private static int ResolveMaxScaleInQuantity(
         BacktestExecutionAdapter.OpenPosition position,
         decimal close,
-        int requestedQuantity,
         BacktestStrategyRuntime? runtime,
         BacktestPositionExitContext context)
     {
@@ -145,16 +160,16 @@ internal sealed class BacktestPositionExitProcessor
         var remainingCapital = Math.Max(
             0m,
             context.Portfolio.CurrentEquity * capFraction - position.TotalCost);
-        var affordableQuantity = close > 0 ? (int)(remainingCapital / close) : 0;
-        var scaleQuantity = Math.Min(requestedQuantity, affordableQuantity);
-        if (scaleQuantity <= 0) return;
+        return LongPositionSizingPolicy.CalculateAffordableQuantity(remainingCapital, close);
+    }
 
-        var currentQuantity = CurrentQuantity(position);
-        var newQuantity = currentQuantity + scaleQuantity;
-        var newTotalCost = position.TotalCost + close * scaleQuantity;
-        position.CurrentQuantity = newQuantity;
-        position.TotalCost = newTotalCost;
-        position.EntryPrice = newTotalCost / newQuantity;
+    private static void ApplyScalingState(
+        BacktestExecutionAdapter.OpenPosition position,
+        LongPositionScalingState state)
+    {
+        position.CurrentQuantity = state.CurrentQuantity;
+        position.TotalCost = state.TotalCost;
+        position.EntryPrice = state.EntryPrice;
     }
 
     private static int CurrentQuantity(BacktestExecutionAdapter.OpenPosition position) =>
