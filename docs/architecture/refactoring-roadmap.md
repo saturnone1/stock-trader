@@ -287,8 +287,10 @@
   the original quantity after partial exits. Rule execution counts advance only after an actual
   scaling fill and belong to each open position rather than an orchestration service dictionary,
   preserving limits across processor recreation and position-state copies. Live persistence and
-  broker reconciliation now honor this contract; strategy compatibility remains explicitly rejected
-  until the live evaluator supplies identical scaling instructions and the central scale-in capital cap.
+  broker reconciliation honor this contract. `CompiledStrategyPositionInstructionResolver` now
+  creates close-rule and scaling-rule instructions for preview, backtest, and live execution from
+  the same runtime inputs, canonical reason, profit calculation, rule index, and execution counts.
+  Environment adapters retain only causal window selection and available-capital projection.
 - `OptimizationJobExecutionPolicy` now owns OOS splitting, deterministic evenly distributed 60/40 search
   planning, duration boundaries, and restart chunk calculations. `OptimizationBacktestAssumptions`
   is the single cost baseline for synchronous and background candidate evaluation. Both workers use

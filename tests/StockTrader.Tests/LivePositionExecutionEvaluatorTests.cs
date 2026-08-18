@@ -165,6 +165,42 @@ public class LivePositionExecutionEvaluatorTests
             ScalingRuleIndex: 0));
     }
 
+    [Fact]
+    public async Task EvaluateAsync_CustomExitUsesCanonicalSharedReason()
+    {
+        var passingRule = new EntryRule
+        {
+            Indicator = "PRICE_CHANGE",
+            Operator = ">=",
+            Value = -100m,
+            Params = new Dictionary<string, decimal> { ["bars"] = 1m },
+        };
+        var compilation = StrategyCompiler.Compile(new StrategyDocument
+        {
+            Name = "live-canonical-exit",
+            TimeFrame = TimeFrame.Daily,
+            EntryRulesJson = JsonSerializer.Serialize(new[] { passingRule }),
+            ExitRulesJson = JsonSerializer.Serialize(new[] { passingRule }),
+            AtrStopMultiplier = 10m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0,
+        });
+        compilation.Errors.Should().BeEmpty();
+        var strategy = compilation.Strategy!;
+        var (evaluator, repository, position) = Scenario(strategy);
+
+        var result = await evaluator.EvaluateAsync(
+            position,
+            strategy,
+            repository,
+            null);
+
+        result.Intent.Should().Be(new LiveLongPositionExecutionIntent(
+            position.Quantity,
+            LongPositionExecutionReasons.StrategyRuleExit,
+            PositionExecutionKind.FullExit));
+    }
+
     private static CompiledStrategy CompileScalingStrategy(
         string direction,
         decimal percent,

@@ -1334,6 +1334,9 @@ public class ArchitectureDependencyTests
             repository, "Services/Backtest/BacktestPendingEntryProcessor.cs"));
         var instructionResolver = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestStrategyExecutionInstructionResolver.cs"));
+        var sharedInstructionResolver = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/Execution/CompiledStrategyPositionInstructionResolver.cs"));
         var executionSession = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/LongPositionExecutionSessionPolicy.cs"));
         var scalingPolicy = File.ReadAllText(Path.Combine(
@@ -1361,8 +1364,18 @@ public class ArchitectureDependencyTests
         executionSession.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
         exitProcessor.Should().Contain("BacktestStrategyExecutionInstructionResolver.Resolve(");
         pendingEntryProcessor.Should().Contain("BacktestStrategyExecutionInstructionResolver.Resolve(");
-        instructionResolver.Should().Contain("detector.EvaluateScaling(");
+        instructionResolver.Should().Contain(
+            "CompiledStrategyPositionInstructionResolver.Resolve(");
         instructionResolver.Should().Contain("PositionScaleInCapacityPolicy.CalculateMaxPositionCost(");
+        sharedInstructionResolver.Should().Contain("runtime.ShouldExit(bars)");
+        sharedInstructionResolver.Should().Contain("runtime.EvaluateScaling(");
+        sharedInstructionResolver.Should().Contain(
+            "LongPositionExecutionReasons.StrategyRuleExit");
+        preview.Should().Contain("CompiledStrategyPositionInstructionResolver.Resolve(");
+        preview.Should().NotContain("input.Runtime.ShouldExit(");
+        preview.Should().NotContain("input.Runtime.EvaluateScaling(");
+        instructionResolver.Should().NotContain("detector.ShouldExit(");
+        instructionResolver.Should().NotContain("detector.EvaluateScaling(");
         preview.Should().NotContain("LongPositionScalingPolicy.Apply(");
         preview.Should().NotContain("LongPositionScalingPolicy.RegisterExecution(");
         exitProcessor.Should().NotContain("LongPositionScalingPolicy.Apply(");
@@ -2459,6 +2472,9 @@ public class ArchitectureDependencyTests
         var evaluatorPath = Path.Combine(
             repository, "Services/Order/LivePositionExecutionEvaluator.cs");
         var evaluator = File.ReadAllText(evaluatorPath);
+        var sharedInstructions = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/Execution/CompiledStrategyPositionInstructionResolver.cs"));
 
         File.ReadAllLines(liveManagerPath).Length.Should().BeLessThanOrEqualTo(80);
         File.ReadAllLines(evaluatorPath).Length.Should().BeLessThanOrEqualTo(300);
@@ -2481,7 +2497,11 @@ public class ArchitectureDependencyTests
         monitoring.Should().NotContain("ReleasePositionExecutionClaimAsync(");
         monitoring.Should().NotContain("TryApplyPositionExecutionFillAsync(");
         evaluator.Should().Contain("LiveLongPositionExecutionAdapter.Evaluate(");
-        evaluator.Should().Contain("detector.EvaluateScaling(");
+        evaluator.Should().Contain("CompiledStrategyPositionInstructionResolver.Resolve(");
+        evaluator.Should().NotContain("detector.ShouldExit(");
+        evaluator.Should().NotContain("detector.EvaluateScaling(");
+        sharedInstructions.Should().Contain("runtime.ShouldExit(bars)");
+        sharedInstructions.Should().Contain("runtime.EvaluateScaling(");
         evaluator.Should().Contain("PositionScaleInCapacityPolicy.CalculateMaxPositionCost(");
         evaluator.Should().NotContain("EnablePartialProfit = false");
         evaluator.Should().NotContain("position.CurrentPrice <= position.StopLossPrice");

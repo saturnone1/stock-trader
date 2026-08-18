@@ -100,27 +100,13 @@ public sealed class PatternPreviewSimulationEngine
 
             if (position is not null && index >= position.EntryIndex)
             {
-                var strategyExit = input.Runtime.ShouldExit(window)
-                    ? new StrategyExitInstruction(
-                        current.Close,
-                        LongPositionExecutionReasons.StrategyRuleExit)
-                    : null;
-                LongPositionScalingInstruction? scaling = null;
-                if (input.Runtime.HasScalingRules)
-                {
-                    var profitPercent = position.EntryPrice > 0
-                        ? (current.Close - position.EntryPrice) / position.EntryPrice * 100m
-                        : 0;
-                    var scalingMatch = input.Runtime.EvaluateScaling(
-                        window, profitPercent, position.ScaleCounts);
-                    if (scalingMatch is not null)
-                    {
-                        scaling = new LongPositionScalingInstruction(
-                            scalingMatch.RuleIndex,
-                            scalingMatch.Rule.Direction,
-                            scalingMatch.Rule.Percent);
-                    }
-                }
+                var instructions = CompiledStrategyPositionInstructionResolver.Resolve(
+                    input.Runtime,
+                    window,
+                    current.Close,
+                    position.EntryPrice,
+                    position.ScaleCounts);
+                var scaling = instructions.Scaling;
 
                 var result = LongPositionExecutionSessionPolicy.Evaluate(
                     position.ToSessionState(),
@@ -128,7 +114,7 @@ public sealed class PatternPreviewSimulationEngine
                     index,
                     input.Atr[index],
                     exitPolicy,
-                    strategyExit,
+                    instructions.Exit,
                     scaling: scaling);
 
                 position.Apply(result.State);
