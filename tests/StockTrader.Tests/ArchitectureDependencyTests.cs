@@ -867,6 +867,27 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void PublicDeploymentArtifactsDoNotEmbedPrivateEnvironmentIdentity()
+    {
+        var repository = FindRepositoryRoot();
+        var deploy = File.ReadAllText(Path.Combine(repository, "scripts/deploy-k3s.sh"));
+        var desktopManifest = File.ReadAllText(Path.Combine(repository, "k8s/deployment-desktop.yaml"));
+        var publicConfiguration = string.Join('\n',
+            File.ReadAllText(Path.Combine(repository, "Program.cs")),
+            File.ReadAllText(Path.Combine(repository, "appsettings.json")),
+            File.ReadAllText(Path.Combine(repository, "Configuration/FinancialDataPipelineSettings.cs")),
+            File.ReadAllText(Path.Combine(repository, "DESKTOP_APP_README.md")),
+            desktopManifest);
+
+        deploy.Should().Contain("STOCKTRADER_HOST:?");
+        deploy.Should().Contain("__STOCKTRADER_HOST__");
+        desktopManifest.Should().Contain("host: \"__STOCKTRADER_HOST__\"");
+        publicConfiguration.Should().NotMatchRegex(@"(?i)C:\\\\Users\\\\");
+        publicConfiguration.Should().NotMatchRegex(@"(?i)[A-Z0-9.-]+\.local\b");
+        publicConfiguration.Should().NotMatchRegex(@"(?i)\b(?:10|192\.168)\.\d{1,3}\.\d{1,3}\.\d{1,3}\b");
+    }
+
+    [Fact]
     public void StoredStrategiesHaveAnExplicitFailClosedDocumentVersionBoundary()
     {
         var repository = FindRepositoryRoot();

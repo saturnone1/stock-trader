@@ -64,24 +64,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: "web"
 spec:
   rules:
-  - host: "stock-desktop.taewon"
-    http:
-      paths:
-      - path: /api
-        pathType: Prefix
-        backend:
-          service:
-            name: stocktrader-api
-            port:
-              number: 3000
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: stocktrader-desktop
-            port:
-              number: 8000
-  - host: "saturnone1.mooo.com"
+  - host: "__STOCKTRADER_HOST__"
     http:
       paths:
       - path: /api

@@ -9,5 +9,5 @@ public class FinancialDataPipelineSettings
     public int VendorSyncIntervalHours { get; set; } = 24;
     public int VendorSymbolLimit { get; set; } = 50;
     public string VendorSymbols { get; set; } = string.Empty;
-    public string VendorUserAgent { get; set; } = "StockTrader/1.0 (research@saturnone1.local)";
+    public string VendorUserAgent { get; set; } = "StockTrader/1.0 (contact@example.com)";
 }
