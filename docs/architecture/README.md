@@ -111,10 +111,11 @@ the same broker-evidence transaction. Custom live scaling uses the same compiled
 original-entry share rounding, persisted rule counts, and central scale-in capital cap as research.
 If broker account equity is unavailable, scale-in capacity is zero while risk-reducing scale-out
 instructions remain eligible.
-`LivePositionExitEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,
+`LivePositionExecutionEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,
 custom sell-rule evaluation, and translation into the shared decision policy. The 230-line
-`PositionExitManagerService` now owns only scheduling, broker state, persistence, and durable exit
-coordination. Entry ATR period and live-exit lookback values come from `StrategyEvaluationPolicy`.
+`PositionExecutionManagerService` now owns only scheduling, broker state, persistence, and durable
+position-order coordination. Entry ATR period and live-position lookback values come from
+`StrategyEvaluationPolicy`.
 `StrategyEntryEligibilityPolicy` is the corresponding common entry gate. Preview, backtest, and
 live recommendation adapters translate their runtime state into the same position-limit,
 drawdown, consecutive-loss, session-entry, and reentry decisions. Environment-specific bar/date

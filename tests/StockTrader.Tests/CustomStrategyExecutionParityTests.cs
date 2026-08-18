@@ -379,13 +379,13 @@ public class CustomStrategyExecutionParityTests
         livePosition.CurrentPrice = previewExit.Price;
         livePosition.HighSinceEntry = previewExit.Price;
         livePosition.EntryAtr = atr[50];
-        var liveExit = await new LivePositionExitEvaluator(
+        var liveExecution = await new LivePositionExecutionEvaluator(
                 indicators,
                 factory,
                 patternSettings.Object,
                 new FixedTimeProvider(
                     new DateTimeOffset(bars[^1].Timestamp, TimeSpan.Zero)),
-                NullLogger<LivePositionExitEvaluator>.Instance)
+                NullLogger<LivePositionExecutionEvaluator>.Instance)
             .EvaluateAsync(
                 livePosition,
                 strategy,
@@ -401,8 +401,8 @@ public class CustomStrategyExecutionParityTests
         previewExit.Date.Should().Be(backtestTrade.ExitTime);
         previewExit.Price.Should().Be(backtestTrade.ExitPrice);
         previewExit.Reason.Should().Be(backtestTrade.ExitReason);
-        liveExit.ShouldExit.Should().BeTrue();
-        liveExit.Reason.Should().Be(previewExit.Reason);
+        liveExecution.ShouldExecute.Should().BeTrue();
+        liveExecution.Reason.Should().Be(previewExit.Reason);
     }
 
     [Fact]

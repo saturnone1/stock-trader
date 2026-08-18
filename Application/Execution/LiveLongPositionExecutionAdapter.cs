@@ -15,7 +15,7 @@ public sealed record LiveLongPositionExecutionDecision(
     LiveLongPositionExecutionIntent? Intent = null,
     LongPositionSessionEvent? StopUpdate = null)
 {
-    public bool ShouldExit => Intent is not null;
+    public bool ShouldExecute => Intent is not null;
     public string Reason => Intent?.Reason ?? string.Empty;
 }
 

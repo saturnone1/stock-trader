@@ -1571,7 +1571,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/orders/reconcile-position-exit": {
+    "/api/orders/reconcile-position-order": {
         parameters: {
             query?: never;
             header?: never;

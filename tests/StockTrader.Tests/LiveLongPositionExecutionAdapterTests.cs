@@ -13,7 +13,7 @@ public class LiveLongPositionExecutionAdapterTests
     {
         var result = Evaluate(State(), 94m, Policy);
 
-        result.ShouldExit.Should().BeTrue();
+        result.ShouldExecute.Should().BeTrue();
         result.Reason.Should().Be("손절");
         result.Intent!.Quantity.Should().Be(10);
     }
@@ -25,7 +25,7 @@ public class LiveLongPositionExecutionAdapterTests
             State(), 10, 115m, 2m, Policy, true,
             new StrategyExitInstruction(115m, "전략 청산"));
 
-        result.ShouldExit.Should().BeTrue();
+        result.ShouldExecute.Should().BeTrue();
         result.Reason.Should().Be("목표 도달");
     }
 
@@ -35,7 +35,7 @@ public class LiveLongPositionExecutionAdapterTests
         var result = LiveLongPositionExecutionAdapter.Evaluate(
             State(), 10, 102m, 2m, Policy with { MaxHoldingBars = 0 }, true);
 
-        result.ShouldExit.Should().BeFalse();
+        result.ShouldExecute.Should().BeFalse();
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class LiveLongPositionExecutionAdapterTests
     {
         var live = Evaluate(State(), 110m, Policy);
 
-        live.ShouldExit.Should().BeFalse();
+        live.ShouldExecute.Should().BeFalse();
         live.State.TrailingActivated.Should().BeTrue();
         live.State.StopPrice.Should().Be(106m);
         live.StopUpdate.Should().NotBeNull();

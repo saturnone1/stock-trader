@@ -19,7 +19,7 @@ public static class StrategyEvaluationPolicy
     public const int EntryAtrPeriod = 14;
 
     /// <summary>실시간 청산 지표와 참조 종목을 준비하는 기본 달력일 범위입니다.</summary>
-    public const int LiveExitIndicatorLookbackDays = 400;
+    public const int LivePositionIndicatorLookbackDays = 400;
 
     /// <summary>ATR과 저장 위험거리가 모두 없을 때 사용하는 최후의 가격 위험 비율입니다.</summary>
     public const decimal FallbackRiskFraction = 0.02m;

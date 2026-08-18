@@ -16,7 +16,7 @@ namespace StockTrader.BackgroundServices;
 /// <summary>
 /// 공통 실행 정책으로 오픈 포지션을 평가하고 내구성 있는 브로커 주문을 조정합니다.
 /// </summary>
-public class PositionExitManagerService : BackgroundService
+public class PositionExecutionManagerService : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(1);
 
@@ -25,17 +25,17 @@ public class PositionExitManagerService : BackgroundService
     private readonly INotificationService _notificationService;
     private readonly IMarketCalendar _marketCalendar;
     private readonly TimeProvider _timeProvider;
-    private readonly ILogger<PositionExitManagerService> _logger;
+    private readonly ILogger<PositionExecutionManagerService> _logger;
 
-    private volatile PatternParameterOverrides? _liveExitOverrides;
+    private volatile PatternParameterOverrides? _liveExecutionOverrides;
 
-    public PositionExitManagerService(
+    public PositionExecutionManagerService(
         IServiceScopeFactory scopeFactory,
         IAccountManager accountManager,
         INotificationService notificationService,
         IMarketCalendar marketCalendar,
         TimeProvider timeProvider,
-        ILogger<PositionExitManagerService> logger)
+        ILogger<PositionExecutionManagerService> logger)
     {
         _scopeFactory = scopeFactory;
         _accountManager = accountManager;
@@ -47,7 +47,7 @@ public class PositionExitManagerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("PositionExitManagerService started");
+        _logger.LogInformation("PositionExecutionManagerService started");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -55,7 +55,7 @@ public class PositionExitManagerService : BackgroundService
             {
                 if (_marketCalendar.IsMarketOpen(MarketType.US))
                 {
-                    await CheckExitConditionsAsync(stoppingToken);
+                    await CheckPositionExecutionsAsync(stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -64,28 +64,28 @@ public class PositionExitManagerService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "PositionExitManagerService error");
+                _logger.LogError(ex, "PositionExecutionManagerService error");
             }
 
             await Task.Delay(CheckInterval, stoppingToken);
         }
 
-        _logger.LogInformation("PositionExitManagerService stopped");
+        _logger.LogInformation("PositionExecutionManagerService stopped");
     }
 
-    private async Task CheckExitConditionsAsync(CancellationToken ct)
+    private async Task CheckPositionExecutionsAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var liveParamService = scope.ServiceProvider.GetRequiredService<ILiveParameterService>();
         var strategies = scope.ServiceProvider.GetRequiredService<ICompiledStrategyRepository>();
-        var exitCoordinator = scope.ServiceProvider.GetRequiredService<ILivePositionExecutionCoordinator>();
-        var exitEvaluator = scope.ServiceProvider.GetRequiredService<LivePositionExitEvaluator>();
+        var executionCoordinator = scope.ServiceProvider.GetRequiredService<ILivePositionExecutionCoordinator>();
+        var executionEvaluator = scope.ServiceProvider.GetRequiredService<LivePositionExecutionEvaluator>();
         var tradingSettings = scope.ServiceProvider
             .GetRequiredService<IOptions<TradingSettings>>().Value;
 
-        _liveExitOverrides = await liveParamService.GetLiveOverridesAsync(ct);
+        _liveExecutionOverrides = await liveParamService.GetLiveOverridesAsync(ct);
 
         var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
         var customPatterns = await strategies.GetByNamesAsync(
@@ -108,9 +108,9 @@ public class PositionExitManagerService : BackgroundService
             {
                 if (position.ExecutionRequestedAt.HasValue)
                 {
-                    var reconciliation = await exitCoordinator.ReconcileAsync(
+                    var reconciliation = await executionCoordinator.ReconcileAsync(
                         position, brokerService, ct: ct);
-                    HandleExitReconciliation(position, reconciliation);
+                    HandleExecutionReconciliation(position, reconciliation);
                     continue;
                 }
 
@@ -127,30 +127,30 @@ public class PositionExitManagerService : BackgroundService
                 var trailingBefore = position.TrailingStopActivated;
 
                 customPatterns.TryGetValue(position.CustomPatternName ?? string.Empty, out var customStrategy);
-                var exitResult = await exitEvaluator.EvaluateAsync(
+                var executionDecision = await executionEvaluator.EvaluateAsync(
                     position,
                     customStrategy,
                     ohlcvRepo,
-                    _liveExitOverrides,
+                    _liveExecutionOverrides,
                     ct,
                     currentEquity: currentEquity,
                     maxTotalPositions: tradingSettings.MaxTotalPositions);
 
-                if (exitResult.ShouldExit)
+                if (executionDecision.ShouldExecute)
                 {
                     _logger.LogInformation(
-                        "[EXIT] {Symbol} — {Reason} (Entry={Entry:F2}, Current={Current:F2}, PnL={PnL:P2})",
-                        position.Symbol, exitResult.Reason, position.EntryPrice,
+                        "[POSITION-ORDER] {Symbol} — {Reason} (Entry={Entry:F2}, Current={Current:F2}, PnL={PnL:P2})",
+                        position.Symbol, executionDecision.Reason, position.EntryPrice,
                         position.CurrentPrice, position.CurrentPrice / position.EntryPrice - 1);
 
-                    var submission = await exitCoordinator.SubmitAsync(
+                    var submission = await executionCoordinator.SubmitAsync(
                         position,
                         new LivePositionExecutionRequest(
-                            exitResult.Intent!.Quantity,
-                            exitResult.Intent.Reason,
-                            exitResult.Intent.Kind,
-                            exitResult.Intent.ScalingRuleIndex,
-                            exitResult.Intent.MarksPartialProfit),
+                            executionDecision.Intent!.Quantity,
+                            executionDecision.Intent.Reason,
+                            executionDecision.Intent.Kind,
+                            executionDecision.Intent.ScalingRuleIndex,
+                            executionDecision.Intent.MarksPartialProfit),
                         brokerService,
                         ct);
                     if (submission.Status != LivePositionExecutionSubmissionStatus.Accepted
@@ -158,14 +158,14 @@ public class PositionExitManagerService : BackgroundService
                         || !submission.RequestedAt.HasValue)
                         continue;
 
-                    var reconciliation = await exitCoordinator.ReconcileAsync(
+                    var reconciliation = await executionCoordinator.ReconcileAsync(
                         position, brokerService, [submission.Order], ct);
                     if (reconciliation.Status == LivePositionExecutionReconciliationStatus.AwaitingBroker)
                     {
-                        reconciliation = await WaitForExitResolutionAsync(
-                            position, brokerService, exitCoordinator, ct);
+                        reconciliation = await WaitForExecutionResolutionAsync(
+                            position, brokerService, executionCoordinator, ct);
                     }
-                    HandleExitReconciliation(position, reconciliation);
+                    HandleExecutionReconciliation(position, reconciliation);
                 }
                 else
                 {
@@ -184,22 +184,22 @@ public class PositionExitManagerService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error evaluating exit for {Symbol}", position.Symbol);
+                _logger.LogError(ex, "Error evaluating position order for {Symbol}", position.Symbol);
             }
         }
     }
 
-    private static async Task<LivePositionExecutionReconciliationResult> WaitForExitResolutionAsync(
+    private static async Task<LivePositionExecutionReconciliationResult> WaitForExecutionResolutionAsync(
         Position position,
         IBrokerService broker,
-        ILivePositionExecutionCoordinator exitCoordinator,
+        ILivePositionExecutionCoordinator executionCoordinator,
         CancellationToken ct)
     {
         const int maxAttempts = 10;
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             await Task.Delay(500, ct);
-            var reconciliation = await exitCoordinator.ReconcileAsync(position, broker, ct: ct);
+            var reconciliation = await executionCoordinator.ReconcileAsync(position, broker, ct: ct);
             if (reconciliation.Status != LivePositionExecutionReconciliationStatus.AwaitingBroker)
                 return reconciliation;
         }
@@ -207,13 +207,13 @@ public class PositionExitManagerService : BackgroundService
             LivePositionExecutionReconciliationStatus.AwaitingBroker);
     }
 
-    private void HandleExitReconciliation(
+    private void HandleExecutionReconciliation(
         Position position,
         LivePositionExecutionReconciliationResult reconciliation)
     {
         if (reconciliation.Status == LivePositionExecutionReconciliationStatus.ReleasedForRetry)
         {
-            _logger.LogWarning("[EXIT] {Symbol}: 청산 주문 {OrderId}가 {Status} 상태여서 재평가를 허용합니다.",
+            _logger.LogWarning("[POSITION-ORDER] {Symbol}: 주문 {OrderId}가 {Status} 상태여서 재평가를 허용합니다.",
                 position.Symbol, reconciliation.Order?.OrderId, reconciliation.Order?.Status);
             return;
         }
@@ -221,7 +221,7 @@ public class PositionExitManagerService : BackgroundService
         if (reconciliation.Status == LivePositionExecutionReconciliationStatus.BrokerFillMismatch)
         {
             _logger.LogError(
-                "[EXIT] {Symbol}: 요청 수량 {RequestedQuantity}주와 브로커 체결 수량 {FilledQuantity}주가 다릅니다. 자동 반영을 중단합니다.",
+                "[POSITION-ORDER] {Symbol}: 요청 수량 {RequestedQuantity}주와 브로커 체결 수량 {FilledQuantity}주가 다릅니다. 자동 반영을 중단합니다.",
                 position.Symbol,
                 position.ExecutionRequestQuantity ?? position.Quantity,
                 reconciliation.FilledQuantity);
@@ -230,7 +230,7 @@ public class PositionExitManagerService : BackgroundService
 
         if (reconciliation.Status != LivePositionExecutionReconciliationStatus.Completed)
         {
-            _logger.LogDebug("[EXIT] {Symbol}: 청산 주문 {OrderId}의 확정 상태를 기다립니다.",
+            _logger.LogDebug("[POSITION-ORDER] {Symbol}: 주문 {OrderId}의 확정 상태를 기다립니다.",
                 position.Symbol, position.ExecutionOrderId);
             return;
         }

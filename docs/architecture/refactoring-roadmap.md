@@ -98,9 +98,9 @@
   portfolio, and dashboard APIs share one open-position response with pending-exit state, requested
   quantity, and elapsed time. The desktop portfolio
   disables duplicate close requests and offers a safe status refresh instead of a force retry.
-- Live exit indicator preparation and strategy evaluation now run behind
-  `LivePositionExitEvaluator`; `PositionExitManagerService` has dropped from 426 to 230 lines and
-  coordinates only polling, broker prices, persistence, and durable exit submission. The evaluator
+- Live position indicator preparation and strategy evaluation now run behind
+  `LivePositionExecutionEvaluator`; `PositionExecutionManagerService` is capped at 250 lines and
+  coordinates only polling, broker prices, persistence, and durable position-order submission. The evaluator
   is 265 lines and consumes the central ATR period, indicator lookback, exit catalog, TQQQ stop,
   cumulative RSI2 decision, and custom compiled runtime policies.
 - `LongPositionCloseDecisionPolicy` is the shared owner of target, strategy-rule, and time-exit
@@ -285,8 +285,9 @@ strategy and execution policies. Current full-strategy goldens cover NextOpen pr
 fill and exit decisions, NextOpen entry-bar custom exits and scale-outs, fractional scale-out
 preview/backtest parity, and multi-symbol indicator cache isolation against per-symbol previews.
 Live scaling now flows through the durable position execution and reconciliation contract. Remaining
-Phase 2 work is narrowing names and boundaries that still describe this generic position workflow as
-exit-only, plus broader broker-capability and operator-status projection.
+The operator API and portfolio UI now expose one generic position-order status contract, including
+the order kind, instead of describing scale-ins as pending exits. Remaining Phase 2 work is broader
+broker-capability projection and further narrowing of orchestration boundaries.
 
 ## Phase 0 — Guardrails and governance
 

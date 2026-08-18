@@ -16,7 +16,7 @@ using StockTrader.Services.Patterns;
 
 namespace StockTrader.Tests;
 
-public class LivePositionExitEvaluatorTests
+public class LivePositionExecutionEvaluatorTests
 {
     [Fact]
     public async Task EvaluateAsync_UsesCompiledPartialProfitPolicyAndDefersStateUntilFill()
@@ -79,19 +79,19 @@ public class LivePositionExitEvaluatorTests
             OpenedAt = now.AddDays(-2),
         };
         var indicators = new IndicatorService();
-        var evaluator = new LivePositionExitEvaluator(
+        var evaluator = new LivePositionExecutionEvaluator(
             indicators,
             new CustomStrategyDetectorFactory(
                 indicators,
                 new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero))),
             settings.Object,
             new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero)),
-            NullLogger<LivePositionExitEvaluator>.Instance);
+            NullLogger<LivePositionExecutionEvaluator>.Instance);
 
         var result = await evaluator.EvaluateAsync(
             position, compilation.Strategy, repository.Object, null);
 
-        result.ShouldExit.Should().BeTrue();
+        result.ShouldExecute.Should().BeTrue();
         result.Intent!.Quantity.Should().Be(5);
         result.Intent.MarksPartialProfit.Should().BeTrue();
         result.Reason.Should().Be("부분 익절(1R)");
@@ -207,7 +207,7 @@ public class LivePositionExitEvaluatorTests
         return compilation.Strategy!;
     }
 
-    private static (LivePositionExitEvaluator Evaluator, IOhlcvRepository Repository, Position Position)
+    private static (LivePositionExecutionEvaluator Evaluator, IOhlcvRepository Repository, Position Position)
         Scenario(CompiledStrategy strategy)
     {
         var now = new DateTime(2026, 8, 18, 0, 0, 0, DateTimeKind.Utc);
@@ -231,12 +231,12 @@ public class LivePositionExitEvaluatorTests
         settings.SetupGet(value => value.CurrentValue).Returns(new PatternSettings());
         var indicators = new IndicatorService();
         var clock = new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero));
-        var evaluator = new LivePositionExitEvaluator(
+        var evaluator = new LivePositionExecutionEvaluator(
             indicators,
             new CustomStrategyDetectorFactory(indicators, clock),
             settings.Object,
             clock,
-            NullLogger<LivePositionExitEvaluator>.Instance);
+            NullLogger<LivePositionExecutionEvaluator>.Instance);
         var position = new Position
         {
             Id = 7,

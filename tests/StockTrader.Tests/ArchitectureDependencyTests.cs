@@ -537,7 +537,7 @@ public class ArchitectureDependencyTests
         {
             "Services/Patterns/PatternDetectionService.cs",
             "Services/Signal/SignalService.cs",
-            "BackgroundServices/PositionExitManagerService.cs"
+            "BackgroundServices/PositionExecutionManagerService.cs"
         };
         var forbidden = new[] { "JsonSerializer", "StrategyCompiler.Compile", ".CustomPatterns" };
 
@@ -1450,7 +1450,7 @@ public class ArchitectureDependencyTests
         parity.Should().Contain("ScalingStrategy_IsAcceptedForLiveAfterBrokerExecutionParity");
         executionParity.Should().Contain("CommonSessionAndLiveAdapter_AgreeOnPartialProfitIntent");
         parity.Should().Contain("previewEntry.StopPrice.Should().Be(livePosition.StopLossPrice)");
-        parity.Should().Contain("liveExit.Reason.Should().Be(previewExit.Reason)");
+        parity.Should().Contain("liveExecution.Reason.Should().Be(previewExit.Reason)");
         preview.Should().NotContain("current.Low <= position.StopPrice");
         preview.Should().NotContain("current.High >= position.TargetPrice");
     }
@@ -1512,8 +1512,8 @@ public class ArchitectureDependencyTests
             repository, "Services/Patterns/RuleConditionEvaluator.cs"));
         var preparer = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestDataPreparer.cs"));
-        var liveExit = File.ReadAllText(Path.Combine(
-            repository, "Services/Order/LivePositionExitEvaluator.cs"));
+        var liveExecution = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/LivePositionExecutionEvaluator.cs"));
 
         owner.Should().Contain("public const int MinimumWarmupBars = 50;");
         backtest.Should().Contain("StrategyEvaluationPolicy.MinimumWarmupBars");
@@ -1524,7 +1524,7 @@ public class ArchitectureDependencyTests
         detector.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
         preparer.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
         preview.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
-        liveExit.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
+        liveExecution.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
     }
 
     [Fact]
@@ -1549,7 +1549,7 @@ public class ArchitectureDependencyTests
         var backtest = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
         var live = File.ReadAllText(Path.Combine(
-            repository, "Services/Order/LivePositionExitEvaluator.cs"));
+            repository, "Services/Order/LivePositionExecutionEvaluator.cs"));
 
         backtest.Should().Contain("CumulativeRsi2ExitDecisionPolicy.Resolve(");
         live.Should().Contain("CumulativeRsi2ExitDecisionPolicy.Resolve(");
@@ -1566,7 +1566,7 @@ public class ArchitectureDependencyTests
         var preparer = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestDataPreparer.cs"));
         var live = File.ReadAllText(Path.Combine(
-            repository, "Services/Order/LivePositionExitEvaluator.cs"));
+            repository, "Services/Order/LivePositionExecutionEvaluator.cs"));
 
         detector.Should().Contain("Tqqq200SmaExecutionPolicy.ResolveEntryLevels(");
         preparer.Should().Contain("Tqqq200SmaExecutionPolicy.ResolveProtectiveStopFloor(");
@@ -1588,7 +1588,7 @@ public class ArchitectureDependencyTests
         var adapter = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
         var live = File.ReadAllText(Path.Combine(
-            repository, "Services/Order/LivePositionExitEvaluator.cs"));
+            repository, "Services/Order/LivePositionExecutionEvaluator.cs"));
 
         preview.Should().Contain("LongPositionExitPolicyCatalog.ForCustom(");
         engine.Should().Contain("_signalEntryProcessor.ProcessAsync(");
@@ -1601,20 +1601,20 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
-    public void LiveExitManagerDelegatesTradingDecisionsToPurePolicy()
+    public void LivePositionManagerDelegatesTradingDecisionsToPurePolicy()
     {
         var repository = FindRepositoryRoot();
         var liveManager = File.ReadAllText(Path.Combine(
-            repository, "BackgroundServices/PositionExitManagerService.cs"));
+            repository, "BackgroundServices/PositionExecutionManagerService.cs"));
         var evaluatorPath = Path.Combine(
-            repository, "Services/Order/LivePositionExitEvaluator.cs");
+            repository, "Services/Order/LivePositionExecutionEvaluator.cs");
         var evaluator = File.ReadAllText(evaluatorPath);
 
         File.ReadAllLines(Path.Combine(
-            repository, "BackgroundServices/PositionExitManagerService.cs"))
+            repository, "BackgroundServices/PositionExecutionManagerService.cs"))
             .Length.Should().BeLessThanOrEqualTo(250);
         File.ReadAllLines(evaluatorPath).Length.Should().BeLessThanOrEqualTo(300);
-        liveManager.Should().Contain("exitEvaluator.EvaluateAsync(");
+        liveManager.Should().Contain("executionEvaluator.EvaluateAsync(");
         liveManager.Should().NotContain("LiveLongPositionExecutionAdapter.Evaluate(");
         evaluator.Should().Contain("LiveLongPositionExecutionAdapter.Evaluate(");
         evaluator.Should().Contain("detector.EvaluateScaling(");
@@ -1625,18 +1625,18 @@ public class ArchitectureDependencyTests
         liveManager.Should().NotContain("DateTime.UtcNow");
         liveManager.Should().NotContain("TZConvert");
         liveManager.Should().NotContain("7.0 / 5.0");
-        liveManager.Should().Contain("exitCoordinator.SubmitAsync(");
-        liveManager.Should().Contain("exitCoordinator.ReconcileAsync(");
+        liveManager.Should().Contain("executionCoordinator.SubmitAsync(");
+        liveManager.Should().Contain("executionCoordinator.ReconcileAsync(");
         liveManager.Should().NotContain("brokerService.ClosePositionAsync(");
         liveManager.Should().NotContain("PositionOrderReconciliationPolicy.Resolve(");
         liveManager.Should().NotContain("ReleasePositionExecutionClaimAsync(");
         liveManager.Should().NotContain("TryApplyPositionExecutionFillAsync(");
         evaluator.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
-        evaluator.Should().Contain("StrategyEvaluationPolicy.LiveExitIndicatorLookbackDays");
+        evaluator.Should().Contain("StrategyEvaluationPolicy.LivePositionIndicatorLookbackDays");
     }
 
     [Fact]
-    public void PositionApisShareOperationalExitStatusContract()
+    public void PositionApisShareOperationalOrderStatusContract()
     {
         var repository = FindRepositoryRoot();
         var endpointPaths = new[]
@@ -1654,8 +1654,20 @@ public class ArchitectureDependencyTests
         }
 
         var orders = File.ReadAllText(Path.Combine(repository, "Api/OrderEndpoints.cs"));
-        orders.Should().Contain("/reconcile-position-exit");
+        var contract = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/OpenPositionResponse.cs"));
+        var portfolio = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Portfolio.svelte"));
+        orders.Should().Contain("/reconcile-position-order");
+        orders.Should().NotContain("/reconcile-position-exit");
         orders.Should().Contain("executions.ReconcileAsync(");
+        contract.Should().Contain("string OrderStatus");
+        contract.Should().Contain("string? OrderKind");
+        contract.Should().Contain("bool HasBrokerOrderId");
+        contract.Should().NotContain("string ExitStatus");
+        contract.Should().NotContain("bool HasExitOrderId");
+        portfolio.Should().Contain("orderKindLabel(row.orderKind)");
+        portfolio.Should().NotContain("row.exitStatus");
     }
 
     [Fact]

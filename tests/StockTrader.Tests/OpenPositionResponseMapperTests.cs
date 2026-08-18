@@ -7,7 +7,7 @@ namespace StockTrader.Tests;
 public class OpenPositionResponseMapperTests
 {
     [Fact]
-    public void Map_ExposesPendingExitWithoutBrokerOrderIdentifier()
+    public void Map_ExposesPendingPositionOrderWithoutBrokerOrderIdentifier()
     {
         var now = new DateTime(2026, 8, 18, 14, 5, 0, DateTimeKind.Utc);
         var position = new Position
@@ -23,12 +23,13 @@ public class OpenPositionResponseMapperTests
 
         var response = OpenPositionResponseMapper.Map(position, now);
 
-        response.ExitStatus.Should().Be("SubmissionUnconfirmed");
-        response.ExitPendingSeconds.Should().Be(120);
-        response.ExitRequestReason.Should().Be("사용자 수동 청산");
-        response.HasExitOrderId.Should().BeFalse();
-        response.ExitRequestQuantity.Should().Be(10);
-        response.ExitRequestMarksPartialProfit.Should().BeFalse();
+        response.OrderStatus.Should().Be("SubmissionUnconfirmed");
+        response.OrderPendingSeconds.Should().Be(120);
+        response.OrderReason.Should().Be("사용자 수동 청산");
+        response.OrderKind.Should().Be("FullExit");
+        response.HasBrokerOrderId.Should().BeFalse();
+        response.OrderQuantity.Should().Be(10);
+        response.OrderMarksPartialProfit.Should().BeFalse();
         response.HoldingDays.Should().Be(3);
     }
 }

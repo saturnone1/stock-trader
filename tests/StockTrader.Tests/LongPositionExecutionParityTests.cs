@@ -57,7 +57,7 @@ public class LongPositionExecutionParityTests
             timeExitReached,
             strategyExit);
 
-        liveResult.ShouldExit.Should().Be(barResult.IsClosed);
+        liveResult.ShouldExecute.Should().Be(barResult.IsClosed);
         if (expectedReason is not null)
         {
             barResult.Events.Last().Reason.Should().Be(expectedReason);
@@ -66,7 +66,7 @@ public class LongPositionExecutionParityTests
         else
         {
             barResult.IsClosed.Should().BeFalse();
-            liveResult.ShouldExit.Should().BeFalse();
+            liveResult.ShouldExecute.Should().BeFalse();
             liveResult.State.Should().Be(barResult.State);
         }
     }
@@ -92,20 +92,20 @@ public class LongPositionExecutionParityTests
             dynamicStopFloor: dynamicStopFloor);
 
         barAdvance.IsClosed.Should().BeFalse();
-        liveAdvance.ShouldExit.Should().BeFalse();
+        liveAdvance.ShouldExecute.Should().BeFalse();
         barAdvance.State.StopPrice.Should().Be(99m);
         liveAdvance.State.Should().Be(barAdvance.State);
 
         var barExit = LongPositionExecutionPolicy.Evaluate(
             barAdvance.State, FlatBar(98m), 2, 2m, noTargetPolicy,
             dynamicStopFloor: dynamicStopFloor);
-        var liveExit = LiveLongPositionExecutionAdapter.Evaluate(
+        var liveExecution = LiveLongPositionExecutionAdapter.Evaluate(
             liveAdvance.State, 10, 98m, 2m, noTargetPolicy, false,
             dynamicStopFloor: dynamicStopFloor);
 
         barExit.IsClosed.Should().BeTrue();
-        liveExit.ShouldExit.Should().BeTrue();
-        liveExit.Reason.Should().Be(barExit.Events.Last().Reason);
+        liveExecution.ShouldExecute.Should().BeTrue();
+        liveExecution.Reason.Should().Be(barExit.Events.Last().Reason);
     }
 
     [Fact]

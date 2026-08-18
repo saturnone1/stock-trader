@@ -26,7 +26,7 @@ public static class BackgroundServiceExtensions
         services.AddHostedService<PatternScannerService>();
         services.AddHostedService<DailyDataSyncService>();
         services.AddHostedService<RiskMonitorService>();
-        services.AddHostedService<PositionExitManagerService>();
+        services.AddHostedService<PositionExecutionManagerService>();
         services.AddHostedService<DailyReportService>();
         services.AddHostedService<MLRetrainingService>();
         services.AddHostedService<ContinuousOptimizationService>();
