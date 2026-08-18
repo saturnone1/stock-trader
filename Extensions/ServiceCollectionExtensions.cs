@@ -18,6 +18,7 @@ using StockTrader.Application.StrategyPreview;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Optimization;
 using StockTrader.Application.SymbolProfiles;
+using StockTrader.Application.Research;
 
 namespace StockTrader.Extensions;
 
@@ -87,6 +88,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<ISymbolProfileStore, SymbolProfileStore>();
         services.AddScoped<SymbolProfileManagementService>();
+        services.AddSingleton<ResearchUniverseQueryService>();
+        services.AddSingleton<FinancialFactorQueryService>();
         services.AddSingleton<FinancialSnapshotImportService>();
         services.AddSingleton<FinancialSnapshotFileParser>();
         services.AddScoped<BacktestDataPreparer>();
