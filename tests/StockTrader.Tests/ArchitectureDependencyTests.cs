@@ -1973,6 +1973,56 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void MarketRegimeModelBindsCausalFeaturesAndClusterMeaningToArtifact()
+    {
+        var repository = FindRepositoryRoot();
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/MarketRegimeModelContracts.cs"));
+        var classifierPath = Path.Combine(
+            repository, "Services/ML/MarketRegimeClassifier.cs");
+        var classifier = File.ReadAllText(classifierPath);
+        var featuresPath = Path.Combine(
+            repository, "Services/ML/MarketRegimeFeatureFactory.cs");
+        var features = File.ReadAllText(featuresPath);
+        var trainer = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/MarketRegimeModelTrainer.cs"));
+        var labels = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/MarketRegimeClusterLabelPolicy.cs"));
+        var artifactsPath = Path.Combine(
+            repository, "Services/ML/MarketRegimeModelArtifactStore.cs");
+        var artifacts = File.ReadAllText(artifactsPath);
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+
+        contracts.Should().Contain("MarketRegimeFeatureSchema");
+        contracts.Should().Contain("RequiredClusterCount = 4");
+        contracts.Should().NotContain("StockTrader.Services");
+        contracts.Should().NotContain("StockTrader.Data");
+        features.Should().Contain("bar.Timestamp <= asOf");
+        features.Should().Contain("OrderBy(bar => bar.Timestamp)");
+        features.Should().NotContain("DateTime.UtcNow");
+        trainer.Should().Contain("MarketRegimeFeatureCatalog.ColumnNames");
+        trainer.Should().Contain("MarketRegimeClusterLabelPolicy.Assign(");
+        labels.Should().Contain("AverageVolatility");
+        labels.Should().Contain("AverageReturn20Day");
+        artifacts.Should().Contain("ModelSha256");
+        artifacts.Should().Contain("HasCompleteLabels(");
+        artifacts.Should().Contain("ComputeSha256(");
+        artifacts.Should().NotContain("regime_labels.json");
+        classifier.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
+        classifier.Should().Contain("MarketRegimeFeatureFactory.CreateLatest(");
+        classifier.Should().Contain("MarketRegimeModelArtifactStore");
+        classifier.Should().NotContain("AssignDefaultLabels");
+        classifier.Should().NotContain("JsonSerializer");
+        classifier.Should().NotContain("KMeans(");
+        File.ReadAllLines(classifierPath).Length.Should().BeLessThanOrEqualTo(180);
+        File.ReadAllLines(featuresPath).Length.Should().BeLessThanOrEqualTo(130);
+        File.ReadAllLines(artifactsPath).Length.Should().BeLessThanOrEqualTo(180);
+        registrations.Should().Contain(
+            "== MarketRegimeClusterCatalog.RequiredClusterCount");
+    }
+
+    [Fact]
     public void LivePatternScannerIsOnlyAChannelAndResilienceAdapter()
     {
         var repository = FindRepositoryRoot();

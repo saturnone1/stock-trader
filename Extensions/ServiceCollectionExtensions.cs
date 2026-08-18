@@ -139,8 +139,11 @@ public static class ServiceCollectionExtensions
                 "SignalScorerModelFileName is required")
             .Validate(settings => settings.MinTrainingSamples > 0,
                 "MinTrainingSamples must be positive")
-            .Validate(settings => settings.RegimeClusterCount >= 2,
-                "RegimeClusterCount must be at least 2")
+            .Validate(
+                settings => settings.RegimeClusterCount
+                    == MarketRegimeClusterCatalog.RequiredClusterCount,
+                $"RegimeClusterCount must be exactly "
+                + $"{MarketRegimeClusterCatalog.RequiredClusterCount}")
             .Validate(settings => settings.RegimeTrainingDays > 0,
                 "RegimeTrainingDays must be positive")
             .Validate(settings => settings.MlScoreBlendWeight is >= 0 and <= 1,

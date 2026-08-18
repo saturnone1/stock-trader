@@ -83,10 +83,12 @@ internal sealed class SignalScoringFeatureFactory(IIndicatorService indicators)
         ? regime.MlClusterId
         : regime.RegimeLabel switch
         {
-            "강세" or "강세장" => 0f,
-            "약세" or "약세장" => 1f,
-            "횡보장" => 2f,
-            "고변동장" => 3f,
+            MarketRegimeTrendPolicy.BullishLabel
+                or MarketRegimeClusterCatalog.Bullish => 0f,
+            MarketRegimeTrendPolicy.BearishLabel
+                or MarketRegimeClusterCatalog.Bearish => 1f,
+            MarketRegimeClusterCatalog.Sideways => 2f,
+            MarketRegimeClusterCatalog.HighVolatility => 3f,
             _ => -1f,
         };
 }

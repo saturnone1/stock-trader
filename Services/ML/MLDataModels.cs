@@ -28,7 +28,7 @@ public class RegimeFeatureInput
     [LoadColumn(3)]
     public float VolatilityLevel { get; set; }
 
-    /// <summary>거래량 변화율 (5일 평균 대비 현재)</summary>
+    /// <summary>거래량 변화율 (최근 5일 평균과 20일 평균의 차이 / 20일 평균)</summary>
     [LoadColumn(4)]
     public float VolumeChangeRate { get; set; }
 

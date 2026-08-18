@@ -391,6 +391,12 @@
   200-day window, strict above-average boundary, and fail-closed unknown result for insufficient
   history. The former optimistic preview/backtest fallback and duplicate analysis setting are
   removed, and goldens characterize the intentional result correction.
+- Optional K-Means market-regime classification now has the same evidence discipline. A causal
+  completed-bar feature factory serves training and prediction, a one-to-one policy owns the four
+  investor regime meanings, and a versioned manifest binds the complete meaning map to the exact
+  model hash. Missing, legacy, partial, or tampered artifacts fail closed to the shared deterministic
+  long-trend regime instead of guessing financial meaning from an arbitrary cluster number. The
+  466-line classifier is now a sub-180-line coordinator.
 
 Remaining Phase 2 work is no longer contract or EF-entity separation. Current full-strategy goldens
 cover NextOpen preview/backtest/live fill and exit decisions, NextOpen entry-bar custom exits and

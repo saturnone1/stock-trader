@@ -30,6 +30,10 @@ infrastructure.
 - ML signal-scoring evidence: one versioned causal feature catalog captured at signal time, one
   source-signal lineage through live positions and realized trades, and one chronological validation
   policy. Models without a matching manifest and content hash are not executable.
+- ML market-regime evidence: one completed-bar feature schema shared by training and prediction,
+  exactly four investor-facing cluster meanings assigned from training evidence, and one manifest
+  binding the feature schema, complete label map, cluster count, and model hash. Arbitrary cluster
+  numbers are never treated as financial meaning.
 - Backtest and preview range policy: dedicated policy catalogs.
 - Backtest period metrics: one unit-explicit application policy using the full evaluation range;
   trade activity dates never define CAGR, Calmar, Sharpe, or Sortino annualization.
@@ -466,4 +470,6 @@ defaults, active-profile selection, and modification time have one application o
   parsing, and exact UTC-to-KST order-history evidence behind purpose-specific clients.
 - `adr/0061-require-causal-signal-scoring-evidence.md`: train and validate signal scoring only from
   entry-time features linked to completed position outcomes, with versioned model artifacts.
+- `adr/0062-bind-market-regime-model-to-cluster-meaning.md`: bind completed-bar regime features and
+  the full four-cluster investor meaning map to the exact executable model artifact.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
