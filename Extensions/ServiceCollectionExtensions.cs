@@ -23,6 +23,8 @@ using StockTrader.Application.Research;
 using StockTrader.Application.Risk;
 using StockTrader.Application.Portfolio;
 using StockTrader.Services.Portfolio;
+using StockTrader.Application.Statistics;
+using StockTrader.Application.Signals;
 
 namespace StockTrader.Extensions;
 
@@ -99,6 +101,8 @@ public static class ServiceCollectionExtensions
 
         // Business Services
         services.AddScoped<IStatisticsService, StatisticsService>();
+        services.AddScoped<IPatternStatisticsQuery, PatternStatisticsQuery>();
+        services.AddScoped<ISignalListQuery, SignalListQuery>();
         services.AddScoped<ISignalService, SignalService>();
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IRiskOverviewQuery, RiskOverviewQuery>();

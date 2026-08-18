@@ -38,6 +38,8 @@ infrastructure.
   release, and atomic position/realized-trade fill commit.
 - Open-position display state: one application query for holding duration, durable-order status,
   total unrealized PnL, and the observation instant shared by every API consumer.
+- Pattern statistics and signal browsing: one storage-independent statistics query, one domain
+  metric policy, and one deterministic signal filter/R/R/statistic-selection policy.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -341,4 +343,6 @@ defaults, active-profile selection, and modification time have one application o
   query, inject observation time, and count legacy accountless positions exactly once.
 - `adr/0038-isolate-portfolio-performance.md`: move open-position and performance reads behind
   application projections and calculate drawdown from initial account equity over complete history.
+- `adr/0039-isolate-signal-statistics-queries.md`: centralize pattern-statistics metrics and resolve
+  signal statistics by exact symbol without endpoint persistence or formula ownership.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

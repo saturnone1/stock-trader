@@ -1,4 +1,5 @@
 using StockTrader.Application.Portfolio;
+using StockTrader.Application.Statistics;
 using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 
@@ -6,7 +7,7 @@ namespace StockTrader.Services.Portfolio;
 
 public sealed class PortfolioPerformanceQuery(
     ITradeHistoryStore tradeHistory,
-    IPatternStatsRepository patternStatistics,
+    IPatternStatisticsQuery patternStatistics,
     ISettingsRepository settings)
     : IPortfolioPerformanceQuery
 {
@@ -26,20 +27,9 @@ public sealed class PortfolioPerformanceQuery(
             trade.PnL,
             trade.PnLPercent,
             trade.IsWin));
-        var statistics = storedStatistics.Select(stat => new PortfolioPatternStatistics(
-            stat.PatternType.ToString(),
-            stat.Symbol,
-            stat.SampleSize,
-            stat.WinRate,
-            stat.AvgWinPercent,
-            stat.AvgLossPercent,
-            stat.MaxDrawdownPercent,
-            stat.Expectancy,
-            stat.ProfitFactor,
-            stat.LastUpdated)).ToArray();
         return PortfolioPerformancePolicy.Evaluate(
             trades,
             userSettings.AccountSize,
-            statistics);
+            storedStatistics);
     }
 }

@@ -1,4 +1,5 @@
 using StockTrader.Application.Strategies;
+using StockTrader.Application.Statistics;
 using StockTrader.Application.SymbolProfiles;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -13,7 +14,7 @@ public class PatternDetectionService
 {
     private readonly IEnumerable<IPatternDetector> _detectors;
     private readonly ISettingsRepository _settingsRepo;
-    private readonly IPatternStatsRepository _statsRepo;
+    private readonly IPatternStatisticsQuery _patternStatistics;
     private readonly ISignalScorer _signalScorer;
     private readonly IMarketRegimeClassifier _regimeClassifier;
     private readonly ICustomStrategyDetectorFactory _customDetectors;
@@ -26,7 +27,7 @@ public class PatternDetectionService
     public PatternDetectionService(
         IEnumerable<IPatternDetector> detectors,
         ISettingsRepository settingsRepo,
-        IPatternStatsRepository statsRepo,
+        IPatternStatisticsQuery patternStatistics,
         ISignalScorer signalScorer,
         IMarketRegimeClassifier regimeClassifier,
         ICustomStrategyDetectorFactory customDetectors,
@@ -38,7 +39,7 @@ public class PatternDetectionService
     {
         _detectors = detectors;
         _settingsRepo = settingsRepo;
-        _statsRepo = statsRepo;
+        _patternStatistics = patternStatistics;
         _signalScorer = signalScorer;
         _regimeClassifier = regimeClassifier;
         _customDetectors = customDetectors;
@@ -167,9 +168,12 @@ public class PatternDetectionService
 
         try
         {
-            // 역사적 승률 조회 (없으면 0.5 기본값)
+            // 종목별 역사적 승률을 우선하고, 없으면 패턴 전체 통계를 사용합니다.
             var stats = string.IsNullOrWhiteSpace(signal.CustomPatternName)
-                ? await _statsRepo.GetAsync(signal.PatternType, symbol: signal.Symbol, ct)
+                ? PatternStatisticsSelectionPolicy.Resolve(
+                    signal.PatternType,
+                    signal.Symbol,
+                    await _patternStatistics.GetAllAsync(ct))
                 : null;
             var winRate = stats?.WinRate ?? 0.5m;
 

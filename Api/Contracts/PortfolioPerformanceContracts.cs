@@ -2,18 +2,6 @@ using StockTrader.Application.Portfolio;
 
 namespace StockTrader.Api.Contracts;
 
-public sealed record PortfolioPatternStatisticsResponse(
-    string Pattern,
-    string? Symbol,
-    int SampleSize,
-    decimal WinRate,
-    decimal AvgWinPercent,
-    decimal AvgLossPercent,
-    decimal MaxDrawdownPercent,
-    decimal Expectancy,
-    decimal ProfitFactor,
-    string LastUpdated);
-
 public sealed record PortfolioEquityPointResponse(
     string Date,
     string Symbol,
@@ -28,7 +16,7 @@ public sealed record PortfolioPerformanceResponse(
     decimal AvgWinPercent,
     decimal AvgLossPercent,
     decimal MaxDrawdown,
-    IReadOnlyList<PortfolioPatternStatisticsResponse> PatternStats,
+    IReadOnlyList<PatternStatisticsResponse> PatternStats,
     IReadOnlyList<PortfolioEquityPointResponse> EquityCurve)
 {
     public static PortfolioPerformanceResponse Create(PortfolioPerformanceSnapshot snapshot) => new(
@@ -37,17 +25,7 @@ public sealed record PortfolioPerformanceResponse(
         snapshot.AvgWinPercent,
         snapshot.AvgLossPercent,
         snapshot.MaxDrawdown,
-        snapshot.PatternStats.Select(stat => new PortfolioPatternStatisticsResponse(
-            stat.Pattern,
-            stat.Symbol,
-            stat.SampleSize,
-            stat.WinRate,
-            stat.AvgWinPercent,
-            stat.AvgLossPercent,
-            stat.MaxDrawdownPercent,
-            stat.Expectancy,
-            stat.ProfitFactor,
-            stat.LastUpdated.ToString("o"))).ToArray(),
+        snapshot.PatternStats.Select(PatternStatisticsResponseMapper.Map).ToArray(),
         snapshot.EquityCurve.Select(point => new PortfolioEquityPointResponse(
             point.ExitTime.ToString("yyyy-MM-dd"),
             point.Symbol,
