@@ -2179,6 +2179,10 @@ public class ArchitectureDependencyTests
             repository, "Services/Order/LiveOrderManagement.cs"));
         var managementContract = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/LiveOrderManagementContracts.cs"));
+        var legacyOrderService = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/OrderService.cs"));
+        var legacyOrderContract = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/IOrderService.cs"));
         var portfolio = File.ReadAllText(Path.Combine(repository, "desktop-app/src/pages/Portfolio.svelte"));
         var desktopEndpoints = File.ReadAllText(Path.Combine(repository, "desktop-app/src/api/endpoints.ts"));
 
@@ -2198,6 +2202,10 @@ public class ArchitectureDependencyTests
         managementContract.Should().NotContain("Microsoft.AspNetCore");
         managementContract.Should().NotContain("StockTrader.Services");
         managementContract.Should().NotContain("StockTrader.Models");
+        legacyOrderContract.Should().NotContain("CancelOrderAsync(",
+            "an order identifier alone cannot identify its owning broker account");
+        legacyOrderService.Should().NotContain("GetActiveBrokerServiceAsync(",
+            "order lifecycle operations must never route through whichever account is active");
         var exitContextConsumers = Directory
             .GetFiles(repository, "*.cs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}tests{Path.DirectorySeparatorChar}",

@@ -2,6 +2,10 @@
 
 ## Current progress
 
+- The unused order-ID-only cancellation surface is removed. It previously selected whichever
+  account was active even though broker order identifiers do not prove account ownership. Broker
+  adapters retain cancellation capability, but any future application command must first resolve a
+  durable owning account; an architecture test prevents the unsafe fallback from returning.
 - Automatic live position monitoring now partitions durable positions by their stored account. Each
   group receives only its owning broker's equity, prices, submission, and order-history evidence;
   unavailable accounts fail closed and only accountless legacy rows use the active account fallback.

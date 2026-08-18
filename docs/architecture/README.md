@@ -396,4 +396,11 @@ defaults, active-profile selection, and modification time have one application o
   explicit and re-anchor configured ML retraining windows across weekends and DST.
 - `adr/0049-separate-broker-snapshots-and-streaming-clock.md`: prevent broker balance snapshots from
   masquerading as durable positions and make streaming timing explicit and configurable.
+- `adr/0050-explicit-persistence-and-notification-clocks.md`: require application-owned persistence
+  timestamps and injected notification clocks instead of hidden process time.
+- `adr/0051-route-live-position-monitoring-by-account.md`: partition automatic position monitoring
+  by durable account ownership and isolate the worker from the monitoring cycle.
+- `adr/0052-remove-account-ambiguous-order-cancellation.md`: remove the unused order-ID-only
+  cancellation surface and require durable account ownership before any future cancellation use
+  case can reach a broker adapter.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
