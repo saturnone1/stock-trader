@@ -3128,6 +3128,39 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BacktestHttpResultHasOneExplicitGeneratedContract()
+    {
+        var repository = FindRepositoryRoot();
+        var endpoint = File.ReadAllText(Path.Combine(repository, "Api/BacktestEndpoints.cs"));
+        var contract = File.ReadAllText(Path.Combine(
+            repository,
+            "Api/Contracts/BacktestContracts.cs"));
+        var performance = File.ReadAllText(Path.Combine(
+            repository,
+            "Services/Backtest/PerformanceCalculator.cs"));
+        var model = File.ReadAllText(Path.Combine(repository, "Models/BacktestResult.cs"));
+        var desktop = File.ReadAllText(Path.Combine(
+            repository,
+            "desktop-app/src/api/endpoints.ts"));
+
+        endpoint.Should().Contain("Produces<BacktestResponse>()");
+        endpoint.Should().Contain("BacktestResponse.Create(result)");
+        endpoint.Should().NotContain("new {");
+        endpoint.Should().NotContain("ReturnPct =");
+        contract.Should().Contain("item.PnLPercent");
+        contract.Should().Contain("item.EntryTime.ToString(\"O\")");
+        contract.Should().Contain("result.SortinoRatio");
+        contract.Should().Contain("result.PerRegimeStats");
+        desktop.Should().Contain("components['schemas']['BacktestResponse']");
+        desktop.Should().Contain("api.post<BacktestResponse>");
+        desktop.Should().NotContain("start: (data: any) => api.post('/api/backtest'");
+        performance.Should().NotContain("EstimateTradesPerYear");
+        model.Should().NotContain("public decimal AvgReturnPercent");
+        File.ReadAllLines(Path.Combine(repository, "Api/BacktestEndpoints.cs"))
+            .Length.Should().BeLessThanOrEqualTo(100);
+    }
+
+    [Fact]
     public void BrokerSnapshotsAndStreamingStatusDoNotInventTradingEventTime()
     {
         var repository = FindRepositoryRoot();

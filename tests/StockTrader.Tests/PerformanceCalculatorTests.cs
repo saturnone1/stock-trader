@@ -65,4 +65,42 @@ public class PerformanceCalculatorTests
         cycles[0].IsWin.Should().BeTrue();
     }
 
+    [Fact]
+    public void ComputeRegimeStats_DoesNotInventBullRegimeWithoutPriorBenchmarkEvidence()
+    {
+        var trade = new TradeRecord
+        {
+            EntryTime = new DateTime(2025, 1, 2),
+            ExitTime = new DateTime(2025, 1, 3),
+            PnL = 100m,
+            PnLPercent = 0.10m
+        };
+
+        var result = PerformanceCalculator.ComputeRegimeStats([trade], []);
+
+        result.Should().ContainKey("2025");
+        result.Should().NotContainKey("Bull");
+        result.Should().NotContainKey("Bear");
+    }
+
+    [Fact]
+    public void ComputeRegimeStats_ReportsCostAdjustedPnlAndAverageTradeReturn()
+    {
+        var trades = new List<TradeRecord>
+        {
+            new() { EntryTime = new DateTime(2025, 1, 2), ExitTime = new DateTime(2025, 1, 3), PnL = 100m, PnLPercent = 0.10m },
+            new() { EntryTime = new DateTime(2025, 1, 4), ExitTime = new DateTime(2025, 1, 5), PnL = -40m, PnLPercent = -0.04m }
+        };
+
+        var result = PerformanceCalculator.ComputeRegimeStats(trades, new Dictionary<DateTime, bool>
+        {
+            [new DateTime(2025, 1, 1)] = true
+        });
+
+        result["Bull"].TradeCount.Should().Be(2);
+        result["Bull"].TotalPnL.Should().Be(60m);
+        result["Bull"].AverageTradeReturn.Should().Be(0.03m);
+        result["Bull"].ProfitFactor.Should().Be(2.5m);
+    }
+
 }

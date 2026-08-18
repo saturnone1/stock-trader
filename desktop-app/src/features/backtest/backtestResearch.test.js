@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateHoldingBars, getWhipsawStats } from './backtestResearch.js'
+import { estimateHoldingBars, formatBacktestTimestamp, formatPercentagePoints, getWhipsawStats, regimeDisplayName } from './backtestResearch.js'
 
 test('daily holding bars count trading days instead of dividing wall-clock minutes by session length', () => {
   assert.equal(estimateHoldingBars({ entryTime: '2026-01-02T00:00:00Z', exitTime: '2026-01-05T00:00:00Z' }, 'Daily'), 1)
@@ -18,4 +18,17 @@ test('whipsaw classification reads the API returnPct contract', () => {
   })
 
   assert.deepEqual(stats, { count: 1, rate: 0.5, thresholdBars: 3 })
+})
+
+test('backtest result labels preserve percentage-point units and intraday timestamps', () => {
+  const timestamp = '2026-08-18T09:31:00.0000000Z'
+
+  assert.equal(formatPercentagePoints(12.5), '12.50%')
+  assert.equal(regimeDisplayName('Bull'), '상승장')
+  assert.equal(regimeDisplayName('Bear'), '하락장')
+  assert.equal(regimeDisplayName('2026'), '2026')
+  assert.notEqual(
+    formatBacktestTimestamp(timestamp, 'OneMinute'),
+    formatBacktestTimestamp(timestamp, 'Daily')
+  )
 })

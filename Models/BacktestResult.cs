@@ -405,10 +405,11 @@ public class RegimePerformance
 {
     public int TradeCount { get; set; }
     public decimal WinRate { get; set; }
-    public decimal TotalReturn { get; set; }
-    public decimal AvgReturnPercent { get; set; }
-    public decimal SharpeRatio { get; set; }
-    public decimal MaxDrawdown { get; set; }
+    /// <summary>해당 시장 국면에서 종료된 거래의 비용 반영 손익 합계입니다.</summary>
+    public decimal TotalPnL { get; set; }
+    /// <summary>완결 거래당 평균 비용 반영 수익률. 0.10은 10%입니다.</summary>
+    public decimal AverageTradeReturn { get; set; }
+    public decimal ProfitFactor { get; set; }
 }
 
 /// <summary>종목별 백테스트 성과 요약</summary>

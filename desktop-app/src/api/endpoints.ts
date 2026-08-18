@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus, SettingsResponse, SettingsUpdateRequest, SettingsUpdateResponse } from './types';
+import type { Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus, SettingsResponse, SettingsUpdateRequest, SettingsUpdateResponse } from './types';
 import type { components } from './generated';
 
 type PatternStatisticsListResponse = components['schemas']['PatternStatisticsListResponse'];
@@ -7,6 +7,8 @@ type StrategyBuilderMetadataResponse = components['schemas']['StrategyBuilderMet
 type TradeRecommendationListResponse = components['schemas']['TradeRecommendationListResponse'];
 type TradeHistoryResponse = components['schemas']['TradeHistoryResponse'];
 type StockAnalysisResponse = components['schemas']['StockAnalysisResponse'];
+type BacktestRequest = components['schemas']['BacktestRequest'];
+type BacktestResponse = components['schemas']['BacktestResponse'];
 type TradeHistoryParams = {
   pattern?: components['schemas']['PatternType'];
   from?: string;
@@ -342,9 +344,7 @@ export const optimizationApi = {
 };
 
 export const backtestApi = {
-  list: async () => ({ data: [] as BacktestResult[] }),
-  get: async () => ({ data: null }),
-  start: (data: any) => api.post('/api/backtest', data),
+  start: (data: BacktestRequest) => api.post<BacktestResponse>('/api/backtest', data),
 };
 
 export const tradeApi = {

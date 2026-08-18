@@ -454,7 +454,7 @@
 
         <BacktestValidationResults {result} />
 
-        <BacktestTradeHistory trades={result.trades} />
+        <BacktestTradeHistory trades={result.trades} timeFrame={result.usedTimeFrame} />
       </section>
     {/if}
   </div>

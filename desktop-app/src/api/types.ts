@@ -163,24 +163,3 @@ export interface OptimizationResult {
   winRate: number;
   tradeCount: number;
 }
-
-// Backtest
-export interface BacktestResult {
-  id: string;
-  patternId: string;
-  symbol: string;
-  status: 'Running' | 'Completed' | 'Failed';
-  startDate: string;
-  endDate: string;
-  metrics?: BacktestMetrics;
-}
-
-export interface BacktestMetrics {
-  totalReturn: number;
-  sharpeRatio: number;
-  sortinoRatio: number;
-  maxDrawdown: number;
-  winRate: number;
-  profitFactor: number;
-  tradeCount: number;
-}

@@ -64,7 +64,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["BacktestResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BacktestErrorResponse"];
+                    };
                 };
             };
         };
@@ -2667,6 +2678,48 @@ export interface components {
             /** Format: double */
             partialProfitR?: null | number;
         };
+        BacktestEquityPointResponse: {
+            timestamp: string;
+            /** Format: double */
+            equity: number;
+        };
+        BacktestErrorResponse: {
+            error: string;
+        };
+        BacktestMonteCarloResponse: {
+            /** Format: int32 */
+            simulations: number;
+            /** Format: double */
+            medianFinalEquity: number;
+            /** Format: double */
+            meanFinalEquity: number;
+            /** Format: double */
+            percentile5Equity: number;
+            /** Format: double */
+            percentile25Equity: number;
+            /** Format: double */
+            percentile75Equity: number;
+            /** Format: double */
+            percentile95Equity: number;
+            /** Format: double */
+            medianMaxDrawdown: number;
+            /** Format: double */
+            worstCaseMaxDrawdown: number;
+            /** Format: double */
+            probabilityOfLoss: number;
+        };
+        BacktestRegimePerformanceResponse: {
+            /** Format: int32 */
+            tradeCount: number;
+            /** Format: double */
+            winRate: number;
+            /** Format: double */
+            totalPnL: number;
+            /** Format: double */
+            averageTradeReturn: number;
+            /** Format: double */
+            profitFactor: number;
+        };
         BacktestRequest: {
             symbols?: string[];
             patterns?: components["schemas"]["PatternType"][];
@@ -2703,6 +2756,140 @@ export interface components {
             weightStrategy?: null | components["schemas"]["WeightStrategy"];
             backtestMode?: string;
             customPatterns?: null | components["schemas"]["StrategyDocument"][];
+        };
+        BacktestResponse: {
+            /** Format: int32 */
+            totalTrades: number;
+            /** Format: double */
+            totalReturn: number;
+            /** Format: double */
+            maxDrawdown: number;
+            /** Format: double */
+            sharpeRatio: number;
+            /** Format: double */
+            sortinoRatio: number;
+            /** Format: double */
+            calmarRatio: number;
+            /** Format: double */
+            profitFactor: number;
+            /** Format: double */
+            annualizedReturn: number;
+            /** Format: double */
+            overallWinRate: number;
+            /** Format: double */
+            kellyFraction: number;
+            /** Format: double */
+            halfKellyFraction: number;
+            /** Format: double */
+            avgMaePercent: number;
+            /** Format: double */
+            avgMfePercent: number;
+            /** Format: double */
+            medianMaePercent: number;
+            /** Format: double */
+            medianMfePercent: number;
+            /** Format: double */
+            totalSlippageCost: number;
+            /** Format: double */
+            totalCommissionCost: number;
+            errorMessage: null | string;
+            warnings: string[];
+            survivorshipBiasWarning: null | string;
+            weightStrategyApplied: boolean;
+            /** Format: int32 */
+            weightReducedTrades: number;
+            usedTimeFrame: string;
+            actualDataFrom: null | string;
+            perPattern: {
+                [key: string]: components["schemas"]["BacktestStrategyPerformanceResponse"];
+            };
+            perStrategy: {
+                [key: string]: components["schemas"]["BacktestStrategyPerformanceResponse"];
+            };
+            perSymbol: components["schemas"]["BacktestSymbolPerformanceResponse"][];
+            perRegimeStats: {
+                [key: string]: components["schemas"]["BacktestRegimePerformanceResponse"];
+            };
+            equityCurve: components["schemas"]["BacktestEquityPointResponse"][];
+            trades: components["schemas"]["BacktestTradeResponse"][];
+            walkForward: null | components["schemas"]["BacktestWalkForwardResponse"];
+            monteCarlo: null | components["schemas"]["BacktestMonteCarloResponse"];
+        };
+        BacktestStrategyPerformanceResponse: {
+            /** Format: int32 */
+            sampleSize: number;
+            /** Format: double */
+            winRate: number;
+            /** Format: double */
+            avgWinPercent: number;
+            /** Format: double */
+            avgLossPercent: number;
+            /** Format: double */
+            expectancy: number;
+            /** Format: double */
+            profitFactor: number;
+        };
+        BacktestSymbolPerformanceResponse: {
+            symbol: string;
+            /** Format: int32 */
+            tradeCount: number;
+            /** Format: double */
+            winRate: number;
+            /** Format: double */
+            totalPnL: number;
+            /** Format: double */
+            avgPnLPercent: number;
+        };
+        BacktestTradeResponse: {
+            symbol: string;
+            pattern: string;
+            customPatternName: null | string;
+            entryTime: string;
+            exitTime: string;
+            /** Format: double */
+            entryPrice: number;
+            /** Format: double */
+            exitPrice: number;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: double */
+            netPnL: number;
+            /** Format: double */
+            returnPct: number;
+            exitReason: string;
+        };
+        BacktestWalkForwardResponse: {
+            /** Format: double */
+            aggregateOosReturnPercent: number;
+            /** Format: double */
+            aggregateOosMaxDrawdown: number;
+            /** Format: double */
+            aggregateOosWinRate: number;
+            /** Format: double */
+            aggregateOosSharpe: number;
+            /** Format: double */
+            walkForwardEfficiency: number;
+            windows: components["schemas"]["BacktestWalkForwardWindowResponse"][];
+        };
+        BacktestWalkForwardWindowResponse: {
+            isFrom: string;
+            isTo: string;
+            oosFrom: string;
+            oosTo: string;
+            /** Format: int32 */
+            inSampleTrades: number;
+            /** Format: double */
+            inSampleReturnPercent: number;
+            /** Format: int32 */
+            outOfSampleTrades: number;
+            /** Format: double */
+            outOfSampleReturnPercent: number;
+            /** Format: double */
+            outOfSampleMaxDrawdown: number;
+            /** Format: double */
+            outOfSampleSharpe: number;
+            /** Format: double */
+            efficiency: number;
         };
         BrokerAccountOptionResponse: {
             type: components["schemas"]["BrokerType"];
