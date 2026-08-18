@@ -2,14 +2,6 @@ using StockTrader.Application.Portfolio;
 
 namespace StockTrader.Application.Risk;
 
-public sealed record RiskStateSnapshot(
-    decimal DailyPnL,
-    decimal DailyPnLPercent,
-    bool IsTradingHalted,
-    int OpenPositionCount,
-    IReadOnlyDictionary<string, int> PositionsPerSector,
-    DateTime LastUpdated);
-
 public sealed record RiskSettingsSnapshot(
     decimal AccountSize,
     decimal RiskPerTradePercent,

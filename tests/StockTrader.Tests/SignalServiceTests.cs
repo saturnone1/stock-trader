@@ -5,13 +5,13 @@ using Microsoft.Extensions.Options;
 using Moq;
 using StockTrader.Configuration;
 using StockTrader.Application.MarketData;
+using StockTrader.Application.Risk;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Market;
-using StockTrader.Services.Risk;
 using StockTrader.Services.Signal;
 using StockTrader.Services.Statistics;
 

@@ -1,13 +1,13 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Execution;
 using StockTrader.Application.MarketData;
+using StockTrader.Application.Risk;
 using StockTrader.Application.Signals;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
-using StockTrader.Services.Risk;
 using StockTrader.Services.Statistics;
 
 namespace StockTrader.Services.Signal;

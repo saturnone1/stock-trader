@@ -37,6 +37,9 @@ infrastructure.
 - ML operations: application-owned classifier, scorer, training, result, and immutable status
   contracts; one scoped training use case with constructor-injected ports; one process-wide run
   claim; and explicit generated API response contracts.
+- Runtime risk state: one application-owned scoped use case over a purpose-specific evidence port;
+  one process-wide immutable generation containing every account, portfolio, and fallback state;
+  and no persistence, broker, cache, or service-location dependency inside risk calculations.
 - Backtest and preview range policy: dedicated policy catalogs.
 - Backtest period metrics: one unit-explicit application policy using the full evaluation range;
   trade activity dates never define CAGR, Calmar, Sharpe, or Sortino annualization.
@@ -477,4 +480,6 @@ defaults, active-profile selection, and modification time have one application o
   the full four-cluster investor meaning map to the exact executable model artifact.
 - `adr/0063-make-ml-training-an-application-use-case.md`: move ML contracts inward, remove scoped
   service location, preserve one global training claim, and expose atomic generated status contracts.
+- `adr/0064-publish-risk-state-as-one-application-generation.md`: move runtime risk management
+  inward, isolate broker and persistence evidence, and atomically publish multi-account state.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

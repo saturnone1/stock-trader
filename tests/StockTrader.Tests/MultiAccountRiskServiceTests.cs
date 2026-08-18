@@ -1,10 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using StockTrader.Application.Accounts;
+using StockTrader.Application.Risk;
 using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
@@ -40,41 +40,28 @@ public class MultiAccountRiskServiceTests
 
     private MultiAccountRiskService CreateSut(
         TradingSettings? settings = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        RiskStateStore? stateStore = null)
     {
-        var opts = Options.Create(settings ?? _defaultSettings);
-
-        // IServiceScopeFactory mock: CreateScope → ServiceProvider → GetRequiredService
-        var scopeFactory = CreateMockScopeFactory();
-
+        var effectiveSettings = settings ?? _defaultSettings;
         var cache = new MemoryCache(new MemoryCacheOptions());
+        var dataSource = new RiskManagementDataSource(
+            _accountManagerMock.Object,
+            _positionStoreMock.Object,
+            _settingsRepoMock.Object,
+            cache,
+            Options.Create(effectiveSettings),
+            NullLogger<RiskManagementDataSource>.Instance);
 
         return new MultiAccountRiskService(
-            scopeFactory,
-            opts,
-            _accountManagerMock.Object,
-            cache,
+            dataSource,
+            stateStore ?? new RiskStateStore(),
+            new RiskManagementOptions(
+                effectiveSettings.DailyLossLimitPercent,
+                effectiveSettings.MaxTotalPositions,
+                effectiveSettings.MaxPositionsPerSector),
             timeProvider ?? TimeProvider.System,
             NullLogger<MultiAccountRiskService>.Instance);
-    }
-
-    private IServiceScopeFactory CreateMockScopeFactory()
-    {
-        var serviceProviderMock = new Mock<IServiceProvider>();
-        serviceProviderMock
-            .Setup(sp => sp.GetService(typeof(IOpenPositionStore)))
-            .Returns(_positionStoreMock.Object);
-        serviceProviderMock
-            .Setup(sp => sp.GetService(typeof(ISettingsRepository)))
-            .Returns(_settingsRepoMock.Object);
-
-        var scopeMock = new Mock<IServiceScope>();
-        scopeMock.Setup(s => s.ServiceProvider).Returns(serviceProviderMock.Object);
-
-        var scopeFactoryMock = new Mock<IServiceScopeFactory>();
-        scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
-
-        return scopeFactoryMock.Object;
     }
 
     private static ManagedTradingAccount MakeAccount(int id = 1, bool isActive = true) =>
@@ -599,6 +586,121 @@ public class MultiAccountRiskServiceTests
         sut.GetAccountRiskState(1).LastUpdated.Should().Be(observedAt.UtcDateTime);
         sut.GetAccountRiskState(2).LastUpdated.Should().Be(observedAt.UtcDateTime);
         sut.GetPortfolioRiskState().LastUpdated.Should().Be(observedAt.UtcDateTime);
+    }
+
+    [Fact]
+    public async Task ScopedUseCasesPublishOneSharedRiskGeneration()
+    {
+        var observedAt = new DateTimeOffset(2026, 8, 18, 5, 0, 0, TimeSpan.Zero);
+        var account = MakeAccount(id: 7);
+        _accountManagerMock
+            .Setup(manager => manager.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(account);
+        _accountManagerMock
+            .Setup(manager => manager.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([account]);
+        _accountManagerMock
+            .Setup(manager => manager.GetBrokerServiceForAccountAsync(
+                account.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);
+        _settingsRepoMock
+            .Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+        _positionStoreMock
+            .Setup(store => store.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new Position
+                {
+                    AccountId = 7,
+                    Symbol = "TQQQ",
+                    EntryPrice = 100m,
+                    CurrentPrice = 95m,
+                    Quantity = 100
+                }
+            ]);
+        var stateStore = new RiskStateStore();
+
+        await CreateSut(
+            timeProvider: new FixedTimeProvider(observedAt),
+            stateStore: stateStore).UpdateDailyPnLAsync();
+        var observed = await CreateSut(stateStore: stateStore)
+            .GetCurrentRiskStateAsync();
+
+        observed.DailyPnL.Should().Be(-500m);
+        observed.OpenPositionCount.Should().Be(1);
+        observed.LastUpdated.Should().Be(observedAt.UtcDateTime);
+    }
+
+    [Fact]
+    public async Task NoEnabledAccountPublishesCurrentFallbackAsPortfolioState()
+    {
+        _accountManagerMock
+            .Setup(manager => manager.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        _settingsRepoMock
+            .Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+        _positionStoreMock
+            .Setup(store => store.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new Position
+                {
+                    Symbol = "AAPL",
+                    EntryPrice = 100m,
+                    CurrentPrice = 50m,
+                    Quantity = 100
+                }
+            ]);
+        var sut = CreateSut();
+
+        await sut.UpdateDailyPnLAsync();
+
+        sut.GetPortfolioRiskState().DailyPnL.Should().Be(-5_000m);
+        sut.GetPortfolioRiskState().IsTradingHalted.Should().BeTrue();
+        sut.GetPortfolioRiskState().OpenPositionCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task BrokerReportedZeroDailyPnlDoesNotFallBackToPositionPnl()
+    {
+        var account = MakeAccount(id: 3);
+        var broker = new Mock<StockTrader.Services.Broker.IBrokerService>();
+        broker.Setup(service => service.GetAccountAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BrokerAccount
+            {
+                TotalEquity = 100_000m,
+                DailyPnL = 0m
+            });
+        _accountManagerMock
+            .Setup(manager => manager.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([account]);
+        _accountManagerMock
+            .Setup(manager => manager.GetBrokerServiceForAccountAsync(
+                account.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(broker.Object);
+        _settingsRepoMock
+            .Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+        _positionStoreMock
+            .Setup(store => store.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new Position
+                {
+                    AccountId = 3,
+                    Symbol = "MSFT",
+                    EntryPrice = 100m,
+                    CurrentPrice = 110m,
+                    Quantity = 100
+                }
+            ]);
+        var sut = CreateSut();
+
+        await sut.UpdateDailyPnLAsync();
+
+        sut.GetAccountRiskState(3).DailyPnL.Should().Be(0m);
+        sut.GetPortfolioRiskState().DailyPnL.Should().Be(0m);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset observedAt) : TimeProvider

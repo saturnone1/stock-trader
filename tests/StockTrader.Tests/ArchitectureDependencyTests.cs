@@ -1301,7 +1301,7 @@ public class ArchitectureDependencyTests
         var signalService = File.ReadAllText(Path.Combine(
             repository, "Services/Signal/SignalService.cs"));
         var riskService = File.ReadAllText(Path.Combine(
-            repository, "Services/Risk/MultiAccountRiskService.cs"));
+            repository, "Application/Risk/MultiAccountRiskService.cs"));
         var performance = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/PerformanceCalculator.cs"));
 
@@ -2862,7 +2862,13 @@ public class ArchitectureDependencyTests
         var query = File.ReadAllText(Path.Combine(
             repository, "Services/Risk/RiskOverviewQuery.cs"));
         var riskService = File.ReadAllText(Path.Combine(
-            repository, "Services/Risk/MultiAccountRiskService.cs"));
+            repository, "Application/Risk/MultiAccountRiskService.cs"));
+        var riskContracts = File.ReadAllText(Path.Combine(
+            repository, "Application/Risk/RiskManagementContracts.cs"));
+        var riskState = File.ReadAllText(Path.Combine(
+            repository, "Application/Risk/RiskStateStore.cs"));
+        var riskData = File.ReadAllText(Path.Combine(
+            repository, "Services/Risk/RiskManagementDataSource.cs"));
         var worker = File.ReadAllText(Path.Combine(
             repository, "BackgroundServices/RiskMonitorService.cs"));
         var registrations = File.ReadAllText(Path.Combine(
@@ -2886,11 +2892,43 @@ public class ArchitectureDependencyTests
         query.Should().NotContain("DateTime.UtcNow");
         riskService.Should().Contain("legacyPositionAccountId");
         riskService.Should().Contain("TimeProvider");
+        riskService.Should().Contain("stateStore.Publish(");
         riskService.Should().NotContain("DateTime.UtcNow");
+        riskService.Should().NotContain("IServiceScopeFactory");
+        riskService.Should().NotContain("CreateScope(");
+        riskService.Should().NotContain("GetRequiredService<");
+        riskService.Should().NotContain("StockTrader.Services");
+        riskService.Should().NotContain("StockTrader.Data");
+        riskService.Should().NotContain("Microsoft.Extensions.Caching");
+        riskContracts.Should().Contain("interface IRiskManagementDataSource");
+        riskContracts.Should().Contain("interface IRiskManagementService");
+        riskContracts.Should().NotContain("StockTrader.Services");
+        riskContracts.Should().NotContain("StockTrader.Data");
+        riskContracts.Should().NotContain("StockTrader.Models");
+        riskState.Should().Contain("Volatile.Read");
+        riskState.Should().Contain("Volatile.Write");
+        riskData.Should().Contain("IAccountManager accountManager");
+        riskData.Should().Contain("IOpenPositionStore positions");
+        riskData.Should().Contain("ISettingsRepository settings");
+        riskData.Should().Contain("RiskOpenPositionCacheSeconds");
+        riskData.Should().NotContain("TimeSpan.FromSeconds(5)");
         worker.Should().Contain("RiskAlertPolicy.IsDue");
         worker.Should().NotContain("DateTime.UtcNow");
         registrations.Should().Contain("AddScoped<IRiskOverviewQuery, RiskOverviewQuery>");
+        registrations.Should().Contain(
+            "AddScoped<IRiskManagementDataSource, RiskManagementDataSource>");
+        registrations.Should().Contain(
+            "AddScoped<IRiskManagementService, MultiAccountRiskService>");
+        registrations.Should().Contain("AddSingleton<RiskStateStore>");
+        registrations.Should().NotContain(
+            "AddSingleton<IRiskManagementService, MultiAccountRiskService>");
+        File.Exists(Path.Combine(repository, "Models/RiskState.cs")).Should().BeFalse();
+        File.Exists(Path.Combine(
+            repository, "Services/Risk/IRiskManagementService.cs")).Should().BeFalse();
+        File.Exists(Path.Combine(
+            repository, "Services/Risk/MultiAccountRiskService.cs")).Should().BeFalse();
         registrations.Should().Contain("RiskMonitorMaxConsecutiveFailures");
+        registrations.Should().Contain("RiskOpenPositionCacheSeconds must be positive");
         registrations.Should().Contain("ValidateOnStart()");
     }
 
