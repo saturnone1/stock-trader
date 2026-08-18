@@ -3,6 +3,9 @@
 ## Current progress
 
 - Central timeframe, indicator, operator, strategy, and provider catalogs are active.
+- Trading-account state now crosses an application persistence port, active-account changes are
+  transactional, broker clients are constructed behind a focused factory, and explicit API contracts
+  keep secrets write-only. The desktop derives broker environments from the central broker catalog.
 - Preview, backtest, and live rule evaluation consume the same compiled strategy model.
 - Live strategy loading is behind `ICompiledStrategyRepository`.
 - Database startup changes run through ordered, versioned migrations.

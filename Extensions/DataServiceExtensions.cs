@@ -4,6 +4,7 @@ using StockTrader.Application.Optimization;
 using StockTrader.Application.Settings;
 using StockTrader.Application.Signals;
 using StockTrader.Application.Research;
+using StockTrader.Application.Accounts;
 using StockTrader.Data.Repositories;
 using StockTrader.Data.Migrations;
 using StockTrader.Models.Enums;
@@ -38,6 +39,7 @@ public static class DataServiceExtensions
         services.AddScoped<ILiveSignalEvaluationStore, LiveSignalEvaluationStore>();
         services.AddSingleton<IResearchUniverseStore, ResearchUniverseStore>();
         services.AddSingleton<IFinancialCollectionStore, FinancialCollectionStore>();
+        services.AddSingleton<ITradingAccountStore, TradingAccountStore>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();
 

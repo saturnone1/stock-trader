@@ -292,6 +292,25 @@
         }
       }
     },
+    "/api/accounts/meta": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountMetadataResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/accounts": {
       "get": {
         "tags": [
@@ -299,7 +318,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountListResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -307,9 +333,36 @@
         "tags": [
           "StockTrader"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TradingAccountCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -330,9 +383,46 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TradingAccountUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -353,7 +443,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountMessageResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -376,7 +483,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountConnectionStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -399,7 +523,34 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountMessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccountErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1659,6 +1810,51 @@
   },
   "components": {
     "schemas": {
+      "AccountConnectionStatusResponse": {
+        "required": [
+          "accountId",
+          "isConnected",
+          "statusMessage",
+          "totalEquity",
+          "cash",
+          "buyingPower",
+          "openPositionCount",
+          "checkedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "isConnected": {
+            "type": "boolean"
+          },
+          "statusMessage": {
+            "type": "string"
+          },
+          "totalEquity": {
+            "type": "number",
+            "format": "double"
+          },
+          "cash": {
+            "type": "number",
+            "format": "double"
+          },
+          "buyingPower": {
+            "type": "number",
+            "format": "double"
+          },
+          "openPositionCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "ApplyLiveRequest": {
         "required": [
           "parameterOverrides",
@@ -1901,6 +2097,56 @@
             }
           }
         }
+      },
+      "BrokerAccountOptionResponse": {
+        "required": [
+          "type",
+          "code",
+          "displayName",
+          "market",
+          "environments",
+          "defaultEnvironment",
+          "requiresAccountCredentials",
+          "isImplemented"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/BrokerType"
+          },
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultEnvironment": {
+            "type": "string"
+          },
+          "requiresAccountCredentials": {
+            "type": "boolean"
+          },
+          "isImplemented": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BrokerType": {
+        "enum": [
+          "Alpaca",
+          "KoreaInvestment",
+          "Kiwoom",
+          "LsSecurities"
+        ]
       },
       "CreateOptimizeJobRequest": {
         "type": "object",
@@ -5113,6 +5359,186 @@
           "Daily",
           "Weekly"
         ]
+      },
+      "TradingAccountCreateRequest": {
+        "type": "object",
+        "properties": {
+          "accountName": {
+            "type": "string"
+          },
+          "brokerType": {
+            "$ref": "#/components/schemas/BrokerType"
+          },
+          "apiKey": {
+            "type": "string"
+          },
+          "apiSecret": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isEnabled": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "TradingAccountErrorResponse": {
+        "required": [
+          "errors"
+        ],
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TradingAccountListResponse": {
+        "required": [
+          "count",
+          "accounts"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TradingAccountResponse"
+            }
+          }
+        }
+      },
+      "TradingAccountMessageResponse": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "TradingAccountMetadataResponse": {
+        "required": [
+          "brokers"
+        ],
+        "type": "object",
+        "properties": {
+          "brokers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrokerAccountOptionResponse"
+            }
+          }
+        }
+      },
+      "TradingAccountResponse": {
+        "required": [
+          "id",
+          "accountName",
+          "brokerType",
+          "apiKey",
+          "environment",
+          "isActive",
+          "isEnabled",
+          "notes",
+          "createdAt",
+          "updatedAt",
+          "lastConnectedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "brokerType": {
+            "type": "string"
+          },
+          "apiKey": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isEnabled": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastConnectedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "TradingAccountUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "accountName": {
+            "type": "string"
+          },
+          "brokerType": {
+            "$ref": "#/components/schemas/BrokerType"
+          },
+          "apiKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "apiSecret": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "environment": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isEnabled": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
       },
       "UpdateOptimizeJobSettingsRequest": {
         "type": "object",

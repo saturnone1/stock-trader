@@ -311,4 +311,6 @@ defaults, active-profile selection, and modification time have one application o
   import normalization, and explicit response contracts behind one research application boundary.
 - `adr/0029-isolate-financial-collection-boundary.md`: move import-run state and ticker projections
   behind an application port and make SEC interpretation and financial arithmetic deterministic.
+- `adr/0030-isolate-trading-account-boundary.md`: centralize broker metadata, isolate account
+  persistence and broker construction, and keep credentials out of account responses.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

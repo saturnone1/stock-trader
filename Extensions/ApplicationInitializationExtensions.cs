@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using StockTrader.Application.Accounts;
 using StockTrader.Application.Optimization;
 using StockTrader.BackgroundServices;
 using StockTrader.Data;
@@ -82,7 +83,8 @@ public static class ApplicationInitializationExtensions
     {
         try
         {
-            if (await services.GetRequiredService<AppDbContext>().TradingAccounts.CountAsync() != 0)
+            var accounts = services.GetRequiredService<IAccountManager>();
+            if ((await accounts.GetAllAccountsAsync()).Count != 0)
                 return;
 
             var alpaca = configuration.GetSection("Alpaca");
@@ -92,7 +94,7 @@ public static class ApplicationInitializationExtensions
                 return;
 
             var isPaper = alpaca.GetValue("IsPaper", true);
-            await services.GetRequiredService<IAccountManager>().AddAccountAsync(new TradingAccount
+            await accounts.AddAccountAsync(new ManagedTradingAccount
             {
                 AccountName = isPaper ? "Alpaca Paper Trading" : "Alpaca Live Trading",
                 BrokerType = BrokerType.Alpaca,

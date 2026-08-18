@@ -1,33 +1,39 @@
 <script>
   import { onMount } from 'svelte'
   import { accountApi } from '../api/endpoints'
+  import {
+    brokerOptionsFromMetadata,
+    createAccountForm,
+    normalizeAccountsResponse,
+    projectAccountError,
+    selectBroker,
+  } from '../features/accounts/accountModel.js'
 
   let loading = true
   let error = ''
   let message = ''
   let rows = []
+  let brokerOptions = []
   let showForm = false
-  let form = {
-    accountName: '',
-    brokerType: 0,
-    apiKey: '',
-    apiSecret: '',
-    environment: 'Paper',
-    isActive: false,
-    isEnabled: true,
-    notes: '',
-  }
+  let form = createAccountForm()
+  $: selectedBroker = brokerOptions.find((item) => item.type === form.brokerType)
 
   onMount(load)
 
   async function load() {
     loading = true
     try {
-      const { data } = await accountApi.list()
-      rows = data?.Accounts ?? data?.accounts ?? []
+      const [{ data }, { data: metadata }] = await Promise.all([
+        accountApi.list(),
+        accountApi.metadata(),
+      ])
+      rows = normalizeAccountsResponse(data)
+      brokerOptions = brokerOptionsFromMetadata(metadata)
+      if (!brokerOptions.some((item) => item.type === form.brokerType))
+        form = createAccountForm(brokerOptions)
       error = ''
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '계좌 목록을 불러오지 못했습니다.'
+      error = projectAccountError(e, '계좌 목록을 불러오지 못했습니다.')
     } finally {
       loading = false
     }
@@ -41,7 +47,7 @@
       error = ''
       await load()
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '계좌 추가에 실패했습니다.'
+      error = projectAccountError(e, '계좌 추가에 실패했습니다.')
     }
   }
 
@@ -51,16 +57,16 @@
       message = '활성 계좌를 변경했습니다.'
       await load()
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '활성화에 실패했습니다.'
+      error = projectAccountError(e, '활성화에 실패했습니다.')
     }
   }
 
   async function testConnection(id) {
     try {
       const { data } = await accountApi.test(id)
-      message = data?.StatusMessage ?? data?.statusMessage ?? '연결 테스트 완료'
+      message = data?.statusMessage ?? '연결 테스트 완료'
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '연결 테스트에 실패했습니다.'
+      error = projectAccountError(e, '연결 테스트에 실패했습니다.')
     }
   }
 
@@ -71,7 +77,7 @@
       message = '계좌를 삭제했습니다.'
       await load()
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '계좌 삭제에 실패했습니다.'
+      error = projectAccountError(e, '계좌 삭제에 실패했습니다.')
     }
   }
 </script>
@@ -96,12 +102,20 @@
     <div class="mb-8 rounded-lg border border-gray-700 bg-gray-800 p-6">
       <div class="grid grid-cols-2 gap-4">
         <input bind:value={form.accountName} placeholder="계좌 이름" class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <select bind:value={form.environment} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
-          <option value="Paper">Paper</option>
-          <option value="Live">Live</option>
+        <select value={form.brokerType} on:change={(event) => (form = selectBroker(form, brokerOptions, event.currentTarget.value))} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
+          {#each brokerOptions as broker}
+            <option value={broker.type} disabled={!broker.isImplemented}>{broker.displayName} · {broker.market}{broker.isImplemented ? '' : ' (준비 중)'}</option>
+          {/each}
         </select>
-        <input bind:value={form.apiKey} placeholder="API Key" class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
-        <input bind:value={form.apiSecret} placeholder="API Secret" class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        <select bind:value={form.environment} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">
+          {#each selectedBroker?.environments ?? [] as environment}
+            <option value={environment}>{environment}</option>
+          {/each}
+        </select>
+        {#if selectedBroker?.requiresAccountCredentials}
+          <input bind:value={form.apiKey} placeholder="API Key" autocomplete="off" class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+          <input bind:value={form.apiSecret} type="password" placeholder="API Secret" autocomplete="new-password" class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" />
+        {/if}
         <textarea bind:value={form.notes} placeholder="메모" class="col-span-2 rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white"></textarea>
       </div>
       <div class="mt-4 flex gap-3">
@@ -128,16 +142,16 @@
         <tbody>
           {#each rows as row}
             <tr class="border-t border-gray-700">
-              <td class="px-4 py-3">{row.AccountName}</td>
-              <td class="px-4 py-3">{row.BrokerType}</td>
-              <td class="px-4 py-3">{row.Environment}</td>
-              <td class="px-4 py-3 font-mono text-xs">{row.ApiKey}</td>
-              <td class="px-4 py-3">{row.IsActive ? 'Active' : row.IsEnabled ? 'Enabled' : 'Disabled'}</td>
+              <td class="px-4 py-3">{row.accountName}</td>
+              <td class="px-4 py-3">{row.brokerType}</td>
+              <td class="px-4 py-3">{row.environment}</td>
+              <td class="px-4 py-3 font-mono text-xs">{row.apiKey}</td>
+              <td class="px-4 py-3">{row.isActive ? 'Active' : row.isEnabled ? 'Enabled' : 'Disabled'}</td>
               <td class="px-4 py-3 text-right">
                 <div class="flex justify-end gap-2">
-                  <button on:click={() => testConnection(row.Id)} class="rounded bg-gray-700 px-3 py-1 text-xs hover:bg-gray-600">Test</button>
-                  <button on:click={() => activate(row.Id)} class="rounded bg-blue-700 px-3 py-1 text-xs hover:bg-blue-600">Activate</button>
-                  <button on:click={() => remove(row.Id)} class="rounded bg-red-700 px-3 py-1 text-xs hover:bg-red-600">Delete</button>
+                  <button on:click={() => testConnection(row.id)} class="rounded bg-gray-700 px-3 py-1 text-xs hover:bg-gray-600">Test</button>
+                  <button on:click={() => activate(row.id)} disabled={!row.isEnabled || row.isActive} class="rounded bg-blue-700 px-3 py-1 text-xs hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40">Activate</button>
+                  <button on:click={() => remove(row.id)} class="rounded bg-red-700 px-3 py-1 text-xs hover:bg-red-600">Delete</button>
                 </div>
               </td>
             </tr>
