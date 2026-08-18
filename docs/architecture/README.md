@@ -47,6 +47,8 @@ infrastructure.
   activity store, one active-account projection, and an explicit generated desktop contract.
 - Trade activity reads: one storage-independent recommendation/history query, one focused activity
   store, validated pagination, and explicit generated desktop contracts.
+- Stock-analysis responses: one explicit generated contract with central pattern names and
+  unit-correct percentage presentation in the desktop.
 - Live built-in configuration: one database-backed application service; entry detection and exit
   evaluation resolve the same persisted override snapshot and never rewrite application files.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
@@ -362,4 +364,6 @@ defaults, active-profile selection, and modification time have one application o
   persisted live parameters one shared runtime source.
 - `adr/0043-isolate-trade-activity-query.md`: move recommendation/history projection and validated
   pagination behind a storage-independent application read boundary.
+- `adr/0044-type-stock-analysis-contract.md`: replace the anonymous analysis response and
+  casing/unit fallbacks with one generated desktop contract.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

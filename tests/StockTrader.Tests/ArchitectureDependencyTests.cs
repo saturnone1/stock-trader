@@ -2211,6 +2211,13 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var servicePath = Path.Combine(repository, "Services/Analysis/StockAnalysisService.cs");
         var service = File.ReadAllText(servicePath);
+        var endpoint = File.ReadAllText(Path.Combine(repository, "Api/AnalysisEndpoints.cs"));
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/StockAnalysisContracts.cs"));
+        var desktopEndpoints = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/endpoints.ts"));
+        var page = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Recommendations.svelte"));
         var policy = File.ReadAllText(Path.Combine(
             repository, "Application/Analysis/StockRecommendationPolicy.cs"));
 
@@ -2222,6 +2229,19 @@ public class ArchitectureDependencyTests
         service.Should().NotContain("ComputeUpsideProbability(");
         service.Should().NotContain("ComputeRecommendedStopLoss(");
         service.Should().NotContain("ComputeRecommendedTarget(");
+        endpoint.Should().Contain("MarketSymbolPolicy.Normalize(symbol)");
+        endpoint.Should().Contain("StockAnalysisResponse.Create(analysis)");
+        endpoint.Should().Contain("Produces<StockAnalysisResponse>");
+        endpoint.Should().NotContain("Results.Ok(new");
+        contracts.Should().Contain("record StockAnalysisResponse");
+        contracts.Should().Contain("PatternCatalog.DisplayName(value.PatternType)");
+        desktopEndpoints.Should().Contain("api.get<StockAnalysisResponse>");
+        page.Should().Contain("analysis.currentPrice");
+        page.Should().Contain("pattern.patternName");
+        page.Should().Contain("formatFractionPercent(pattern.historicalWinRate)");
+        page.Should().NotContain("analysis.CurrentPrice");
+        page.Should().NotContain("analysis.Indicators");
+        page.Should().NotContain("analysis.ActivePatterns");
         policy.Should().NotContain("StockTrader.Services");
         policy.Should().NotContain("DateTime.UtcNow");
     }

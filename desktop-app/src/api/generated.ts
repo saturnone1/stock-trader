@@ -881,7 +881,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["StockAnalysisResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StockAnalysisErrorResponse"];
+                    };
                 };
             };
         };
@@ -3818,6 +3829,71 @@ export interface components {
             displayName: string;
             description: string;
             isDefault: boolean;
+        };
+        StockAnalysisErrorResponse: {
+            error: string;
+        };
+        StockAnalysisIndicatorResponse: {
+            /** Format: double */
+            rsi: number;
+            /** Format: double */
+            sma20: number;
+            /** Format: double */
+            sma50: number;
+            /** Format: double */
+            sma200: number;
+            /** Format: double */
+            macd: number;
+            /** Format: double */
+            macdSignal: number;
+            /** Format: double */
+            bollingerUpper: number;
+            /** Format: double */
+            bollingerMiddle: number;
+            /** Format: double */
+            bollingerLower: number;
+            /** Format: double */
+            vwap: number;
+            /** Format: int32 */
+            bullishIndicatorCount: number;
+            /** Format: int32 */
+            totalIndicatorCount: number;
+        };
+        StockAnalysisPatternResponse: {
+            pattern: string;
+            patternName: string;
+            /** Format: double */
+            confidence: number;
+            /** Format: double */
+            historicalWinRate: number;
+            /** Format: double */
+            historicalAvgReturn: number;
+        };
+        StockAnalysisResponse: {
+            symbol: string;
+            /** Format: double */
+            currentPrice: number;
+            grade: string;
+            /** Format: double */
+            upsideProbability: number;
+            /** Format: double */
+            expectedReturnPercent: number;
+            /** Format: int32 */
+            expectedHoldingDays: number;
+            /** Format: double */
+            downsideRiskPercent: number;
+            /** Format: double */
+            recommendedStopLoss: number;
+            /** Format: double */
+            recommendedTarget: number;
+            /** Format: double */
+            confidenceScore: number;
+            /** Format: double */
+            atr: number;
+            indicators: components["schemas"]["StockAnalysisIndicatorResponse"];
+            activePatterns: components["schemas"]["StockAnalysisPatternResponse"][];
+            /** Format: date-time */
+            analyzedAt: string;
         };
         StrategyBuilderMetadataResponse: {
             /** Format: int32 */
