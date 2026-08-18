@@ -237,13 +237,12 @@
   accepts only an empty database or one with EF migration history and fails closed without writes
   for an unbaselined legacy database. EF Core is the sole schema mutation engine.
 
-Remaining Phase 2 work is primarily reducing residual runtime orchestration and broadening
-full-strategy preview/backtest/live parity fixtures beyond the shared entry/exit policies and the
-single-symbol preview simulation goldens.
-
 Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
-remaining orchestration services and extending multi-symbol, scaling, and live-order parity fixtures
-around the shared compiled strategy and execution policies.
+remaining orchestration services and extending broker-order parity around the shared compiled
+strategy and execution policies. Current full-strategy goldens cover NextOpen preview/backtest/live
+fill and exit decisions, fractional scale-out preview/backtest parity, and multi-symbol indicator
+cache isolation against per-symbol previews. Live scaling remains fail-closed until partial broker
+orders can be persisted and reconciled with the same execution contract.
 
 ## Phase 0 — Guardrails and governance
 

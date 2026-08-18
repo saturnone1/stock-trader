@@ -75,6 +75,9 @@ An end-to-end parity fixture compiles one NextOpen custom strategy once, creates
 that compiled object, and asserts identical preview/backtest entry time, repriced fill, exit time,
 exit price, and exit reason. It also runs the live fill and extracted live exit evaluator against
 the same compiled strategy, locking entry risk geometry and the observable exit reason.
+A multi-symbol fixture runs one compiled SMA-cross strategy over rising and falling symbols in the
+same backtest, then compares each outcome with an isolated preview. This locks per-symbol indicator
+cache isolation and prevents one symbol's calculation state from changing another symbol's trade.
 
 Long-position execution now crosses a second named boundary in `Application/Execution`.
 Pattern preview and backtest must delegate entry repricing and per-bar exit ordering to this pure

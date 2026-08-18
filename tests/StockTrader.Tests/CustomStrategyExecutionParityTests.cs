@@ -158,6 +158,111 @@ public class CustomStrategyExecutionParityTests
     }
 
     [Fact]
+    public async Task MultiSymbolBacktest_MatchesPerSymbolPreviewWithoutLeakingIndicatorCache()
+    {
+        var rising = Bars("RISING", 100m);
+        rising[50].Open = 110m;
+        rising[50].High = 111m;
+        rising[50].Low = 109m;
+        rising[50].Close = 110m;
+        rising[51].Open = 110m;
+        rising[51].High = 120m;
+        rising[51].Low = 109m;
+        rising[51].Close = 115m;
+
+        var falling = Bars("FALLING", 200m);
+        falling[50].Open = 190m;
+        falling[50].High = 191m;
+        falling[50].Low = 189m;
+        falling[50].Close = 190m;
+        falling[51].Open = 190m;
+        falling[51].High = 191m;
+        falling[51].Low = 180m;
+        falling[51].Close = 185m;
+
+        var definition = new StrategyDocument
+        {
+            Name = "multi-symbol-cache-parity",
+            EntryMode = StrategyCatalog.CurrentCloseEntryMode,
+            EntryRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new EntryRule
+                {
+                    Indicator = "PRICE_VS_SMA",
+                    Operator = "crosses_above",
+                    Value = 0m,
+                    Params = new Dictionary<string, decimal> { ["period"] = 20m }
+                }
+            }),
+            AtrStopMultiplier = 2m,
+            AtrTargetMultiplier = 3m,
+            MaxHoldingBars = 10
+        };
+        var compilation = StrategyCompiler.Compile(definition);
+        compilation.Errors.Should().BeEmpty();
+        var strategy = compilation.Strategy!;
+        var indicators = new IndicatorService();
+        var risingAtr = Enumerable.Repeat(1m, rising.Length).ToArray();
+        var fallingAtr = Enumerable.Repeat(1m, falling.Length).ToArray();
+        var factory = new CustomStrategyDetectorFactory(
+            indicators,
+            new FixedTimeProvider(new DateTimeOffset(2024, 3, 1, 0, 0, 0, TimeSpan.Zero)));
+
+        async Task<PatternPreviewResult> Preview(string symbol, OhlcvBar[] bars, decimal[] atr) =>
+            (await new PatternPreviewSimulationEngine().RunAsync(
+                new PatternPreviewSimulationInput(
+                    symbol,
+                    TimeFrame.Daily,
+                    bars[50].Timestamp,
+                    bars[^1].Timestamp.AddDays(1),
+                    bars,
+                    atr,
+                    new Dictionary<string, OhlcvBar[]>(),
+                    [],
+                    factory.Create(strategy))))!;
+
+        var risingPreview = await Preview("RISING", rising, risingAtr);
+        var fallingPreview = await Preview("FALLING", falling, fallingAtr);
+        var backtest = await new BacktestSimulationEngine(
+                new BacktestSignalEntryProcessor(NullLogger<BacktestSignalEntryProcessor>.Instance))
+            .RunAsync(
+                ["RISING", "FALLING"],
+                new Dictionary<string, PreparedSymbolData>
+                {
+                    ["RISING"] = Prepared(rising, risingAtr),
+                    ["FALLING"] = Prepared(falling, fallingAtr)
+                },
+                [factory.Create(strategy)],
+                [],
+                rising[50].Timestamp,
+                rising[^1].Timestamp,
+                100_000m,
+                0m,
+                0m,
+                TimeFrame.Daily,
+                new BacktestRiskParameters(0.01m, 0m, 2, 2),
+                null,
+                SlippageModel.Fixed,
+                [],
+                rising[0].Timestamp,
+                new BacktestExecutionAdapter(),
+                null,
+                new CumulativeRsi2Config(),
+                CancellationToken.None);
+
+        fallingPreview.Markers.Should().NotContain(marker => marker.Type == "ENTRY");
+        var previewEntry = risingPreview.Markers.Single(marker => marker.Type == "ENTRY");
+        var previewExit = risingPreview.Markers.Single(marker => marker.Type == "EXIT");
+        var trade = backtest.Trades.Should().ContainSingle().Subject;
+        trade.Symbol.Should().Be("RISING");
+        trade.EntryTime.Should().Be(previewEntry.Date);
+        trade.EntryPrice.Should().Be(previewEntry.Price);
+        trade.ExitTime.Should().Be(previewExit.Date);
+        trade.ExitPrice.Should().Be(previewExit.Price);
+        trade.ExitReason.Should().Be(previewExit.Reason);
+    }
+
+    [Fact]
     public async Task PreviewBacktestAndLiveFill_RunTheSameCompiledNextOpenStrategy()
     {
         var bars = Bars();
@@ -318,16 +423,17 @@ public class CustomStrategyExecutionParityTests
         Params = new Dictionary<string, decimal> { ["bars"] = 1m }
     };
 
-    private static OhlcvBar[] Bars() => Enumerable.Range(0, 52)
+    private static OhlcvBar[] Bars(string symbol = "AAA", decimal basePrice = 100m) =>
+        Enumerable.Range(0, 52)
         .Select(index => new OhlcvBar
         {
-            Symbol = "AAA",
+            Symbol = symbol,
             TimeFrame = TimeFrame.Daily,
             Timestamp = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(index),
-            Open = 100m,
-            High = 101m,
-            Low = 99m,
-            Close = 100m,
+            Open = basePrice,
+            High = basePrice + 1m,
+            Low = basePrice - 1m,
+            Close = basePrice,
             Volume = 1_000_000
         })
         .ToArray();
