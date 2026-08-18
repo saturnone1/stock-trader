@@ -194,6 +194,13 @@
 - Custom-rule signal timestamps now come from an explicitly supplied `TimeProvider`; the detector
   no longer reads `DateTime.UtcNow`. Live scanning and preview receive the application clock, while
   tests can replay an identical observation timestamp without changing strategy semantics.
+- Live daily scanning now crosses `ILivePatternScanCycle`. The hosted worker owns only channel
+  consumption, configured retries, and circuit-breaker delay; provider selection, daily-bar reads,
+  benchmark-regime caching, detection, and signal processing sit behind purpose-specific ports.
+  ET-date deduplication is committed after successful processing rather than before it, so transient
+  failures are retried instead of being mistaken for completed scans. Direct tests lock insufficient
+  history behavior, symbol/date deduplication, provider benchmark cache invalidation, regime math,
+  and persistence-before-order sequencing.
 - `ICustomStrategyDetector` is now the runtime contract used by preview, backtest, optimization,
   scanning, and live exits. `CustomStrategyDetectorFactory` is the sole production constructor for
   `RuleBasedDetector`; production code no longer creates or casts the concrete detector directly,

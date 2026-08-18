@@ -1,6 +1,7 @@
 using StockTrader.Services.Patterns;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Application.Trading;
 
 namespace StockTrader.Extensions;
 
@@ -18,6 +19,11 @@ public static class PatternServiceExtensions
                     provider.GetRequiredService<IOptionsSnapshot<PatternSettings>>().Value));
         }
         services.AddScoped<PatternDetectionService>();
+        services.AddScoped<ILivePatternDetection>(provider =>
+            provider.GetRequiredService<PatternDetectionService>());
+        services.AddScoped<ILiveMarketRegimeEvaluator, LiveMarketRegimeEvaluator>();
+        services.AddSingleton<LivePatternScanState>();
+        services.AddScoped<ILivePatternScanCycle, LivePatternScanCycle>();
 
         return services;
     }

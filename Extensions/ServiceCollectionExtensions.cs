@@ -82,6 +82,12 @@ public static class ServiceCollectionExtensions
                 + $"{TradingSettings.MinimumEntryReconciliationIntervalSeconds} and "
                 + $"{TradingSettings.MaximumEntryReconciliationIntervalSeconds}")
             .Validate(settings => settings.EntryReconciliationBatchSize > 0, "EntryReconciliationBatchSize must be positive")
+            .Validate(settings => settings.PatternScanMaxRetries > 0,
+                "PatternScanMaxRetries must be positive")
+            .Validate(settings => settings.PatternScanMaxConsecutiveFailures > 0,
+                "PatternScanMaxConsecutiveFailures must be positive")
+            .Validate(settings => settings.PatternScanCooldownSeconds > 0,
+                "PatternScanCooldownSeconds must be positive")
             .Validate(settings => settings.PositionMonitoringIntervalSeconds > 0,
                 "PositionMonitoringIntervalSeconds must be positive")
             .Validate(settings => settings.PositionOrderResolutionMaxAttempts > 0,
@@ -221,6 +227,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPatternStatisticsQuery, PatternStatisticsQuery>();
         services.AddScoped<ISignalListQuery, SignalListQuery>();
         services.AddScoped<ISignalService, SignalService>();
+        services.AddScoped<ILiveSignalProcessor, LiveSignalProcessor>();
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IRiskOverviewQuery, RiskOverviewQuery>();
         services.AddScoped<IPortfolioPerformanceQuery, PortfolioPerformanceQuery>();

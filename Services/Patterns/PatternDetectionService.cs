@@ -2,6 +2,7 @@ using StockTrader.Application.Strategies;
 using StockTrader.Application.Settings;
 using StockTrader.Application.Statistics;
 using StockTrader.Application.SymbolProfiles;
+using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -14,7 +15,7 @@ using Microsoft.Extensions.Options;
 
 namespace StockTrader.Services.Patterns;
 
-public class PatternDetectionService
+public class PatternDetectionService : ILivePatternDetection
 {
     private readonly IBuiltInPatternDetectorFactory _builtInDetectors;
     private readonly ILiveParameterService _liveParameters;

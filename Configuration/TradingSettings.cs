@@ -19,6 +19,9 @@ public class TradingSettings
     public int RiskHaltAlertIntervalMinutes { get; set; } = 60;
     public int EntryReconciliationIntervalSeconds { get; set; } = 15;
     public int EntryReconciliationBatchSize { get; set; } = 100;
+    public int PatternScanMaxRetries { get; set; } = 3;
+    public int PatternScanMaxConsecutiveFailures { get; set; } = 5;
+    public int PatternScanCooldownSeconds { get; set; } = 300;
     public int PositionMonitoringIntervalSeconds { get; set; } = 60;
     public int PositionOrderResolutionMaxAttempts { get; set; } = 10;
     public int PositionOrderResolutionDelayMilliseconds { get; set; } = 500;
