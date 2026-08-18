@@ -15,7 +15,8 @@ public static class SecurityServiceExtensions
     /// </summary>
     public static IServiceCollection AddSecurityServices(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        bool persistDataProtectionKeys = true)
     {
         // Bind security settings
         services.Configure<SecuritySettings>(configuration.GetSection("Security"));
@@ -25,13 +26,20 @@ public static class SecurityServiceExtensions
 
         // DataProtection: 쿠키 암호화 키를 /data에 영구 저장.
         // 컨테이너 재시작해도 기존 로그인 세션이 유지된다.
-        var keyPath = configuration["ConnectionStrings:DefaultConnection"] ?? "";
-        var dataDir = keyPath.Contains("/data/")
-            ? "/data/keys"
-            : Path.Combine(AppContext.BaseDirectory, "keys");
-        services.AddDataProtection()
-            .PersistKeysToFileSystem(new DirectoryInfo(dataDir))
+        var dataProtection = services.AddDataProtection()
             .SetApplicationName("StockTrader");
+        if (persistDataProtectionKeys)
+        {
+            var keyPath = configuration["ConnectionStrings:DefaultConnection"] ?? "";
+            var dataDir = keyPath.Contains("/data/")
+                ? "/data/keys"
+                : Path.Combine(AppContext.BaseDirectory, "keys");
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataDir));
+        }
+        else
+        {
+            dataProtection.UseEphemeralDataProtectionProvider();
+        }
 
         // Cookie Authentication
         var sessionMinutes = configuration

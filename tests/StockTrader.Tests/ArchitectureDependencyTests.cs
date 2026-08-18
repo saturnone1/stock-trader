@@ -336,7 +336,7 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
-    public void DomainOwnsMarketDataIdentityWithoutLegacyModelDependencies()
+    public void DomainOwnsCoreTradingIdentityWithoutLegacyModelDependencies()
     {
         var repository = FindRepositoryRoot();
         var domain = Path.Combine(repository, "Domain");
@@ -351,8 +351,27 @@ public class ArchitectureDependencyTests
         violations.Should().BeEmpty("Domain은 외부 모델 계층에 의존하면 안 됩니다");
         File.Exists(Path.Combine(domain, "MarketData", "TimeFrame.cs")).Should().BeTrue();
         File.Exists(Path.Combine(domain, "MarketData", "DataSource.cs")).Should().BeTrue();
+        File.Exists(Path.Combine(domain, "Strategies", "PatternType.cs")).Should().BeTrue();
         File.Exists(Path.Combine(legacyEnums, "TimeFrame.cs")).Should().BeFalse();
         File.Exists(Path.Combine(legacyEnums, "DataSource.cs")).Should().BeFalse();
+        File.Exists(Path.Combine(repository, "Models", "PatternType.cs")).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PatternDisplayNamesComeFromTheDomainCatalog()
+    {
+        var repository = FindRepositoryRoot();
+        var discord = File.ReadAllText(Path.Combine(
+            repository, "Services/Notification/DiscordNotificationChannel.cs"));
+        var telegram = File.ReadAllText(Path.Combine(
+            repository, "Services/Notification/TelegramNotificationChannel.cs"));
+        var metadata = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/StrategyBuilderMetadataResponse.cs"));
+
+        discord.Should().Contain("PatternCatalog.DisplayName(");
+        telegram.Should().Contain("PatternCatalog.DisplayName(");
+        telegram.Should().NotContain("GetPatternKorean(");
+        metadata.Should().Contain("Patterns: PatternCatalog.All.Select(");
     }
 
     [Fact]
@@ -762,6 +781,10 @@ public class ArchitectureDependencyTests
         project.Should().Contain("Microsoft.OpenApi\" Version=\"2.7.5\"");
         program.Should().Contain("GetDocument.Insider");
         program.Should().Contain("includeHostedServices: !isOpenApiGeneration");
+        program.Should().Contain("persistDataProtectionKeys: !isOpenApiGeneration");
+        var security = File.ReadAllText(Path.Combine(
+            repository, "Extensions/SecurityServiceExtensions.cs"));
+        security.Should().Contain("UseEphemeralDataProtectionProvider()");
         program.Should().Contain("if (!isOpenApiGeneration)");
         program.Should().Contain("await app.InitializeStockTraderAsync()");
         backgroundRegistration.Should().Contain("if (!includeHostedServices)");

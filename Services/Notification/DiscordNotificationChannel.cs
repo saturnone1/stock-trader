@@ -70,7 +70,7 @@ public sealed class DiscordNotificationChannel : INotificationChannel
                     color,
                     fields = new object[]
                     {
-                        new { name = "패턴",   value = recommendation.PatternType.ToString(), inline = true },
+                        new { name = "패턴",   value = PatternCatalog.DisplayName(recommendation.PatternType, recommendation.CustomPatternName), inline = true },
                         new { name = "진입가", value = $"${recommendation.EntryPrice:F2}",    inline = true },
                         new { name = "\u200b", value = "\u200b",                              inline = true }, // spacer
                         new { name = "손절가", value = $"${recommendation.StopLossPrice:F2} (-{stopPct}%)", inline = true },

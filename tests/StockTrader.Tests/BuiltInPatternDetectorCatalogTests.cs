@@ -15,8 +15,8 @@ public sealed class BuiltInPatternDetectorCatalogTests
     [Fact]
     public void Catalog_CoversEveryNonCustomPatternExactlyOnce()
     {
-        var expected = Enum.GetValues<PatternType>()
-            .Where(pattern => pattern != PatternType.Custom)
+        var expected = PatternCatalog.BuiltIn
+            .Select(item => item.Value)
             .Order()
             .ToArray();
 

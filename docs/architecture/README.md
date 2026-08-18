@@ -27,6 +27,7 @@ infrastructure.
 - Indicator definitions: one registry that supplies calculation, validation, units, parameters,
   warmup, and supported timeframes.
 - Strategy definitions: one typed aggregate compiled for preview, backtest, and live execution.
+- Pattern identity, stable codes, investor-facing names, and built-in support: one domain catalog.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -226,6 +227,11 @@ adapter; no production component can reach a catch-all optimization persistence 
 Built-in pattern discovery and construction now use `BuiltInPatternDetectorCatalog` in both runtime
 DI and backtesting. The catalog covers every non-custom `PatternType`, including TQQQ 200-SMA, and
 the same factory applies baseline or request-override settings without a second constructor list.
+`PatternType` itself and its stable code, investor-facing display name, and built-in support flag
+are owned by `Domain.Strategies.PatternCatalog`. Stable enum names and numeric values remain the
+persistence/API contract; notifications and strategy-builder metadata consume the central display
+metadata instead of maintaining channel-specific labels. Custom recommendations display their
+actual stored strategy name when one is available.
 
 ## Decision records
 
@@ -272,4 +278,6 @@ the same factory applies baseline or request-override settings without a second 
   provider identity while preserving persisted integer and JSON enum compatibility.
 - `adr/0022-register-rule-indicator-calculators.md`: bind every central indicator descriptor to one
   runtime calculator and split evaluation caching, dispatch, categories, and math.
+- `adr/0023-own-pattern-identity-and-display-metadata.md`: preserve pattern identity compatibility
+  while centralizing investor-facing names and built-in support metadata in Domain.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

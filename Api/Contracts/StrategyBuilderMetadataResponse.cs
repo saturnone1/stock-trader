@@ -44,6 +44,11 @@ public sealed record DataProviderMetadataResponse(
     IReadOnlyDictionary<TimeFrame, int> MaximumLookbackDays);
 
 public sealed record StrategyOptionMetadataResponse(string Code, string DisplayName);
+public sealed record PatternMetadataResponse(
+    PatternType Value,
+    string Code,
+    string DisplayName,
+    bool IsBuiltIn);
 public sealed record SlippageModelMetadataResponse(
     SlippageModel Value,
     string DisplayName,
@@ -69,6 +74,7 @@ public sealed record StrategyBuilderMetadataResponse(
     IReadOnlyList<IndicatorMetadataResponse> Indicators,
     IReadOnlyList<TimeFrameMetadataResponse> TimeFrames,
     IReadOnlyList<DataProviderMetadataResponse> DataProviders,
+    IReadOnlyList<PatternMetadataResponse> Patterns,
     IReadOnlyList<string> RuleOperators,
     IReadOnlyList<StrategyOptionMetadataResponse> EntryModes,
     IReadOnlyList<StrategyOptionMetadataResponse> SizingModes,
@@ -81,7 +87,7 @@ public sealed record StrategyBuilderMetadataResponse(
     LiveStrategyConstraintsMetadataResponse LiveStrategyConstraints)
 {
     public static StrategyBuilderMetadataResponse Create() => new(
-        SchemaVersion: 4,
+        SchemaVersion: 5,
         DocumentVersion: StrategyDocumentVersions.Current,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
@@ -115,6 +121,11 @@ public sealed record StrategyBuilderMetadataResponse(
             item.Market,
             item.SupportedTimeFrames,
             item.MaximumLookbackDays)).ToArray(),
+        Patterns: PatternCatalog.All.Select(item => new PatternMetadataResponse(
+            item.Value,
+            item.Code,
+            item.DisplayName,
+            item.IsBuiltIn)).ToArray(),
         RuleOperators: RuleOperatorCatalog.All,
         EntryModes: StrategyCatalog.EntryModes.Select(ToResponse).ToArray(),
         SizingModes: StrategyCatalog.SizingModes.Select(ToResponse).ToArray(),
