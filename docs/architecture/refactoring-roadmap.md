@@ -396,6 +396,11 @@ contains no persistence port or trading calculation, exposes explicit generated 
 and rejects malformed filters instead of silently broadening them. The desktop consumes only the
 canonical camel-case contract.
 
+Stock-analysis detail now returns an explicit OpenAPI contract and the desktop consumes its
+generated camel-case shape. Pattern cards retain stable codes while displaying central catalog
+names. Fractional confidence/win-rate values and percentage-point forecast values have separate
+tested formatters, correcting the former 100x historical-rate display error.
+
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 
 ## Phase 4 — Persistence and contracts

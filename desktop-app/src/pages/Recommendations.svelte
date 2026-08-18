@@ -1,6 +1,11 @@
 <script>
   import { onMount } from 'svelte'
   import { analysisApi, orderApi, tradeApi } from '../api/endpoints'
+  import {
+    formatFractionPercent,
+    formatPercentPoints,
+    gradeColor,
+  } from '../features/analysis/stockAnalysisModel.js'
   import { tradeApiError } from '../features/trades/tradeActivityModel.js'
 
   let loading = true
@@ -13,16 +18,6 @@
   let reconcilingId = null
 
   onMount(load)
-
-  function pct(value, digits = 1) {
-    return `${Number(value ?? 0).toFixed(digits)}%`
-  }
-
-  function gradeColor(grade) {
-    if (grade === 'StrongBuy' || grade === 'Buy') return 'text-green-300'
-    if (grade === 'StrongSell' || grade === 'Sell') return 'text-red-300'
-    return 'text-yellow-300'
-  }
 
   function entryStatusLabel(status) {
     return ({
@@ -170,60 +165,60 @@
     {:else if analysis}
       <div class="mb-8 flex items-start justify-between">
         <div>
-          <h2 class="text-4xl font-bold">{analysis.Symbol}</h2>
-          <div class="mt-2 text-sm text-gray-400">Analyzed at {analysis.AnalyzedAt}</div>
+          <h2 class="text-4xl font-bold">{analysis.symbol}</h2>
+          <div class="mt-2 text-sm text-gray-400">분석 시각 {analysis.analyzedAt}</div>
         </div>
-        <div class={`text-2xl font-bold ${gradeColor(analysis.Grade)}`}>{analysis.Grade}</div>
+        <div class={`text-2xl font-bold ${gradeColor(analysis.grade)}`}>{analysis.grade}</div>
       </div>
 
       <div class="mb-8 grid grid-cols-6 gap-4">
-        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">현재가</div><div class="mt-2 text-2xl font-bold">{Number(analysis.CurrentPrice ?? 0).toFixed(2)}</div></div>
-        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">상승 확률</div><div class="mt-2 text-2xl font-bold text-green-300">{pct(analysis.UpsideProbability)}</div></div>
-        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">예상 수익률</div><div class="mt-2 text-2xl font-bold {(analysis.ExpectedReturnPercent ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}">{pct(analysis.ExpectedReturnPercent, 2)}</div></div>
-        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">손실 위험</div><div class="mt-2 text-2xl font-bold text-red-300">{pct(analysis.DownsideRiskPercent, 1)}</div></div>
-        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">신뢰도</div><div class="mt-2 text-2xl font-bold">{Number(analysis.ConfidenceScore ?? 0).toFixed(0)}</div></div>
-        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">예상 기간</div><div class="mt-2 text-2xl font-bold">{analysis.ExpectedHoldingDays ?? 0}일</div></div>
+        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">현재가</div><div class="mt-2 text-2xl font-bold">{Number(analysis.currentPrice).toFixed(2)}</div></div>
+        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">상승 확률</div><div class="mt-2 text-2xl font-bold text-green-300">{formatPercentPoints(analysis.upsideProbability)}</div></div>
+        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">예상 수익률</div><div class="mt-2 text-2xl font-bold {analysis.expectedReturnPercent >= 0 ? 'text-green-300' : 'text-red-300'}">{formatPercentPoints(analysis.expectedReturnPercent, 2)}</div></div>
+        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">손실 위험</div><div class="mt-2 text-2xl font-bold text-red-300">{formatPercentPoints(analysis.downsideRiskPercent, 1)}</div></div>
+        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">신뢰도</div><div class="mt-2 text-2xl font-bold">{Number(analysis.confidenceScore).toFixed(0)}</div></div>
+        <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">예상 기간</div><div class="mt-2 text-2xl font-bold">{analysis.expectedHoldingDays}일</div></div>
       </div>
 
       <div class="mb-8 grid grid-cols-2 gap-6">
         <section class="rounded-lg border border-gray-700 bg-gray-800 p-6">
           <h3 class="mb-4 text-xl font-bold">추천 가격대</h3>
           <div class="grid grid-cols-3 gap-4 text-sm">
-            <div><div class="text-gray-500">현재가</div><div class="mt-1 text-lg">{Number(analysis.CurrentPrice ?? 0).toFixed(2)}</div></div>
-            <div><div class="text-gray-500">추천 손절선</div><div class="mt-1 text-lg text-red-300">{Number(analysis.RecommendedStopLoss ?? 0).toFixed(2)}</div></div>
-            <div><div class="text-gray-500">추천 목표가</div><div class="mt-1 text-lg text-green-300">{Number(analysis.RecommendedTarget ?? 0).toFixed(2)}</div></div>
+            <div><div class="text-gray-500">현재가</div><div class="mt-1 text-lg">{Number(analysis.currentPrice).toFixed(2)}</div></div>
+            <div><div class="text-gray-500">추천 손절선</div><div class="mt-1 text-lg text-red-300">{Number(analysis.recommendedStopLoss).toFixed(2)}</div></div>
+            <div><div class="text-gray-500">추천 목표가</div><div class="mt-1 text-lg text-green-300">{Number(analysis.recommendedTarget).toFixed(2)}</div></div>
           </div>
-          <div class="mt-4 text-sm text-gray-400">ATR {Number(analysis.ATR ?? 0).toFixed(2)}</div>
+          <div class="mt-4 text-sm text-gray-400">ATR {Number(analysis.atr).toFixed(2)}</div>
         </section>
 
         <section class="rounded-lg border border-gray-700 bg-gray-800 p-6">
           <h3 class="mb-4 text-xl font-bold">기술 지표</h3>
           <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="flex justify-between"><span class="text-gray-400">RSI</span><span>{Number(analysis.Indicators?.RSI ?? 0).toFixed(2)}</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">MACD</span><span>{Number(analysis.Indicators?.MACD ?? 0).toFixed(3)}</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">SMA20</span><span>{Number(analysis.Indicators?.SMA20 ?? 0).toFixed(2)}</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">SMA50</span><span>{Number(analysis.Indicators?.SMA50 ?? 0).toFixed(2)}</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">SMA200</span><span>{Number(analysis.Indicators?.SMA200 ?? 0).toFixed(2)}</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">VWAP</span><span>{Number(analysis.Indicators?.VWAP ?? 0).toFixed(2)}</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">Bullish Count</span><span>{analysis.Indicators?.BullishIndicatorCount ?? 0}</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">Total Indicators</span><span>{analysis.Indicators?.TotalIndicatorCount ?? 0}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">RSI</span><span>{Number(analysis.indicators.rsi).toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">MACD</span><span>{Number(analysis.indicators.macd).toFixed(3)}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">SMA20</span><span>{Number(analysis.indicators.sma20).toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">SMA50</span><span>{Number(analysis.indicators.sma50).toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">SMA200</span><span>{Number(analysis.indicators.sma200).toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">VWAP</span><span>{Number(analysis.indicators.vwap).toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">상승 지표</span><span>{analysis.indicators.bullishIndicatorCount}</span></div>
+            <div class="flex justify-between"><span class="text-gray-400">전체 지표</span><span>{analysis.indicators.totalIndicatorCount}</span></div>
           </div>
         </section>
       </div>
 
       <section class="rounded-lg border border-gray-700 bg-gray-800 p-6">
         <h3 class="mb-4 text-xl font-bold">활성 패턴</h3>
-        {#if (analysis.ActivePatterns ?? []).length === 0}
+        {#if analysis.activePatterns.length === 0}
           <div class="text-sm text-gray-400">감지된 패턴이 없습니다.</div>
         {:else}
           <div class="grid grid-cols-3 gap-4">
-            {#each analysis.ActivePatterns as pattern}
+            {#each analysis.activePatterns as pattern}
               <div class="rounded border border-gray-700 bg-gray-900 p-4">
-                <div class="font-semibold">{pattern.Pattern}</div>
+                <div class="font-semibold">{pattern.patternName}</div>
                 <div class="mt-3 space-y-1 text-sm">
-                  <div class="flex justify-between"><span class="text-gray-400">Confidence</span><span>{pct(pattern.Confidence)}</span></div>
-                  <div class="flex justify-between"><span class="text-gray-400">Hist. Win Rate</span><span>{pct(pattern.HistoricalWinRate)}</span></div>
-                  <div class="flex justify-between"><span class="text-gray-400">Hist. Avg Return</span><span>{pct(pattern.HistoricalAvgReturn, 2)}</span></div>
+                  <div class="flex justify-between"><span class="text-gray-400">신호 신뢰도</span><span>{formatFractionPercent(pattern.confidence)}</span></div>
+                  <div class="flex justify-between"><span class="text-gray-400">과거 승률</span><span>{formatFractionPercent(pattern.historicalWinRate)}</span></div>
+                  <div class="flex justify-between"><span class="text-gray-400">과거 평균 수익률</span><span>{formatPercentPoints(pattern.historicalAvgReturn, 2)}</span></div>
                 </div>
               </div>
             {/each}

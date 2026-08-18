@@ -689,7 +689,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockAnalysisErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -6466,6 +6483,190 @@
           },
           "isDefault": {
             "type": "boolean"
+          }
+        }
+      },
+      "StockAnalysisErrorResponse": {
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "StockAnalysisIndicatorResponse": {
+        "required": [
+          "rsi",
+          "sma20",
+          "sma50",
+          "sma200",
+          "macd",
+          "macdSignal",
+          "bollingerUpper",
+          "bollingerMiddle",
+          "bollingerLower",
+          "vwap",
+          "bullishIndicatorCount",
+          "totalIndicatorCount"
+        ],
+        "type": "object",
+        "properties": {
+          "rsi": {
+            "type": "number",
+            "format": "double"
+          },
+          "sma20": {
+            "type": "number",
+            "format": "double"
+          },
+          "sma50": {
+            "type": "number",
+            "format": "double"
+          },
+          "sma200": {
+            "type": "number",
+            "format": "double"
+          },
+          "macd": {
+            "type": "number",
+            "format": "double"
+          },
+          "macdSignal": {
+            "type": "number",
+            "format": "double"
+          },
+          "bollingerUpper": {
+            "type": "number",
+            "format": "double"
+          },
+          "bollingerMiddle": {
+            "type": "number",
+            "format": "double"
+          },
+          "bollingerLower": {
+            "type": "number",
+            "format": "double"
+          },
+          "vwap": {
+            "type": "number",
+            "format": "double"
+          },
+          "bullishIndicatorCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalIndicatorCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "StockAnalysisPatternResponse": {
+        "required": [
+          "pattern",
+          "patternName",
+          "confidence",
+          "historicalWinRate",
+          "historicalAvgReturn"
+        ],
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "patternName": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "historicalWinRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "historicalAvgReturn": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "StockAnalysisResponse": {
+        "required": [
+          "symbol",
+          "currentPrice",
+          "grade",
+          "upsideProbability",
+          "expectedReturnPercent",
+          "expectedHoldingDays",
+          "downsideRiskPercent",
+          "recommendedStopLoss",
+          "recommendedTarget",
+          "confidenceScore",
+          "atr",
+          "indicators",
+          "activePatterns",
+          "analyzedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "currentPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "grade": {
+            "type": "string"
+          },
+          "upsideProbability": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectedReturnPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectedHoldingDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "downsideRiskPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "recommendedStopLoss": {
+            "type": "number",
+            "format": "double"
+          },
+          "recommendedTarget": {
+            "type": "number",
+            "format": "double"
+          },
+          "confidenceScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "atr": {
+            "type": "number",
+            "format": "double"
+          },
+          "indicators": {
+            "$ref": "#/components/schemas/StockAnalysisIndicatorResponse"
+          },
+          "activePatterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockAnalysisPatternResponse"
+            }
+          },
+          "analyzedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

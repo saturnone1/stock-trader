@@ -8,6 +8,7 @@ type DashboardResponse = components['schemas']['DashboardResponse'];
 type StrategyBuilderMetadataResponse = components['schemas']['StrategyBuilderMetadataResponse'];
 type TradeRecommendationListResponse = components['schemas']['TradeRecommendationListResponse'];
 type TradeHistoryResponse = components['schemas']['TradeHistoryResponse'];
+type StockAnalysisResponse = components['schemas']['StockAnalysisResponse'];
 type TradeHistoryParams = {
   pattern?: components['schemas']['PatternType'];
   from?: string;
@@ -363,7 +364,8 @@ export const tradeApi = {
 };
 
 export const analysisApi = {
-  get: (symbol: string) => api.get(`/api/analysis/${encodeURIComponent(symbol)}`),
+  get: (symbol: string) =>
+    api.get<StockAnalysisResponse>(`/api/analysis/${encodeURIComponent(symbol)}`),
 };
 
 export const signalApi = {
