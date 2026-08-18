@@ -181,7 +181,10 @@ storage, legacy parameter JSON, and OOS-only updates. Its SQLite adapter is the 
 `IOptimizationJobLifecycle` likewise owns Pending selection and Running, Completed, Cancelled,
 shutdown-Pending, and Failed transitions. It supplies a storage-independent execution ticket, so
 neither optimization background component imports `Data` or `Models`; the polling worker is capped
-below 200 lines.
+below 200 lines. Pending selection is claimed with a status-guarded database update, so concurrent
+workers cannot both start the same job. Ranked result merging and its following progress checkpoint
+commit in one SQLite transaction; a restart therefore observes either the whole completed chunk or
+none of it.
 
 ## Decision records
 
@@ -210,4 +213,6 @@ below 200 lines.
   persisted control signals, and OOS-only updates behind an application storage port.
 - `adr/0013-isolate-optimization-job-lifecycle.md`: map persisted jobs to application execution
   tickets and centralize queue/status transitions behind one lifecycle port.
+- `adr/0014-commit-optimization-chunks-atomically.md`: claim queued work once and commit each result
+  chunk with its restart checkpoint.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

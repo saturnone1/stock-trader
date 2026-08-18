@@ -38,5 +38,4 @@ creation, executor invocation, and automatic-promotion coordination.
 - Neither background optimization component imports `Data` or `Models`.
 - Lifecycle transitions are directly testable with fixed timestamps.
 - The executor cannot accidentally mutate unrelated job columns.
-- Queue claiming remains single-worker coordination; atomic multi-worker claiming is a separate
-  future persistence enhancement.
+- Queue claiming is implemented by the persistence adapter and is strengthened by ADR 0014.

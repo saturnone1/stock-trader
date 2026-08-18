@@ -58,16 +58,37 @@ public class OptimizationRepository : IOptimizationRepository
             .FirstOrDefaultAsync();
     }
 
-    public async Task<OptimizationJob?> GetNextPendingJobAsync()
+    public async Task<OptimizationJob?> TryClaimNextPendingJobAsync(DateTime observedAt)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        // Priority DESC → CreatedAt ASC (동일 Priority는 먼저 들어온 것 우선)
-        return await db.OptimizationJobs
-            .AsNoTracking()
-            .Where(j => j.Status == OptimizationJobStatus.Pending)
-            .OrderByDescending(j => j.Priority)
-            .ThenBy(j => j.CreatedAt)
-            .FirstOrDefaultAsync();
+        while (true)
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var candidateId = await db.OptimizationJobs
+                .AsNoTracking()
+                .Where(job => job.Status == OptimizationJobStatus.Pending)
+                .OrderByDescending(job => job.Priority)
+                .ThenBy(job => job.CreatedAt)
+                .Select(job => (int?)job.Id)
+                .FirstOrDefaultAsync();
+            if (!candidateId.HasValue)
+                return null;
+
+            var claimed = await db.OptimizationJobs
+                .Where(job =>
+                    job.Id == candidateId.Value
+                    && job.Status == OptimizationJobStatus.Pending)
+                .ExecuteUpdateAsync(update => update
+                    .SetProperty(job => job.Status, OptimizationJobStatus.Running)
+                    .SetProperty(
+                        job => job.StartedAt,
+                        job => job.StartedAt ?? observedAt));
+            if (claimed == 1)
+                return await db.OptimizationJobs
+                    .AsNoTracking()
+                    .SingleAsync(job => job.Id == candidateId.Value);
+
+            // 다른 워커가 같은 후보를 먼저 선점했다. 남은 큐를 다시 조회한다.
+        }
     }
 
     public async Task UpdateJobAsync(OptimizationJob job)
@@ -145,66 +166,29 @@ public class OptimizationRepository : IOptimizationRepository
             .ToListAsync();
     }
 
-    public async Task MergeResultsAsync(
+    public async Task CommitChunkAsync(
         int jobId,
         List<OptimizationResult> newResults,
         int topResultsToKeep,
-        string rankBy)
+        string rankBy,
+        long testedCombinations,
+        int currentChunkIndex,
+        DateTime observedAt)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
 
         try
         {
-            // 기존 상위 N개 로드 (추적 필요 — 삭제/업데이트 대상)
-            var existing = await db.OptimizationResults
-                .Where(r => r.JobId == jobId)
-                .OrderBy(r => r.Rank)
-                .Take(topResultsToKeep)
-                .ToListAsync();
+            await MergeRankedResultsAsync(
+                db, jobId, newResults, topResultsToKeep, rankBy);
 
-            // 기존 + 신규 합치기
-            var merged = existing
-                .Concat(newResults.Select(r => { r.JobId = jobId; return r; }))
-                .ToList();
-
-            // rankBy 기준 내림차순 정렬 (높을수록 좋은 지표)
-            merged = SortByRankBy(merged, rankBy);
-
-            // 상위 N개만 보존
-            var toKeep = merged.Take(topResultsToKeep).ToList();
-            var toRemove = merged.Skip(topResultsToKeep).ToList();
-
-            // 불필요한 결과 삭제 (기존 엔티티만 삭제 — 신규는 Add 전이라 무시)
-            var existingIds = new HashSet<int>(existing.Select(r => r.Id));
-            var removeIds = toRemove
-                .Where(r => r.Id != 0 && existingIds.Contains(r.Id))
-                .Select(r => r.Id)
-                .ToHashSet();
-
-            if (removeIds.Count > 0)
-            {
-                var entitiesToRemove = existing.Where(r => removeIds.Contains(r.Id));
-                db.OptimizationResults.RemoveRange(entitiesToRemove);
-            }
-
-            // Rank 재계산 및 저장
-            for (int i = 0; i < toKeep.Count; i++)
-            {
-                var result = toKeep[i];
-                result.Rank = i + 1;
-
-                if (result.Id == 0)
-                {
-                    // 신규 엔티티 추가
-                    db.OptimizationResults.Add(result);
-                }
-                else if (existingIds.Contains(result.Id))
-                {
-                    // 기존 엔티티 Rank 업데이트
-                    db.OptimizationResults.Update(result);
-                }
-            }
+            var job = await db.OptimizationJobs.FindAsync(jobId)
+                ?? throw new InvalidOperationException(
+                    $"OptimizationJob {jobId}를 찾을 수 없습니다.");
+            job.TestedCombinations = testedCombinations;
+            job.CurrentChunkIndex = currentChunkIndex;
+            job.LastProgressAt = observedAt;
 
             await db.SaveChangesAsync();
             await tx.CommitAsync();
@@ -269,6 +253,47 @@ public class OptimizationRepository : IOptimizationRepository
     }
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+    private static async Task MergeRankedResultsAsync(
+        AppDbContext db,
+        int jobId,
+        List<OptimizationResult> newResults,
+        int topResultsToKeep,
+        string rankBy)
+    {
+        var existing = await db.OptimizationResults
+            .Where(r => r.JobId == jobId)
+            .OrderBy(r => r.Rank)
+            .Take(topResultsToKeep)
+            .ToListAsync();
+        var merged = SortByRankBy(
+            existing
+                .Concat(newResults.Select(result =>
+                {
+                    result.JobId = jobId;
+                    return result;
+                }))
+                .ToList(),
+            rankBy);
+        var toKeep = merged.Take(topResultsToKeep).ToList();
+        var existingIds = existing.Select(result => result.Id).ToHashSet();
+        var removeIds = merged
+            .Skip(topResultsToKeep)
+            .Where(result => result.Id != 0 && existingIds.Contains(result.Id))
+            .Select(result => result.Id)
+            .ToHashSet();
+
+        db.OptimizationResults.RemoveRange(
+            existing.Where(result => removeIds.Contains(result.Id)));
+
+        for (var index = 0; index < toKeep.Count; index++)
+        {
+            var result = toKeep[index];
+            result.Rank = index + 1;
+            if (result.Id == 0)
+                db.OptimizationResults.Add(result);
+        }
+    }
 
     private static List<OptimizationResult> SortByRankBy(
         List<OptimizationResult> results, string rankBy)

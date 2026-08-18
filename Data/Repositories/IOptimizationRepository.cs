@@ -13,9 +13,9 @@ public interface IOptimizationRepository
     Task<OptimizationJobStatus?> GetJobStatusAsync(int id);
 
     /// <summary>
-    /// Priority DESC 순으로 다음 Pending 작업을 반환한다.
+    /// Priority DESC 순으로 다음 Pending 작업 하나를 조건부 갱신으로 선점한다.
     /// </summary>
-    Task<OptimizationJob?> GetNextPendingJobAsync();
+    Task<OptimizationJob?> TryClaimNextPendingJobAsync(DateTime observedAt);
     Task UpdateJobAsync(OptimizationJob job);
     Task UpdateJobProgressAsync(
         int id,
@@ -34,10 +34,16 @@ public interface IOptimizationRepository
     Task<List<OptimizationResult>> GetResultsAsync(int jobId, int top = 50);
 
     /// <summary>
-    /// 기존 상위 N개와 newResults를 합쳐 rankBy 기준 상위 topResultsToKeep개만 보존한다.
-    /// Rank 번호를 재계산하며, 트랜잭션으로 원자적 실행된다.
+    /// 새 결과의 순위 병합과 다음 실행 체크포인트를 하나의 트랜잭션으로 저장한다.
     /// </summary>
-    Task MergeResultsAsync(int jobId, List<OptimizationResult> newResults, int topResultsToKeep, string rankBy);
+    Task CommitChunkAsync(
+        int jobId,
+        List<OptimizationResult> newResults,
+        int topResultsToKeep,
+        string rankBy,
+        long testedCombinations,
+        int currentChunkIndex,
+        DateTime observedAt);
 
     /// <summary>
     /// 단일 결과를 업서트한다 (OOS 결과 등 사후 업데이트 시 사용).

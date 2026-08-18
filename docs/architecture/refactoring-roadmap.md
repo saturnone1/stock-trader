@@ -181,13 +181,16 @@
   synchronous and background IS/fine/OOS runs; `OptimizationResultProjection` owns their metric units.
   `IOptimizationEvaluationContextPreparer` supplies both modes with one resolved feed, central regime
   benchmark, reference-symbol set, timeframe data map, and risk input. `OptimizationJobExecutor` has
-  dropped from 579 to 329 lines after `IOptimizationJobExecutionStore` also absorbed persisted control
+  dropped from 579 to 330 lines after `IOptimizationJobExecutionStore` also absorbed persisted control
   signals, candidate JSON, chunk checkpoints, result-row mapping, and OOS-only updates. It is guarded
   by a 350-line cap and no longer references the broad repository contract.
 - `IOptimizationJobLifecycle` now owns Pending selection and every execution status transition. The
   scheduler and executor exchange a storage-independent ticket rather than `OptimizationJob`; both
   background components are free of `Data` and `Models` imports. The 174-line polling worker is
-  guarded by a 200-line cap.
+  guarded by a 200-line cap. Pending jobs are claimed by a status-guarded database update, preventing
+  two concurrent workers from starting the same row. Ranked chunk results and their restart
+  checkpoint now commit in one SQLite transaction, with failure-injection coverage proving that a
+  result-write failure also rolls back the progress advance.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

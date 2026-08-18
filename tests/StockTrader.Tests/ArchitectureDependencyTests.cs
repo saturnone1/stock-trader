@@ -1018,6 +1018,8 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/IOptimizationJobLifecycle.cs"));
         var lifecycle = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/OptimizationJobLifecycle.cs"));
+        var optimizationRepository = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationRepository.cs"));
 
         source.Should().Contain("IOptimizationEvaluationContextPreparer");
         source.Should().Contain("IOptimizationJobExecutionStore");
@@ -1047,15 +1049,21 @@ public class ArchitectureDependencyTests
         executionStorePort.Should().NotContain("StockTrader.Models");
         executionStorePort.Should().NotContain("StockTrader.Data");
         executionStore.Should().Contain("JsonSerializer.Serialize(item.Params)");
-        executionStore.Should().Contain("_repository.MergeResultsAsync(");
+        executionStore.Should().Contain("_repository.CommitChunkAsync(");
         executionStore.Should().Contain("_repository.UpdateResultOutOfSampleAsync(");
         lifecyclePort.Should().Contain("OptimizationJobExecutionTicket");
         lifecyclePort.Should().Contain("TryStartNextAsync(");
         lifecyclePort.Should().NotContain("StockTrader.Models");
         lifecyclePort.Should().NotContain("StockTrader.Data");
-        lifecycle.Should().Contain("OptimizationJobStatus.Running");
         lifecycle.Should().Contain("OptimizationJobStatus.Completed");
         lifecycle.Should().Contain("OptimizationJobStatus.Cancelled");
+        lifecycle.Should().Contain("TryClaimNextPendingJobAsync(observedAt)");
+        optimizationRepository.Should().Contain("ExecuteUpdateAsync(update => update");
+        optimizationRepository.Should().Contain("job.Status == OptimizationJobStatus.Pending");
+        optimizationRepository.Should().Contain("OptimizationJobStatus.Running");
+        optimizationRepository.Should().Contain("BeginTransactionAsync()");
+        optimizationRepository.Should().Contain("MergeRankedResultsAsync(");
+        optimizationRepository.Should().Contain("job.TestedCombinations = testedCombinations");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
         source.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
         source.Should().Contain("TimeProvider");

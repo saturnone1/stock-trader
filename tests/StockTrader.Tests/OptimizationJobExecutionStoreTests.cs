@@ -13,16 +13,16 @@ public class OptimizationJobExecutionStoreTests
     {
         var repository = new Mock<IOptimizationRepository>();
         List<OptimizationResult>? captured = null;
-        repository.Setup(value => value.MergeResultsAsync(
+        repository.Setup(value => value.CommitChunkAsync(
                 7,
                 It.IsAny<List<OptimizationResult>>(),
                 25,
-                "sortinoRatio"))
-            .Callback<int, List<OptimizationResult>, int, string>(
-                (_, results, _, _) => captured = results)
-            .Returns(Task.CompletedTask);
-        repository.Setup(value => value.UpdateJobProgressAsync(
-                7, 121, 4, It.IsAny<DateTime?>(), null))
+                "sortinoRatio",
+                121,
+                4,
+                It.IsAny<DateTime>()))
+            .Callback<int, List<OptimizationResult>, int, string, long, int, DateTime>(
+                (_, results, _, _, _, _, _) => captured = results)
             .Returns(Task.CompletedTask);
         var store = new OptimizationJobExecutionStore(repository.Object);
         var observedAt = new DateTime(2026, 8, 18, 1, 2, 3, DateTimeKind.Utc);
@@ -58,8 +58,14 @@ public class OptimizationJobExecutionStoreTests
         entity.SortinoRatio.Should().Be(result.SortinoRatio);
         entity.TotalTrades.Should().Be(result.TotalTrades);
         entity.ParamsJson.Should().Contain("2.5");
-        repository.Verify(value => value.UpdateJobProgressAsync(
-            7, 121, 4, observedAt, null), Times.Once);
+        repository.Verify(value => value.CommitChunkAsync(
+            7,
+            It.IsAny<List<OptimizationResult>>(),
+            25,
+            "sortinoRatio",
+            121,
+            4,
+            observedAt), Times.Once);
     }
 
     [Fact]

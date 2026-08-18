@@ -50,21 +50,18 @@ public sealed class OptimizationJobExecutionStore : IOptimizationJobExecutionSto
         int topResultsToKeep,
         string rankBy)
     {
-        if (results.Count > 0)
-        {
-            var entities = results
-                .Select((result, index) => ToEntity(
-                    result,
-                    jobId,
-                    testedAtStart + index,
-                    observedAt))
-                .ToList();
-            await _repository.MergeResultsAsync(
-                jobId, entities, topResultsToKeep, rankBy);
-        }
-
-        await _repository.UpdateJobProgressAsync(
+        var entities = results
+            .Select((result, index) => ToEntity(
+                result,
+                jobId,
+                testedAtStart + index,
+                observedAt))
+            .ToList();
+        await _repository.CommitChunkAsync(
             jobId,
+            entities,
+            topResultsToKeep,
+            rankBy,
             testedCombinations,
             currentChunkIndex,
             observedAt);

@@ -15,12 +15,8 @@ public sealed class OptimizationJobLifecycle : IOptimizationJobLifecycle
 
     public async Task<OptimizationJobExecutionTicket?> TryStartNextAsync(DateTime observedAt)
     {
-        var job = await _repository.GetNextPendingJobAsync();
+        var job = await _repository.TryClaimNextPendingJobAsync(observedAt);
         if (job is null) return null;
-
-        job.Status = OptimizationJobStatus.Running;
-        job.StartedAt ??= observedAt;
-        await _repository.UpdateJobAsync(job);
         return ToTicket(job);
     }
 

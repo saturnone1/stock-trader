@@ -27,8 +27,13 @@ public class OptimizationJobLifecycleTests
             TopResultsToKeep = 30
         };
         var repository = new Mock<IOptimizationRepository>();
-        repository.Setup(value => value.GetNextPendingJobAsync()).ReturnsAsync(stored);
-        repository.Setup(value => value.UpdateJobAsync(stored)).Returns(Task.CompletedTask);
+        repository.Setup(value => value.TryClaimNextPendingJobAsync(It.IsAny<DateTime>()))
+            .Callback<DateTime>(claimedAt =>
+            {
+                stored.Status = OptimizationJobStatus.Running;
+                stored.StartedAt ??= claimedAt;
+            })
+            .ReturnsAsync(stored);
         var lifecycle = new OptimizationJobLifecycle(repository.Object);
         var observedAt = new DateTime(2026, 8, 18, 2, 0, 0, DateTimeKind.Utc);
 
@@ -43,7 +48,7 @@ public class OptimizationJobLifecycleTests
         ticket.CurrentChunkIndex.Should().Be(2);
         ticket.RankBy.Should().Be("calmarRatio");
         ticket.TopResultsToKeep.Should().Be(30);
-        repository.Verify(value => value.UpdateJobAsync(stored), Times.Once);
+        repository.Verify(value => value.TryClaimNextPendingJobAsync(observedAt), Times.Once);
     }
 
     [Theory]
