@@ -305,4 +305,6 @@ defaults, active-profile selection, and modification time have one application o
   contracts, and live selection through one application boundary.
 - `adr/0027-isolate-live-signal-evaluation-state.md`: project live trade history, portfolio counts,
   daily executions, and sector data through one persistence-independent application snapshot.
+- `adr/0028-isolate-research-universe-queries.md`: move universe ranking, financial-factor math,
+  import normalization, and explicit response contracts behind one research application boundary.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

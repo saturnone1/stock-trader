@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using StockTrader.Api;
+using StockTrader.Application.Research;
 
 namespace StockTrader.Services.Financial;
 
@@ -12,7 +12,7 @@ public class FinancialSnapshotFileParser
         PropertyNameCaseInsensitive = true
     };
 
-    public async Task<List<FinancialSnapshotImportDto>> ParseFileAsync(string path, CancellationToken ct)
+    public async Task<List<FinancialSnapshotImportItem>> ParseFileAsync(string path, CancellationToken ct)
     {
         var extension = Path.GetExtension(path).ToLowerInvariant();
         return extension switch
@@ -23,28 +23,28 @@ public class FinancialSnapshotFileParser
         };
     }
 
-    private static async Task<List<FinancialSnapshotImportDto>> ParseJsonAsync(string path, CancellationToken ct)
+    private static async Task<List<FinancialSnapshotImportItem>> ParseJsonAsync(string path, CancellationToken ct)
     {
         var text = await File.ReadAllTextAsync(path, ct);
         if (string.IsNullOrWhiteSpace(text))
-            return new List<FinancialSnapshotImportDto>();
+            return [];
 
         var trimmed = text.TrimStart();
         if (trimmed.StartsWith("["))
-            return JsonSerializer.Deserialize<List<FinancialSnapshotImportDto>>(text, JsonOptions) ?? new List<FinancialSnapshotImportDto>();
+            return JsonSerializer.Deserialize<List<FinancialSnapshotImportItem>>(text, JsonOptions) ?? [];
 
-        var single = JsonSerializer.Deserialize<FinancialSnapshotImportDto>(text, JsonOptions);
-        return single == null ? new List<FinancialSnapshotImportDto>() : new List<FinancialSnapshotImportDto> { single };
+        var single = JsonSerializer.Deserialize<FinancialSnapshotImportItem>(text, JsonOptions);
+        return single is null ? [] : [single];
     }
 
-    private static async Task<List<FinancialSnapshotImportDto>> ParseCsvAsync(string path, CancellationToken ct)
+    private static async Task<List<FinancialSnapshotImportItem>> ParseCsvAsync(string path, CancellationToken ct)
     {
         var lines = await File.ReadAllLinesAsync(path, ct);
         if (lines.Length <= 1)
-            return new List<FinancialSnapshotImportDto>();
+            return [];
 
         var headers = SplitCsvLine(lines[0]).Select(NormalizeHeader).ToList();
-        var result = new List<FinancialSnapshotImportDto>();
+        var result = new List<FinancialSnapshotImportItem>();
 
         for (var i = 1; i < lines.Length; i++)
         {
@@ -58,7 +58,7 @@ public class FinancialSnapshotFileParser
                 return index >= 0 && index < values.Count ? values[index] : null;
             }
 
-            result.Add(new FinancialSnapshotImportDto
+            result.Add(new FinancialSnapshotImportItem
             {
                 Symbol = Get("symbol"),
                 AsOfDate = ParseDate(Get("asOfDate") ?? Get("date")),

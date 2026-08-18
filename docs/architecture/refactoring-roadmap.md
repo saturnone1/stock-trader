@@ -354,6 +354,12 @@ EF entities, and cooldown, drawdown, and sizing rules consume the persistence-in
 `StrategyCompletedTrade` projection. The application clock remains the sole owner of the US
 market-day boundary passed into the adapter.
 
+Research universe and financial-factor routes now delegate market-cap percentile ranking, facets,
+growth and turnaround math, latest-snapshot selection, comparison summaries, and import-run reads
+to application services over `IResearchUniverseStore`. Explicit HTTP contracts replace anonymous
+responses, while manual, file, and SEC imports share the application import model, central symbol
+normalization, and injected time instead of depending on API DTOs or endpoint-owned EF contexts.
+
 Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate automatically.
 
 ## Phase 5 — Desktop decomposition

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Application.Research;
 using StockTrader.Data;
 using StockTrader.Models;
 using StockTrader.Services.Financial;
@@ -140,7 +141,7 @@ public class FinancialSnapshotIngestionService : BackgroundService
                 try
                 {
                     var parsed = await _parser.ParseFileAsync(fileInfo.FullName, ct);
-                    var summary = await _importService.UpsertAsync(db, parsed, ct);
+                    var summary = await _importService.UpsertAsync(parsed, ct);
                     run.Status = "Completed";
                     run.ImportedCount = summary.ImportedCount;
                     run.SkippedCount = summary.SkippedCount;

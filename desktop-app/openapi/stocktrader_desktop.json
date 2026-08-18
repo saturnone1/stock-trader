@@ -469,7 +469,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchUniverseMetaResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -551,7 +558,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchUniverseQueryResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -563,7 +577,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialFactorMetaResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -682,7 +703,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialFactorQueryResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -696,18 +724,41 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/FinancialSnapshotImportDto"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/FinancialSnapshotImportDto"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialImportResponse"
                 }
               }
             }
           },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialImportErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -719,7 +770,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialPipelineStatusResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -731,7 +789,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialPipelineRunResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -759,7 +824,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialPipelineRunResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2153,6 +2225,419 @@
           null
         ]
       },
+      "FinancialFactorComparisonResponse": {
+        "required": [
+          "overall",
+          "filtered"
+        ],
+        "type": "object",
+        "properties": {
+          "overall": {
+            "$ref": "#/components/schemas/FinancialFactorSummaryResponse"
+          },
+          "filtered": {
+            "$ref": "#/components/schemas/FinancialFactorSummaryResponse"
+          }
+        }
+      },
+      "FinancialFactorCoverageResponse": {
+        "required": [
+          "peRatio",
+          "pbRatio",
+          "roePercent",
+          "revenueGrowth",
+          "netIncomeGrowth",
+          "turnaround"
+        ],
+        "type": "object",
+        "properties": {
+          "peRatio": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pbRatio": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "roePercent": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "revenueGrowth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "netIncomeGrowth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "turnaround": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "FinancialFactorMetaResponse": {
+        "required": [
+          "totalSnapshots",
+          "symbolsCovered",
+          "latestAsOfDate",
+          "coverage"
+        ],
+        "type": "object",
+        "properties": {
+          "totalSnapshots": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "symbolsCovered": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "latestAsOfDate": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/FinancialFactorCoverageResponse"
+          }
+        }
+      },
+      "FinancialFactorQueryResponse": {
+        "required": [
+          "totalUniverse",
+          "matched",
+          "items",
+          "comparison"
+        ],
+        "type": "object",
+        "properties": {
+          "totalUniverse": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinancialFactorRowResponse"
+            }
+          },
+          "comparison": {
+            "$ref": "#/components/schemas/FinancialFactorComparisonResponse"
+          }
+        }
+      },
+      "FinancialFactorRowResponse": {
+        "required": [
+          "symbol",
+          "name",
+          "sector",
+          "industry",
+          "marketCap",
+          "asOfDate",
+          "peRatio",
+          "pbRatio",
+          "roePercent",
+          "operatingMarginPercent",
+          "revenueGrowthYoY",
+          "netIncomeGrowthYoY",
+          "hasPositiveEarnings",
+          "isTurnaround",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sector": {
+            "type": "string"
+          },
+          "industry": {
+            "type": "string"
+          },
+          "marketCap": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "asOfDate": {
+            "type": "string"
+          },
+          "peRatio": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "pbRatio": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "roePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "operatingMarginPercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "revenueGrowthYoY": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "netIncomeGrowthYoY": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "hasPositiveEarnings": {
+            "type": "boolean"
+          },
+          "isTurnaround": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "FinancialFactorSummaryResponse": {
+        "required": [
+          "count",
+          "averagePe",
+          "averagePb",
+          "averageRoe",
+          "averageRevenueGrowth",
+          "averageNetIncomeGrowth",
+          "positiveEarningsCount",
+          "turnaroundCount"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "averagePe": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "averagePb": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "averageRoe": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "averageRevenueGrowth": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "averageNetIncomeGrowth": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "positiveEarningsCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "turnaroundCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "FinancialImportErrorResponse": {
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "FinancialImportResponse": {
+        "required": [
+          "imported",
+          "skipped"
+        ],
+        "type": "object",
+        "properties": {
+          "imported": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "FinancialImportRunResponse": {
+        "required": [
+          "id",
+          "sourceType",
+          "filePath",
+          "status",
+          "importedCount",
+          "skippedCount",
+          "errorMessage",
+          "startedAt",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sourceType": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "importedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skippedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FinancialPipelineRunResponse": {
+        "required": [
+          "status",
+          "message",
+          "importedCount",
+          "skippedCount",
+          "processedFiles"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "importedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skippedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "processedFiles": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "FinancialPipelineStatusResponse": {
+        "required": [
+          "enabled",
+          "importDirectory",
+          "scanIntervalMinutes",
+          "latestSuccessAt",
+          "vendorSync",
+          "recentRuns"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "importDirectory": {
+            "type": "string"
+          },
+          "scanIntervalMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "latestSuccessAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "vendorSync": {
+            "$ref": "#/components/schemas/FinancialVendorSyncStatusResponse"
+          },
+          "recentRuns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinancialImportRunResponse"
+            }
+          }
+        }
+      },
       "FinancialSnapshotImportDto": {
         "type": "object",
         "properties": {
@@ -2254,9 +2739,56 @@
         }
       },
       "FinancialVendorSyncRequest": {
+        "required": [
+          "symbols"
+        ],
         "type": "object",
         "properties": {
           "symbols": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FinancialVendorSyncStatusResponse": {
+        "required": [
+          "enabled",
+          "provider",
+          "syncIntervalHours",
+          "symbolLimit",
+          "configuredSymbolCount",
+          "configuredSymbols",
+          "latestSuccessAt"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "syncIntervalHours": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "symbolLimit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "configuredSymbolCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "configuredSymbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latestSuccessAt": {
             "type": [
               "null",
               "string"
@@ -3639,6 +4171,110 @@
           "CumulativeRsi2",
           "Custom"
         ]
+      },
+      "ResearchFacetResponse": {
+        "required": [
+          "name",
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ResearchUniverseMetaResponse": {
+        "required": [
+          "totalActive",
+          "marketCapCoverage",
+          "sectors",
+          "industries"
+        ],
+        "type": "object",
+        "properties": {
+          "totalActive": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "marketCapCoverage": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchFacetResponse"
+            }
+          },
+          "industries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchFacetResponse"
+            }
+          }
+        }
+      },
+      "ResearchUniverseQueryResponse": {
+        "required": [
+          "totalUniverse",
+          "matched",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "totalUniverse": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchUniverseRowResponse"
+            }
+          }
+        }
+      },
+      "ResearchUniverseRowResponse": {
+        "required": [
+          "symbol",
+          "name",
+          "sector",
+          "industry",
+          "marketCap",
+          "marketCapPercentile"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sector": {
+            "type": "string"
+          },
+          "industry": {
+            "type": "string"
+          },
+          "marketCap": {
+            "type": "number",
+            "format": "double"
+          },
+          "marketCapPercentile": {
+            "type": "number",
+            "format": "double"
+          }
+        }
       },
       "RuleFieldRange": {
         "type": "object",

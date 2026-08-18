@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using StockTrader.Api;
+using StockTrader.Application.Research;
 using StockTrader.BackgroundServices;
 using StockTrader.Configuration;
 using StockTrader.Data;
@@ -177,7 +177,7 @@ public class SecFinancialSnapshotSyncService
                 .Where(ticker => symbols.Contains(ticker.Symbol))
                 .ToDictionaryAsync(ticker => ticker.Symbol, ct);
 
-            var importItems = new List<FinancialSnapshotImportDto>();
+            var importItems = new List<FinancialSnapshotImportItem>();
             var skipped = 0;
             var failures = new List<string>();
 
@@ -207,7 +207,7 @@ public class SecFinancialSnapshotSyncService
             }
 
             var summary = importItems.Count > 0
-                ? await _importService.UpsertAsync(db, importItems, ct)
+                ? await _importService.UpsertAsync(importItems, ct)
                 : new FinancialImportSummary();
 
             run.Status = "Completed";
@@ -276,7 +276,7 @@ public class SecFinancialSnapshotSyncService
             .ToListAsync(ct);
     }
 
-    private async Task<FinancialSnapshotImportDto?> BuildSnapshotAsync(string symbol, Ticker? ticker, CancellationToken ct)
+    private async Task<FinancialSnapshotImportItem?> BuildSnapshotAsync(string symbol, Ticker? ticker, CancellationToken ct)
     {
         var tickerMap = await GetTickerMapAsync(ct);
         if (!tickerMap.TryGetValue(symbol, out var cik))
@@ -338,7 +338,7 @@ public class SecFinancialSnapshotSyncService
             return null;
         }
 
-        return new FinancialSnapshotImportDto
+        return new FinancialSnapshotImportItem
         {
             Symbol = symbol,
             AsOfDate = asOfDate,

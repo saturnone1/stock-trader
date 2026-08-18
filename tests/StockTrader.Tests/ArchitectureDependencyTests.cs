@@ -435,6 +435,64 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void ResearchUniverseApisUseExplicitApplicationAndPersistenceBoundaries()
+    {
+        var repository = FindRepositoryRoot();
+        var universeEndpoints = File.ReadAllText(Path.Combine(
+            repository, "Api/UniverseEndpoints.cs"));
+        var factorEndpoints = File.ReadAllText(Path.Combine(
+            repository, "Api/FinancialFactorEndpoints.cs"));
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/ResearchUniverseContracts.cs"));
+        var universeService = File.ReadAllText(Path.Combine(
+            repository, "Application/Research/ResearchUniverseQueryService.cs"));
+        var factorService = File.ReadAllText(Path.Combine(
+            repository, "Application/Research/FinancialFactorQueryService.cs"));
+        var importService = File.ReadAllText(Path.Combine(
+            repository, "Application/Research/FinancialSnapshotImportService.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/ResearchUniverseStore.cs"));
+        var parser = File.ReadAllText(Path.Combine(
+            repository, "Services/Financial/FinancialSnapshotFileParser.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/DataServiceExtensions.cs"));
+
+        universeEndpoints.Should().Contain("ResearchUniverseQueryService");
+        universeEndpoints.Should().Contain("ResearchUniverseMetaResponse");
+        universeEndpoints.Should().NotContain("AppDbContext");
+        universeEndpoints.Should().NotContain("Microsoft.EntityFrameworkCore");
+        factorEndpoints.Should().Contain("FinancialFactorQueryService");
+        factorEndpoints.Should().Contain("FinancialFactorQueryResponse");
+        factorEndpoints.Should().NotContain("AppDbContext");
+        factorEndpoints.Should().NotContain("Microsoft.EntityFrameworkCore");
+        contracts.Should().Contain("FinancialPipelineStatusResponse");
+        universeService.Should().NotContain("StockTrader.Data");
+        universeService.Should().NotContain("StockTrader.Models");
+        factorService.Should().NotContain("StockTrader.Data");
+        factorService.Should().NotContain("StockTrader.Models");
+        importService.Should().Contain("TimeProvider");
+        importService.Should().Contain("MarketSymbolPolicy.Normalize");
+        importService.Should().NotContain("DateTime.UtcNow");
+        importService.Should().NotContain("AppDbContext");
+        store.Should().Contain("IResearchUniverseStore");
+        store.Should().Contain("IDbContextFactory<AppDbContext>");
+        parser.Should().Contain("FinancialSnapshotImportItem");
+        parser.Should().NotContain("StockTrader.Api");
+        registrations.Should().Contain(
+            "AddSingleton<IResearchUniverseStore, ResearchUniverseStore>()");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            repository, "desktop-app/openapi/stocktrader_desktop.json")));
+        var paths = document.RootElement.GetProperty("paths");
+        paths.GetProperty("/api/universe/query").GetRawText()
+            .Should().Contain("ResearchUniverseQueryResponse");
+        paths.GetProperty("/api/financial-factors/query").GetRawText()
+            .Should().Contain("FinancialFactorQueryResponse");
+        paths.GetProperty("/api/financial-factors/pipeline/status").GetRawText()
+            .Should().Contain("FinancialPipelineStatusResponse");
+    }
+
+    [Fact]
     public void ResearchAndLiveBoundariesShareTheMarketSymbolPolicy()
     {
         var repository = FindRepositoryRoot();

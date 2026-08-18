@@ -784,7 +784,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ResearchUniverseMetaResponse"];
+                    };
                 };
             };
         };
@@ -827,7 +829,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ResearchUniverseQueryResponse"];
+                    };
                 };
             };
         };
@@ -860,7 +864,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FinancialFactorMetaResponse"];
+                    };
                 };
             };
         };
@@ -908,7 +914,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FinancialFactorQueryResponse"];
+                    };
                 };
             };
         };
@@ -936,9 +944,9 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody: {
+            requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["FinancialSnapshotImportDto"][];
+                    "application/json": null | components["schemas"]["FinancialSnapshotImportDto"][];
                 };
             };
             responses: {
@@ -947,7 +955,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FinancialImportResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FinancialImportErrorResponse"];
+                    };
                 };
             };
         };
@@ -978,7 +997,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FinancialPipelineStatusResponse"];
+                    };
                 };
             };
         };
@@ -1013,7 +1034,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FinancialPipelineRunResponse"];
+                    };
                 };
             };
         };
@@ -1050,7 +1073,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["FinancialPipelineRunResponse"];
+                    };
                 };
             };
         };
@@ -2458,6 +2483,124 @@ export interface components {
         };
         /** @enum {unknown} */
         DataSource: "Alpaca" | "Polygon" | "Yahoo" | "LsSecurities" | null;
+        FinancialFactorComparisonResponse: {
+            overall: components["schemas"]["FinancialFactorSummaryResponse"];
+            filtered: components["schemas"]["FinancialFactorSummaryResponse"];
+        };
+        FinancialFactorCoverageResponse: {
+            /** Format: int32 */
+            peRatio: number;
+            /** Format: int32 */
+            pbRatio: number;
+            /** Format: int32 */
+            roePercent: number;
+            /** Format: int32 */
+            revenueGrowth: number;
+            /** Format: int32 */
+            netIncomeGrowth: number;
+            /** Format: int32 */
+            turnaround: number;
+        };
+        FinancialFactorMetaResponse: {
+            /** Format: int32 */
+            totalSnapshots: number;
+            /** Format: int32 */
+            symbolsCovered: number;
+            latestAsOfDate: null | string;
+            coverage: components["schemas"]["FinancialFactorCoverageResponse"];
+        };
+        FinancialFactorQueryResponse: {
+            /** Format: int32 */
+            totalUniverse: number;
+            /** Format: int32 */
+            matched: number;
+            items: components["schemas"]["FinancialFactorRowResponse"][];
+            comparison: components["schemas"]["FinancialFactorComparisonResponse"];
+        };
+        FinancialFactorRowResponse: {
+            symbol: string;
+            name: string;
+            sector: string;
+            industry: string;
+            /** Format: double */
+            marketCap: null | number;
+            asOfDate: string;
+            /** Format: double */
+            peRatio: null | number;
+            /** Format: double */
+            pbRatio: null | number;
+            /** Format: double */
+            roePercent: null | number;
+            /** Format: double */
+            operatingMarginPercent: null | number;
+            /** Format: double */
+            revenueGrowthYoY: null | number;
+            /** Format: double */
+            netIncomeGrowthYoY: null | number;
+            hasPositiveEarnings: boolean;
+            isTurnaround: boolean;
+            source: string;
+        };
+        FinancialFactorSummaryResponse: {
+            /** Format: int32 */
+            count: number;
+            /** Format: double */
+            averagePe: null | number;
+            /** Format: double */
+            averagePb: null | number;
+            /** Format: double */
+            averageRoe: null | number;
+            /** Format: double */
+            averageRevenueGrowth: null | number;
+            /** Format: double */
+            averageNetIncomeGrowth: null | number;
+            /** Format: int32 */
+            positiveEarningsCount: number;
+            /** Format: int32 */
+            turnaroundCount: number;
+        };
+        FinancialImportErrorResponse: {
+            error: string;
+        };
+        FinancialImportResponse: {
+            /** Format: int32 */
+            imported: number;
+            /** Format: int32 */
+            skipped: number;
+        };
+        FinancialImportRunResponse: {
+            /** Format: int64 */
+            id: number;
+            sourceType: string;
+            filePath: string;
+            status: string;
+            /** Format: int32 */
+            importedCount: number;
+            /** Format: int32 */
+            skippedCount: number;
+            errorMessage: null | string;
+            startedAt: string;
+            completedAt: null | string;
+        };
+        FinancialPipelineRunResponse: {
+            status: string;
+            message: string;
+            /** Format: int32 */
+            importedCount: number;
+            /** Format: int32 */
+            skippedCount: number;
+            /** Format: int32 */
+            processedFiles: number;
+        };
+        FinancialPipelineStatusResponse: {
+            enabled: boolean;
+            importDirectory: string;
+            /** Format: int32 */
+            scanIntervalMinutes: number;
+            latestSuccessAt: null | string;
+            vendorSync: components["schemas"]["FinancialVendorSyncStatusResponse"];
+            recentRuns: components["schemas"]["FinancialImportRunResponse"][];
+        };
         FinancialSnapshotImportDto: {
             symbol?: null | string;
             /** Format: date-time */
@@ -2486,7 +2629,19 @@ export interface components {
             notes?: null | string;
         };
         FinancialVendorSyncRequest: {
-            symbols?: null | string;
+            symbols: null | string;
+        };
+        FinancialVendorSyncStatusResponse: {
+            enabled: boolean;
+            provider: string;
+            /** Format: int32 */
+            syncIntervalHours: number;
+            /** Format: int32 */
+            symbolLimit: number;
+            /** Format: int32 */
+            configuredSymbolCount: number;
+            configuredSymbols: string[];
+            latestSuccessAt: null | string;
         };
         OptimizeParams: {
             atrStopMultiplier?: null | components["schemas"]["ParamRange"];
@@ -2841,6 +2996,36 @@ export interface components {
         };
         /** @enum {unknown} */
         PatternType: "GapUpPullback" | "Breakout" | "VwapReversion" | "RsiMeanReversion" | "TrendPullback" | "OpeningRangeBreakout" | "VolumeSpikeContinuation" | "EarningsDrift" | "IndexRegimeFilter" | "VolatilityExpansion" | "MomentumReversal" | "MultiTimeframeTrend" | "MeanReversionChannel" | "Rsi2Bollinger" | "VolatilityBreakout" | "Tqqq200Sma" | "CumulativeRsi2" | "Custom";
+        ResearchFacetResponse: {
+            name: string;
+            /** Format: int32 */
+            count: number;
+        };
+        ResearchUniverseMetaResponse: {
+            /** Format: int32 */
+            totalActive: number;
+            /** Format: int32 */
+            marketCapCoverage: number;
+            sectors: components["schemas"]["ResearchFacetResponse"][];
+            industries: components["schemas"]["ResearchFacetResponse"][];
+        };
+        ResearchUniverseQueryResponse: {
+            /** Format: int32 */
+            totalUniverse: number;
+            /** Format: int32 */
+            matched: number;
+            items: components["schemas"]["ResearchUniverseRowResponse"][];
+        };
+        ResearchUniverseRowResponse: {
+            symbol: string;
+            name: string;
+            sector: string;
+            industry: string;
+            /** Format: double */
+            marketCap: number;
+            /** Format: double */
+            marketCapPercentile: number;
+        };
         RuleFieldRange: {
             scope?: string;
             /** Format: int32 */
