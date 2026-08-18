@@ -378,8 +378,10 @@ public class BacktestResult
 
     // 성과 지표 확장
     public decimal SortinoRatio { get; set; }
+    /// <summary>전체 평가기간의 연환산수익률을 최대 낙폭으로 나눈 무차원 비율입니다.</summary>
     public decimal CalmarRatio { get; set; }
     public decimal ProfitFactor { get; set; }
+    /// <summary>전체 평가기간 기준 CAGR. 10은 10%를 의미합니다.</summary>
     public decimal AnnualizedReturn { get; set; }
 
     // Kelly Criterion

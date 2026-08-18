@@ -13,30 +13,6 @@ internal static class PerformanceCalculator
     // ── [B-1] 고급 성과 지표 ──────────────────────────────────────────────
 
     /// <summary>
-    /// Sortino 비율: 하방 변동성(음수 수익만)으로 연율화.
-    /// Sharpe 비율보다 하방 리스크를 민감하게 반영합니다.
-    /// </summary>
-    public static decimal ComputeSortinoRatio(List<TradeRecord> trades, TimeFrame tf)
-    {
-        if (trades.Count < 2) return 0;
-        var returns = trades.Select(t => t.PnLPercent).ToList();
-        var mean = returns.Average();
-        var downsideSquares = returns.Select(r => r < 0 ? r * r : 0m).ToList();
-        if (downsideSquares.All(value => value == 0)) return mean > 0 ? 10m : 0;
-        var downDev = (decimal)Math.Sqrt((double)downsideSquares.Average());
-        if (downDev == 0) return 0;
-        // 입력은 봉 수익률이 아니라 완결된 거래 수익률이므로 실제 연간 거래 빈도로 연율화한다.
-        var annFactor = (decimal)Math.Sqrt(EstimateTradesPerYear(trades));
-        return mean / downDev * annFactor;
-    }
-
-    /// <summary>
-    /// Calmar 비율: 연율화 수익률 / 최대 낙폭. 3이상이면 우수.
-    /// </summary>
-    public static decimal ComputeCalmarRatio(decimal annualizedReturn, decimal maxDrawdown)
-        => maxDrawdown > 0 ? annualizedReturn / maxDrawdown : 0;
-
-    /// <summary>
     /// Profit Factor: 총 수익 / 총 손실. 1.5이상 양호, 2이상 우수.
     /// </summary>
     public static decimal ComputeProfitFactor(List<TradeRecord> trades)
@@ -44,19 +20,6 @@ internal static class PerformanceCalculator
         var wins   = trades.Where(t => t.PnL > 0).Sum(t => t.PnL);
         var losses = Math.Abs(trades.Where(t => t.PnL < 0).Sum(t => t.PnL));
         return losses > 0 ? wins / losses : wins > 0 ? 99.9m : 0;
-    }
-
-    /// <summary>
-    /// 연율화 수익률 (CAGR): (1 + totalReturn)^(1/years) - 1
-    /// </summary>
-    public static decimal ComputeAnnualizedReturn(decimal totalReturn, int calendarDays)
-    {
-        if (calendarDays <= 0) return 0;
-        var years = calendarDays / 365.25;
-        if (years <= 0) return 0;
-        var factor = 1 + totalReturn / 100m;
-        if (factor <= 0) return -100;
-        return ((decimal)Math.Pow((double)factor, 1.0 / years) - 1) * 100;
     }
 
     // ── [E-1] Kelly Criterion ─────────────────────────────────────────────
@@ -235,36 +198,6 @@ internal static class PerformanceCalculator
             MaxDrawdownPercent = ComputeGroupDrawdown(trades),
             LastUpdated = calculatedAt
         };
-    }
-
-    /// <summary>
-    /// 연율화 샤프 비율. 거래 PnL%의 mean/stdDev에 sqrt(연간 추정 거래 횟수)를 곱한다.
-    /// 거래 기간(첫 진입~마지막 청산)을 기준으로 연간 거래 횟수를 추정.
-    /// </summary>
-    public static decimal ComputeSharpeRatio(
-        List<TradeRecord> trades,
-        TimeFrame timeFrame = TimeFrame.Daily)
-    {
-        if (trades.Count < 2) return 0;
-
-        int n = trades.Count;
-        decimal sum = 0;
-        for (int i = 0; i < n; i++) sum += trades[i].PnLPercent;
-        var avgReturn = sum / n;
-
-        decimal sumSqDiff = 0;
-        for (int i = 0; i < n; i++)
-        {
-            var d = trades[i].PnLPercent - avgReturn;
-            sumSqDiff += d * d;
-        }
-        // 표본 분산(sample variance): n-1 분모 사용. n==1이면 stdDev=0 → 0 반환
-        var variance = n > 1 ? sumSqDiff / (n - 1) : 0m;
-        var stdDev = (decimal)Math.Sqrt((double)variance);
-
-        if (stdDev <= 0) return 0;
-
-        return avgReturn / stdDev * (decimal)Math.Sqrt(EstimateTradesPerYear(trades));
     }
 
     public static List<SymbolStats> ComputePerSymbolStats(

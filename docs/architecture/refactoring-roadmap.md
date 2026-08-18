@@ -104,6 +104,10 @@
   Execution costs are isolated in `BacktestExecutionCostLedger`, with regression tests covering
   fixed/adaptive slippage and exactly-once commission application. Result/metric construction is
   isolated in `BacktestResultBuilder`.
+- `BacktestPerformancePolicy` owns period-based CAGR, Calmar, Sharpe, and Sortino calculations with
+  fraction-valued inputs. It uses the explicit requested evaluation range, so a strategy cannot
+  improve its annualized result merely by delaying its first trade or exiting before the evaluation
+  ends.
 - `BacktestSignalEntryProcessor` owns the complete ordered new-entry pipeline: shared eligibility,
   regime allocation, correlation blocking, past-only Kelly samples, sizing, and immediate or
   next-open registration. The simulation engine is reduced to daily sequencing and no longer

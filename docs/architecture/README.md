@@ -26,6 +26,8 @@ infrastructure.
 - Market identity, display name, time zone, and regular-session boundaries: one domain market
   catalog shared by provider metadata, calendars, scanning, synchronization, and scheduling.
 - Backtest and preview range policy: dedicated policy catalogs.
+- Backtest period metrics: one unit-explicit application policy using the full evaluation range;
+  trade activity dates never define CAGR, Calmar, Sharpe, or Sortino annualization.
 - Indicator definitions: one registry that supplies calculation, validation, units, parameters,
   warmup, and supported timeframes.
 - Strategy definitions: one typed aggregate compiled for preview, backtest, and live execution.

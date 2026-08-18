@@ -3097,6 +3097,37 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BacktestPeriodMetricsHaveOneUnitExplicitPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var policy = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/Backtesting/BacktestPerformancePolicy.cs"));
+        var resultBuilder = File.ReadAllText(Path.Combine(
+            repository,
+            "Services/Backtest/BacktestResultBuilder.cs"));
+        var performance = File.ReadAllText(Path.Combine(
+            repository,
+            "Services/Backtest/PerformanceCalculator.cs"));
+
+        policy.Should().Contain("totalReturnFraction");
+        policy.Should().Contain("maxDrawdownFraction");
+        policy.Should().Contain("evaluationFrom");
+        policy.Should().Contain("evaluationTo");
+        policy.Should().NotContain("StockTrader.Models");
+        policy.Should().NotContain("StockTrader.Services");
+        resultBuilder.Should().Contain("BacktestPerformancePolicy.Evaluate(");
+        resultBuilder.Should().Contain("input.From");
+        resultBuilder.Should().Contain("input.To");
+        resultBuilder.Should().NotContain("tradeCycles.Max(t => t.ExitTime)");
+        resultBuilder.Should().NotContain("tradeCycles.Min(t => t.EntryTime)");
+        performance.Should().NotContain("ComputeAnnualizedReturn");
+        performance.Should().NotContain("ComputeCalmarRatio");
+        performance.Should().NotContain("ComputeSharpeRatio");
+        performance.Should().NotContain("ComputeSortinoRatio");
+    }
+
+    [Fact]
     public void BrokerSnapshotsAndStreamingStatusDoNotInventTradingEventTime()
     {
         var repository = FindRepositoryRoot();
