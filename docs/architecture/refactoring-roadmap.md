@@ -389,6 +389,13 @@ is removed. Entry detection constructs its detector inventory from the same pers
 that live exit evaluation consumes. Unsupported built-ins and invalid risk limits fail before any
 settings mutation.
 
+Trade recommendation and completed-history screens now cross `ITradeActivityQuery` and the
+purpose-specific `ITradeActivityStore`. One application observation owns entry-order status,
+risk/reward, stop distance, holding days, pagination bounds, and stable ordering. The HTTP module
+contains no persistence port or trading calculation, exposes explicit generated response contracts,
+and rejects malformed filters instead of silently broadening them. The desktop consumes only the
+canonical camel-case contract.
+
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 
 ## Phase 4 — Persistence and contracts

@@ -187,7 +187,7 @@
     "/api/trades/recommendations": {
       "get": {
         "tags": [
-          "StockTrader"
+          "TradeEndpoints"
         ],
         "parameters": [
           {
@@ -201,7 +201,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeRecommendationListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeActivityErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -228,28 +245,30 @@
     "/api/trades/history": {
       "get": {
         "tags": [
-          "StockTrader"
+          "TradeEndpoints"
         ],
         "parameters": [
           {
             "name": "pattern",
             "in": "query",
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/PatternType"
             }
           },
           {
             "name": "from",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "date-time"
             }
           },
           {
             "name": "to",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "date-time"
             }
           },
           {
@@ -271,7 +290,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeActivityErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -6957,6 +6993,265 @@
           }
         }
       },
+      "TradeActivityErrorResponse": {
+        "required": [
+          "errors"
+        ],
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TradeHistoryItemResponse": {
+        "required": [
+          "id",
+          "symbol",
+          "pattern",
+          "patternName",
+          "entryPrice",
+          "exitPrice",
+          "quantity",
+          "pnL",
+          "pnLPercent",
+          "isWin",
+          "exitReason",
+          "entryTime",
+          "exitTime",
+          "holdingDays"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "patternName": {
+            "type": "string"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "pnLPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "isWin": {
+            "type": "boolean"
+          },
+          "exitReason": {
+            "type": "string"
+          },
+          "entryTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "exitTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "holdingDays": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TradeHistoryResponse": {
+        "required": [
+          "totalCount",
+          "skip",
+          "take",
+          "trades"
+        ],
+        "type": "object",
+        "properties": {
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skip": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "take": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trades": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TradeHistoryItemResponse"
+            }
+          }
+        }
+      },
+      "TradeRecommendationListResponse": {
+        "required": [
+          "count",
+          "recommendations"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TradeRecommendationResponse"
+            }
+          }
+        }
+      },
+      "TradeRecommendationResponse": {
+        "required": [
+          "id",
+          "sourceSignalId",
+          "symbol",
+          "pattern",
+          "patternName",
+          "entryPrice",
+          "stopLossPrice",
+          "targetPrice",
+          "positionSize",
+          "shareQuantity",
+          "expectancy",
+          "riskRewardRatio",
+          "stopLossPercent",
+          "wasExecuted",
+          "entryStatus",
+          "accountId",
+          "hasBrokerOrderId",
+          "pendingSeconds",
+          "note",
+          "mode",
+          "modeName",
+          "generatedAt",
+          "entryRequestedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sourceSignalId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "patternName": {
+            "type": "string"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "stopLossPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "targetPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "positionSize": {
+            "type": "number",
+            "format": "double"
+          },
+          "shareQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "expectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "riskRewardRatio": {
+            "type": "number",
+            "format": "double"
+          },
+          "stopLossPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "wasExecuted": {
+            "type": "boolean"
+          },
+          "entryStatus": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "hasBrokerOrderId": {
+            "type": "boolean"
+          },
+          "pendingSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "modeName": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entryRequestedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "TradingAccountCreateRequest": {
         "type": "object",
         "properties": {
@@ -7196,6 +7491,9 @@
     },
     {
       "name": "BacktestEndpoints"
+    },
+    {
+      "name": "TradeEndpoints"
     },
     {
       "name": "PatternPreviewEndpoints"

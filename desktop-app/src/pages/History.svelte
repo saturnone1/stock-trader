@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { tradeApi } from '../api/endpoints'
+  import { tradeApiError } from '../features/trades/tradeActivityModel.js'
 
   let loading = true
   let error = ''
@@ -17,10 +18,10 @@
     loading = true
     try {
       const { data } = await tradeApi.history({ take: 100, pattern: pattern || undefined })
-      rows = data?.Trades ?? data?.trades ?? []
+      rows = data.trades
       error = ''
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '거래 내역을 불러오지 못했습니다.'
+      error = tradeApiError(e, '거래 내역을 불러오지 못했습니다.')
     } finally {
       loading = false
     }
@@ -61,13 +62,13 @@
         <tbody>
           {#each rows as row}
             <tr class="border-t border-gray-700">
-              <td class="px-4 py-3 font-mono text-blue-400">{row.Symbol}</td>
-              <td class="px-4 py-3">{row.Pattern}</td>
-              <td class="px-4 py-3 text-right">{(row.EntryPrice ?? 0).toFixed(2)}</td>
-              <td class="px-4 py-3 text-right">{(row.ExitPrice ?? 0).toFixed(2)}</td>
-              <td class="px-4 py-3 text-right {(row.PnL ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}">{(row.PnL ?? 0).toFixed(2)}</td>
-              <td class="px-4 py-3 text-right {(row.PnLPercent ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}">{pct(row.PnLPercent ?? 0)}%</td>
-              <td class="px-4 py-3">{row.ExitReason}</td>
+              <td class="px-4 py-3 font-mono text-blue-400">{row.symbol}</td>
+              <td class="px-4 py-3">{row.patternName}</td>
+              <td class="px-4 py-3 text-right">{row.entryPrice.toFixed(2)}</td>
+              <td class="px-4 py-3 text-right">{row.exitPrice.toFixed(2)}</td>
+              <td class="px-4 py-3 text-right {row.pnL >= 0 ? 'text-green-300' : 'text-red-300'}">{row.pnL.toFixed(2)}</td>
+              <td class="px-4 py-3 text-right {row.pnLPercent >= 0 ? 'text-green-300' : 'text-red-300'}">{pct(row.pnLPercent)}%</td>
+              <td class="px-4 py-3">{row.exitReason}</td>
             </tr>
           {/each}
         </tbody>

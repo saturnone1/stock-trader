@@ -2604,6 +2604,58 @@ public class ArchitectureDependencyTests
         page.Should().NotContain("riskLevel");
     }
 
+    [Fact]
+    public void TradeActivityEndpointsAreTypedAdaptersOverOneApplicationQuery()
+    {
+        var repository = FindRepositoryRoot();
+        var endpointPath = Path.Combine(repository, "Api/TradeEndpoints.cs");
+        var endpoint = File.ReadAllText(endpointPath);
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/TradeActivityContracts.cs"));
+        var query = File.ReadAllText(Path.Combine(
+            repository, "Application/Trading/TradeActivityQuery.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/TradeActivityStore.cs"));
+        var desktopEndpoints = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/endpoints.ts"));
+        var recommendations = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Recommendations.svelte"));
+        var history = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/History.svelte"));
+        var desktopModel = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/trades/tradeActivityModel.js"));
+
+        File.ReadAllLines(endpointPath).Length.Should().BeLessThanOrEqualTo(80);
+        endpoint.Should().Contain("ITradeActivityQuery query");
+        endpoint.Should().Contain("Produces<TradeRecommendationListResponse>");
+        endpoint.Should().Contain("Produces<TradeHistoryResponse>");
+        endpoint.Should().NotContain("StockTrader.Data");
+        endpoint.Should().NotContain("StockTrader.Models");
+        endpoint.Should().NotContain("ITradeHistoryStore");
+        endpoint.Should().NotContain("ITradeRecommendationStore");
+        endpoint.Should().NotContain("LiveEntryOrderStatusPolicy");
+        endpoint.Should().NotContain("RiskRewardRatio");
+        endpoint.Should().NotContain("HoldingDays");
+        contracts.Should().Contain("record TradeRecommendationListResponse");
+        contracts.Should().Contain("record TradeHistoryResponse");
+        query.Should().Contain("interface ITradeActivityStore");
+        query.Should().Contain("interface ITradeActivityQuery");
+        query.Should().NotContain("StockTrader.Data");
+        query.Should().NotContain("StockTrader.Models");
+        store.Should().Contain("IDbContextFactory<AppDbContext>");
+        store.Should().Contain("ThenByDescending(row => row.Id)");
+        desktopEndpoints.Should().Contain(
+            "api.get<TradeRecommendationListResponse>('/api/trades/recommendations'");
+        desktopEndpoints.Should().Contain(
+            "api.get<TradeHistoryResponse>('/api/trades/history'");
+        recommendations.Should().NotContain("data?.Recommendations");
+        recommendations.Should().NotContain("row.EntryStatus");
+        history.Should().NotContain("data?.Trades");
+        history.Should().NotContain("row.PnL");
+        history.Should().Contain("tradeApiError(e,");
+        desktopModel.Should().Contain("Array.isArray(response?.errors)");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

@@ -19,10 +19,26 @@ public sealed record LiveEntryOrderStatus(
     long PendingSeconds,
     string? Note);
 
+public sealed record LiveEntryOrderStatusInput(
+    bool WasExecuted,
+    DateTime? EntryRequestedAt,
+    int? EntryAccountId,
+    bool HasBrokerOrderId,
+    string? EntryExecutionNote);
+
 public static class LiveEntryOrderStatusPolicy
 {
     public static LiveEntryOrderStatus Evaluate(
         TradeRecommendation recommendation,
+        DateTime utcNow) => Evaluate(new LiveEntryOrderStatusInput(
+            recommendation.WasExecuted,
+            recommendation.EntryRequestedAt,
+            recommendation.EntryAccountId,
+            !string.IsNullOrWhiteSpace(recommendation.EntryOrderId),
+            recommendation.EntryExecutionNote), utcNow);
+
+    public static LiveEntryOrderStatus Evaluate(
+        LiveEntryOrderStatusInput recommendation,
         DateTime utcNow)
     {
         if (recommendation.WasExecuted)
@@ -31,7 +47,7 @@ public static class LiveEntryOrderStatusPolicy
                 LiveEntryOrderState.Completed,
                 recommendation.EntryRequestedAt,
                 recommendation.EntryAccountId,
-                !string.IsNullOrWhiteSpace(recommendation.EntryOrderId),
+                recommendation.HasBrokerOrderId,
                 0,
                 null);
         }
@@ -44,13 +60,13 @@ public static class LiveEntryOrderStatusPolicy
                     : LiveEntryOrderState.Failed,
                 null,
                 recommendation.EntryAccountId,
-                !string.IsNullOrWhiteSpace(recommendation.EntryOrderId),
+                recommendation.HasBrokerOrderId,
                 0,
                 recommendation.EntryExecutionNote);
         }
 
         var elapsed = utcNow - recommendation.EntryRequestedAt.Value;
-        var hasOrderId = !string.IsNullOrWhiteSpace(recommendation.EntryOrderId);
+        var hasOrderId = recommendation.HasBrokerOrderId;
         return new LiveEntryOrderStatus(
             hasOrderId
                 ? LiveEntryOrderState.AwaitingBroker

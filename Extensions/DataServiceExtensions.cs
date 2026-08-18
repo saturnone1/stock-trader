@@ -29,6 +29,7 @@ public static class DataServiceExtensions
         services.AddSingleton<ITradeHistoryStore, TradeHistoryStore>();
         services.AddSingleton<IOpenPositionStore, OpenPositionStore>();
         services.AddSingleton<ITradeRecommendationStore, TradeRecommendationStore>();
+        services.AddSingleton<ITradeActivityStore, TradeActivityStore>();
         services.AddSingleton<IPatternSignalStore, PatternSignalStore>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<ISettingsManagementStore, SettingsManagementStore>();
