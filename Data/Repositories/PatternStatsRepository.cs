@@ -28,29 +28,6 @@ public class PatternStatsRepository : IPatternStatsRepository
             .ToListAsync(ct);
     }
 
-    public async Task SaveAsync(PatternStats stats, CancellationToken ct = default)
-    {
-        var existing = await _db.PatternStats
-            .FirstOrDefaultAsync(s => s.PatternType == stats.PatternType
-                && s.Symbol == stats.Symbol, ct);
-
-        if (existing != null)
-        {
-            existing.SampleSize = stats.SampleSize;
-            existing.WinRate = stats.WinRate;
-            existing.AvgWinPercent = stats.AvgWinPercent;
-            existing.AvgLossPercent = stats.AvgLossPercent;
-            existing.MaxDrawdownPercent = stats.MaxDrawdownPercent;
-            existing.LastUpdated = DateTime.UtcNow;
-        }
-        else
-        {
-            stats.LastUpdated = DateTime.UtcNow;
-            _db.PatternStats.Add(stats);
-        }
-        await _db.SaveChangesAsync(ct);
-    }
-
     public async Task SaveBatchAsync(IEnumerable<PatternStats> statsList, CancellationToken ct = default)
     {
         var incoming = statsList.ToList();
@@ -62,7 +39,6 @@ public class PatternStatsRepository : IPatternStatsRepository
             .ToListAsync(ct);
         var lookup = existing.ToDictionary(s => (s.PatternType, s.Symbol));
 
-        var now = DateTime.UtcNow;
         foreach (var stats in incoming)
         {
             if (lookup.TryGetValue((stats.PatternType, stats.Symbol), out var row))
@@ -72,11 +48,10 @@ public class PatternStatsRepository : IPatternStatsRepository
                 row.AvgWinPercent = stats.AvgWinPercent;
                 row.AvgLossPercent = stats.AvgLossPercent;
                 row.MaxDrawdownPercent = stats.MaxDrawdownPercent;
-                row.LastUpdated = now;
+                row.LastUpdated = stats.LastUpdated;
             }
             else
             {
-                stats.LastUpdated = now;
                 _db.PatternStats.Add(stats);
             }
         }

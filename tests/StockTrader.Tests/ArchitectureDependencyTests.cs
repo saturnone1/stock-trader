@@ -2817,6 +2817,61 @@ public class ArchitectureDependencyTests
             .Should().BeFalse();
     }
 
+    [Fact]
+    public void StatisticsAndMlSchedulingHaveExplicitClocksAndValidatedOperationalValues()
+    {
+        var repository = FindRepositoryRoot();
+        var resultBuilder = File.ReadAllText(Path.Combine(
+            repository,
+            "Services/Backtest/BacktestResultBuilder.cs"));
+        var performance = File.ReadAllText(Path.Combine(
+            repository,
+            "Services/Backtest/PerformanceCalculator.cs"));
+        var statistics = File.ReadAllText(Path.Combine(
+            repository,
+            "Services/Statistics/StatisticsService.cs"));
+        var statisticsStore = File.ReadAllText(Path.Combine(
+            repository,
+            "Data/Repositories/PatternStatsRepository.cs"));
+        var statisticsPort = File.ReadAllText(Path.Combine(
+            repository,
+            "Data/Repositories/IPatternStatsRepository.cs"));
+        var retraining = File.ReadAllText(Path.Combine(
+            repository,
+            "BackgroundServices/MLRetrainingService.cs"));
+        var schedule = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/Analysis/MlRetrainingSchedulePolicy.cs"));
+        var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
+
+        resultBuilder.Should().Contain("PerformanceCalculator.ComputePerPatternStats(");
+        resultBuilder.Should().Contain("PerformanceCalculator.ComputePerStrategyStats(");
+        resultBuilder.Should().Contain("input.To);");
+        performance.Should().Contain("DateTime calculatedAt");
+        performance.Should().NotContain("DateTime.UtcNow");
+        statistics.Should().Contain("TimeProvider _timeProvider");
+        statistics.Should().Contain("var observedAt = _timeProvider.GetUtcNow().UtcDateTime");
+        statistics.Should().Contain("IOptions<PatternStatisticsSettings>");
+        statistics.Should().NotContain("DateTime.UtcNow");
+        statisticsStore.Should().Contain("row.LastUpdated = stats.LastUpdated");
+        statisticsStore.Should().NotContain("DateTime.UtcNow");
+        statisticsPort.Should().NotContain("SaveAsync(PatternStats");
+        retraining.Should().Contain("TimeProvider timeProvider");
+        retraining.Should().Contain("MlRetrainingSchedulePolicy.CalculateRecurringDelay(");
+        retraining.Should().Contain("Task.Delay(");
+        retraining.Should().NotContain("DateTime.UtcNow");
+        retraining.Should().NotContain("PeriodicTimer");
+        schedule.Should().Contain("CalculateInitialDelay(");
+        schedule.Should().Contain("CalculateRecurringDelay(");
+        schedule.Should().NotContain("DateTime.UtcNow");
+        settings.Should().Contain("\"AutoRetrainAfterEt\": \"17:00\"");
+        settings.Should().Contain("\"AutoRetrainMaxConsecutiveFailures\": 5");
+        settings.Should().Contain("\"AutoRetrainCooldownMinutes\": 5");
+        settings.Should().Contain("\"AutoRetrainMaxRetries\": 3");
+        settings.Should().Contain("\"PatternStatistics\"");
+        settings.Should().Contain("\"CacheMinutes\": 5");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

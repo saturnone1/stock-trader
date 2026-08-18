@@ -38,11 +38,13 @@ public class PerformanceCalculatorTests
             new() { PatternType = PatternType.Custom, CustomPatternName = "돌파", PnL = -50m, PnLPercent = -0.05m }
         };
 
-        var result = PerformanceCalculator.ComputePerStrategyStats(trades);
+        var calculatedAt = new DateTime(2026, 8, 19, 5, 0, 0, DateTimeKind.Utc);
+        var result = PerformanceCalculator.ComputePerStrategyStats(trades, calculatedAt);
 
         result.Keys.Should().BeEquivalentTo("반등", "돌파");
         result["반등"].WinRate.Should().Be(1m);
         result["돌파"].WinRate.Should().Be(0m);
+        result.Values.Should().OnlyContain(stats => stats.LastUpdated == calculatedAt);
     }
 
     [Fact]

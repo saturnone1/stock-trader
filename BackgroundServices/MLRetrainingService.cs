@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Analysis;
 using StockTrader.Configuration;
 using StockTrader.Services.ML;
 using StockTrader.Services.Notification;
@@ -7,21 +8,19 @@ using TimeZoneConverter;
 namespace StockTrader.BackgroundServices;
 
 /// <summary>
-/// 설정된 주기(기본 24시간)로 ML 모델을 자동 재학습하는 백그라운드 서비스.
-/// 시장 종료 후(17:00 ET 이후)에만 실행하여 거래 시간 중 리소스 경합을 방지합니다.
+/// 설정된 주기로 ML 모델을 자동 재학습하는 백그라운드 서비스.
+/// 설정된 ET 허용 시각 이후에만 실행하여 거래 시간 중 리소스 경합을 방지합니다.
 /// </summary>
 public sealed class MLRetrainingService : BackgroundService
 {
-    private const int MaxConsecutiveFailures = 5;
-    private static readonly TimeSpan CooldownPeriod = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan RetrainAfterET = TimeSpan.FromHours(17);
-
     private static readonly TimeZoneInfo EasternTime =
         TZConvert.GetTimeZoneInfo("America/New_York");
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly INotificationDispatcher _dispatcher;
     private readonly MLSettings _mlSettings;
+    private readonly TimeProvider _timeProvider;
+    private readonly TimeOnly _retrainAfterEt;
     private readonly ILogger<MLRetrainingService> _logger;
 
     private int _consecutiveFailures;
@@ -30,11 +29,14 @@ public sealed class MLRetrainingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         INotificationDispatcher dispatcher,
         IOptions<MLSettings> mlSettings,
+        TimeProvider timeProvider,
         ILogger<MLRetrainingService> logger)
     {
         _scopeFactory = scopeFactory;
         _dispatcher = dispatcher;
         _mlSettings = mlSettings.Value;
+        _timeProvider = timeProvider;
+        _retrainAfterEt = TimeOnly.ParseExact(_mlSettings.AutoRetrainAfterEt, "HH:mm");
         _logger = logger;
     }
 
@@ -42,41 +44,52 @@ public sealed class MLRetrainingService : BackgroundService
     {
         _logger.LogInformation(
             "MLRetrainingService started. Retrain interval: {Hours}h, runs after {Time} ET",
-            _mlSettings.AutoRetrainIntervalHours, RetrainAfterET);
+            _mlSettings.AutoRetrainIntervalHours, _retrainAfterEt);
 
-        // 초기 지연: 다음 적절한 시점(17:00 ET 이후)까지 대기
+        // 초기 지연: 다음 설정된 ET 허용 시각까지 대기
         var initialDelay = CalculateDelayToNextWindow();
         _logger.LogInformation(
             "MLRetrainingService: first retrain in {Hours:F1} hours", initialDelay.TotalHours);
-        await Task.Delay(initialDelay, stoppingToken);
+        await Task.Delay(initialDelay, _timeProvider, stoppingToken);
 
         // 첫 실행
         if (!stoppingToken.IsCancellationRequested)
             await RunRetrainCycleAsync(stoppingToken);
 
-        // 이후 주기적 실행
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromHours(_mlSettings.AutoRetrainIntervalHours));
-
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        // 이후 주기적 실행. 매 주기 뒤 ET 창을 다시 계산해 DST 전환 후에도
+        // 16시로 밀린 타이머가 영구적으로 재학습을 건너뛰지 않도록 한다.
+        while (!stoppingToken.IsCancellationRequested)
         {
+            await Task.Delay(
+                MlRetrainingSchedulePolicy.CalculateRecurringDelay(
+                    _timeProvider.GetUtcNow(),
+                    TimeSpan.FromHours(_mlSettings.AutoRetrainIntervalHours),
+                    EasternTime,
+                    _retrainAfterEt),
+                _timeProvider,
+                stoppingToken);
             await RunRetrainCycleAsync(stoppingToken);
         }
     }
 
     private async Task RunRetrainCycleAsync(CancellationToken stoppingToken)
     {
-        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTime);
+        var observedAt = _timeProvider.GetUtcNow();
+        var nowEt = TimeZoneInfo.ConvertTime(observedAt, EasternTime);
+        var window = MlRetrainingSchedulePolicy.Evaluate(
+            observedAt,
+            EasternTime,
+            _retrainAfterEt);
 
         // 주말 스킵
-        if (nowEt.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+        if (window == MlRetrainingWindowStatus.Weekend)
         {
             _logger.LogDebug("MLRetrainingService: skipping — weekend");
             return;
         }
 
-        // 시장 시간 중이면 스킵 (17:00 ET 이전)
-        if (nowEt.TimeOfDay < RetrainAfterET)
+        // 설정된 ET 허용 시각 전이면 스킵
+        if (window == MlRetrainingWindowStatus.BeforeDailyWindow)
         {
             _logger.LogDebug(
                 "MLRetrainingService: skipping — before market close ({Time} ET)", nowEt.TimeOfDay);
@@ -84,12 +97,15 @@ public sealed class MLRetrainingService : BackgroundService
         }
 
         // Circuit breaker
-        if (_consecutiveFailures >= MaxConsecutiveFailures)
+        if (_consecutiveFailures >= _mlSettings.AutoRetrainMaxConsecutiveFailures)
         {
             _logger.LogWarning(
                 "MLRetrainingService entering cooldown after {Failures} consecutive failures",
                 _consecutiveFailures);
-            await Task.Delay(CooldownPeriod, stoppingToken);
+            await Task.Delay(
+                TimeSpan.FromMinutes(_mlSettings.AutoRetrainCooldownMinutes),
+                _timeProvider,
+                stoppingToken);
             _consecutiveFailures = 0;
         }
 
@@ -99,7 +115,7 @@ public sealed class MLRetrainingService : BackgroundService
                 () => ExecuteRetrainAsync(stoppingToken),
                 _logger,
                 "MLRetrain",
-                maxRetries: 3,
+                maxRetries: _mlSettings.AutoRetrainMaxRetries,
                 ct: stoppingToken);
 
             _consecutiveFailures = 0;
@@ -153,28 +169,9 @@ public sealed class MLRetrainingService : BackgroundService
     }
 
     private TimeSpan CalculateDelayToNextWindow()
-    {
-        var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTime);
+        => MlRetrainingSchedulePolicy.CalculateInitialDelay(
+            _timeProvider.GetUtcNow(),
+            EasternTime,
+            _retrainAfterEt);
 
-        // 평일 17:00 ET 이후이면 거의 즉시 시작
-        if (nowEt.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)
-            && nowEt.TimeOfDay >= RetrainAfterET)
-        {
-            return TimeSpan.FromMinutes(1);
-        }
-
-        // 오늘 또는 다음 영업일의 17:00 ET까지 대기
-        var nextWindow = nowEt.Date + RetrainAfterET;
-        if (nowEt.TimeOfDay >= RetrainAfterET)
-            nextWindow = nextWindow.AddDays(1);
-
-        // 주말 스킵
-        while (nextWindow.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-            nextWindow = nextWindow.AddDays(1);
-
-        var nextWindowUtc = TimeZoneInfo.ConvertTimeToUtc(nextWindow, EasternTime);
-        var delay = nextWindowUtc - DateTime.UtcNow;
-
-        return delay < TimeSpan.Zero ? TimeSpan.FromMinutes(1) : delay;
-    }
 }

@@ -73,7 +73,41 @@ public static class ServiceCollectionExtensions
                 settings => settings.DailyReportRetryDelayMinutes > 0,
                 "DailyReportRetryDelayMinutes must be positive")
             .ValidateOnStart();
-        services.Configure<MLSettings>(configuration.GetSection("ML"));
+        services.AddOptions<MLSettings>()
+            .Bind(configuration.GetSection("ML"))
+            .Validate(settings => !string.IsNullOrWhiteSpace(settings.ModelDirectory),
+                "ModelDirectory is required")
+            .Validate(settings => !string.IsNullOrWhiteSpace(settings.RegimeModelFileName),
+                "RegimeModelFileName is required")
+            .Validate(settings => !string.IsNullOrWhiteSpace(settings.SignalScorerModelFileName),
+                "SignalScorerModelFileName is required")
+            .Validate(settings => settings.MinTrainingSamples > 0,
+                "MinTrainingSamples must be positive")
+            .Validate(settings => settings.RegimeClusterCount >= 2,
+                "RegimeClusterCount must be at least 2")
+            .Validate(settings => settings.RegimeTrainingDays > 0,
+                "RegimeTrainingDays must be positive")
+            .Validate(settings => settings.MlScoreBlendWeight is >= 0 and <= 1,
+                "MlScoreBlendWeight must be in [0, 1]")
+            .Validate(settings => settings.AutoRetrainIntervalHours > 0,
+                "AutoRetrainIntervalHours must be positive")
+            .Validate(settings => TimeOnly.TryParseExact(
+                    settings.AutoRetrainAfterEt,
+                    "HH:mm",
+                    out _),
+                "AutoRetrainAfterEt must use HH:mm")
+            .Validate(settings => settings.AutoRetrainMaxConsecutiveFailures > 0,
+                "AutoRetrainMaxConsecutiveFailures must be positive")
+            .Validate(settings => settings.AutoRetrainCooldownMinutes > 0,
+                "AutoRetrainCooldownMinutes must be positive")
+            .Validate(settings => settings.AutoRetrainMaxRetries > 0,
+                "AutoRetrainMaxRetries must be positive")
+            .ValidateOnStart();
+        services.AddOptions<PatternStatisticsSettings>()
+            .Bind(configuration.GetSection("PatternStatistics"))
+            .Validate(settings => settings.CacheMinutes > 0,
+                "PatternStatistics CacheMinutes must be positive")
+            .ValidateOnStart();
         services.Configure<LsSecuritiesSettings>(configuration.GetSection("LsSecurities"));
         services.Configure<FinancialDataPipelineSettings>(configuration.GetSection("FinancialDataPipeline"));
         services.AddOptions<StockAnalysisSettings>()

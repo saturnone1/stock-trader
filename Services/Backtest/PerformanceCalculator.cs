@@ -188,19 +188,22 @@ internal static class PerformanceCalculator
 
 
     public static Dictionary<PatternType, PatternStats> ComputePerPatternStats(
-        List<TradeRecord> trades)
+        List<TradeRecord> trades,
+        DateTime calculatedAt)
     {
         var stats = new Dictionary<PatternType, PatternStats>();
 
         foreach (var group in trades.GroupBy(t => t.PatternType))
         {
-            stats[group.Key] = ComputeStats(group.ToList(), group.Key);
+            stats[group.Key] = ComputeStats(group.ToList(), group.Key, calculatedAt);
         }
 
         return stats;
     }
 
-    public static Dictionary<string, PatternStats> ComputePerStrategyStats(List<TradeRecord> trades)
+    public static Dictionary<string, PatternStats> ComputePerStrategyStats(
+        List<TradeRecord> trades,
+        DateTime calculatedAt)
     {
         return trades
             .GroupBy(trade => string.IsNullOrWhiteSpace(trade.CustomPatternName)
@@ -208,11 +211,17 @@ internal static class PerformanceCalculator
                 : trade.CustomPatternName!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
-                group => ComputeStats(group.ToList(), group.First().PatternType),
+                group => ComputeStats(
+                    group.ToList(),
+                    group.First().PatternType,
+                    calculatedAt),
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    private static PatternStats ComputeStats(List<TradeRecord> trades, PatternType patternType)
+    private static PatternStats ComputeStats(
+        List<TradeRecord> trades,
+        PatternType patternType,
+        DateTime calculatedAt)
     {
         var wins = trades.Where(trade => trade.IsWin).ToList();
         var losses = trades.Where(trade => !trade.IsWin).ToList();
@@ -224,7 +233,7 @@ internal static class PerformanceCalculator
             AvgWinPercent = wins.Count > 0 ? wins.Average(trade => trade.PnLPercent) : 0,
             AvgLossPercent = losses.Count > 0 ? Math.Abs(losses.Average(trade => trade.PnLPercent)) : 0,
             MaxDrawdownPercent = ComputeGroupDrawdown(trades),
-            LastUpdated = DateTime.UtcNow
+            LastUpdated = calculatedAt
         };
     }
 
