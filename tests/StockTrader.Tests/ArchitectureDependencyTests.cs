@@ -2112,6 +2112,42 @@ public class ArchitectureDependencyTests
         frontendModel.Should().Contain("metadata?.optimizationRankings");
     }
 
+    [Fact]
+    public void TradingAccountsHaveExplicitApplicationPersistenceAndBrokerBoundaries()
+    {
+        var repository = FindRepositoryRoot();
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/AccountEndpoints.cs"));
+        var manager = File.ReadAllText(Path.Combine(
+            repository, "Services/Account/AccountManager.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/TradingAccountStore.cs"));
+        var factory = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/AccountBrokerServiceFactory.cs"));
+        var brokerCatalog = File.ReadAllText(Path.Combine(
+            repository, "Domain/Trading/BrokerCatalog.cs"));
+        var accountPage = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Accounts.svelte"));
+
+        endpoints.Should().Contain("TradingAccountCreateRequest");
+        endpoints.Should().Contain("TradingAccountResponse");
+        endpoints.Should().Contain("TradingAccountMetadataResponse");
+        endpoints.Should().NotContain("StockTrader.Models");
+        endpoints.Should().NotContain("DateTime.UtcNow");
+        manager.Should().Contain("ITradingAccountStore");
+        manager.Should().Contain("IAccountBrokerServiceFactory");
+        manager.Should().Contain("TimeProvider");
+        manager.Should().NotContain("AppDbContext");
+        manager.Should().NotContain("DateTime.UtcNow");
+        manager.Should().NotContain("new AlpacaBrokerService");
+        store.Should().Contain("IDbContextFactory<AppDbContext>");
+        factory.Should().Contain("BrokerType.Alpaca");
+        factory.Should().Contain("BrokerType.LsSecurities");
+        brokerCatalog.Should().Contain("public enum BrokerType");
+        accountPage.Should().Contain("accountApi.metadata()");
+        accountPage.Should().Contain("row.accountName");
+        accountPage.Should().NotContain("row.AccountName");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

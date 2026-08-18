@@ -1,6 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using StockTrader.Models.Enums;
-
 namespace StockTrader.Models;
 
 /// <summary>
@@ -50,26 +48,11 @@ public class TradingAccount
     public string Notes { get; set; } = string.Empty;
 
     /// <summary>계좌 생성 시각 (UTC)</summary>
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
 
     /// <summary>마지막 수정 시각 (UTC)</summary>
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; }
 
     /// <summary>마지막 연결 확인 시각 (UTC, null이면 미확인)</summary>
     public DateTime? LastConnectedAt { get; set; }
-}
-
-/// <summary>
-/// 계좌 연결 상태 (런타임 전용, DB 저장 안 함).
-/// </summary>
-public class AccountConnectionStatus
-{
-    public int AccountId { get; set; }
-    public bool IsConnected { get; set; }
-    public string StatusMessage { get; set; } = string.Empty;
-    public decimal TotalEquity { get; set; }
-    public decimal Cash { get; set; }
-    public decimal BuyingPower { get; set; }
-    public int OpenPositionCount { get; set; }
-    public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
 }

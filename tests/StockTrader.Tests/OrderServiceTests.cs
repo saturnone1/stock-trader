@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using StockTrader.Application.Accounts;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -487,7 +488,7 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(manager => manager.GetActiveAccountAsync(
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TradingAccount { Id = 9, IsActive = true, IsEnabled = true });
+            .ReturnsAsync(new ManagedTradingAccount { Id = 9, IsActive = true, IsEnabled = true });
         _brokerServiceMock
             .Setup(broker => broker.PlaceOrderAsync(
                 recommendation, It.IsAny<CancellationToken>()))

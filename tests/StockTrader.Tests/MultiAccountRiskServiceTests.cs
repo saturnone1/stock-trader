@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using StockTrader.Application.Accounts;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -72,8 +73,8 @@ public class MultiAccountRiskServiceTests
         return scopeFactoryMock.Object;
     }
 
-    private static TradingAccount MakeAccount(int id = 1, bool isActive = true) =>
-        new TradingAccount
+    private static ManagedTradingAccount MakeAccount(int id = 1, bool isActive = true) =>
+        new ManagedTradingAccount
         {
             Id = id,
             AccountName = $"Test Account #{id}",
@@ -92,7 +93,7 @@ public class MultiAccountRiskServiceTests
         // Arrange: 활성 계좌가 없는 상황
         _accountManagerMock
             .Setup(m => m.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TradingAccount?)null);
+            .ReturnsAsync((ManagedTradingAccount?)null);
 
         var sut = CreateSut();
 
@@ -124,7 +125,7 @@ public class MultiAccountRiskServiceTests
             .ReturnsAsync(account);
         _accountManagerMock
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TradingAccount> { account });
+            .ReturnsAsync(new List<ManagedTradingAccount> { account });
         _accountManagerMock
             .Setup(m => m.GetBrokerServiceForAccountAsync(account.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null); // 브로커 없으면 기본값 사용
@@ -191,7 +192,7 @@ public class MultiAccountRiskServiceTests
         // Arrange: 활성 계좌 없음
         _accountManagerMock
             .Setup(m => m.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TradingAccount?)null);
+            .ReturnsAsync((ManagedTradingAccount?)null);
 
         var sut = CreateSut();
 
@@ -221,7 +222,7 @@ public class MultiAccountRiskServiceTests
             .ReturnsAsync(account);
         _accountManagerMock
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TradingAccount> { account });
+            .ReturnsAsync(new List<ManagedTradingAccount> { account });
         _accountManagerMock
             .Setup(m => m.GetBrokerServiceForAccountAsync(account.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);
@@ -500,7 +501,7 @@ public class MultiAccountRiskServiceTests
 
         _accountManagerMock
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TradingAccount> { account1 });
+            .ReturnsAsync(new List<ManagedTradingAccount> { account1 });
         _accountManagerMock
             .Setup(m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);
@@ -546,7 +547,7 @@ public class MultiAccountRiskServiceTests
 
         _accountManagerMock
             .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TradingAccount> { account1, account2 });
+            .ReturnsAsync(new List<ManagedTradingAccount> { account1, account2 });
         _accountManagerMock
             .Setup(m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);

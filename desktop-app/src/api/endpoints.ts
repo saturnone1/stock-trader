@@ -410,6 +410,7 @@ export const settingsApi = {
 };
 
 export const accountApi = {
+  metadata: () => api.get('/api/accounts/meta'),
   list: () => api.get('/api/accounts'),
   create: (data: any) => api.post('/api/accounts', data),
   update: (id: number | string, data: any) => api.put(`/api/accounts/${id}`, data),

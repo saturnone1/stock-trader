@@ -28,7 +28,9 @@ public static class BrokerServiceExtensions
             return new BrokerServiceFactory(sp, brokerSettings.DefaultBrokerType);
         });
 
-        // AccountManager (singleton: 계좌 상태는 앱 전체 공유)
+        services.AddSingleton<IAccountBrokerServiceFactory, AccountBrokerServiceFactory>();
+
+        // AccountManager (singleton: 계좌·브로커 런타임 캐시는 앱 전체 공유)
         services.AddSingleton<IAccountManager, AccountManager>();
 
         return services;
