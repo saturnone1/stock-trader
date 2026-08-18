@@ -40,6 +40,39 @@ public class OptimizationJobExecutionTests
     }
 
     [Fact]
+    public async Task UpdateResultOutOfSampleAsync_ChangesOnlyProjectedOosMetrics()
+    {
+        var factory = CreateDbFactory();
+        var repo = new OptimizationRepository(factory);
+        var job = await repo.CreateJobAsync(new OptimizationJob { Name = "oos-update" });
+        var result = new OptimizationResult
+        {
+            JobId = job.Id,
+            ParamsJson = "{}",
+            TotalReturn = 9m,
+            SortinoRatio = 1.1m
+        };
+        await repo.UpsertResultAsync(result);
+        var metrics = new OptimizationPerformanceMetrics(
+            4m, 0.9m, 0.7m, 6m, 55m, 12, 1.3m, 0.8m, 0.15m);
+
+        await repo.UpdateResultOutOfSampleAsync(result.Id, metrics);
+
+        var saved = (await repo.GetResultsAsync(job.Id)).Single();
+        saved.TotalReturn.Should().Be(9m);
+        saved.SortinoRatio.Should().Be(1.1m);
+        saved.OosTotalReturn.Should().Be(metrics.TotalReturn);
+        saved.OosSortinoRatio.Should().Be(metrics.SortinoRatio);
+        saved.OosSharpeRatio.Should().Be(metrics.SharpeRatio);
+        saved.OosMaxDrawdown.Should().Be(metrics.MaxDrawdown);
+        saved.OosWinRate.Should().Be(metrics.WinRate);
+        saved.OosTotalTrades.Should().Be(metrics.TotalTrades);
+        saved.OosProfitFactor.Should().Be(metrics.ProfitFactor);
+        saved.OosCalmarRatio.Should().Be(metrics.CalmarRatio);
+        saved.OosAnnualizedReturn.Should().Be(metrics.AnnualizedReturn);
+    }
+
+    [Fact]
     public void CalculateStage1StartChunk_SkipsCompletedStage1AfterRestart()
     {
         var startChunk = OptimizationJobExecutionPolicy.CalculateStage1StartChunk(

@@ -181,7 +181,9 @@
   synchronous and background IS/fine/OOS runs; `OptimizationResultProjection` owns their metric units.
   `IOptimizationEvaluationContextPreparer` supplies both modes with one resolved feed, central regime
   benchmark, reference-symbol set, timeframe data map, and risk input. `OptimizationJobExecutor` has
-  dropped from 579 to 382 lines and is guarded by a 400-line cap.
+  dropped from 579 to 329 lines after `IOptimizationJobExecutionStore` also absorbed persisted control
+  signals, candidate JSON, chunk checkpoints, result-row mapping, and OOS-only updates. It is guarded
+  by a 350-line cap and no longer references the broad repository contract.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

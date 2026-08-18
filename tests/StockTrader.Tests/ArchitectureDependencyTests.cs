@@ -1010,12 +1010,21 @@ public class ArchitectureDependencyTests
             repository, "Application/Backtesting/MarketRegimeBenchmarkPolicy.cs"));
         var backtest = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestService.cs"));
+        var executionStorePort = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/IOptimizationJobExecutionStore.cs"));
+        var executionStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationJobExecutionStore.cs"));
 
         source.Should().Contain("IOptimizationEvaluationContextPreparer");
+        source.Should().Contain("IOptimizationJobExecutionStore");
         synchronous.Should().Contain("IOptimizationEvaluationContextPreparer");
         source.Should().NotContain("BacktestDataPreparer");
         source.Should().NotContain("IDataFeedServiceFactory");
         source.Should().NotContain("ICustomStrategyDetectorFactory");
+        source.Should().NotContain("IOptimizationRepository");
+        source.Should().NotContain("JsonSerializer");
+        source.Should().NotContain("ParamsJson");
+        source.Should().NotContain("new OptimizationResult");
         synchronous.Should().NotContain("BacktestDataPreparer");
         synchronous.Should().NotContain("IDataFeedServiceFactory");
         preparationPort.Should().Contain("OptimizationPreparationResult");
@@ -1029,6 +1038,13 @@ public class ArchitectureDependencyTests
         backtest.Should().Contain("_dataFeedFactory.SelectAsync(request.DataSource, ct)");
         backtest.Should().Contain("MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source)");
         backtest.Should().NotContain("request.DataSource == DataSource.LsSecurities");
+        executionStorePort.Should().Contain("SaveChunkAsync(");
+        executionStorePort.Should().Contain("SaveOutOfSampleAsync(");
+        executionStorePort.Should().NotContain("StockTrader.Models");
+        executionStorePort.Should().NotContain("StockTrader.Data");
+        executionStore.Should().Contain("JsonSerializer.Serialize(item.Params)");
+        executionStore.Should().Contain("_repository.MergeResultsAsync(");
+        executionStore.Should().Contain("_repository.UpdateResultOutOfSampleAsync(");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
         source.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
         source.Should().Contain("TimeProvider");
@@ -1059,7 +1075,7 @@ public class ArchitectureDependencyTests
         source.Should().NotContain("0.05m, 1.00m");
         File.ReadAllLines(Path.Combine(
                 repository, "BackgroundServices/OptimizationJobExecutor.cs"))
-            .Length.Should().BeLessThanOrEqualTo(400);
+            .Length.Should().BeLessThanOrEqualTo(350);
         source.Should().NotContain("GetHistoricalBarsAsync");
         source.Should().NotContain("IndicatorService.ExtractCloses");
         source.Should().NotContain("new PatternSettings()");

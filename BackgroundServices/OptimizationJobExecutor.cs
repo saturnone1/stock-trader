@@ -1,7 +1,5 @@
-using System.Text.Json;
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
-using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
 namespace StockTrader.BackgroundServices;
@@ -17,8 +15,6 @@ public class OptimizationJobExecutor
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OptimizationJobExecutor> _logger;
     private readonly TimeProvider _clock;
-
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     public OptimizationJobExecutor(
         IServiceScopeFactory scopeFactory,
@@ -45,7 +41,7 @@ public class OptimizationJobExecutor
 
         var contextPreparer = sp.GetRequiredService<IOptimizationEvaluationContextPreparer>();
         var candidateEvaluator = sp.GetRequiredService<IOptimizationCandidateEvaluator>();
-        var repo             = sp.GetRequiredService<IOptimizationRepository>();
+        var executionStore = sp.GetRequiredService<IOptimizationJobExecutionStore>();
 
         // ── 1. RequestJson 역직렬화 ──
         OptimizeRequest request;
@@ -74,7 +70,7 @@ public class OptimizationJobExecutor
         if (job.TotalCombinations == 0)
         {
             job.TotalCombinations = allCombinations.Count;
-            await repo.UpdateJobProgressAsync(
+            await executionStore.SaveProgressAsync(
                 job.Id,
                 job.TestedCombinations,
                 job.CurrentChunkIndex,
@@ -103,7 +99,7 @@ public class OptimizationJobExecutor
         {
             ct.ThrowIfCancellationRequested();
 
-            var stopDisposition = await GetExternalStopDispositionAsync(job.Id, repo);
+            var stopDisposition = await GetExternalStopDispositionAsync(job.Id, executionStore);
             if (stopDisposition.HasValue)
                 return stopDisposition.Value;
 
@@ -139,23 +135,19 @@ public class OptimizationJobExecutor
 
             stage1Results.AddRange(chunkResults);
 
-            if (chunkResults.Count > 0)
-            {
-                var dbResults = chunkResults
-                    .Select((r, i) => MapToDbResult(
-                        r, job.Id, job.TestedCombinations + i, UtcNow))
-                    .ToList();
-                await repo.MergeResultsAsync(job.Id, dbResults, job.TopResultsToKeep, job.RankBy);
-            }
-
+            var testedAtStart = job.TestedCombinations;
             job.TestedCombinations += chunk.Count;
             job.CurrentChunkIndex   = chunkIdx + 1;
             job.LastProgressAt      = UtcNow;
-            await repo.UpdateJobProgressAsync(
+            await executionStore.SaveChunkAsync(
                 job.Id,
+                chunkResults,
+                testedAtStart,
                 job.TestedCombinations,
                 job.CurrentChunkIndex,
-                job.LastProgressAt);
+                job.LastProgressAt.Value,
+                job.TopResultsToKeep,
+                job.RankBy);
 
             _logger.LogDebug(
                 "[Optimization] Job {Id}: 청크 {C}/{T} 완료, 누적 {N}건",
@@ -167,7 +159,7 @@ public class OptimizationJobExecutor
         {
                 var neighbors = await BuildStage2NeighborsAsync(
                     job,
-                    repo,
+                    executionStore,
                     request,
                     stage1Results,
                     allCombinations,
@@ -191,7 +183,7 @@ public class OptimizationJobExecutor
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    var stopDisposition = await GetExternalStopDispositionAsync(job.Id, repo);
+                    var stopDisposition = await GetExternalStopDispositionAsync(job.Id, executionStore);
                     if (stopDisposition.HasValue)
                         return stopDisposition.Value;
 
@@ -212,23 +204,19 @@ public class OptimizationJobExecutor
                         "[Optimization] Stage 2 백테스트 실패 — 건너뜀",
                         ct);
 
-                    if (chunkResults2.Count > 0)
-                    {
-                        var dbResults2 = chunkResults2
-                            .Select((r, i) => MapToDbResult(
-                                r, job.Id, job.TestedCombinations + i, UtcNow))
-                            .ToList();
-                        await repo.MergeResultsAsync(job.Id, dbResults2, job.TopResultsToKeep, job.RankBy);
-                    }
-
+                    var testedAtStart = job.TestedCombinations;
                     job.TestedCombinations += chunk2.Count;
                     job.CurrentChunkIndex   = totalChunks + c + 1;
                     job.LastProgressAt      = UtcNow;
-                    await repo.UpdateJobProgressAsync(
+                    await executionStore.SaveChunkAsync(
                         job.Id,
+                        chunkResults2,
+                        testedAtStart,
                         job.TestedCombinations,
                         job.CurrentChunkIndex,
-                        job.LastProgressAt);
+                        job.LastProgressAt.Value,
+                        job.TopResultsToKeep,
+                        job.RankBy);
                 }
             }
         }
@@ -238,29 +226,23 @@ public class OptimizationJobExecutor
         {
             _logger.LogInformation("[Optimization] Job {Id}: OOS 검증 시작", job.Id);
 
-            var topResults = await repo.GetResultsAsync(job.Id, job.TopResultsToKeep);
+            var topResults = await executionStore.LoadTopCandidatesAsync(
+                job.Id, job.TopResultsToKeep);
 
-            foreach (var dbResult in topResults)
+            foreach (var storedCandidate in topResults)
             {
                 ct.ThrowIfCancellationRequested();
 
-                var stopDisposition = await GetExternalStopDispositionAsync(job.Id, repo);
+                var stopDisposition = await GetExternalStopDispositionAsync(
+                    job.Id, executionStore);
                 if (stopDisposition.HasValue)
                     return stopDisposition.Value;
-
-                OptimizeParamSnapshot? snap;
-                try
-                {
-                    snap = JsonSerializer.Deserialize<OptimizeParamSnapshot>(dbResult.ParamsJson, JsonOpts);
-                    if (snap == null) continue;
-                }
-                catch { continue; }
 
                 try
                 {
                     var oosResult = await candidateEvaluator.RunAsync(
                         evaluation,
-                        snap,
+                        storedCandidate.Parameters,
                         period.OutOfSampleFrom,
                         period.OutOfSampleTo,
                         "[Optimization] OOS 백테스트 실패 — 건너뜀",
@@ -268,17 +250,8 @@ public class OptimizationJobExecutor
                     if (oosResult is null) continue;
 
                     var metrics = OptimizationResultProjection.FromBacktest(oosResult);
-                    dbResult.OosTotalReturn     = metrics.TotalReturn;
-                    dbResult.OosSortinoRatio     = metrics.SortinoRatio;
-                    dbResult.OosSharpeRatio      = metrics.SharpeRatio;
-                    dbResult.OosMaxDrawdown      = metrics.MaxDrawdown;
-                    dbResult.OosWinRate          = metrics.WinRate;
-                    dbResult.OosTotalTrades      = metrics.TotalTrades;
-                    dbResult.OosProfitFactor     = metrics.ProfitFactor;
-                    dbResult.OosCalmarRatio      = metrics.CalmarRatio;
-                    dbResult.OosAnnualizedReturn = metrics.AnnualizedReturn;
-
-                    await repo.UpsertResultAsync(dbResult);
+                    await executionStore.SaveOutOfSampleAsync(
+                        storedCandidate.ResultId, metrics);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -294,46 +267,22 @@ public class OptimizationJobExecutor
         return OptimizationJobExecutionDisposition.Completed;
     }
 
-    private static OptimizationResult MapToDbResult(
-        OptimizeResultItem item,
-        int jobId,
-        long testedAtCombination,
-        DateTime discoveredAt)
-    {
-        return new OptimizationResult
-        {
-            JobId               = jobId,
-            ParamsJson          = JsonSerializer.Serialize(item.Params),
-            TotalReturn         = item.TotalReturn,
-            SortinoRatio        = item.SortinoRatio,
-            SharpeRatio         = item.SharpeRatio,
-            MaxDrawdown         = item.MaxDrawdown,
-            WinRate             = item.WinRate,
-            TotalTrades         = item.TotalTrades,
-            ProfitFactor        = item.ProfitFactor,
-            CalmarRatio         = item.CalmarRatio,
-            AnnualizedReturn    = item.AnnualizedReturn,
-            TestedAtCombination = testedAtCombination,
-            DiscoveredAt        = discoveredAt,
-        };
-    }
-
     private async Task<OptimizationJobExecutionDisposition?> GetExternalStopDispositionAsync(
         int jobId,
-        IOptimizationRepository repo)
+        IOptimizationJobExecutionStore executionStore)
     {
-        var status = await repo.GetJobStatusAsync(jobId);
-        return status switch
+        var signal = await executionStore.GetControlSignalAsync(jobId);
+        return signal switch
         {
-            OptimizationJobStatus.Paused => OptimizationJobExecutionDisposition.Paused,
-            OptimizationJobStatus.Cancelled => OptimizationJobExecutionDisposition.Cancelled,
+            OptimizationJobControlSignal.Pause => OptimizationJobExecutionDisposition.Paused,
+            OptimizationJobControlSignal.Cancel => OptimizationJobExecutionDisposition.Cancelled,
             _ => null
         };
     }
 
     private async Task<List<OptimizeParamSnapshot>> BuildStage2NeighborsAsync(
         OptimizationJob job,
-        IOptimizationRepository repo,
+        IOptimizationJobExecutionStore executionStore,
         OptimizeRequest request,
         List<OptimizeResultItem> stage1Results,
         List<OptimizeParamSnapshot> allCombinations,
@@ -352,13 +301,11 @@ public class OptimizationJobExecutor
         }
         else
         {
-            var persistedTopResults = await repo.GetResultsAsync(
+            var persistedTopResults = await executionStore.LoadTopCandidatesAsync(
                 job.Id,
                 OptimizationJobExecutionPolicy.FineSearchSeedCount);
             seeds = persistedTopResults
-                .Select(r => JsonSerializer.Deserialize<OptimizeParamSnapshot>(r.ParamsJson, JsonOpts))
-                .Where(s => s != null)
-                .Select(s => s!)
+                .Select(candidate => candidate.Parameters)
                 .ToList();
         }
 

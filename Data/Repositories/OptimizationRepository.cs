@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Models;
+using StockTrader.Application.Optimization;
 
 namespace StockTrader.Data.Repositories;
 
@@ -222,6 +223,26 @@ public class OptimizationRepository : IOptimizationRepository
             db.OptimizationResults.Add(result);
         else
             db.OptimizationResults.Update(result);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task UpdateResultOutOfSampleAsync(
+        int resultId,
+        OptimizationPerformanceMetrics metrics)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var result = await db.OptimizationResults.FindAsync(resultId)
+            ?? throw new InvalidOperationException(
+                $"OptimizationResult {resultId}를 찾을 수 없습니다.");
+        result.OosTotalReturn = metrics.TotalReturn;
+        result.OosSortinoRatio = metrics.SortinoRatio;
+        result.OosSharpeRatio = metrics.SharpeRatio;
+        result.OosMaxDrawdown = metrics.MaxDrawdown;
+        result.OosWinRate = metrics.WinRate;
+        result.OosTotalTrades = metrics.TotalTrades;
+        result.OosProfitFactor = metrics.ProfitFactor;
+        result.OosCalmarRatio = metrics.CalmarRatio;
+        result.OosAnnualizedReturn = metrics.AnnualizedReturn;
         await db.SaveChangesAsync();
     }
 

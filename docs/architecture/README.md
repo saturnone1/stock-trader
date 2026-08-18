@@ -175,7 +175,9 @@ creation, timeframe data selection, prepared simulation, and candidate failure h
 the executor coordinates job lifecycle, chunks, persistence, and cancellation around that application
 port. `IOptimizationEvaluationContextPreparer` now supplies both modes with the same resolved feed,
 central market-regime benchmark, reference symbols, requested timeframe data, and risk settings.
-The executor remains a 382-line job coordinator capped below 400 lines.
+`IOptimizationJobExecutionStore` isolates pause/cancel observation, chunk checkpoints, ranked-result
+storage, legacy parameter JSON, and OOS-only updates. Its SQLite adapter is the only owner of
+`OptimizationResult` mapping; the executor is now 329 lines and capped below 350 lines.
 
 ## Decision records
 
@@ -200,4 +202,6 @@ The executor remains a 382-line job coordinator capped below 400 lines.
   simulation plus result-unit projection through one application boundary.
 - `adr/0011-prepare-optimization-evaluation-context.md`: resolve feed identity, regime benchmark,
   prepared symbols, timeframe data, and risk settings through one optimization preparation port.
+- `adr/0012-isolate-optimization-job-execution-store.md`: keep job checkpoints, result JSON,
+  persisted control signals, and OOS-only updates behind an application storage port.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

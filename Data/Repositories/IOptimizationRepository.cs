@@ -1,4 +1,5 @@
 using StockTrader.Models;
+using StockTrader.Application.Optimization;
 
 namespace StockTrader.Data.Repositories;
 
@@ -43,6 +44,9 @@ public interface IOptimizationRepository
     /// Id == 0 이면 Insert, 그 외엔 Update.
     /// </summary>
     Task UpsertResultAsync(OptimizationResult result);
+    Task UpdateResultOutOfSampleAsync(
+        int resultId,
+        OptimizationPerformanceMetrics metrics);
 
     // 스타트업 복구
 
