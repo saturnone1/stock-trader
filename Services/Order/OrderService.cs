@@ -1,4 +1,3 @@
-using StockTrader.Application.Execution;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -28,7 +27,7 @@ public class OrderService : IOrderService
     private readonly INotificationService _notificationService;
     private readonly IMarketCalendar _marketCalendar;
     private readonly ManualOrderWorkflow _manualOrders;
-    private readonly TimeProvider _timeProvider;
+    private readonly ILiveEntryExecutionCoordinator _entryExecutions;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
@@ -38,7 +37,7 @@ public class OrderService : IOrderService
         INotificationService notificationService,
         IMarketCalendar marketCalendar,
         ManualOrderWorkflow manualOrders,
-        TimeProvider timeProvider,
+        ILiveEntryExecutionCoordinator entryExecutions,
         ILogger<OrderService> logger)
     {
         _accountManager = accountManager;
@@ -47,7 +46,7 @@ public class OrderService : IOrderService
         _notificationService = notificationService;
         _marketCalendar = marketCalendar;
         _manualOrders = manualOrders;
-        _timeProvider = timeProvider;
+        _entryExecutions = entryExecutions;
         _logger = logger;
     }
 
@@ -95,11 +94,9 @@ public class OrderService : IOrderService
         }
 
         // 계좌별 브로커 선택 (null이면 활성 계좌)
-        var brokerService = accountId.HasValue
-            ? await _accountManager.GetBrokerServiceForAccountAsync(accountId.Value, ct)
-            : await _accountManager.GetActiveBrokerServiceAsync(ct);
+        var account = await _accountManager.GetBrokerContextAsync(accountId, ct);
 
-        if (brokerService == null)
+        if (account is null)
         {
             _logger.LogWarning(
                 "Cannot place order for {Symbol}: no broker service available (account={AccountId})",
@@ -107,34 +104,26 @@ public class OrderService : IOrderService
             return false;
         }
 
-        var success = await brokerService.PlaceOrderAsync(recommendation, ct);
-
-        if (success)
+        var execution = await _entryExecutions.ExecuteAsync(recommendation, account, ct);
+        if (!execution.BrokerAccepted)
+            return false;
+        if (!execution.IsTracked)
         {
-            recommendation.WasExecuted = true;
-            await _tradeRepo.UpdateRecommendationAsync(recommendation, ct);
-
-            // 시장가 주문은 신호 가격과 다른 가격에 체결될 수 있다. 실제 브로커 평균단가를
-            // 확인한 뒤에만 로컬 포지션을 생성해 손익·손절·목표가의 기준을 일치시킨다.
-            var brokerPosition = await BrokerPositionConfirmation.WaitForAsync(
-                brokerService, recommendation.Symbol, ct);
-            var resolvedAccountId = accountId
-                ?? (await _accountManager.GetActiveAccountAsync(ct))?.Id
-                ?? 0;
-            var position = LiveEntryPositionFactory.Create(
-                recommendation,
-                brokerPosition,
-                resolvedAccountId,
-                _timeProvider.GetUtcNow().UtcDateTime);
-            await _tradeRepo.SavePositionAsync(position, ct);
-
-            _logger.LogInformation(
-                "[ORDER PLACED] {Symbol}: Qty={Qty}, Entry=${Entry:F2}, Account={AccountId}",
-                position.Symbol, position.Quantity, position.EntryPrice,
-                accountId?.ToString() ?? "active");
+            _logger.LogCritical(
+                "[ORDER ACCEPTED, TRACKING FAILED] {Symbol}: Account={AccountId} OrderId={OrderId}",
+                recommendation.Symbol,
+                account.Account.Id,
+                execution.Order?.OrderId);
+            return true;
         }
 
-        return success;
+        _logger.LogInformation(
+            "[ORDER PLACED] {Symbol}: Qty={Qty}, Entry=${Entry:F2}, Account={AccountId}",
+            execution.Position!.Symbol,
+            execution.Position.Quantity,
+            execution.Position.EntryPrice,
+            account.Account.Id);
+        return true;
     }
 
     /// <inheritdoc />

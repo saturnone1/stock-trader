@@ -6,6 +6,9 @@
 - Trading-account state now crosses an application persistence port, active-account changes are
   transactional, broker clients are constructed behind a focused factory, and explicit API contracts
   keep secrets write-only. The desktop derives broker environments from the central broker catalog.
+- Automatic and manual live entries now resolve one account/broker snapshot and share
+  `LiveEntryExecutionCoordinator`. Broker adapters return order evidence, and the accepted
+  recommendation plus position are committed through one purpose-specific transactional store.
 - Preview, backtest, and live rule evaluation consume the same compiled strategy model.
 - Live strategy loading is behind `ICompiledStrategyRepository`.
 - Database startup changes run through ordered, versioned migrations.

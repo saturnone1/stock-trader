@@ -1024,6 +1024,10 @@ public class ArchitectureDependencyTests
         schemas.GetProperty("CustomPatternWriteRequest").GetRawText()
             .Should().NotContain("normalizedName");
         schemas.TryGetProperty("CustomPatternDefinition", out _).Should().BeFalse();
+        schemas.GetProperty("ExecuteSignalRequest").GetRawText()
+            .Should().Contain("signalId");
+        schemas.GetProperty("OrderErrorResponse").GetRawText()
+            .Should().Contain("error");
         var strategyDocument = schemas.GetProperty("StrategyDocument").GetRawText();
         strategyDocument.Should().Contain("storedStrategyId");
         strategyDocument.Should().NotContain("normalizedName");
@@ -1693,6 +1697,14 @@ public class ArchitectureDependencyTests
         var order = File.ReadAllText(Path.Combine(repository, "Services/Order/OrderService.cs"));
         var manualOrder = File.ReadAllText(Path.Combine(
             repository, "Services/Order/ManualOrderWorkflow.cs"));
+        var entryExecution = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/LiveEntryExecutionCoordinator.cs"));
+        var entryStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/LiveEntryExecutionStore.cs"));
+        var brokerPort = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/IBrokerService.cs"));
+        var entryEvidence = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LiveEntryOrderEvidencePolicy.cs"));
         var liveEntry = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/LiveEntryPositionFactory.cs"));
         var parity = File.ReadAllText(Path.Combine(
@@ -1708,19 +1720,35 @@ public class ArchitectureDependencyTests
         backtest.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         liveExecution.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         preview.Should().Contain("LongEntryFillPolicy.Reprice(");
-        order.Split("LiveEntryPositionFactory.Create(").Length.Should().Be(2);
-        manualOrder.Should().Contain("LiveEntryPositionFactory.Create(");
+        entryExecution.Should().Contain("LiveEntryPositionFactory.Create(");
+        entryExecution.Should().Contain("BrokerPositionConfirmation.WaitForAsync(");
+        entryExecution.Should().Contain("SubmitEntryOrderAsync(recommendation, ct)");
+        entryExecution.Should().Contain("LiveEntryOrderEvidencePolicy.ValidateAcceptedOrder(");
+        entryEvidence.Should().Contain("order.Direction != TradeDirection.Long");
+        entryEvidence.Should().Contain("order.Quantity != recommendation.ShareQuantity");
+        order.Should().Contain("_entryExecutions.ExecuteAsync(recommendation, account, ct)");
+        manualOrder.Should().Contain("_entryExecutions.ExecuteAsync(recommendation, account, ct)");
+        order.Should().NotContain("LiveEntryPositionFactory.Create(");
+        manualOrder.Should().NotContain("LiveEntryPositionFactory.Create(");
+        order.Should().NotContain("SubmitEntryOrderAsync");
+        manualOrder.Should().NotContain("SubmitEntryOrderAsync");
         order.Should().NotContain("new Position");
         manualOrder.Should().NotContain("new Position");
         liveEntry.Should().Contain("LongEntryFillPolicy.ReanchorExecutedFill(");
         liveEntry.Should().NotContain("StockTrader.Services");
         liveEntry.Should().NotContain("StockTrader.Data");
         order.Should().Contain("_manualOrders.ExecuteAsync(signalId, ct)");
+        manualOrder.Should().Contain("IManualOrderSignalStore");
+        manualOrder.Should().NotContain("AppDbContext");
+        entryStore.Should().Contain("IDbContextFactory<AppDbContext>");
+        entryStore.Should().Contain("BeginTransactionAsync(ct)");
+        brokerPort.Should().Contain("Task<BrokerOrder?> SubmitEntryOrderAsync(");
+        brokerPort.Should().NotContain("Task<bool> PlaceOrderAsync(");
         File.ReadAllLines(Path.Combine(repository, "Services/Order/OrderService.cs"))
             .Length.Should().BeLessThanOrEqualTo(220);
         File.ReadAllLines(Path.Combine(repository, "Services/Order/ManualOrderWorkflow.cs"))
             .Length.Should().BeLessThanOrEqualTo(220);
-        order.Should().Contain("_timeProvider.GetUtcNow()");
+        entryExecution.Should().Contain("timeProvider.GetUtcNow()");
         order.Should().NotContain("DateTime.UtcNow");
         order.Should().NotContain("actualEntry - stopDistance");
         order.Should().NotContain("actualEntry + targetDistance");
@@ -1985,6 +2013,9 @@ public class ArchitectureDependencyTests
         orders.Should().Contain("/reconcile-position-order");
         orders.Should().NotContain("/reconcile-position-exit");
         orders.Should().Contain("executions.ReconcileAsync(");
+        orders.Should().Contain("ExecuteSignalRequest request");
+        orders.Should().Contain("StatusCodes.Status500InternalServerError");
+        orders.Should().NotContain("JsonDocument.ParseAsync");
         contract.Should().Contain("string OrderStatus");
         contract.Should().Contain("string? OrderKind");
         contract.Should().Contain("bool HasBrokerOrderId");

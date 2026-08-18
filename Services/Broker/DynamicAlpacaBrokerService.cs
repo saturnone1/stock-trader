@@ -36,14 +36,14 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
             : Alpaca.Markets.Environments.Live.GetAlpacaTradingClient(secretKey);
     }
 
-    public async Task<bool> PlaceOrderAsync(TradeRecommendation recommendation,
+    public async Task<BrokerOrder?> SubmitEntryOrderAsync(TradeRecommendation recommendation,
         CancellationToken ct = default)
     {
         if (recommendation.ShareQuantity <= 0)
         {
             _logger.LogWarning("[DynAlpaca] Cannot place order for {Symbol}: invalid quantity {Qty}",
                 recommendation.Symbol, recommendation.ShareQuantity);
-            return false;
+            return null;
         }
 
         // Alpaca는 소수점 2자리까지만 허용 (sub-penny 거부)
@@ -62,7 +62,7 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
             "[DynAlpaca] Order placed — {Side} {Symbol}: Qty={Qty}, OrderId={OrderId}",
             order.OrderSide, order.Symbol, order.Quantity, order.OrderId);
 
-        return true;
+        return MapToModel(order);
     }
 
     public async Task<BrokerOrder?> IncreasePositionAsync(

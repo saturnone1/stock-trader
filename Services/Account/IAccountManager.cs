@@ -35,6 +35,14 @@ public interface IAccountManager
         int accountId,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// 주문 전체에서 동일한 계좌 ID와 브로커 인스턴스를 사용하도록 하나의 스냅샷으로 해석합니다.
+    /// accountId가 null이면 호출 시점의 활성 계좌를 사용합니다.
+    /// </summary>
+    Task<AccountBrokerContext?> GetBrokerContextAsync(
+        int? accountId = null,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<AccountConnectionStatus>> GetAllConnectionStatusAsync(
         CancellationToken ct = default);
 
@@ -44,3 +52,7 @@ public interface IAccountManager
 
     event Action? OnAccountsChanged;
 }
+
+public sealed record AccountBrokerContext(
+    ManagedTradingAccount Account,
+    IBrokerService Broker);

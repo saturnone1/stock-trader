@@ -1308,9 +1308,46 @@
         "tags": [
           "OrderEndpoints"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteSignalRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderMessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2471,6 +2508,18 @@
           null
         ]
       },
+      "ExecuteSignalRequest": {
+        "required": [
+          "signalId"
+        ],
+        "type": "object",
+        "properties": {
+          "signalId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "FinancialFactorComparisonResponse": {
         "required": [
           "overall",
@@ -3314,6 +3363,28 @@
           "oosPercent": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "OrderErrorResponse": {
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "OrderMessageResponse": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
           }
         }
       },

@@ -11,9 +11,6 @@ public class TradeRepository : ITradeRepository
     private readonly AppDbContext _db;
     private readonly IMemoryCache _cache;
 
-    private const string OpenPositionsCacheKey = "TradeRepo:OpenPositions";
-    private const string ActiveSignalsCacheKey = "TradeRepo:ActiveSignals";
-    private const string RecentRecsCacheKey = "TradeRepo:RecentRecs";
     private static readonly TimeSpan PositionCacheTtl = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SignalCacheTtl = TimeSpan.FromSeconds(60);
 
@@ -86,7 +83,7 @@ public class TradeRepository : ITradeRepository
 
     public async Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default)
     {
-        if (_cache.TryGetValue(OpenPositionsCacheKey, out List<Position>? cached) && cached != null)
+        if (_cache.TryGetValue(TradeReadCache.OpenPositions, out List<Position>? cached) && cached != null)
             return cached;
 
         var positions = await _db.Positions
@@ -96,7 +93,7 @@ public class TradeRepository : ITradeRepository
             .OrderByDescending(p => p.OpenedAt)
             .ToListAsync(ct);
 
-        _cache.Set(OpenPositionsCacheKey, positions, PositionCacheTtl);
+        _cache.Set(TradeReadCache.OpenPositions, positions, PositionCacheTtl);
         return positions;
     }
 
@@ -112,7 +109,7 @@ public class TradeRepository : ITradeRepository
         else
             _db.Positions.Update(position);
         await _db.SaveChangesAsync(ct);
-        _cache.Remove(OpenPositionsCacheKey);
+        _cache.Remove(TradeReadCache.OpenPositions);
     }
 
     public async Task<bool> TryClaimPositionExecutionAsync(
@@ -148,7 +145,7 @@ public class TradeRepository : ITradeRepository
                 .SetProperty(position => position.ExecutionRequestKind, claim.Kind)
                 .SetProperty(position => position.ExecutionRequestRuleIndex, claim.ScalingRuleIndex)
                 .SetProperty(position => position.ExecutionOrderId, (string?)null), ct);
-        _cache.Remove(OpenPositionsCacheKey);
+        _cache.Remove(TradeReadCache.OpenPositions);
         return updated == 1;
     }
 
@@ -164,7 +161,7 @@ public class TradeRepository : ITradeRepository
                 && position.ExecutionRequestedAt == requestedAt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(position => position.ExecutionOrderId, orderId), ct);
-        _cache.Remove(OpenPositionsCacheKey);
+        _cache.Remove(TradeReadCache.OpenPositions);
         return updated == 1;
     }
 
@@ -186,7 +183,7 @@ public class TradeRepository : ITradeRepository
                     (PositionExecutionKind?)null)
                 .SetProperty(position => position.ExecutionRequestRuleIndex, (int?)null)
                 .SetProperty(position => position.ExecutionOrderId, (string?)null), ct);
-        _cache.Remove(OpenPositionsCacheKey);
+        _cache.Remove(TradeReadCache.OpenPositions);
         return updated == 1;
     }
 
@@ -303,7 +300,7 @@ public class TradeRepository : ITradeRepository
                 _db.TradeRecords.Add(trade);
             await _db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            _cache.Remove(OpenPositionsCacheKey);
+            _cache.Remove(TradeReadCache.OpenPositions);
             return true;
         }
         catch
@@ -318,7 +315,7 @@ public class TradeRepository : ITradeRepository
     public async Task<List<TradeRecommendation>> GetRecentRecommendationsAsync(int count = 20,
         CancellationToken ct = default)
     {
-        var cacheKey = $"{RecentRecsCacheKey}:{count}";
+        var cacheKey = TradeReadCache.RecentRecommendations(count);
         if (_cache.TryGetValue(cacheKey, out List<TradeRecommendation>? cached) && cached != null)
             return cached;
 
@@ -353,15 +350,12 @@ public class TradeRepository : ITradeRepository
     // 단, 가장 많이 사용되는 주요 count 값은 명시적으로 제거한다.
     private void InvalidateRecsCache()
     {
-        _cache.Remove($"{RecentRecsCacheKey}:20");
-        _cache.Remove($"{RecentRecsCacheKey}:50");
-        _cache.Remove($"{RecentRecsCacheKey}:100");
-        _cache.Remove($"{RecentRecsCacheKey}:200");
+        TradeReadCache.InvalidateRecommendations(_cache);
     }
 
     public async Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default)
     {
-        if (_cache.TryGetValue(ActiveSignalsCacheKey, out List<PatternSignal>? cached) && cached != null)
+        if (_cache.TryGetValue(TradeReadCache.ActiveSignals, out List<PatternSignal>? cached) && cached != null)
             return cached;
 
         var signals = await _db.PatternSignals
@@ -370,7 +364,7 @@ public class TradeRepository : ITradeRepository
             .OrderByDescending(s => s.DetectedAt)
             .ToListAsync(ct);
 
-        _cache.Set(ActiveSignalsCacheKey, signals, SignalCacheTtl);
+        _cache.Set(TradeReadCache.ActiveSignals, signals, SignalCacheTtl);
         return signals;
     }
 
@@ -421,7 +415,7 @@ public class TradeRepository : ITradeRepository
         // AddRange stages all new identities; single SaveChangesAsync writes them in one transaction.
         _db.PatternSignals.AddRange(newSignals);
         await _db.SaveChangesAsync(ct);
-        _cache.Remove(ActiveSignalsCacheKey);
+        _cache.Remove(TradeReadCache.ActiveSignals);
     }
 
     private static string SignalIdentity(
@@ -442,7 +436,7 @@ public class TradeRepository : ITradeRepository
         {
             signal.IsActive = false;
             await _db.SaveChangesAsync(ct);
-            _cache.Remove(ActiveSignalsCacheKey);
+            _cache.Remove(TradeReadCache.ActiveSignals);
         }
     }
 }

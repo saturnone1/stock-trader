@@ -19,8 +19,10 @@ public interface IBrokerService
     /// </summary>
     /// <param name="recommendation">매매 추천 정보 (종목, 수량, 진입/목표/손절가)</param>
     /// <param name="ct">취소 토큰</param>
-    /// <returns>주문 성공 여부. 실패 시 false (예외를 삼키지 않음 — 구현체가 로깅)</returns>
-    Task<bool> PlaceOrderAsync(TradeRecommendation recommendation, CancellationToken ct = default);
+    /// <returns>브로커가 접수한 주문 증거. 제출 거부 또는 미구현이면 null.</returns>
+    Task<BrokerOrder?> SubmitEntryOrderAsync(
+        TradeRecommendation recommendation,
+        CancellationToken ct = default);
 
     /// <summary>기존 롱 포지션에 지정 수량을 시장가로 추가하고 추적 가능한 주문을 반환한다.</summary>
     Task<BrokerOrder?> IncreasePositionAsync(

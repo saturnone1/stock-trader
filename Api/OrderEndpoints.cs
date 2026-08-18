@@ -1,4 +1,5 @@
 using StockTrader.Application.Execution;
+using StockTrader.Api.Contracts;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Account;
 using StockTrader.Services.Order;
@@ -10,27 +11,51 @@ public static class OrderEndpoints
     public static RouteGroupBuilder MapOrderApi(this RouteGroupBuilder api)
     {
         var orders = api.MapGroup("/orders").RequireAuthorization();
-        orders.MapPost("/execute-signal", ExecuteSignalAsync).RequireRateLimiting("api");
+        orders.MapPost("/execute-signal", ExecuteSignalAsync)
+            .Accepts<ExecuteSignalRequest>("application/json")
+            .Produces<OrderMessageResponse>()
+            .Produces<OrderErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<OrderErrorResponse>(StatusCodes.Status500InternalServerError)
+            .RequireRateLimiting("api");
         orders.MapPost("/close-position", ClosePositionAsync).RequireRateLimiting("api");
         orders.MapPost("/reconcile-position-order", ReconcilePositionOrderAsync)
             .RequireRateLimiting("api");
         return api;
     }
 
-    private static async Task<IResult> ExecuteSignalAsync(HttpContext context, IOrderService orders)
+    private static async Task<IResult> ExecuteSignalAsync(
+        ExecuteSignalRequest request,
+        HttpContext context,
+        IOrderService orders,
+        ILoggerFactory loggerFactory)
     {
         if (!context.User.Identity?.IsAuthenticated ?? true)
             return Results.Unauthorized();
+        if (request.SignalId <= 0)
+            return Results.BadRequest(new OrderErrorResponse("'signalId' must be a positive integer."));
+
         try
         {
-            using var body = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
-            var signalId = body.RootElement.GetProperty("signalId").GetInt64();
-            var (success, message) = await orders.PlaceManualOrderAsync(signalId, context.RequestAborted);
-            return success ? Results.Ok(new { message }) : Results.BadRequest(new { error = message });
+            var (success, message) = await orders.PlaceManualOrderAsync(
+                request.SignalId,
+                context.RequestAborted);
+            return success
+                ? Results.Ok(new OrderMessageResponse(message))
+                : Results.BadRequest(new OrderErrorResponse(message));
         }
-        catch
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
-            return Results.BadRequest(new { error = "Invalid JSON body. Provide 'signalId' (integer)." });
+            throw;
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger("ManualOrderEndpoint").LogError(
+                exception,
+                "Manual order processing failed for signal {SignalId}",
+                request.SignalId);
+            return Results.Json(
+                new OrderErrorResponse("수동 주문 처리 중 오류가 발생했습니다. 브로커 주문 내역을 확인하세요."),
+                statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 

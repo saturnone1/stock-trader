@@ -37,7 +37,9 @@ public class LsSecuritiesBrokerService : IBrokerService
     #region IBrokerService
 
     /// <inheritdoc />
-    public async Task<bool> PlaceOrderAsync(TradeRecommendation recommendation, CancellationToken ct = default)
+    public async Task<BrokerOrder?> SubmitEntryOrderAsync(
+        TradeRecommendation recommendation,
+        CancellationToken ct = default)
     {
         try
         {
@@ -67,17 +69,42 @@ public class LsSecuritiesBrokerService : IBrokerService
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogError("[LS] 매수 주문 실패: {Status} {Body}", response.StatusCode, json);
-                return false;
+                return null;
+            }
+
+            var orderId = string.Empty;
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.TryGetProperty("CSPAT00600OutBlock2", out var block)
+                    && block.TryGetProperty("OrdNo", out var orderNumber))
+                    orderId = orderNumber.ToString();
+            }
+            catch (JsonException ex)
+            {
+                // 접수 성공 뒤 응답 파싱 실패를 제출 실패로 바꾸면 재시도 시 중복 주문 위험이 있다.
+                _logger.LogWarning(ex, "[LS] 진입 주문번호를 읽지 못함: {Symbol}",
+                    recommendation.Symbol);
             }
 
             _logger.LogInformation("[LS] 매수 주문 성공: {Symbol} {Qty}주 @ {Price}",
                 recommendation.Symbol, recommendation.ShareQuantity, recommendation.EntryPrice);
-            return true;
+            return new BrokerOrder
+            {
+                OrderId = orderId,
+                Symbol = recommendation.Symbol,
+                Direction = TradeDirection.Long,
+                Quantity = recommendation.ShareQuantity,
+                OrderPrice = recommendation.EntryPrice,
+                Status = BrokerOrderStatus.Accepted,
+                OrderType = BrokerOrderType.Limit,
+                SubmittedAt = DateTime.UtcNow,
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LS] 매수 주문 중 예외: {Symbol}", recommendation.Symbol);
-            return false;
+            return null;
         }
     }
 

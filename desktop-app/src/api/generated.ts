@@ -1736,14 +1736,38 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ExecuteSignalRequest"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["OrderMessageResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrderErrorResponse"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrderErrorResponse"];
+                    };
                 };
             };
         };
@@ -2629,6 +2653,10 @@ export interface components {
         };
         /** @enum {unknown} */
         DataSource: "Alpaca" | "Polygon" | "Yahoo" | "LsSecurities" | null;
+        ExecuteSignalRequest: {
+            /** Format: int64 */
+            signalId: number;
+        };
         FinancialFactorComparisonResponse: {
             overall: components["schemas"]["FinancialFactorSummaryResponse"];
             filtered: components["schemas"]["FinancialFactorSummaryResponse"];
@@ -2832,6 +2860,12 @@ export interface components {
             maxCombinations?: number;
             /** Format: double */
             oosPercent?: number;
+        };
+        OrderErrorResponse: {
+            error: string;
+        };
+        OrderMessageResponse: {
+            message: string;
         };
         /** @enum {unknown} */
         OrderMode: "AlertOnly" | "AutoOrder";
