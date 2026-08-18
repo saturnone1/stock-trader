@@ -76,6 +76,12 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.RiskHaltAlertIntervalMinutes > 0, "RiskHaltAlertIntervalMinutes must be positive")
             .Validate(settings => settings.EntryReconciliationIntervalSeconds > 0, "EntryReconciliationIntervalSeconds must be positive")
             .Validate(settings => settings.EntryReconciliationBatchSize > 0, "EntryReconciliationBatchSize must be positive")
+            .Validate(settings => settings.PositionMonitoringIntervalSeconds > 0,
+                "PositionMonitoringIntervalSeconds must be positive")
+            .Validate(settings => settings.PositionOrderResolutionMaxAttempts > 0,
+                "PositionOrderResolutionMaxAttempts must be positive")
+            .Validate(settings => settings.PositionOrderResolutionDelayMilliseconds > 0,
+                "PositionOrderResolutionDelayMilliseconds must be positive")
             .Validate(settings => TimeSpan.TryParse(settings.MarketOpenET, out _), "MarketOpenET must be a valid time")
             .Validate(settings => TimeSpan.TryParse(settings.MarketCloseET, out _), "MarketCloseET must be a valid time")
             .ValidateOnStart();
@@ -226,6 +232,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
         services.AddScoped<ILiveOrderManagement, LiveOrderManagement>();
         services.AddScoped<LivePositionExecutionEvaluator>();
+        services.AddScoped<ILivePositionExecutionEvaluator>(sp =>
+            sp.GetRequiredService<LivePositionExecutionEvaluator>());
+        services.AddScoped<ILivePositionMonitoringCycle, LivePositionMonitoringCycle>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<ISymbolProfileStore, SymbolProfileStore>();
         services.AddScoped<SymbolProfileManagementService>();

@@ -156,10 +156,12 @@ original-entry share rounding, persisted rule counts, and central scale-in capit
 If broker account equity is unavailable, scale-in capacity is zero while risk-reducing scale-out
 instructions remain eligible.
 `LivePositionExecutionEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,
-custom sell-rule evaluation, and translation into the shared decision policy. The 230-line
-`PositionExecutionManagerService` now owns only scheduling, broker state, persistence, and durable
-position-order coordination. Entry ATR period and live-position lookback values come from
-`StrategyEvaluationPolicy`.
+custom sell-rule evaluation, and translation into the shared decision policy.
+`LivePositionMonitoringCycle` owns persistence, strategy loading, and durable order coordination,
+partitioned by the position's stored account. Broker equity, prices, submission, and reconciliation
+cannot cross account groups; only accountless legacy rows use the active account fallback. The
+48-line `PositionExecutionManagerService` owns only market-session scheduling. Entry ATR period and
+live-position lookback values come from `StrategyEvaluationPolicy`.
 `StrategyEntryEligibilityPolicy` is the corresponding common entry gate. Preview, backtest, and
 live recommendation adapters translate their runtime state into the same position-limit,
 drawdown, consecutive-loss, session-entry, and reentry decisions. Environment-specific bar/date

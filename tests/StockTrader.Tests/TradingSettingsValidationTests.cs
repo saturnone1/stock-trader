@@ -13,6 +13,9 @@ public class TradingSettingsValidationTests
     [InlineData("Trading:RiskMonitorMaxConsecutiveFailures", "0")]
     [InlineData("Trading:RiskMonitorCooldownSeconds", "0")]
     [InlineData("Trading:RiskHaltAlertIntervalMinutes", "-1")]
+    [InlineData("Trading:PositionMonitoringIntervalSeconds", "0")]
+    [InlineData("Trading:PositionOrderResolutionMaxAttempts", "0")]
+    [InlineData("Trading:PositionOrderResolutionDelayMilliseconds", "0")]
     [InlineData("Trading:RiskPerTradePercent", "1.1")]
     [InlineData("Trading:MarketOpenET", "not-a-time")]
     public void InvalidOperationalSettingsFailValidation(string key, string value)

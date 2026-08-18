@@ -781,8 +781,8 @@ public class ArchitectureDependencyTests
         var endpoint = File.ReadAllText(Path.Combine(repository, "Api/BacktestEndpoints.cs"));
         var detection = File.ReadAllText(Path.Combine(
             repository, "Services/Patterns/PatternDetectionService.cs"));
-        var positionWorker = File.ReadAllText(Path.Combine(
-            repository, "BackgroundServices/PositionExecutionManagerService.cs"));
+        var positionCycle = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/LivePositionMonitoringCycle.cs"));
         var metadataEndpoint = File.ReadAllText(Path.Combine(
             repository, "Api/MetadataEndpoints.cs"));
         var desktopEndpoints = File.ReadAllText(Path.Combine(
@@ -799,7 +799,7 @@ public class ArchitectureDependencyTests
         detection.Should().Contain("PatternOverrideMerger.Merge(");
         detection.Should().Contain("_builtInDetectors.CreateAll(patternSettings)");
         detection.Should().NotContain("ISettingsRepository");
-        positionWorker.Should().Contain("liveParamService.GetAsync(ct)");
+        positionCycle.Should().Contain("liveParameters.GetAsync(ct)");
         metadataEndpoint.Should().Contain("Produces<StrategyBuilderMetadataResponse>()");
         desktopEndpoints.Should().Contain(
             "components['schemas']['StrategyBuilderMetadataResponse']");
@@ -822,7 +822,7 @@ public class ArchitectureDependencyTests
         {
             "Services/Patterns/PatternDetectionService.cs",
             "Services/Signal/SignalService.cs",
-            "BackgroundServices/PositionExecutionManagerService.cs"
+            "Services/Order/LivePositionMonitoringCycle.cs"
         };
         var forbidden = new[] { "JsonSerializer", "StrategyCompiler.Compile", ".CustomPatterns" };
 
@@ -2024,33 +2024,44 @@ public class ArchitectureDependencyTests
     public void LivePositionManagerDelegatesTradingDecisionsToPurePolicy()
     {
         var repository = FindRepositoryRoot();
-        var liveManager = File.ReadAllText(Path.Combine(
-            repository, "BackgroundServices/PositionExecutionManagerService.cs"));
+        var liveManagerPath = Path.Combine(
+            repository, "BackgroundServices/PositionExecutionManagerService.cs");
+        var liveManager = File.ReadAllText(liveManagerPath);
+        var monitoringPath = Path.Combine(
+            repository, "Services/Order/LivePositionMonitoringCycle.cs");
+        var monitoring = File.ReadAllText(monitoringPath);
+        var monitoringContract = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/ILivePositionMonitoringCycle.cs"));
         var evaluatorPath = Path.Combine(
             repository, "Services/Order/LivePositionExecutionEvaluator.cs");
         var evaluator = File.ReadAllText(evaluatorPath);
 
-        File.ReadAllLines(Path.Combine(
-            repository, "BackgroundServices/PositionExecutionManagerService.cs"))
-            .Length.Should().BeLessThanOrEqualTo(250);
+        File.ReadAllLines(liveManagerPath).Length.Should().BeLessThanOrEqualTo(80);
         File.ReadAllLines(evaluatorPath).Length.Should().BeLessThanOrEqualTo(300);
-        liveManager.Should().Contain("executionEvaluator.EvaluateAsync(");
-        liveManager.Should().NotContain("LiveLongPositionExecutionAdapter.Evaluate(");
+        liveManager.Should().Contain("ILivePositionMonitoringCycle");
+        liveManager.Should().Contain("cycle.RunAsync(stoppingToken)");
+        liveManager.Should().NotContain("IOpenPositionStore");
+        liveManager.Should().NotContain("IBrokerService");
+        liveManager.Should().NotContain("ILivePositionExecutionCoordinator");
+        monitoringContract.Should().NotContain("StockTrader.Services");
+        monitoringContract.Should().NotContain("StockTrader.Models");
+        monitoring.Should().Contain("executionEvaluator.EvaluateAsync(");
+        monitoring.Should().Contain("executionCoordinator.SubmitAsync(");
+        monitoring.Should().Contain("executionCoordinator.ReconcileAsync(");
+        monitoring.Should().Contain("GetBrokerContextForPositionExitAsync(accountId");
+        monitoring.Should().Contain("GetBrokerContextForReconciliationAsync(accountId");
+        monitoring.Should().NotContain("GetActiveBrokerServiceAsync(");
+        monitoring.Should().NotContain("DateTime.UtcNow");
+        monitoring.Should().NotContain("broker.ClosePositionAsync(");
+        monitoring.Should().NotContain("PositionOrderReconciliationPolicy.Resolve(");
+        monitoring.Should().NotContain("ReleasePositionExecutionClaimAsync(");
+        monitoring.Should().NotContain("TryApplyPositionExecutionFillAsync(");
         evaluator.Should().Contain("LiveLongPositionExecutionAdapter.Evaluate(");
         evaluator.Should().Contain("detector.EvaluateScaling(");
         evaluator.Should().Contain("PositionScaleInCapacityPolicy.CalculateMaxPositionCost(");
         evaluator.Should().NotContain("EnablePartialProfit = false");
         evaluator.Should().NotContain("position.CurrentPrice <= position.StopLossPrice");
         evaluator.Should().NotContain("position.CurrentPrice >= position.TargetPrice");
-        liveManager.Should().NotContain("DateTime.UtcNow");
-        liveManager.Should().NotContain("TZConvert");
-        liveManager.Should().NotContain("7.0 / 5.0");
-        liveManager.Should().Contain("executionCoordinator.SubmitAsync(");
-        liveManager.Should().Contain("executionCoordinator.ReconcileAsync(");
-        liveManager.Should().NotContain("brokerService.ClosePositionAsync(");
-        liveManager.Should().NotContain("PositionOrderReconciliationPolicy.Resolve(");
-        liveManager.Should().NotContain("ReleasePositionExecutionClaimAsync(");
-        liveManager.Should().NotContain("TryApplyPositionExecutionFillAsync(");
         evaluator.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
         evaluator.Should().Contain("StrategyEvaluationPolicy.LivePositionIndicatorLookbackDays");
     }
@@ -2199,7 +2210,8 @@ public class ArchitectureDependencyTests
         exitContextConsumers.Should().Equal(
             "AccountManager.cs",
             "IAccountManager.cs",
-            "LiveOrderManagement.cs");
+            "LiveOrderManagement.cs",
+            "LivePositionMonitoringCycle.cs");
         portfolio.Should().Contain("orderApi.closePosition(symbol)");
         desktopEndpoints.Should().Contain("api.post('/api/orders/close-position'");
         orders.Should().NotContain("broker.ClosePositionAsync(");

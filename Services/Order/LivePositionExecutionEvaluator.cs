@@ -25,7 +25,7 @@ internal sealed record LiveCustomStrategyInstructions(
 /// 실시간 포지션의 지표 스냅샷을 준비하고 공통 롱 포지션 정책으로 주문 여부를 평가합니다.
 /// 백그라운드 워커는 조회 주기와 주문 조정만 담당합니다.
 /// </summary>
-public sealed class LivePositionExecutionEvaluator
+public sealed class LivePositionExecutionEvaluator : ILivePositionExecutionEvaluator
 {
     private readonly IIndicatorService _indicators;
     private readonly ICustomStrategyDetectorFactory _customDetectors;

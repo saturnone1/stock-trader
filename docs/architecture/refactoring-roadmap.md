@@ -2,6 +2,12 @@
 
 ## Current progress
 
+- Automatic live position monitoring now partitions durable positions by their stored account. Each
+  group receives only its owning broker's equity, prices, submission, and order-history evidence;
+  unavailable accounts fail closed and only accountless legacy rows use the active account fallback.
+  Disabled owning accounts remain available for risk reduction but reject scale-ins.
+  A purpose-specific cycle prevents reconciled positions from being reevaluated in the same pass,
+  while the 48-line worker owns only market-session scheduling and validated timing.
 - Persistence entities no longer manufacture audit history from the process clock. Strategy,
   symbol-profile, financial-import, financial-snapshot, and optimization writes retain their
   application-owned timestamps, while notification rendering uses the injected clock and an explicit
