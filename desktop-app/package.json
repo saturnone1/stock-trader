@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --configLoader native",
     "preview": "vite preview",
     "test": "node --test src/features/**/*.test.js",
     "api:generate": "dotnet build ../StockTrader.csproj --no-restore && openapi-typescript openapi/stocktrader_desktop.json -o src/api/generated.ts",
