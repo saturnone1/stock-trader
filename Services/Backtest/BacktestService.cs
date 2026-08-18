@@ -6,7 +6,6 @@ using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
-using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
 
 namespace StockTrader.Services.Backtest;
@@ -15,8 +14,7 @@ namespace StockTrader.Services.Backtest;
 public class BacktestService : IBacktestService
 {
     private readonly IDataFeedServiceFactory _dataFeedFactory;
-    private readonly IEnumerable<IPatternDetector> _detectors;
-    private readonly IIndicatorService _indicators;
+    private readonly IBuiltInPatternDetectorFactory _builtInDetectors;
     private readonly ICustomStrategyDetectorFactory _customDetectors;
     private readonly BacktestDataPreparer _dataPreparer;
     private readonly BacktestSimulationEngine _simulationEngine;
@@ -29,8 +27,7 @@ public class BacktestService : IBacktestService
 
     public BacktestService(
         IDataFeedServiceFactory dataFeedFactory,
-        IEnumerable<IPatternDetector> detectors,
-        IIndicatorService indicators,
+        IBuiltInPatternDetectorFactory builtInDetectors,
         ICustomStrategyDetectorFactory customDetectors,
         BacktestDataPreparer dataPreparer,
         BacktestSimulationEngine simulationEngine,
@@ -42,8 +39,7 @@ public class BacktestService : IBacktestService
         ILogger<BacktestService> logger)
     {
         _dataFeedFactory = dataFeedFactory;
-        _detectors = detectors;
-        _indicators = indicators;
+        _builtInDetectors = builtInDetectors;
         _customDetectors = customDetectors;
         _dataPreparer = dataPreparer;
         _simulationEngine = simulationEngine;
@@ -227,36 +223,10 @@ public class BacktestService : IBacktestService
         PatternParameterOverrides? overrides,
         List<StrategyDocument>? customPatterns = null)
     {
-        List<IPatternDetector> result;
-        if (overrides is null)
-        {
-            result = _detectors.Where(detector => patterns.Contains(detector.PatternType)).ToList();
-        }
-        else
-        {
-            var settings = PatternOverrideMerger.Merge(_basePatternSettings, overrides);
-            var options = new OptionsSnapshotWrapper<PatternSettings>(settings);
-            IPatternDetector[] all =
-            [
-                new GapUpPullbackDetector(_indicators, options),
-                new BreakoutDetector(_indicators, options),
-                new VwapReversionDetector(_indicators, options),
-                new RsiMeanReversionDetector(_indicators, options),
-                new TrendPullbackDetector(_indicators, options),
-                new OrbDetector(_indicators, options),
-                new VolumeSpikeContinuationDetector(_indicators, options),
-                new EarningsDriftDetector(_indicators, options),
-                new IndexRegimeFilterDetector(_indicators, options),
-                new VolatilityExpansionDetector(_indicators, options),
-                new MomentumReversalDetector(_indicators, options),
-                new MultiTimeframeTrendDetector(_indicators, options),
-                new MeanReversionChannelDetector(_indicators, options),
-                new Rsi2BollingerDetector(_indicators, options),
-                new CumulativeRsi2Detector(_indicators, options),
-                new VolatilityBreakoutDetector(_indicators, options)
-            ];
-            result = all.Where(detector => patterns.Contains(detector.PatternType)).ToList();
-        }
+        var settings = ResolvePatternSettings(overrides);
+        var result = _builtInDetectors.CreateAll(settings)
+            .Where(detector => patterns.Contains(detector.PatternType))
+            .ToList();
 
         if (customPatterns is not null && patterns.Contains(PatternType.Custom))
         {
@@ -372,10 +342,4 @@ public class BacktestService : IBacktestService
         return result;
     }
 
-    private sealed class OptionsSnapshotWrapper<T>(T value) : IOptionsSnapshot<T>
-        where T : class, new()
-    {
-        public T Value { get; } = value;
-        public T Get(string? name) => Value;
-    }
 }

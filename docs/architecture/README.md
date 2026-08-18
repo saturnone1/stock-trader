@@ -199,6 +199,9 @@ increment, and continuous-job result deletion plus reset commit in one transacti
 The former `IOptimizationRepository` pass-through has been removed. Execution checkpoints, queue
 lifecycle, operator controls, administration, and promotion now each terminate at their own SQLite
 adapter; no production component can reach a catch-all optimization persistence API.
+Built-in pattern discovery and construction now use `BuiltInPatternDetectorCatalog` in both runtime
+DI and backtesting. The catalog covers every non-custom `PatternType`, including TQQQ 200-SMA, and
+the same factory applies baseline or request-override settings without a second constructor list.
 
 ## Decision records
 
@@ -237,4 +240,6 @@ adapter; no production component can reach a catch-all optimization persistence 
   persistence and make apply metadata and continuous recycling atomic.
 - `adr/0018-remove-broad-optimization-repository.md`: make each purpose-specific optimization
   adapter own its EF queries and transactions, then remove the catch-all repository.
+- `adr/0019-centralize-built-in-pattern-detectors.md`: use one detector inventory for live scanning,
+  analysis, backtesting, walk-forward evaluation, and optimization.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

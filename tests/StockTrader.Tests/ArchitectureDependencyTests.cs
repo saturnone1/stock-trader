@@ -404,6 +404,29 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void BuiltInPatternDetectionUsesOneCatalogForRuntimeAndBacktest()
+    {
+        var repository = FindRepositoryRoot();
+        var catalog = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/BuiltInPatternDetectorCatalog.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/PatternServiceExtensions.cs"));
+        var backtest = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestService.cs"));
+
+        catalog.Should().Contain("D<Tqqq200SmaDetector>(PatternType.Tqqq200Sma)");
+        catalog.Should().Contain("IBuiltInPatternDetectorFactory");
+        registrations.Should().Contain("foreach (var descriptor in BuiltInPatternDetectorCatalog.All)");
+        registrations.Should().NotContain("AddScoped<IPatternDetector, GapUpPullbackDetector>");
+        backtest.Should().Contain("_builtInDetectors.CreateAll(settings)");
+        backtest.Should().NotContain("new GapUpPullbackDetector(");
+        backtest.Should().NotContain("new Tqqq200SmaDetector(");
+        File.ReadAllLines(Path.Combine(
+                repository, "Services/Patterns/BuiltInPatternDetectorCatalog.cs"))
+            .Length.Should().BeLessThanOrEqualTo(100);
+    }
+
+    [Fact]
     public void LiveStrategyExecutionPathsUseCompiledRepositoryBoundary()
     {
         var repository = FindRepositoryRoot();
