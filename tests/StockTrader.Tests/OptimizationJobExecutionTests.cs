@@ -151,6 +151,37 @@ public class OptimizationJobExecutionTests
             .Should().BeFalse();
     }
 
+    [Fact]
+    public void ResultProjection_UsesTheSamePercentUnitsForRankingAndOutOfSample()
+    {
+        var backtest = new BacktestResult
+        {
+            TotalReturnPercent = 0.125m,
+            SortinoRatio = 1.4m,
+            SharpeRatio = 1.1m,
+            MaxDrawdown = 0.08m,
+            OverallWinRate = 0.625m,
+            TotalTrades = 24,
+            ProfitFactor = 1.8m,
+            CalmarRatio = 1.25m,
+            AnnualizedReturn = 0.21m
+        };
+        var parameters = CreateSnapshot(2m);
+
+        var item = OptimizationResultProjection.ToResultItem(parameters, backtest);
+        OptimizationResultProjection.ApplyOutOfSample(item, backtest);
+
+        item.TotalReturn.Should().Be(12.5m);
+        item.MaxDrawdown.Should().Be(8m);
+        item.WinRate.Should().Be(62.5m);
+        item.OosTotalReturn.Should().Be(item.TotalReturn);
+        item.OosMaxDrawdown.Should().Be(item.MaxDrawdown);
+        item.OosWinRate.Should().Be(item.WinRate);
+        item.OosSortinoRatio.Should().Be(item.SortinoRatio);
+        item.OosTotalTrades.Should().Be(item.TotalTrades);
+        item.OosAnnualizedReturn.Should().Be(item.AnnualizedReturn);
+    }
+
     private static OptimizeParamSnapshot CreateSnapshot(decimal atrStop)
         => new()
         {

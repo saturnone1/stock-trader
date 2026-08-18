@@ -767,6 +767,8 @@ public class ArchitectureDependencyTests
         var service = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestService.cs"));
         var optimization = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestOptimizationService.cs"));
+        var evaluator = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/OptimizationCandidateEvaluator.cs"));
 
         service.Should().NotContain("using StockTrader.Api");
         service.Should().Contain("_optimization.RunAsync(");
@@ -775,7 +777,8 @@ public class ArchitectureDependencyTests
         optimization.Should().NotContain("private static StrategyDocument CloneStrategyDocument(");
         optimization.Should().NotContain("private static void ApplyOptimizeOverrides(");
         optimization.Should().NotContain("private static List<OptimizeParamSnapshot> GenerateOptimizeCombinations(");
-        optimization.Should().Contain("StrategyVariantFactory.CloneStrategyDocument(");
+        optimization.Should().NotContain("StrategyVariantFactory.CloneStrategyDocument(");
+        evaluator.Should().Contain("StrategyVariantFactory.CloneStrategyDocument(");
         optimization.Should().Contain("StrategyOptimizationSpace.GenerateOptimizeCombinations(");
         File.ReadAllLines(Path.Combine(
             repository, "Services/Backtest/BacktestOptimizationService.cs"))
@@ -982,7 +985,7 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
-    public void OptimizationExecutorDelegatesMarketDataPreparation()
+    public void OptimizationAdaptersDelegateCandidateEvaluationAndMarketDataPreparation()
     {
         var repository = FindRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(repository, "BackgroundServices/OptimizationJobExecutor.cs"));
@@ -993,6 +996,12 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/OptimizationBacktestAssumptions.cs"));
         var synchronous = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestOptimizationService.cs"));
+        var evaluationPort = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/IOptimizationCandidateEvaluator.cs"));
+        var evaluator = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/OptimizationCandidateEvaluator.cs"));
+        var projection = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationResultProjection.cs"));
 
         source.Should().Contain("BacktestDataPreparer");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
@@ -1006,15 +1015,26 @@ public class ArchitectureDependencyTests
         policy.Should().Contain("FineSearchSeedCount = 5");
         assumptions.Should().Contain("SlippagePercent = 0.05m");
         assumptions.Should().Contain("CommissionPerTrade = 1.00m");
-        source.Should().Contain("OptimizationBacktestAssumptions.SlippagePercent");
-        synchronous.Should().Contain("OptimizationBacktestAssumptions.SlippagePercent");
+        source.Should().Contain("IOptimizationCandidateEvaluator");
+        synchronous.Should().Contain("IOptimizationCandidateEvaluator");
+        evaluationPort.Should().Contain("EvaluateBatchAsync(");
+        evaluationPort.Should().Contain("RunAsync(");
+        evaluator.Should().Contain("OptimizationBacktestAssumptions.SlippagePercent");
+        evaluator.Should().Contain("StrategyVariantFactory.CloneStrategyDocument(");
+        evaluator.Should().Contain("BacktestPreparedSimulationRunner");
+        projection.Should().Contain("TotalReturnPercent * 100");
+        projection.Should().Contain("OverallWinRate * 100");
         synchronous.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
         synchronous.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
         synchronous.Should().NotContain("Math.Clamp(request.OosPercent");
+        synchronous.Should().NotContain("StrategyVariantFactory.CloneStrategyDocument(");
+        source.Should().NotContain("StrategyVariantFactory.CloneStrategyDocument(");
+        source.Should().NotContain("RunCoreWithPreloadedDataAsync(");
+        source.Should().NotContain("TotalReturnPercent * 100");
         source.Should().NotContain("0.05m, 1.00m");
         File.ReadAllLines(Path.Combine(
                 repository, "BackgroundServices/OptimizationJobExecutor.cs"))
-            .Length.Should().BeLessThanOrEqualTo(500);
+            .Length.Should().BeLessThanOrEqualTo(450);
         source.Should().NotContain("GetHistoricalBarsAsync");
         source.Should().NotContain("IndicatorService.ExtractCloses");
         source.Should().NotContain("new PatternSettings()");

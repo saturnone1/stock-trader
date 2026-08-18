@@ -16,7 +16,7 @@ public sealed class BacktestOptimizationService
     private readonly IDataFeedServiceFactory _dataFeeds;
     private readonly ICustomStrategyDetectorFactory _detectors;
     private readonly BacktestDataPreparer _dataPreparer;
-    private readonly BacktestPreparedSimulationRunner _runner;
+    private readonly IOptimizationCandidateEvaluator _candidateEvaluator;
     private readonly BacktestRegimeMapBuilder _regimes;
     private readonly TradingSettings _tradingSettings;
     private readonly PatternSettings _patternSettings;
@@ -26,7 +26,7 @@ public sealed class BacktestOptimizationService
         IDataFeedServiceFactory dataFeeds,
         ICustomStrategyDetectorFactory detectors,
         BacktestDataPreparer dataPreparer,
-        BacktestPreparedSimulationRunner runner,
+        IOptimizationCandidateEvaluator candidateEvaluator,
         BacktestRegimeMapBuilder regimes,
         IOptions<TradingSettings> tradingSettings,
         IOptions<PatternSettings> patternSettings,
@@ -35,7 +35,7 @@ public sealed class BacktestOptimizationService
         _dataFeeds = dataFeeds;
         _detectors = detectors;
         _dataPreparer = dataPreparer;
-        _runner = runner;
+        _candidateEvaluator = candidateEvaluator;
         _regimes = regimes;
         _tradingSettings = tradingSettings.Value;
         _patternSettings = patternSettings.Value;
@@ -83,28 +83,25 @@ public sealed class BacktestOptimizationService
         var defaultData = dataByTimeFrame.TryGetValue(request.TimeFrame, out var requestedData)
             ? requestedData
             : dataByTimeFrame.Values.First();
-        var risk = new BacktestRiskParameters(
+        var risk = new OptimizationRiskParameters(
             _tradingSettings.RiskPerTradePercent,
             _tradingSettings.DailyLossLimitPercent,
             _tradingSettings.MaxTotalPositions,
             _tradingSettings.MaxPositionsPerSector);
+        var evaluation = new OptimizationEvaluationContext(
+            request,
+            dataByTimeFrame,
+            defaultData,
+            regimeByDate,
+            risk);
         var results = new List<OptimizeResultItem>(coarseCombinations.Count + fineBudget);
-
-        foreach (var combination in coarseCombinations)
-        {
-            var item = await TryEvaluateAsync(
-                request,
-                combination,
-                dataByTimeFrame,
-                defaultData,
-                regimeByDate,
-                request.From,
-                period.InSampleTo,
-                risk,
-                "최적화 조합 백테스트 실패 — 건너뜀",
-                ct);
-            if (item is not null) results.Add(item);
-        }
+        results.AddRange(await _candidateEvaluator.EvaluateBatchAsync(
+            evaluation,
+            coarseCombinations,
+            request.From,
+            period.InSampleTo,
+            "최적화 조합 백테스트 실패 — 건너뜀",
+            ct));
 
         if (fineBudget > 0 && results.Count >= 3)
         {
@@ -120,21 +117,13 @@ public sealed class BacktestOptimizationService
             _logger.LogInformation(
                 "Stage 2 정밀 탐색: {Count}개 이웃 조합 테스트", neighbors.Count);
 
-            foreach (var combination in neighbors)
-            {
-                var item = await TryEvaluateAsync(
-                    request,
-                    combination,
-                    dataByTimeFrame,
-                    defaultData,
-                    regimeByDate,
-                    request.From,
-                    period.InSampleTo,
-                    risk,
-                    "Stage 2 백테스트 실패",
-                    ct);
-                if (item is not null) results.Add(item);
-            }
+            results.AddRange(await _candidateEvaluator.EvaluateBatchAsync(
+                evaluation,
+                neighbors,
+                request.From,
+                period.InSampleTo,
+                "Stage 2 백테스트 실패",
+                ct));
         }
 
         var ranked = OptimizationResultRanker.RankOptimizeResults(
@@ -143,18 +132,15 @@ public sealed class BacktestOptimizationService
         {
             foreach (var item in ranked)
             {
-                var oos = await TryRunAsync(
-                    request,
+                var oos = await _candidateEvaluator.RunAsync(
+                    evaluation,
                     item.Params,
-                    dataByTimeFrame,
-                    defaultData,
-                    regimeByDate,
                     period.OutOfSampleFrom,
                     period.OutOfSampleTo,
-                    risk,
                     "OOS 백테스트 실패",
                     ct);
-                if (oos is not null) ApplyOos(item, oos);
+                if (oos is not null)
+                    OptimizationResultProjection.ApplyOutOfSample(item, oos);
             }
         }
 
@@ -207,99 +193,6 @@ public sealed class BacktestOptimizationService
             if (prepared.HasData) result[timeFrame] = prepared.Symbols;
         }
         return result;
-    }
-
-    private async Task<OptimizeResultItem?> TryEvaluateAsync(
-        OptimizeRequest request,
-        OptimizeParamSnapshot combination,
-        IReadOnlyDictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>> data,
-        IReadOnlyDictionary<string, PreparedSymbolData> defaultData,
-        Dictionary<DateOnly, MarketRegime> regimes,
-        DateTime from,
-        DateTime to,
-        BacktestRiskParameters risk,
-        string failureMessage,
-        CancellationToken ct)
-    {
-        var result = await TryRunAsync(
-            request, combination, data, defaultData, regimes,
-            from, to, risk, failureMessage, ct);
-        return result is null ? null : ToItem(combination, result);
-    }
-
-    private async Task<BacktestResult?> TryRunAsync(
-        OptimizeRequest request,
-        OptimizeParamSnapshot combination,
-        IReadOnlyDictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>> data,
-        IReadOnlyDictionary<string, PreparedSymbolData> defaultData,
-        Dictionary<DateOnly, MarketRegime> regimes,
-        DateTime from,
-        DateTime to,
-        BacktestRiskParameters risk,
-        string failureMessage,
-        CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        var pattern = StrategyVariantFactory.CloneStrategyDocument(request.BasePattern);
-        StrategyVariantFactory.ApplyOptimizeOverrides(pattern, combination);
-        var timeFrame = combination.TimeFrame.HasValue
-            ? (TimeFrame)combination.TimeFrame.Value
-            : request.TimeFrame;
-        var prepared = data.TryGetValue(timeFrame, out var selected) ? selected : defaultData;
-        try
-        {
-            return await _runner.RunAsync(
-                request.Symbols,
-                prepared,
-                [_detectors.Create(pattern)],
-                regimes,
-                from,
-                to,
-                request.InitialCapital,
-                OptimizationBacktestAssumptions.SlippagePercent,
-                OptimizationBacktestAssumptions.CommissionPerTrade,
-                timeFrame,
-                risk,
-                null,
-                OptimizationBacktestAssumptions.CostModel,
-                null,
-                _patternSettings,
-                ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex, failureMessage);
-            return null;
-        }
-    }
-
-    private static OptimizeResultItem ToItem(
-        OptimizeParamSnapshot parameters,
-        BacktestResult result) => new()
-    {
-        Params = parameters,
-        TotalReturn = result.TotalReturnPercent * 100,
-        SortinoRatio = result.SortinoRatio,
-        SharpeRatio = result.SharpeRatio,
-        MaxDrawdown = result.MaxDrawdown * 100,
-        WinRate = result.OverallWinRate * 100,
-        TotalTrades = result.TotalTrades,
-        ProfitFactor = result.ProfitFactor,
-        CalmarRatio = result.CalmarRatio,
-        AnnualizedReturn = result.AnnualizedReturn
-    };
-
-    private static void ApplyOos(OptimizeResultItem item, BacktestResult result)
-    {
-        item.OosTotalReturn = result.TotalReturnPercent * 100;
-        item.OosSortinoRatio = result.SortinoRatio;
-        item.OosSharpeRatio = result.SharpeRatio;
-        item.OosMaxDrawdown = result.MaxDrawdown * 100;
-        item.OosWinRate = result.OverallWinRate * 100;
-        item.OosTotalTrades = result.TotalTrades;
-        item.OosProfitFactor = result.ProfitFactor;
-        item.OosCalmarRatio = result.CalmarRatio;
-        item.OosAnnualizedReturn = result.AnnualizedReturn;
     }
 
     private static OptimizeResponse Empty(int total, long elapsed) => new()

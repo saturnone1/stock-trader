@@ -176,8 +176,10 @@
 - `OptimizationJobExecutionPolicy` now owns OOS splitting, deterministic evenly distributed 60/40 search
   planning, duration boundaries, and restart chunk calculations. `OptimizationBacktestAssumptions`
   is the single cost baseline for synchronous and background candidate evaluation. Both workers use
-  injected `TimeProvider` for timestamps and polling; `OptimizationJobExecutor` has dropped from 579
-  to 498 lines and is guarded by an architecture cap.
+  injected `TimeProvider` for timestamps and polling. `IOptimizationCandidateEvaluator` now owns the
+  shared strategy-variant, timeframe-selection, prepared-simulation, and failure-handling path for
+  synchronous and background IS/fine/OOS runs; `OptimizationResultProjection` owns their metric units.
+  `OptimizationJobExecutor` has dropped from 579 to 439 lines and is guarded by a 450-line cap.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

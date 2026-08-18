@@ -15,6 +15,7 @@ using StockTrader.Services.Financial;
 using StockTrader.Services.StrategyPreview;
 using StockTrader.Application.StrategyPreview;
 using StockTrader.Application.Strategies;
+using StockTrader.Application.Optimization;
 
 namespace StockTrader.Extensions;
 
@@ -73,6 +74,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BacktestSignalEntryProcessor>();
         services.AddScoped<BacktestSimulationEngine>();
         services.AddScoped<BacktestPreparedSimulationRunner>();
+        services.AddScoped<IOptimizationCandidateEvaluator, OptimizationCandidateEvaluator>();
         services.AddScoped<BacktestRegimeMapBuilder>();
         services.AddScoped<BacktestOptimizationService>();
         services.AddScoped<BacktestService>();

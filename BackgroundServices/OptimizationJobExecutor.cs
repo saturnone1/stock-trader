@@ -54,6 +54,7 @@ public class OptimizationJobExecutor
         var backtestService  = sp.GetRequiredService<BacktestService>();
         var dataPreparer     = sp.GetRequiredService<BacktestDataPreparer>();
         var customDetectors  = sp.GetRequiredService<ICustomStrategyDetectorFactory>();
+        var candidateEvaluator = sp.GetRequiredService<IOptimizationCandidateEvaluator>();
         var patternSettings  = sp.GetRequiredService<IOptions<PatternSettings>>().Value;
         var repo             = sp.GetRequiredService<IOptimizationRepository>();
         var dataFeedFactory  = sp.GetRequiredService<IDataFeedServiceFactory>();
@@ -133,6 +134,16 @@ public class OptimizationJobExecutor
         var stage2Budget = searchPlan.Stage2Budget;
 
         var riskParams  = backtestService.DefaultRiskParams;
+        var evaluation = new OptimizationEvaluationContext(
+            request,
+            dataByTimeFrame,
+            fullDataMap,
+            regimeByDate,
+            new OptimizationRiskParameters(
+                riskParams.RiskPerTradePercent,
+                riskParams.DailyLossLimitPercent,
+                riskParams.MaxTotalPositions,
+                riskParams.MaxPositionsPerSector));
         var startedAt   = job.StartedAt ?? UtcNow;
 
         // ── 6. Stage 1 청크 반복 ──
@@ -175,9 +186,13 @@ public class OptimizationJobExecutor
             var sliceEnd   = Math.Min(sliceStart + chunkSize, stage1Combinations.Count);
             var chunk      = stage1Combinations.GetRange(sliceStart, sliceEnd - sliceStart);
 
-            var chunkResults = await RunChunkAsync(
-                chunk, request, backtestService, customDetectors, fullDataMap, dataByTimeFrame,
-                regimeByDate, riskParams, period.InSampleTo, ct);
+            var chunkResults = await candidateEvaluator.EvaluateBatchAsync(
+                evaluation,
+                chunk,
+                request.From,
+                period.InSampleTo,
+                "[Optimization] 조합 백테스트 실패 — 건너뜀",
+                ct);
 
             stage1Results.AddRange(chunkResults);
 
@@ -246,9 +261,13 @@ public class OptimizationJobExecutor
                     var e      = Math.Min(s + chunkSize, neighbors.Count);
                     var chunk2 = neighbors.GetRange(s, e - s);
 
-                    var chunkResults2 = await RunChunkAsync(
-                        chunk2, request, backtestService, customDetectors, fullDataMap, dataByTimeFrame,
-                        regimeByDate, riskParams, period.InSampleTo, ct);
+                    var chunkResults2 = await candidateEvaluator.EvaluateBatchAsync(
+                        evaluation,
+                        chunk2,
+                        request.From,
+                        period.InSampleTo,
+                        "[Optimization] Stage 2 백테스트 실패 — 건너뜀",
+                        ct);
 
                     if (chunkResults2.Count > 0)
                     {
@@ -294,39 +313,27 @@ public class OptimizationJobExecutor
                 }
                 catch { continue; }
 
-                var patternCopy = StrategyVariantFactory.CloneStrategyDocument(request.BasePattern);
-                StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, snap);
-                var oosDetectors = new List<IPatternDetector>
-                {
-                    customDetectors.Create(patternCopy)
-                };
-
-                var comboTf = snap.TimeFrame.HasValue
-                    ? (TimeFrame)snap.TimeFrame.Value
-                    : request.TimeFrame;
-                var comboDataMap = dataByTimeFrame.TryGetValue(comboTf, out var tfm)
-                    ? tfm
-                    : fullDataMap;
-
                 try
                 {
-                    var oosResult = await backtestService.RunCoreWithPreloadedDataAsync(
-                        request.Symbols, comboDataMap, oosDetectors, regimeByDate,
-                        period.OutOfSampleFrom, period.OutOfSampleTo, request.InitialCapital,
-                        OptimizationBacktestAssumptions.SlippagePercent,
-                        OptimizationBacktestAssumptions.CommissionPerTrade,
-                        comboTf, riskParams, null,
-                        OptimizationBacktestAssumptions.CostModel, null, null, ct);
+                    var oosResult = await candidateEvaluator.RunAsync(
+                        evaluation,
+                        snap,
+                        period.OutOfSampleFrom,
+                        period.OutOfSampleTo,
+                        "[Optimization] OOS 백테스트 실패 — 건너뜀",
+                        ct);
+                    if (oosResult is null) continue;
 
-                    dbResult.OosTotalReturn     = oosResult.TotalReturnPercent * 100;
-                    dbResult.OosSortinoRatio     = oosResult.SortinoRatio;
-                    dbResult.OosSharpeRatio      = oosResult.SharpeRatio;
-                    dbResult.OosMaxDrawdown      = oosResult.MaxDrawdown * 100;
-                    dbResult.OosWinRate          = oosResult.OverallWinRate * 100;
-                    dbResult.OosTotalTrades      = oosResult.TotalTrades;
-                    dbResult.OosProfitFactor     = oosResult.ProfitFactor;
-                    dbResult.OosCalmarRatio      = oosResult.CalmarRatio;
-                    dbResult.OosAnnualizedReturn = oosResult.AnnualizedReturn;
+                    var metrics = OptimizationResultProjection.FromBacktest(oosResult);
+                    dbResult.OosTotalReturn     = metrics.TotalReturn;
+                    dbResult.OosSortinoRatio     = metrics.SortinoRatio;
+                    dbResult.OosSharpeRatio      = metrics.SharpeRatio;
+                    dbResult.OosMaxDrawdown      = metrics.MaxDrawdown;
+                    dbResult.OosWinRate          = metrics.WinRate;
+                    dbResult.OosTotalTrades      = metrics.TotalTrades;
+                    dbResult.OosProfitFactor     = metrics.ProfitFactor;
+                    dbResult.OosCalmarRatio      = metrics.CalmarRatio;
+                    dbResult.OosAnnualizedReturn = metrics.AnnualizedReturn;
 
                     await repo.UpsertResultAsync(dbResult);
                 }
@@ -342,72 +349,6 @@ public class OptimizationJobExecutor
             "[Optimization] Job {Id} 완료 — 총 {N}건 테스트",
             job.Id, job.TestedCombinations);
         return OptimizationJobExecutionDisposition.Completed;
-    }
-
-    private async Task<List<OptimizeResultItem>> RunChunkAsync(
-        List<OptimizeParamSnapshot> chunk,
-        OptimizeRequest request,
-        BacktestService backtestService,
-        ICustomStrategyDetectorFactory customDetectors,
-        IReadOnlyDictionary<string, PreparedSymbolData> fullDataMap,
-        Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>> dataByTimeFrame,
-        Dictionary<DateOnly, MarketRegime> regimeByDate,
-        BacktestRiskParameters riskParams,
-        DateTime inSampleTo,
-        CancellationToken ct)
-    {
-        var results = new List<OptimizeResultItem>(chunk.Count);
-
-        foreach (var combo in chunk)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            var patternCopy = StrategyVariantFactory.CloneStrategyDocument(request.BasePattern);
-            StrategyVariantFactory.ApplyOptimizeOverrides(patternCopy, combo);
-
-            var detectors = new List<IPatternDetector>
-            {
-                customDetectors.Create(patternCopy)
-            };
-
-            try
-            {
-                var comboTf = combo.TimeFrame.HasValue
-                    ? (TimeFrame)combo.TimeFrame.Value
-                    : request.TimeFrame;
-                var comboDataMap = dataByTimeFrame.TryGetValue(comboTf, out var tfMap)
-                    ? tfMap
-                    : fullDataMap;
-
-                var btResult = await backtestService.RunCoreWithPreloadedDataAsync(
-                    request.Symbols, comboDataMap, detectors, regimeByDate,
-                    request.From, inSampleTo, request.InitialCapital,
-                    OptimizationBacktestAssumptions.SlippagePercent,
-                    OptimizationBacktestAssumptions.CommissionPerTrade,
-                    comboTf, riskParams, null,
-                    OptimizationBacktestAssumptions.CostModel, null, null, ct);
-
-                results.Add(new OptimizeResultItem
-                {
-                    Params           = combo,
-                    TotalReturn      = btResult.TotalReturnPercent * 100,
-                    SortinoRatio     = btResult.SortinoRatio,
-                    SharpeRatio      = btResult.SharpeRatio,
-                    MaxDrawdown      = btResult.MaxDrawdown * 100,
-                    WinRate          = btResult.OverallWinRate * 100,
-                    TotalTrades      = btResult.TotalTrades,
-                    ProfitFactor     = btResult.ProfitFactor,
-                    CalmarRatio      = btResult.CalmarRatio,
-                    AnnualizedReturn = btResult.AnnualizedReturn,
-                });
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogWarning(ex, "[Optimization] 조합 백테스트 실패 — 건너뜀");
-            }
-        }
-
-        return results;
     }
 
     private static OptimizationResult MapToDbResult(

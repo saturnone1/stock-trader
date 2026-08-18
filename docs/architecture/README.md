@@ -169,7 +169,11 @@ Background optimization delegates OOS boundaries, deterministic 60/40 search pla
 chunk positions, and duration checks to `OptimizationJobExecutionPolicy`. Both synchronous and
 background optimization consume `OptimizationBacktestAssumptions`, so candidate rankings share one
 slippage, commission, and cost-model baseline. Optimization workers receive `TimeProvider` instead
-of reading system time; the executor is capped below 500 lines as an I/O coordinator.
+of reading system time. Both modes also call `IOptimizationCandidateEvaluator` for strategy variant
+creation, timeframe data selection, prepared simulation, and candidate failure handling.
+`OptimizationResultProjection` owns fractional-to-percent metric conversion for IS and OOS results;
+the executor coordinates job lifecycle, chunks, persistence, and cancellation around that application
+port and remains capped below 450 lines.
 
 ## Decision records
 
@@ -190,4 +194,6 @@ of reading system time; the executor is capped below 500 lines as an I/O coordin
   runtime compilation independent from the EF storage entity.
 - `adr/0009-deterministic-optimization-job-policy.md`: keep search planning, restart semantics,
   clocks, and candidate execution assumptions deterministic across optimization modes.
+- `adr/0010-share-optimization-candidate-evaluation.md`: route synchronous and background candidate
+  simulation plus result-unit projection through one application boundary.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
