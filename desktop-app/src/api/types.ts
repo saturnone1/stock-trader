@@ -1,61 +1,9 @@
 import type { components } from './generated';
 
-// Dashboard
-export interface DashboardData {
-  accountInfo?: {
-    accountId: string;
-    balance: number;
-    availableBalance: number;
-    equity: number;
-  };
-  riskState?: {
-    totalExposure: number;
-    maxDrawdown: number;
-    riskLevel: string;
-  };
-  positions?: Position[];
-  signals?: Signal[];
-  recommendations?: Recommendation[];
-  marketRegime?: string;
-}
-
 export interface AuthSession {
   userId: string;
   username: string;
   authenticated: boolean;
-}
-
-export interface Position {
-  symbol: string;
-  quantity: number;
-  avgPrice: number;
-  currentPrice: number;
-  pnl: number;
-  pnlPercent: number;
-  orderStatus?: 'Ready' | 'SubmissionUnconfirmed' | 'AwaitingBroker';
-  orderRequestedAt?: string | null;
-  orderReason?: string | null;
-  orderKind?: 'FullExit' | 'PartialProfit' | 'ScaleIn' | 'ScaleOut' | null;
-  hasBrokerOrderId?: boolean;
-  orderPendingSeconds?: number;
-  orderQuantity?: number;
-  orderMarksPartialProfit?: boolean;
-}
-
-export interface Signal {
-  id: string;
-  symbol: string;
-  type: 'BUY' | 'SELL';
-  strength: number;
-  timestamp: string;
-}
-
-export interface Recommendation {
-  id: string;
-  symbol: string;
-  action: string;
-  score: number;
-  reason: string;
 }
 
 export interface UniverseMeta {

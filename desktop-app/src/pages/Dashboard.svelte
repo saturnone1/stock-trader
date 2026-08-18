@@ -83,28 +83,28 @@
       </div>
     {:else}
       <!-- Account Info Section -->
-      {#if dashboard?.accountInfo}
+      {#if dashboard?.account}
         <div class="grid grid-cols-4 gap-6 mb-8">
           <div class="bg-gray-800 border border-gray-700 p-6 rounded-lg">
             <div class="text-gray-400 text-sm mb-2">Account ID</div>
-            <div class="text-lg font-mono">{dashboard.accountInfo.accountId}</div>
+            <div class="text-lg font-mono">{dashboard.account.accountId}</div>
           </div>
           <div class="bg-gray-800 border border-gray-700 p-6 rounded-lg">
             <div class="text-gray-400 text-sm mb-2">Balance</div>
             <div class="text-2xl font-bold text-green-400">
-              ${dashboard.accountInfo.balance.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              ${dashboard.account.cash.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </div>
           </div>
           <div class="bg-gray-800 border border-gray-700 p-6 rounded-lg">
             <div class="text-gray-400 text-sm mb-2">Available</div>
             <div class="text-2xl font-bold">
-              ${dashboard.accountInfo.availableBalance.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              ${dashboard.account.buyingPower.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </div>
           </div>
           <div class="bg-gray-800 border border-gray-700 p-6 rounded-lg">
             <div class="text-gray-400 text-sm mb-2">Equity</div>
             <div class="text-2xl font-bold text-blue-400">
-              ${dashboard.accountInfo.equity.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              ${dashboard.account.totalEquity.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </div>
           </div>
         </div>
@@ -112,22 +112,26 @@
 
       <div class="grid grid-cols-2 gap-6 mb-8">
         <!-- Risk State -->
-        {#if dashboard?.riskState}
+        {#if dashboard?.risk}
           <div class="bg-gray-800 border border-gray-700 p-6 rounded-lg">
             <h3 class="text-xl font-bold mb-4">Risk Management</h3>
             <div class="space-y-4">
               <div>
-                <div class="text-gray-400 text-sm mb-2">Total Exposure</div>
-                <div class="text-2xl font-bold">{(dashboard.riskState.totalExposure * 100).toFixed(1)}%</div>
+                <div class="text-gray-400 text-sm mb-2">오늘 손익</div>
+                <div class={`text-2xl font-bold ${dashboard.risk.dailyPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ${dashboard.risk.dailyPnL.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                </div>
               </div>
               <div>
-                <div class="text-gray-400 text-sm mb-2">Max Drawdown</div>
-                <div class="text-2xl font-bold text-red-400">{(dashboard.riskState.maxDrawdown * 100).toFixed(2)}%</div>
+                <div class="text-gray-400 text-sm mb-2">오늘 수익률</div>
+                <div class={`text-2xl font-bold ${dashboard.risk.dailyPnLPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {(dashboard.risk.dailyPnLPercent * 100).toFixed(2)}%
+                </div>
               </div>
               <div>
-                <div class="text-gray-400 text-sm mb-2">Risk Level</div>
-                <div class={`text-lg font-bold ${dashboard.riskState.riskLevel === 'LOW' ? 'text-green-400' : dashboard.riskState.riskLevel === 'MEDIUM' ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {dashboard.riskState.riskLevel}
+                <div class="text-gray-400 text-sm mb-2">자동매매 상태</div>
+                <div class={`text-lg font-bold ${dashboard.risk.isTradingHalted ? 'text-red-400' : 'text-green-400'}`}>
+                  {dashboard.risk.isTradingHalted ? '손실 한도로 중지됨' : '정상 실행 가능'}
                 </div>
               </div>
             </div>
@@ -145,6 +149,45 @@
           </div>
         {/if}
       </div>
+
+      {#if dashboard}
+        <div class="grid grid-cols-3 gap-6 mb-8">
+          <div class="bg-gray-800 border border-gray-700 p-5 rounded-lg">
+            <div class="text-gray-400 text-sm mb-2">보유 종목</div>
+            <div class="text-2xl font-bold">{dashboard.openPositionCount}</div>
+          </div>
+          <div class="bg-gray-800 border border-gray-700 p-5 rounded-lg">
+            <div class="text-gray-400 text-sm mb-2">활성 신호</div>
+            <div class="text-2xl font-bold text-blue-400">{dashboard.activeSignalCount}</div>
+          </div>
+          <div class="bg-gray-800 border border-gray-700 p-5 rounded-lg">
+            <div class="text-gray-400 text-sm mb-2">주문 방식</div>
+            <div class="text-xl font-bold">{dashboard.orderMode}</div>
+          </div>
+        </div>
+      {/if}
+
+      {#if dashboard?.recentRecommendations?.length > 0}
+        <div class="bg-gray-800 border border-gray-700 p-6 rounded-lg mb-8">
+          <h3 class="text-xl font-bold mb-4">최근 매매 판단</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {#each dashboard.recentRecommendations as rec}
+              <div class="bg-gray-700/40 border border-gray-600 p-4 rounded-lg">
+                <div class="flex justify-between gap-3 mb-2">
+                  <span class="font-mono font-bold text-blue-400">{rec.symbol}</span>
+                  <span class={rec.wasExecuted ? 'text-green-400' : 'text-gray-400'}>
+                    {rec.wasExecuted ? '주문 실행' : '판단만 기록'}
+                  </span>
+                </div>
+                <div class="text-sm">{rec.pattern}</div>
+                <div class="text-xs text-gray-400 mt-2">
+                  진입 ${rec.entryPrice.toFixed(2)} · 손익비 {rec.riskRewardRatio.toFixed(2)}R
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <!-- Positions -->
       {#if dashboard?.positions && dashboard.positions.length > 0}
@@ -167,21 +210,21 @@
                   <tr class="border-t border-gray-700 hover:bg-gray-700/30 transition">
                     <td class="py-3 px-4 font-mono text-blue-400">{pos.symbol}</td>
                     <td class="py-3 px-4 text-right">{pos.quantity}</td>
-                    <td class="py-3 px-4 text-right">${pos.avgPrice.toFixed(2)}</td>
+                    <td class="py-3 px-4 text-right">${pos.entryPrice.toFixed(2)}</td>
                     <td class="py-3 px-4 text-right">${pos.currentPrice.toFixed(2)}</td>
                     <td class="py-3 px-4 text-right">
-                      <span class={pos.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                        ${pos.pnl.toFixed(2)}
+                      <span class={pos.unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        ${pos.unrealizedPnL.toFixed(2)}
                       </span>
                     </td>
                     <td class="py-3 px-4 text-right">
                       <div class="flex items-center justify-end gap-1">
-                        {#if pos.pnlPercent >= 0}
+                        {#if pos.unrealizedPnLPercent >= 0}
                           <TrendingUp size={16} class="text-green-400" />
-                          <span class="text-green-400">{(pos.pnlPercent * 100).toFixed(2)}%</span>
+                          <span class="text-green-400">{(pos.unrealizedPnLPercent * 100).toFixed(2)}%</span>
                         {:else}
                           <TrendingDown size={16} class="text-red-400" />
-                          <span class="text-red-400">{(pos.pnlPercent * 100).toFixed(2)}%</span>
+                          <span class="text-red-400">{(pos.unrealizedPnLPercent * 100).toFixed(2)}%</span>
                         {/if}
                       </div>
                     </td>

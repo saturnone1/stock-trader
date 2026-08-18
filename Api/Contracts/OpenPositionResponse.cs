@@ -13,6 +13,7 @@ public sealed record OpenPositionResponse(
     decimal TargetPrice,
     string Pattern,
     decimal UnrealizedPnL,
+    decimal UnrealizedPnLPercent,
     int AccountId,
     decimal HighSinceEntry,
     decimal EntryAtr,
@@ -49,6 +50,10 @@ public static class OpenPositionResponseMapper
         position.TargetPrice,
         position.Pattern,
         position.UnrealizedPnL,
+        PositionReturnPolicy.Calculate(
+            position.EntryPrice,
+            position.Quantity,
+            position.UnrealizedPnL),
         position.AccountId,
         position.HighSinceEntry,
         position.EntryAtr,

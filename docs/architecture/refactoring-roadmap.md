@@ -371,6 +371,12 @@ service is a 113-line scheduling adapter with no repository, broker, entity, or 
 dependency. The correction includes trades by exit day, removes the 50-signal truncation, and
 preserves 23/25-hour DST days by converting both local midnights independently.
 
+Dashboard composition now crosses `IDashboardQuery`, `IDashboardActivityStore`, and
+`IActiveBrokerAccountQuery`. It reuses the risk overview's exact open-position observation and order
+mode, maps an explicit API response, and consumes generated desktop types. The desktop no longer
+hardcodes exposure to zero or presents negative daily return as maximum drawdown; it displays only
+the actual daily PnL, return, unrealized PnL, trading halt, account, signal, and position state.
+
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 
 ## Phase 4 — Persistence and contracts

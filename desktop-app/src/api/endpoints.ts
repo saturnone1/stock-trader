@@ -1,9 +1,10 @@
 import { api } from './client';
-import type { DashboardData, Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus, SettingsResponse, SettingsUpdateRequest, SettingsUpdateResponse } from './types';
+import type { Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus, SettingsResponse, SettingsUpdateRequest, SettingsUpdateResponse } from './types';
 import type { components } from './generated';
 
 type SignalListResponse = components['schemas']['SignalListResponse'];
 type PatternStatisticsListResponse = components['schemas']['PatternStatisticsListResponse'];
+type DashboardResponse = components['schemas']['DashboardResponse'];
 
 const CUMULATIVE_RSI_PRESET_ID = -1001
 const CUMULATIVE_RSI_PRESET_NAME = '누적 RSI 절대수익'
@@ -177,49 +178,7 @@ export const authApi = {
 };
 
 export const dashboardApi = {
-  get: async () => {
-    const response = await api.get('/api/dashboard');
-    const data = response.data ?? {};
-    const positions = Array.isArray(data.positions) ? data.positions : [];
-
-    return {
-      ...response,
-      data: {
-        accountInfo: data.account ? {
-          accountId: data.account.accountId,
-          balance: data.account.cash ?? 0,
-          availableBalance: data.account.buyingPower ?? 0,
-          equity: data.account.totalEquity ?? 0,
-        } : undefined,
-        riskState: data.riskState ? {
-          totalExposure: 0,
-          maxDrawdown: Math.max(0, -(data.riskState.dailyPnLPercent ?? 0)),
-          riskLevel: data.riskState.isTradingHalted ? 'HIGH' : 'LOW',
-        } : undefined,
-        positions: positions.map((pos: any) => ({
-          symbol: pos.symbol,
-          quantity: pos.quantity ?? 0,
-          avgPrice: pos.entryPrice ?? 0,
-          currentPrice: pos.currentPrice ?? 0,
-          pnl: pos.unrealizedPnL ?? 0,
-          pnlPercent: pos.entryPrice && pos.quantity
-            ? (pos.unrealizedPnL ?? 0) / (pos.entryPrice * pos.quantity)
-            : 0,
-          orderStatus: pos.orderStatus ?? 'Ready',
-          orderRequestedAt: pos.orderRequestedAt ?? null,
-          orderReason: pos.orderReason ?? null,
-          orderKind: pos.orderKind ?? null,
-          hasBrokerOrderId: !!pos.hasBrokerOrderId,
-          orderPendingSeconds: pos.orderPendingSeconds ?? 0,
-          orderQuantity: pos.orderQuantity ?? 0,
-          orderMarksPartialProfit: pos.orderMarksPartialProfit ?? false,
-        })),
-        signals: data.recentSignals ?? [],
-        recommendations: data.recentSignals ?? [],
-        marketRegime: data.marketRegime ?? 'Unknown',
-      } as DashboardData
-    };
-  },
+  get: () => api.get<DashboardResponse>('/api/dashboard'),
 };
 
 export const patternApi = {

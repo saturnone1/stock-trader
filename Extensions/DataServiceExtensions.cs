@@ -7,6 +7,7 @@ using StockTrader.Application.Research;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Execution;
 using StockTrader.Application.Reporting;
+using StockTrader.Application.Dashboard;
 using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Data.Migrations;
@@ -50,6 +51,7 @@ public static class DataServiceExtensions
         services.AddSingleton<ILiveEntryExecutionStore, LiveEntryExecutionStore>();
         services.AddSingleton<ILivePositionExecutionStore, LivePositionExecutionStore>();
         services.AddSingleton<IDailyReportActivityStore, DailyReportActivityStore>();
+        services.AddSingleton<IDashboardActivityStore, DashboardActivityStore>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();
 

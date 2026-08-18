@@ -1,3 +1,5 @@
+using StockTrader.Application.Portfolio;
+
 namespace StockTrader.Application.Risk;
 
 public sealed record RiskStateSnapshot(
@@ -15,7 +17,8 @@ public sealed record RiskSettingsSnapshot(
     int MaxTotalPositions,
     int MaxPositionsPerSector,
     decimal MinExpectancy,
-    decimal MinConfidence);
+    decimal MinConfidence,
+    OrderMode OrderMode);
 
 public sealed record PositionRiskSnapshot(
     string Symbol,
@@ -32,7 +35,8 @@ public sealed record RiskOverviewSnapshot(
     RiskStateSnapshot RiskState,
     RiskSettingsSnapshot Settings,
     IReadOnlyList<PositionRiskSnapshot> PositionRMultiples,
-    decimal TotalUnrealizedPnL);
+    decimal TotalUnrealizedPnL,
+    OpenPositionListSnapshot OpenPositions);
 
 public interface IRiskOverviewQuery
 {

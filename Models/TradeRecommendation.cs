@@ -35,7 +35,9 @@ public class TradeRecommendation
     public decimal StopLossPercent => EntryPrice != 0
         ? Math.Abs(EntryPrice - StopLossPrice) / EntryPrice
         : 0;
-    public decimal RiskRewardRatio => StopLossPercent != 0
-        ? ((TargetPrice - EntryPrice) / EntryPrice) / StopLossPercent
-        : 0;
+    public decimal RiskRewardRatio =>
+        RiskRewardRatioPolicy.CalculateWithAbsoluteStopDistance(
+            EntryPrice,
+            StopLossPrice,
+            TargetPrice);
 }

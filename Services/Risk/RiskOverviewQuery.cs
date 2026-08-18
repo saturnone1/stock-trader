@@ -59,8 +59,10 @@ public sealed class RiskOverviewQuery(
                 userSettings.MaxTotalPositions,
                 userSettings.MaxPositionsPerSector,
                 userSettings.MinExpectancy,
-                trading.MinConfidence),
+                trading.MinConfidence,
+                userSettings.OrderMode),
             positionRisks,
-            openPositions.TotalUnrealizedPnL);
+            openPositions.TotalUnrealizedPnL,
+            openPositions);
     }
 }

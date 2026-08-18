@@ -132,7 +132,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["DashboardResponse"];
+                    };
                 };
             };
         };
@@ -2780,6 +2782,67 @@ export interface components {
             isActive?: boolean;
             enableLiveTrading?: boolean;
         };
+        DashboardAccountResponse: {
+            accountId: string;
+            /** Format: double */
+            totalEquity: number;
+            /** Format: double */
+            cash: number;
+            /** Format: double */
+            buyingPower: number;
+            /** Format: double */
+            unrealizedPnL: number;
+            /** Format: double */
+            dailyPnL: number;
+            isTradingBlocked: boolean;
+            statusMessage: string;
+            fetchedAt: string;
+        };
+        DashboardRecommendationResponse: {
+            /** Format: int64 */
+            id: number;
+            symbol: string;
+            pattern: string;
+            /** Format: double */
+            entryPrice: number;
+            /** Format: double */
+            stopLossPrice: number;
+            /** Format: double */
+            targetPrice: number;
+            /** Format: double */
+            riskRewardRatio: number;
+            /** Format: double */
+            expectancy: number;
+            wasExecuted: boolean;
+            generatedAt: string;
+        };
+        DashboardResponse: {
+            account: null | components["schemas"]["DashboardAccountResponse"];
+            risk: components["schemas"]["DashboardRiskResponse"];
+            /** Format: int32 */
+            openPositionCount: number;
+            /** Format: int32 */
+            activeSignalCount: number;
+            recentRecommendations: components["schemas"]["DashboardRecommendationResponse"][];
+            positions: components["schemas"]["OpenPositionResponse"][];
+            marketRegime: string;
+            orderMode: string;
+        };
+        DashboardRiskResponse: {
+            /** Format: double */
+            dailyPnL: number;
+            /** Format: double */
+            dailyPnLPercent: number;
+            /** Format: double */
+            totalUnrealizedPnL: number;
+            isTradingHalted: boolean;
+            /** Format: int32 */
+            openPositionCount: number;
+            positionsPerSector: {
+                [key: string]: number;
+            };
+            lastUpdated: string;
+        };
         /** @enum {unknown} */
         DataSource: "Alpaca" | "Polygon" | "Yahoo" | "LsSecurities" | null;
         EntryRecommendationRequest: {
@@ -2983,6 +3046,8 @@ export interface components {
             pattern: string;
             /** Format: double */
             unrealizedPnL: number;
+            /** Format: double */
+            unrealizedPnLPercent: number;
             /** Format: int32 */
             accountId: number;
             /** Format: double */
@@ -3496,6 +3561,7 @@ export interface components {
             minExpectancy: number;
             /** Format: double */
             minConfidence: number;
+            orderMode: string;
         };
         RiskStateResponse: {
             /** Format: double */

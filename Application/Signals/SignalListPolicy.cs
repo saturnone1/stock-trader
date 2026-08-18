@@ -68,11 +68,9 @@ public static class SignalListPolicy
     }
 
     private static decimal CalculateRiskReward(BrowsableSignal signal) =>
-        signal.EntryPrice > 0m
-        && signal.StopLossPrice > 0m
-        && signal.StopLossPrice < signal.EntryPrice
-            ? (signal.TargetPrice - signal.EntryPrice)
-                / (signal.EntryPrice - signal.StopLossPrice)
-            : 0m;
+        RiskRewardRatioPolicy.CalculateLong(
+            signal.EntryPrice,
+            signal.StopLossPrice,
+            signal.TargetPrice);
 
 }
