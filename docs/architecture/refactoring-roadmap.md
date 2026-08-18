@@ -345,10 +345,12 @@ rendered by `PatternWorkspaceSidebar.svelte`, `PatternStrategyTree.svelte`, and
 `PatternRuleInspector.svelte`. Server strategy-builder metadata is now projected by
 `patternMetadata.js`, selected-node chart explanations and preview payloads live in
 `patternPreviewModel.js`, and stable Korean UI terminology lives in `patternBuilderUiCatalog.js`.
-Goldens lock catalog ordering/defaults, fail-closed behavior, selected-rule lookup, and the exact
-chart explanation contract. `PatternBuilder.svelte` is consequently a 489-line API/state
-coordinator, down from 1,630 lines; an architecture test prevents metadata projection, preview
-selection logic, or UI terminology from drifting back into the page.
+Strategy CRUD payloads, response hydration, and server-error projection live behind
+`patternPersistence.js`. Goldens lock catalog ordering/defaults, fail-closed behavior,
+selected-rule lookup, the exact chart explanation contract, and create/open/save/delete API
+contracts. `PatternBuilder.svelte` is consequently a 491-line state coordinator, down from 1,630
+lines; an architecture test prevents metadata projection, persistence contracts, preview selection
+logic, or UI terminology from drifting back into the page.
 
 `Optimization.svelte` now delegates its complete input surface and job/result presentation to
 `OptimizationJobForm.svelte` and `OptimizationJobList.svelte`. Request validation, API payload

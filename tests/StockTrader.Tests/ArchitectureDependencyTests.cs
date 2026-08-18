@@ -212,6 +212,10 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/pattern-builder/patternPreviewModel.js"));
         var previewModelTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/patternPreviewModel.test.js"));
+        var persistence = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternPersistence.js"));
+        var persistenceTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternPersistence.test.js"));
         var uiCatalog = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/patternBuilderUiCatalog.js"));
         var workspaceSidebar = File.ReadAllText(Path.Combine(
@@ -226,11 +230,17 @@ public class ArchitectureDependencyTests
         page.Should().Contain("from '../features/pattern-builder/patternWorkspace'");
         page.Should().Contain("from '../features/pattern-builder/patternMetadata'");
         page.Should().Contain("from '../features/pattern-builder/patternPreviewModel'");
+        page.Should().Contain("from '../features/pattern-builder/patternPersistence'");
         page.Should().Contain("from '../features/pattern-builder/patternBuilderUiCatalog'");
         page.Should().NotContain("function collectValidationIssues(");
         page.Should().NotContain("function buildWorkspace(");
         page.Should().NotContain("function buildPatternPayload(");
         page.Should().NotContain("function normalizeRule(");
+        page.Should().NotContain("patternApi.list(");
+        page.Should().NotContain("patternApi.create(");
+        page.Should().NotContain("patternApi.get(");
+        page.Should().NotContain("patternApi.update(");
+        page.Should().NotContain("patternApi.delete(");
         page.Should().NotContain(".splice(");
         page.Should().NotContain("JSON.parse(JSON.stringify");
         page.Should().NotContain("언제 살까?");
@@ -262,6 +272,10 @@ public class ArchitectureDependencyTests
         previewModel.Should().Contain("export function buildPatternPreviewModel(");
         previewModel.Should().Contain("export function findSelectedRule(");
         previewModelTests.Should().Contain("preserve the chart explanation contract");
+        persistence.Should().Contain("export function createPatternPersistence(");
+        persistence.Should().Contain("buildPatternPayload(workspace)");
+        persistenceTests.Should().Contain("pattern CRUD preserves API payload and workspace hydration contracts");
+        persistenceTests.Should().Contain("malformed responses fail closed");
         uiCatalog.Should().Contain("export const glossaryTooltips");
         page.Should().Contain("<PatternWorkspaceSidebar");
         page.Should().Contain("<PatternStrategyTree");

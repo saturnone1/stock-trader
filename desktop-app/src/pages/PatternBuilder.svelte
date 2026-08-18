@@ -9,6 +9,7 @@
   import { emptyPatternMetadata, projectPatternMetadata } from '../features/pattern-builder/patternMetadata'
   import { buildPatternPreviewModel, findSelectedRule, summarizeRule } from '../features/pattern-builder/patternPreviewModel'
   import { dayOptions, glossaryTooltips, monthOptions, operatorLabels, paramKeyLabels } from '../features/pattern-builder/patternBuilderUiCatalog'
+  import { createPatternPersistence, patternPersistenceError } from '../features/pattern-builder/patternPersistence'
   import PatternWorkspaceSidebar from '../features/pattern-builder/PatternWorkspaceSidebar.svelte'
   import PatternStrategyTree from '../features/pattern-builder/PatternStrategyTree.svelte'
   import PatternRuleInspector from '../features/pattern-builder/PatternRuleInspector.svelte'
@@ -20,6 +21,11 @@
     blankExitGroup: (...args) => workspaceModel.blankExitGroup(...args),
     blankWeightTier: (...args) => workspaceModel.blankWeightTier(...args),
     blankScalingRule: (...args) => workspaceModel.blankScalingRule(...args)
+  })
+  const patternPersistence = createPatternPersistence({
+    api: patternApi,
+    buildWorkspace: (...args) => workspaceModel.buildWorkspace(...args),
+    buildPatternPayload: (...args) => workspaceModel.buildPatternPayload(...args)
   })
 
   let builderMetadata = emptyPatternMetadata()
@@ -63,7 +69,6 @@
   const blankExitGroup = (...args) => workspaceModel.blankExitGroup(...args)
   const blankWeightTier = (...args) => workspaceModel.blankWeightTier(...args)
   const blankScalingRule = (...args) => workspaceModel.blankScalingRule(...args)
-  const buildWorkspace = (...args) => workspaceModel.buildWorkspace(...args)
   function touch() {
     workspace = { ...workspace }
     dirty = true
@@ -128,11 +133,10 @@
   async function loadPatterns() {
     loading = true
     try {
-      const res = await patternApi.list()
-      patterns = res.data || []
+      patterns = await patternPersistence.list()
       error = ''
     } catch (e) {
-      error = e?.message || '전략 목록을 불러오지 못했습니다.'
+      error = patternPersistenceError(e, '전략 목록을 불러오지 못했습니다.')
     } finally {
       loading = false
     }
@@ -142,33 +146,33 @@
     if (!newPatternName.trim()) return
     if (dirty && !confirm('저장하지 않은 변경이 있습니다. 새 전략을 만들까요?')) return
     try {
-      const res = await patternApi.create({ name: newPatternName, description: '' })
+      const created = await patternPersistence.create(newPatternName)
       newPatternName = ''
       showNewPattern = false
       await loadPatterns()
-      selectedPattern = res.data
-      workspace = buildWorkspace(res.data.raw)
+      selectedPattern = created.pattern
+      workspace = created.workspace
       selectedNode = { type: 'general' }
       dirty = false
       notice = '새 매매 전략을 만들었습니다.'
       error = ''
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '전략 생성에 실패했습니다.'
+      error = patternPersistenceError(e, '전략 생성에 실패했습니다.')
     }
   }
 
   async function selectPattern(pat) {
     if (selectedPattern?.id !== pat.id && dirty && !confirm('저장하지 않은 변경이 있습니다. 다른 전략을 불러올까요?')) return
     try {
-      const res = await patternApi.get(pat.id)
-      selectedPattern = res.data
-      workspace = buildWorkspace(res.data.raw)
+      const opened = await patternPersistence.open(pat.id)
+      selectedPattern = opened.pattern
+      workspace = opened.workspace
       selectedNode = { type: 'general' }
       dirty = false
       notice = ''
       error = ''
     } catch (e) {
-      error = e?.message || '전략을 불러오지 못했습니다.'
+      error = patternPersistenceError(e, '전략을 불러오지 못했습니다.')
     }
   }
 
@@ -186,17 +190,15 @@
 
     saving = true
     try {
-      const payload = buildPatternPayload(workspace)
-
-      const res = await patternApi.update(selectedPattern.id, payload)
-      selectedPattern = res.data
-      workspace = buildWorkspace(res.data.raw)
+      const saved = await patternPersistence.save(selectedPattern.id, workspace)
+      selectedPattern = saved.pattern
+      workspace = saved.workspace
       await loadPatterns()
       dirty = false
       notice = '매매 전략을 저장했습니다.'
       error = ''
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '전략 저장에 실패했습니다.'
+      error = patternPersistenceError(e, '전략 저장에 실패했습니다.')
     } finally {
       saving = false
     }
@@ -206,7 +208,7 @@
     if (selectedPattern?.id === pat.id && dirty && !confirm('저장하지 않은 변경도 함께 사라집니다. 계속할까요?')) return
     if (!confirm(`"${pat.name}" 전략을 삭제할까요?`)) return
     try {
-      await patternApi.delete(pat.id)
+      await patternPersistence.remove(pat.id)
       if (selectedPattern?.id === pat.id) {
         selectedPattern = null
         workspace = null
@@ -214,7 +216,7 @@
       }
       await loadPatterns()
     } catch (e) {
-      error = e?.message || '전략 삭제에 실패했습니다.'
+      error = patternPersistenceError(e, '전략 삭제에 실패했습니다.')
     }
   }
 
