@@ -3,27 +3,28 @@ using StockTrader.Models.Enums;
 
 namespace StockTrader.Application.Execution;
 
-public enum ExitOrderReconciliationAction
+public enum PositionOrderReconciliationAction
 {
     Wait,
     Finalize,
     ReleaseForRetry,
 }
 
-public sealed record ExitOrderReconciliation(
-    ExitOrderReconciliationAction Action,
+public sealed record PositionOrderReconciliation(
+    PositionOrderReconciliationAction Action,
     BrokerOrder? Order = null);
 
-public static class ExitOrderReconciliationPolicy
+public static class PositionOrderReconciliationPolicy
 {
-    public static ExitOrderReconciliation Resolve(
+    public static PositionOrderReconciliation Resolve(
         string symbol,
         string? orderId,
         DateTime requestedAt,
+        TradeDirection expectedDirection,
         IReadOnlyCollection<BrokerOrder> orders)
     {
         var candidates = orders.Where(order =>
-                order.Direction == TradeDirection.Short
+                order.Direction == expectedDirection
                 && order.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)
                 && order.SubmittedAt >= requestedAt.AddSeconds(-2));
         if (!string.IsNullOrWhiteSpace(orderId))
@@ -33,15 +34,16 @@ public static class ExitOrderReconciliationPolicy
             .OrderByDescending(item => item.FilledAt ?? item.SubmittedAt)
             .FirstOrDefault();
         if (order is null)
-            return new ExitOrderReconciliation(ExitOrderReconciliationAction.Wait);
+            return new PositionOrderReconciliation(PositionOrderReconciliationAction.Wait);
 
         return order.Status switch
         {
             BrokerOrderStatus.Filled when order.AverageFillPrice is > 0
-                => new ExitOrderReconciliation(ExitOrderReconciliationAction.Finalize, order),
+                => new PositionOrderReconciliation(PositionOrderReconciliationAction.Finalize, order),
             BrokerOrderStatus.Cancelled or BrokerOrderStatus.Rejected or BrokerOrderStatus.Expired
-                => new ExitOrderReconciliation(ExitOrderReconciliationAction.ReleaseForRetry, order),
-            _ => new ExitOrderReconciliation(ExitOrderReconciliationAction.Wait, order),
+                => new PositionOrderReconciliation(
+                    PositionOrderReconciliationAction.ReleaseForRetry, order),
+            _ => new PositionOrderReconciliation(PositionOrderReconciliationAction.Wait, order),
         };
     }
 }

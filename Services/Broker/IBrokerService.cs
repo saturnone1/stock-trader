@@ -22,6 +22,12 @@ public interface IBrokerService
     /// <returns>주문 성공 여부. 실패 시 false (예외를 삼키지 않음 — 구현체가 로깅)</returns>
     Task<bool> PlaceOrderAsync(TradeRecommendation recommendation, CancellationToken ct = default);
 
+    /// <summary>기존 롱 포지션에 지정 수량을 시장가로 추가하고 추적 가능한 주문을 반환한다.</summary>
+    Task<BrokerOrder?> IncreasePositionAsync(
+        string symbol,
+        int quantity,
+        CancellationToken ct = default);
+
     /// <summary>
     /// 특정 주문을 취소한다.
     /// </summary>

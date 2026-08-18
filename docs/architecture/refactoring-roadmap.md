@@ -20,17 +20,18 @@
   preview and backtest. The adapter emits one durable broker intent at a time; quantity and
   partial-profit state change only after a broker-confirmed fill. Built-in and custom partial-profit
   strategies therefore share the same sizing and priority semantics in research and live trading.
-  Custom scaling remains fail-closed until live cost basis and scaling-count persistence are added.
+  Custom scaling remains fail-closed until live evaluation and the central capital cap are connected.
 - Live protective-stop state is persisted on `Position` in the EF-owned schema; process restarts
   no longer discard initial risk, breakeven, or
   trailing activation. Market-open checks use the injected clock, and daily holding limits count
   observed market bars instead of approximating business days as calendar days.
-- Automatic and manual live exits share `LivePositionExitCoordinator`. It atomically claims the
-  database position before contacting a broker, persists the broker order ID, waits on ambiguous
-  states instead of resubmitting, and atomically applies a quantity-matched partial or full fill plus
-  its trade record. Requested quantity and partial-profit meaning survive restarts; mismatched broker
-  fill quantities fail closed. The broker port returns a trackable `BrokerOrder` and exposes an
-  explicit quantity-close contract instead of discarding submission evidence as a boolean.
+- Automatic and manual live position changes share `LivePositionExecutionCoordinator`. It atomically
+  claims the database position before contacting a broker, persists the broker order ID, waits on
+  ambiguous states instead of resubmitting, and atomically applies a quantity-matched full exit,
+  partial profit, scale-in, or scale-out fill. Requested kind, quantity, strategy meaning, and scaling
+  rule survive restarts. Broker acknowledgements and fills with mismatched symbol, direction, or
+  quantity fail closed. The broker port returns a trackable `BrokerOrder` and exposes explicit
+  quantity buy and sell contracts instead of discarding submission evidence as a boolean.
 - `Program.cs` is now a 59-line composition root. Health, authentication, order, and backtest APIs
   are registered through feature endpoint modules; startup migration/recovery/seeding and the web
   middleware pipeline have dedicated extensions. A route-table test verifies the extracted public
@@ -89,7 +90,7 @@
 - `LongPositionExitPolicyCatalog` now owns built-in pattern defaults, exit overrides, and custom-strategy
   policy construction. Preview, backtest, and live monitoring consume the same `LongPositionExitPolicy`;
   live code no longer reaches into a nested backtest-adapter profile type.
-- `LivePositionExitCoordinator` now owns evidence-based reconciliation as well as idempotent submission.
+- `LivePositionExecutionCoordinator` now owns evidence-based reconciliation as well as idempotent submission.
   The background worker and authenticated operator endpoint share it; only a proven terminal failure
   releases a claim and only a proven quantity-matched fill reduces or closes the position. Trade,
   portfolio, and dashboard APIs share one open-position response with pending-exit state, requested
@@ -180,9 +181,9 @@
   backtest no longer disagree between nearest-share rounding and truncation, and backtest preserves
   the original quantity after partial exits. Rule execution counts advance only after an actual
   scaling fill and belong to each open position rather than an orchestration service dictionary,
-  preserving limits across processor recreation and position-state copies. Live execution remains
-  explicitly rejected until broker
-  partial-order reconciliation can honor the same contract.
+  preserving limits across processor recreation and position-state copies. Live persistence and
+  broker reconciliation now honor this contract; strategy compatibility remains explicitly rejected
+  until the live evaluator supplies identical scaling instructions and the central scale-in capital cap.
 - `OptimizationJobExecutionPolicy` now owns OOS splitting, deterministic evenly distributed 60/40 search
   planning, duration boundaries, and restart chunk calculations. `OptimizationBacktestAssumptions`
   is the single cost baseline for synchronous and background candidate evaluation. Both workers use
@@ -281,8 +282,8 @@ remaining orchestration services and extending broker-order parity around the sh
 strategy and execution policies. Current full-strategy goldens cover NextOpen preview/backtest/live
 fill and exit decisions, NextOpen entry-bar custom exits and scale-outs, fractional scale-out
 preview/backtest parity, and multi-symbol indicator cache isolation against per-symbol previews.
-Live scaling remains fail-closed until partial broker orders can be persisted and reconciled with
-the same session contract.
+Live scaling remains fail-closed until the live evaluator and central scale-in capital cap are wired
+to the now-durable position execution and reconciliation contract.
 
 ## Phase 0 — Guardrails and governance
 

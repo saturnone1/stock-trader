@@ -62,6 +62,23 @@ public class AlpacaBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
+    public async Task<BrokerOrder?> IncreasePositionAsync(
+        string symbol,
+        int quantity,
+        CancellationToken ct = default)
+    {
+        if (quantity <= 0 || string.IsNullOrWhiteSpace(symbol))
+            return null;
+
+        var order = await _tradingClient.PostOrderAsync(
+            MarketOrder.Buy(symbol, quantity).WithDuration(TimeInForce.Day), ct);
+        _logger.LogInformation(
+            "[Alpaca] Position increased — {Symbol} {Quantity} shares, OrderId={OrderId}",
+            symbol, quantity, order.OrderId);
+        return MapToModel(order);
+    }
+
+    /// <inheritdoc />
     public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
     {
         try

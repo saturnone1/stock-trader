@@ -80,7 +80,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<ManualOrderWorkflow>();
         services.AddScoped<IOrderService, OrderService>();
-        services.AddScoped<ILivePositionExitCoordinator, LivePositionExitCoordinator>();
+        services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
         services.AddScoped<LivePositionExitEvaluator>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddSingleton<FinancialSnapshotImportService>();

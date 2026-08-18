@@ -1,11 +1,14 @@
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 
 namespace StockTrader.Application.Execution;
 
 public sealed record LiveLongPositionExecutionIntent(
     int Quantity,
     string Reason,
-    bool MarksPartialProfit);
+    PositionExecutionKind Kind,
+    int? ScalingRuleIndex = null,
+    bool MarksPartialProfit = false);
 
 public sealed record LiveLongPositionExecutionDecision(
     LongPositionExecutionState State,
@@ -76,7 +79,11 @@ public static class LiveLongPositionExecutionAdapter
                 new LiveLongPositionExecutionIntent(
                     execution.Quantity,
                     execution.Reason,
-                    execution.Type == LongPositionSessionEventType.PartialExit));
+                    execution.Type == LongPositionSessionEventType.PartialExit
+                        ? PositionExecutionKind.PartialProfit
+                        : PositionExecutionKind.FullExit,
+                    MarksPartialProfit:
+                        execution.Type == LongPositionSessionEventType.PartialExit));
         }
 
         var stopUpdate = result.Events.LastOrDefault(item =>

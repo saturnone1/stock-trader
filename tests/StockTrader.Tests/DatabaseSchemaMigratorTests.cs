@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Data;
 using StockTrader.Data.Migrations;
+using StockTrader.Models.Enums;
 
 namespace StockTrader.Tests;
 
@@ -163,11 +164,12 @@ public class DatabaseSchemaMigratorTests
                 BreakevenApplied = true,
                 TrailingStopActivated = true,
                 PartialProfitTaken = true,
-                ExitRequestedAt = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc),
-                ExitRequestReason = "손절",
-                ExitRequestQuantity = 4,
-                ExitRequestMarksPartialProfit = true,
-                ExitOrderId = "order-123",
+                ExecutionRequestedAt = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc),
+                ExecutionRequestReason = "손절",
+                ExecutionRequestQuantity = 4,
+                ExecutionRequestMarksPartialProfit = true,
+                ExecutionRequestKind = PositionExecutionKind.PartialProfit,
+                ExecutionOrderId = "order-123",
             });
             await writeDb.SaveChangesAsync();
         }
@@ -180,10 +182,11 @@ public class DatabaseSchemaMigratorTests
         restored.BreakevenApplied.Should().BeTrue();
         restored.TrailingStopActivated.Should().BeTrue();
         restored.PartialProfitTaken.Should().BeTrue();
-        restored.ExitRequestReason.Should().Be("손절");
-        restored.ExitRequestQuantity.Should().Be(4);
-        restored.ExitRequestMarksPartialProfit.Should().BeTrue();
-        restored.ExitOrderId.Should().Be("order-123");
+        restored.ExecutionRequestReason.Should().Be("손절");
+        restored.ExecutionRequestQuantity.Should().Be(4);
+        restored.ExecutionRequestMarksPartialProfit.Should().BeTrue();
+        restored.ExecutionRequestKind.Should().Be(PositionExecutionKind.PartialProfit);
+        restored.ExecutionOrderId.Should().Be("order-123");
     }
 
     [Fact]
@@ -220,6 +223,45 @@ public class DatabaseSchemaMigratorTests
         (await ScalarAsync<long>(connection,
             "SELECT ExitRequestMarksPartialProfit FROM Positions WHERE Symbol = 'TQQQ'"))
             .Should().Be(0);
+        (await ScalarAsync<long>(connection,
+            "SELECT ExecutionRequestKind FROM Positions WHERE Symbol = 'TQQQ'"))
+            .Should().Be((long)PositionExecutionKind.FullExit);
+        (await TableExistsAsync(connection, "PositionScalingExecutions")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PositionExecutionMigrationPreservesLegacyPartialSellMeaning()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+        var previousMigration = db.Database.GetMigrations().Single(value =>
+            value.EndsWith("_AddDurablePositionExitQuantity", StringComparison.Ordinal));
+        await db.GetService<IMigrator>().MigrateAsync(previousMigration);
+        await ExecuteAsync(connection, """
+            INSERT INTO Positions (
+                AccountId, Symbol, Sector, Quantity, InitialQuantity,
+                EntryPrice, CurrentPrice, StopLossPrice, TargetPrice,
+                PatternType, OpenedAt, HighSinceEntry, EntryAtr, InitialRiskDistance,
+                BreakevenApplied, TrailingStopActivated, PartialProfitTaken,
+                ExitRequestedAt, ExitRequestReason, ExitRequestQuantity,
+                ExitRequestMarksPartialProfit, ExitOrderId)
+            VALUES (
+                1, 'TQQQ', '', 10, 10,
+                50, 55, 45, 60,
+                0, '2026-08-17T14:00:00Z', 55, 2, 5,
+                0, 0, 0,
+                '2026-08-18T14:00:00Z', '수동 일부 매도', 4,
+                0, 'partial-old');
+            """);
+
+        await CreateMigrator(db).MigrateAsync();
+
+        (await ScalarAsync<long>(connection,
+            "SELECT ExecutionRequestKind FROM Positions WHERE Symbol = 'TQQQ'"))
+            .Should().Be((long)PositionExecutionKind.PartialProfit);
+        (await ScalarAsync<long>(connection,
+            "SELECT ExitRequestQuantity FROM Positions WHERE Symbol = 'TQQQ'"))
+            .Should().Be(4);
     }
 
     private static DatabaseSchemaMigrator CreateMigrator(AppDbContext db) =>

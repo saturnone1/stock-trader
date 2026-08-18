@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<PatternStats> PatternStats => Set<PatternStats>();
     public DbSet<TradeRecommendation> TradeRecommendations => Set<TradeRecommendation>();
     public DbSet<Position> Positions => Set<Position>();
+    public DbSet<PositionScalingExecution> PositionScalingExecutions => Set<PositionScalingExecution>();
     public DbSet<TradeRecord> TradeRecords => Set<TradeRecord>();
     public DbSet<Ticker> Tickers => Set<Ticker>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
@@ -66,6 +67,23 @@ public class AppDbContext : DbContext
             entity.Ignore(p => p.IsOpen);
             entity.Ignore(p => p.UnrealizedPnL);
             entity.Ignore(p => p.RealizedPnL);
+            entity.Ignore(p => p.ScalingExecutionCounts);
+            entity.Property(p => p.ExecutionRequestedAt).HasColumnName("ExitRequestedAt");
+            entity.Property(p => p.ExecutionRequestReason).HasColumnName("ExitRequestReason");
+            entity.Property(p => p.ExecutionRequestQuantity).HasColumnName("ExitRequestQuantity");
+            entity.Property(p => p.ExecutionRequestMarksPartialProfit)
+                .HasColumnName("ExitRequestMarksPartialProfit");
+            entity.Property(p => p.ExecutionOrderId).HasColumnName("ExitOrderId");
+            entity.HasMany(p => p.ScalingExecutions)
+                .WithOne(item => item.Position)
+                .HasForeignKey(item => item.PositionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PositionScalingExecution>(entity =>
+        {
+            entity.HasKey(item => new { item.PositionId, item.RuleIndex });
+            entity.ToTable("PositionScalingExecutions");
         });
 
         modelBuilder.Entity<TradeRecord>(entity =>

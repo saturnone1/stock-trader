@@ -23,21 +23,21 @@ public static class LiveExitIntentStatusPolicy
 {
     public static LiveExitIntentStatus Evaluate(Position position, DateTime utcNow)
     {
-        if (!position.ExitRequestedAt.HasValue)
+        if (!position.ExecutionRequestedAt.HasValue)
             return new LiveExitIntentStatus(
                 LiveExitIntentState.Ready, null, null, false, 0, 0, false);
 
-        var hasOrderId = !string.IsNullOrWhiteSpace(position.ExitOrderId);
-        var elapsed = utcNow - position.ExitRequestedAt.Value;
+        var hasOrderId = !string.IsNullOrWhiteSpace(position.ExecutionOrderId);
+        var elapsed = utcNow - position.ExecutionRequestedAt.Value;
         return new LiveExitIntentStatus(
             hasOrderId
                 ? LiveExitIntentState.AwaitingBroker
                 : LiveExitIntentState.SubmissionUnconfirmed,
-            position.ExitRequestedAt,
-            position.ExitRequestReason,
+            position.ExecutionRequestedAt,
+            position.ExecutionRequestReason,
             hasOrderId,
             Math.Max(0, (long)elapsed.TotalSeconds),
-            position.ExitRequestQuantity ?? position.Quantity,
-            position.ExitRequestMarksPartialProfit);
+            position.ExecutionRequestQuantity ?? position.Quantity,
+            position.ExecutionRequestMarksPartialProfit);
     }
 }

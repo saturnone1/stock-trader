@@ -5,19 +5,20 @@ using StockTrader.Models.Enums;
 
 namespace StockTrader.Tests;
 
-public class ExitOrderReconciliationPolicyTests
+public class PositionOrderReconciliationPolicyTests
 {
     private static readonly DateTime RequestedAt = new(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc);
 
     [Fact]
     public void Resolve_FinalizesOnlyMatchingFilledSellOrderWithPrice()
     {
-        var result = ExitOrderReconciliationPolicy.Resolve("TQQQ", "exit-1", RequestedAt, [
+        var result = PositionOrderReconciliationPolicy.Resolve(
+            "TQQQ", "exit-1", RequestedAt, TradeDirection.Short, [
             Order("entry", TradeDirection.Long, BrokerOrderStatus.Filled, 50m),
             Order("exit-1", TradeDirection.Short, BrokerOrderStatus.Filled, 48m),
         ]);
 
-        result.Action.Should().Be(ExitOrderReconciliationAction.Finalize);
+        result.Action.Should().Be(PositionOrderReconciliationAction.Finalize);
         result.Order!.AverageFillPrice.Should().Be(48m);
     }
 
@@ -27,9 +28,10 @@ public class ExitOrderReconciliationPolicyTests
     [InlineData(BrokerOrderStatus.PartiallyFilled)]
     public void Resolve_DoesNotResubmitNonTerminalOrder(BrokerOrderStatus status)
     {
-        ExitOrderReconciliationPolicy.Resolve("TQQQ", "exit-1", RequestedAt,
+        PositionOrderReconciliationPolicy.Resolve(
+            "TQQQ", "exit-1", RequestedAt, TradeDirection.Short,
             [Order("exit-1", TradeDirection.Short, status, null)])
-            .Action.Should().Be(ExitOrderReconciliationAction.Wait);
+            .Action.Should().Be(PositionOrderReconciliationAction.Wait);
     }
 
     [Theory]
@@ -38,16 +40,18 @@ public class ExitOrderReconciliationPolicyTests
     [InlineData(BrokerOrderStatus.Expired)]
     public void Resolve_ReleasesOnlyTerminalFailedOrder(BrokerOrderStatus status)
     {
-        ExitOrderReconciliationPolicy.Resolve("TQQQ", "exit-1", RequestedAt,
+        PositionOrderReconciliationPolicy.Resolve(
+            "TQQQ", "exit-1", RequestedAt, TradeDirection.Short,
             [Order("exit-1", TradeDirection.Short, status, null)])
-            .Action.Should().Be(ExitOrderReconciliationAction.ReleaseForRetry);
+            .Action.Should().Be(PositionOrderReconciliationAction.ReleaseForRetry);
     }
 
     [Fact]
     public void Resolve_WaitsWhenOrderHistoryCannotProveOutcome()
     {
-        ExitOrderReconciliationPolicy.Resolve("TQQQ", "exit-1", RequestedAt, [])
-            .Action.Should().Be(ExitOrderReconciliationAction.Wait);
+        PositionOrderReconciliationPolicy.Resolve(
+            "TQQQ", "exit-1", RequestedAt, TradeDirection.Short, [])
+            .Action.Should().Be(PositionOrderReconciliationAction.Wait);
     }
 
     [Fact]
@@ -56,12 +60,13 @@ public class ExitOrderReconciliationPolicyTests
         var olderExpectedOrder = Order(
             "exit-expected", TradeDirection.Short, BrokerOrderStatus.Filled, 47m);
         olderExpectedOrder.SubmittedAt = RequestedAt.AddMinutes(-1);
-        var result = ExitOrderReconciliationPolicy.Resolve("TQQQ", "exit-expected", RequestedAt, [
+        var result = PositionOrderReconciliationPolicy.Resolve(
+            "TQQQ", "exit-expected", RequestedAt, TradeDirection.Short, [
             Order("exit-other", TradeDirection.Short, BrokerOrderStatus.Filled, 48m),
             olderExpectedOrder,
         ]);
 
-        result.Action.Should().Be(ExitOrderReconciliationAction.Wait);
+        result.Action.Should().Be(PositionOrderReconciliationAction.Wait);
     }
 
     private static BrokerOrder Order(

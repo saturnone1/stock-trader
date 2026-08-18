@@ -63,7 +63,8 @@ public class LiveLongPositionExecutionAdapterTests
             });
 
         result.Intent.Should().Be(new LiveLongPositionExecutionIntent(
-            5, "부분 익절(1R)", MarksPartialProfit: true));
+            5, "부분 익절(1R)", StockTrader.Models.Enums.PositionExecutionKind.PartialProfit,
+            MarksPartialProfit: true));
         result.State.CurrentQuantity.Should().Be(10);
         result.State.PartialProfitTaken.Should().BeFalse();
         result.State.StopPrice.Should().Be(95m);
@@ -103,7 +104,8 @@ public class LiveLongPositionExecutionAdapterTests
             timeExitReached: false);
 
         result.Intent.Should().Be(new LiveLongPositionExecutionIntent(
-            5, "목표 도달", MarksPartialProfit: false));
+            5, "목표 도달", StockTrader.Models.Enums.PositionExecutionKind.FullExit,
+            MarksPartialProfit: false));
     }
 
     private static LiveLongPositionExecutionDecision Evaluate(

@@ -1,3 +1,5 @@
+using StockTrader.Models.Enums;
+
 namespace StockTrader.Models;
 
 public class Position
@@ -44,20 +46,31 @@ public class Position
     /// <summary>전략의 1차 이익실현이 체결됐는지 여부.</summary>
     public bool PartialProfitTaken { get; set; }
 
-    /// <summary>브로커 청산 주문 전에 기록하는 내구성 있는 주문 의도 시각.</summary>
-    public DateTime? ExitRequestedAt { get; set; }
+    /// <summary>브로커 주문 전에 기록하는 내구성 있는 포지션 실행 의도 시각.</summary>
+    public DateTime? ExecutionRequestedAt { get; set; }
 
-    /// <summary>청산 의도를 발생시킨 전략 사유.</summary>
-    public string? ExitRequestReason { get; set; }
+    /// <summary>포지션 실행 의도를 발생시킨 전략 사유.</summary>
+    public string? ExecutionRequestReason { get; set; }
 
-    /// <summary>이번 청산 주문에서 매도하도록 청구한 수량.</summary>
-    public int? ExitRequestQuantity { get; set; }
+    /// <summary>이번 주문에서 매수 또는 매도하도록 청구한 수량.</summary>
+    public int? ExecutionRequestQuantity { get; set; }
 
-    /// <summary>이번 청산 체결이 전략의 1차 이익실현 상태를 확정하는지 여부.</summary>
-    public bool ExitRequestMarksPartialProfit { get; set; }
+    /// <summary>이번 체결이 전략의 1차 이익실현 상태를 확정하는지 여부.</summary>
+    public bool ExecutionRequestMarksPartialProfit { get; set; }
 
-    /// <summary>브로커가 반환한 청산 주문 ID. 재시작 후 체결 재조정에 사용한다.</summary>
-    public string? ExitOrderId { get; set; }
+    /// <summary>이번 실행의 종류. 기존 대기 청산은 null을 전량 청산으로 해석한다.</summary>
+    public PositionExecutionKind? ExecutionRequestKind { get; set; }
+
+    /// <summary>스케일링 실행이면 해당 컴파일 전략의 규칙 인덱스.</summary>
+    public int? ExecutionRequestRuleIndex { get; set; }
+
+    /// <summary>브로커가 반환한 주문 ID. 재시작 후 체결 재조정에 사용한다.</summary>
+    public string? ExecutionOrderId { get; set; }
+
+    public List<PositionScalingExecution> ScalingExecutions { get; set; } = [];
+
+    public IReadOnlyDictionary<int, int> ScalingExecutionCounts => ScalingExecutions
+        .ToDictionary(item => item.RuleIndex, item => item.ExecutionCount);
 
     public bool IsOpen => ClosedAt == null;
     public decimal UnrealizedPnL => (CurrentPrice - EntryPrice) * Quantity;
