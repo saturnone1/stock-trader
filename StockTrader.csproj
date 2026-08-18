@@ -32,7 +32,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Alpaca.Markets" Version="7.2.2" />
-    <PackageReference Include="Microsoft.ML" Version="4.0.0" />
+    <PackageReference Include="Microsoft.ML" Version="5.0.0" />
     <PackageReference Include="Microsoft.ML.FastTree" Version="4.0.0" />
     <PackageReference Include="Microsoft.ML.TimeSeries" Version="4.0.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
