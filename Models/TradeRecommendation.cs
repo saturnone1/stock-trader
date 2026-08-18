@@ -18,6 +18,12 @@ public class TradeRecommendation
     public int ShareQuantity { get; set; }
     public decimal Expectancy { get; set; }
     public bool WasExecuted { get; set; }
+
+    /// <summary>
+    /// 멱등 신호 식별자가 도입되기 전에 반복 저장된 동일 추천 중 대체된 행입니다.
+    /// 감사 이력은 보존하되 운영 화면과 보고서에서는 제외합니다.
+    /// </summary>
+    public bool IsSuperseded { get; set; }
     public OrderMode Mode { get; set; }
 
     /// <summary>브로커 호출 전에 영속적으로 선점한 신규 진입 요청 시각.</summary>

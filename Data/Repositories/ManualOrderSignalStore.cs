@@ -14,6 +14,8 @@ public sealed class ManualOrderSignalStore(IDbContextFactory<AppDbContext> dbFac
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         return await db.PatternSignals
             .AsNoTracking()
-            .SingleOrDefaultAsync(signal => signal.Id == signalId, ct);
+            .SingleOrDefaultAsync(
+                signal => signal.Id == signalId && !signal.IsSuperseded,
+                ct);
     }
 }

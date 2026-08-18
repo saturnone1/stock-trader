@@ -26,7 +26,9 @@ public sealed class DailyReportActivityStore(
             .ToArrayAsync(ct);
         var signals = await db.TradeRecommendations
             .AsNoTracking()
-            .Where(signal => signal.GeneratedAt >= fromUtc && signal.GeneratedAt < toUtc)
+            .Where(signal => !signal.IsSuperseded
+                && signal.GeneratedAt >= fromUtc
+                && signal.GeneratedAt < toUtc)
             .OrderByDescending(signal => signal.GeneratedAt)
             .ThenByDescending(signal => signal.Id)
             .Select(signal => new DailyReportSignalSnapshot(

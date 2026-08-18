@@ -17,7 +17,8 @@ public sealed class TradeActivityStoreTests
             db.TradeRecommendations.AddRange(
                 Recommendation(1, "OLD", Utc(1)),
                 Recommendation(2, "TIE-LOW", Utc(2)),
-                Recommendation(3, "NEW", Utc(2), "order-2"));
+                Recommendation(3, "NEW", Utc(2), "order-2"),
+                Recommendation(4, "SUPERSEDED", Utc(3), superseded: true));
             await db.SaveChangesAsync();
         }
         var store = new TradeActivityStore(new TestDbContextFactory(options));
@@ -60,13 +61,15 @@ public sealed class TradeActivityStoreTests
         long id,
         string symbol,
         DateTime generatedAt,
-        string? orderId = null) => new()
+        string? orderId = null,
+        bool superseded = false) => new()
     {
         Id = id,
         Symbol = symbol,
         PatternType = PatternType.Breakout,
         GeneratedAt = generatedAt,
-        EntryOrderId = orderId
+        EntryOrderId = orderId,
+        IsSuperseded = superseded
     };
 
     private static TradeRecord Trade(

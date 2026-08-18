@@ -63,7 +63,8 @@ public sealed class LiveSignalEvaluationStore(AppDbContext db) : ILiveSignalEval
 
             var executedNames = await db.TradeRecommendations
                 .AsNoTracking()
-                .Where(recommendation => recommendation.WasExecuted
+                .Where(recommendation => !recommendation.IsSuperseded
+                    && recommendation.WasExecuted
                     && recommendation.GeneratedAt >= marketSessionStartUtc
                     && recommendation.CustomPatternName != null
                     && strategyKeys.Contains(recommendation.CustomPatternName.ToUpper()))

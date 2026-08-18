@@ -422,6 +422,11 @@ store: API routes and live detection no longer query EF directly, activation upd
 explicit OpenAPI contracts preserve the existing wire format, and central catalog/symbol policies
 validate writes before persistence.
 
+Legacy signal and recommendation rows created before deterministic event identities are preserved
+with an explicit superseded state. One ordered EF migration marks only older, exact same-day
+duplicates, never executed or uncertain recommendations. Every operational activity reader excludes
+that state, while current writes remain protected by `SignalBarAt`/`SourceSignalId` unique indexes.
+
 Live signal recommendation now reads completed strategy trades, total open positions, executed
 session entries, and ticker sectors through `ILiveSignalEvaluationStore`. Its snapshot contains no
 EF entities, and cooldown, drawdown, and sizing rules consume the persistence-independent

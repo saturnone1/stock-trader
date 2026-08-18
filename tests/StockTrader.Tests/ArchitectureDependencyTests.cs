@@ -2683,6 +2683,40 @@ public class ArchitectureDependencyTests
         desktopModel.Should().Contain("Array.isArray(response?.errors)");
     }
 
+    [Fact]
+    public void SupersededLegacyActivityIsPreservedAndExcludedByEveryOperationalReader()
+    {
+        var repository = FindRepositoryRoot();
+        var migrationPath = Directory.GetFiles(
+                Path.Combine(repository, "Data/EfMigrations"),
+                "*_SupersedeLegacyActivityDuplicates.cs")
+            .Single(path => !path.EndsWith(".Designer.cs", StringComparison.Ordinal));
+        var migration = File.ReadAllText(migrationPath);
+        var readers = new[]
+        {
+            "Data/Repositories/PatternSignalStore.cs",
+            "Data/Repositories/ManualOrderSignalStore.cs",
+            "Data/Repositories/DashboardActivityStore.cs",
+            "Data/Repositories/DailyReportActivityStore.cs",
+            "Data/Repositories/TradeActivityStore.cs",
+            "Data/Repositories/TradeRecommendationStore.cs",
+            "Data/Repositories/LiveEntryExecutionStore.cs",
+            "Data/Repositories/LiveSignalEvaluationStore.cs",
+        };
+
+        migration.Should().Contain("SET \"IsSuperseded\" = 1");
+        migration.Should().Contain("\"SignalBarAt\" IS NULL");
+        migration.Should().Contain("\"SourceSignalId\" IS NULL");
+        migration.Should().Contain("\"WasExecuted\" = 0");
+        migration.Should().Contain("\"EntryRequestedAt\" IS NULL");
+        migration.Should().NotContain("DELETE FROM");
+        foreach (var path in readers)
+        {
+            File.ReadAllText(Path.Combine(repository, path))
+                .Should().Contain("IsSuperseded", $"{path} is an operational activity reader");
+        }
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
