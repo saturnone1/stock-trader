@@ -21,7 +21,8 @@ public static class RetryHelper
         ILogger logger,
         string operationName,
         int maxRetries = 3,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        TimeProvider? timeProvider = null)
     {
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
@@ -50,7 +51,7 @@ public static class RetryHelper
                     "{Operation} failed (attempt {Attempt}/{MaxRetries}), retrying in {DelaySeconds}s",
                     operationName, attempt, maxRetries, delay.TotalSeconds);
 
-                await Task.Delay(delay, ct);
+                await Task.Delay(delay, timeProvider ?? TimeProvider.System, ct);
             }
         }
     }

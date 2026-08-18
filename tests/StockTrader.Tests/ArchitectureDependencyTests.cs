@@ -1838,14 +1838,56 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var scanner = File.ReadAllText(Path.Combine(
             repository, "BackgroundServices/PatternScannerService.cs"));
+        var cycle = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/LivePatternScanCycle.cs"));
+        var regime = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/LiveMarketRegimeEvaluator.cs"));
 
-        scanner.Should().Contain("_timeProvider.GetUtcNow()");
-        scanner.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
-        scanner.Should().Contain("StrategyEvaluationPolicy.RegimeLookbackCalendarDays");
-        scanner.Should().Contain("StrategyEvaluationPolicy.LiveDailySignalLookbackDays");
-        scanner.Should().NotContain("DateTime.UtcNow");
-        scanner.Should().NotContain("AddDays(-400)");
-        scanner.Should().NotContain("SMA(closes, 200)");
+        cycle.Should().Contain("timeProvider.GetUtcNow()");
+        regime.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
+        cycle.Should().Contain("StrategyEvaluationPolicy.RegimeLookbackCalendarDays");
+        cycle.Should().Contain("StrategyEvaluationPolicy.LiveDailySignalLookbackDays");
+        cycle.Should().NotContain("DateTime.UtcNow");
+        cycle.Should().NotContain("AddDays(-400)");
+        regime.Should().NotContain("SMA(closes, 200)");
+    }
+
+    [Fact]
+    public void LivePatternScannerIsOnlyAChannelAndResilienceAdapter()
+    {
+        var repository = FindRepositoryRoot();
+        var workerPath = Path.Combine(
+            repository, "BackgroundServices/PatternScannerService.cs");
+        var cyclePath = Path.Combine(
+            repository, "Services/Patterns/LivePatternScanCycle.cs");
+        var contractsPath = Path.Combine(
+            repository, "Application/Trading/LivePatternScanContracts.cs");
+
+        File.Exists(cyclePath).Should().BeTrue();
+        File.Exists(contractsPath).Should().BeTrue();
+
+        var worker = File.ReadAllText(workerPath);
+        var cycle = File.ReadAllText(cyclePath);
+        var contracts = File.ReadAllText(contractsPath);
+
+        File.ReadAllLines(workerPath).Length.Should().BeLessThanOrEqualTo(120);
+        worker.Should().Contain("ILivePatternScanCycle");
+        worker.Should().Contain("cycle.RunAsync(symbol, ct)");
+        worker.Should().NotContain("IOhlcvRepository");
+        worker.Should().NotContain("IDataFeedServiceFactory");
+        worker.Should().NotContain("PatternDetectionService");
+        worker.Should().NotContain("IPatternSignalStore");
+        worker.Should().NotContain("ISignalService");
+        worker.Should().NotContain("IOrderService");
+        worker.Should().NotContain("IIndicatorService");
+        cycle.Should().Contain("ILiveDailyScanData");
+        cycle.Should().Contain("ILivePatternDetection");
+        cycle.Should().Contain("ILiveSignalProcessor");
+        cycle.Should().Contain("ILiveMarketRegimeEvaluator");
+        cycle.Should().NotContain("StockTrader.Data");
+        cycle.Should().NotContain("DateTime.UtcNow");
+        contracts.Should().NotContain("StockTrader.Services");
+        contracts.Should().NotContain("StockTrader.Data");
     }
 
     [Fact]
@@ -1854,7 +1896,7 @@ public class ArchitectureDependencyTests
         var repository = FindRepositoryRoot();
         var directConsumers = new[]
         {
-            "BackgroundServices/PatternScannerService.cs",
+            "Services/DataFeed/LiveDailyScanData.cs",
             "Services/Analysis/StockAnalysisService.cs",
             "Services/StrategyPreview/PatternPreviewService.cs",
             "Services/ML/MLModelTrainingService.cs",

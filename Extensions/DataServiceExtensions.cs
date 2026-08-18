@@ -88,6 +88,7 @@ public static class DataServiceExtensions
 
         // Data Feed Factory for runtime provider switching
         services.AddScoped<IDataFeedServiceFactory, DataFeedServiceFactory>();
+        services.AddScoped<ILiveDailyScanData, LiveDailyScanData>();
 
         return services;
     }
