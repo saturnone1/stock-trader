@@ -62,7 +62,7 @@ public class SignalServiceTests : IDisposable
             _riskMock.Object,
             _settingsRepoMock.Object,
             strategies,
-            _db,
+            new LiveSignalEvaluationStore(_db),
             opts,
             effectiveTimeProvider,
             new MarketCalendar(effectiveTimeProvider),

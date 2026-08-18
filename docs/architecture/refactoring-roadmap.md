@@ -348,6 +348,12 @@ store: API routes and live detection no longer query EF directly, activation upd
 explicit OpenAPI contracts preserve the existing wire format, and central catalog/symbol policies
 validate writes before persistence.
 
+Live signal recommendation now reads completed strategy trades, total open positions, executed
+session entries, and ticker sectors through `ILiveSignalEvaluationStore`. Its snapshot contains no
+EF entities, and cooldown, drawdown, and sizing rules consume the persistence-independent
+`StrategyCompletedTrade` projection. The application clock remains the sole owner of the US
+market-day boundary passed into the adapter.
+
 Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate automatically.
 
 ## Phase 5 — Desktop decomposition

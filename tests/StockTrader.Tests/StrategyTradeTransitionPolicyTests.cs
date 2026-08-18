@@ -87,11 +87,11 @@ public class StrategyTradeTransitionPolicyTests
     [Fact]
     public void HistoricalCooldownUsesWeekdaysAndTheSameTrailingLossRule()
     {
-        var trades = new List<TradeRecord>
+        var trades = new List<StrategyCompletedTrade>
         {
-            new() { Id = 2, ExitTime = new DateTime(2025, 1, 3), PnL = -5m },
-            new() { Id = 1, ExitTime = new DateTime(2025, 1, 2), PnL = 10m },
-            new() { Id = 3, ExitTime = new DateTime(2025, 1, 3), PnL = -2m }
+            new(2, new DateTime(2025, 1, 3), -5m, -0.05m),
+            new(1, new DateTime(2025, 1, 2), 10m, 0.10m),
+            new(3, new DateTime(2025, 1, 3), -2m, -0.02m)
         };
         var reentry = new ReentryConfig { CooldownBarsAfterLoss = 2 };
         var breaker = new CircuitBreakerConfig
