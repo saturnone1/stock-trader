@@ -42,6 +42,8 @@ infrastructure.
   metric policy, and one deterministic signal filter/R/R/statistic-selection policy.
 - Daily reporting: one deterministic schedule/window/projection policy, one activity read port, and
   isolated account-equity and notification adapters.
+- Dashboard reads: one storage-independent query reusing the risk/position observation, one focused
+  activity store, one active-account projection, and an explicit generated desktop contract.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -349,4 +351,6 @@ defaults, active-profile selection, and modification time have one application o
   signal statistics by exact symbol without endpoint persistence or formula ownership.
 - `adr/0040-isolate-daily-report-use-case.md`: isolate report scheduling, DST-safe market-day
   windows, activity reads, equity access, and notification publication behind application ports.
+- `adr/0041-isolate-dashboard-query.md`: replace endpoint orchestration and fabricated desktop risk
+  values with one explicit storage-independent dashboard read model.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -27,6 +27,9 @@ using StockTrader.Services.Portfolio;
 using StockTrader.Application.Statistics;
 using StockTrader.Application.Signals;
 using StockTrader.Application.Reporting;
+using StockTrader.Application.Dashboard;
+using StockTrader.Application.Accounts;
+using StockTrader.Services.Dashboard;
 
 namespace StockTrader.Extensions;
 
@@ -123,6 +126,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDailyReportScheduleQuery, DailyReportScheduleQuery>();
         services.AddScoped<IDailyReportGenerator, DailyReportGenerator>();
         services.AddSingleton<IActiveAccountEquityReader, ActiveAccountEquityReader>();
+        services.AddSingleton<IActiveBrokerAccountQuery, ActiveBrokerAccountQuery>();
+        services.AddScoped<IDashboardQuery, DashboardQuery>();
         services.AddScoped<ManualOrderWorkflow>();
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<IOrderService, OrderService>();

@@ -17,7 +17,8 @@ public sealed record RiskSettingsResponse(
     int MaxTotalPositions,
     int MaxPositionsPerSector,
     decimal MinExpectancy,
-    decimal MinConfidence);
+    decimal MinConfidence,
+    string OrderMode);
 
 public sealed record PositionRiskResponse(
     string Symbol,
@@ -51,7 +52,8 @@ public sealed record RiskOverviewResponse(
             snapshot.Settings.MaxTotalPositions,
             snapshot.Settings.MaxPositionsPerSector,
             snapshot.Settings.MinExpectancy,
-            snapshot.Settings.MinConfidence),
+            snapshot.Settings.MinConfidence,
+            snapshot.Settings.OrderMode.ToString()),
         snapshot.PositionRMultiples.Select(position => new PositionRiskResponse(
             position.Symbol,
             position.Pattern,

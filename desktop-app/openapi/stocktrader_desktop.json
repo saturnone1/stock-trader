@@ -68,7 +68,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2710,6 +2717,204 @@
           }
         }
       },
+      "DashboardAccountResponse": {
+        "required": [
+          "accountId",
+          "totalEquity",
+          "cash",
+          "buyingPower",
+          "unrealizedPnL",
+          "dailyPnL",
+          "isTradingBlocked",
+          "statusMessage",
+          "fetchedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "totalEquity": {
+            "type": "number",
+            "format": "double"
+          },
+          "cash": {
+            "type": "number",
+            "format": "double"
+          },
+          "buyingPower": {
+            "type": "number",
+            "format": "double"
+          },
+          "unrealizedPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "dailyPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "isTradingBlocked": {
+            "type": "boolean"
+          },
+          "statusMessage": {
+            "type": "string"
+          },
+          "fetchedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "DashboardRecommendationResponse": {
+        "required": [
+          "id",
+          "symbol",
+          "pattern",
+          "entryPrice",
+          "stopLossPrice",
+          "targetPrice",
+          "riskRewardRatio",
+          "expectancy",
+          "wasExecuted",
+          "generatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "stopLossPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "targetPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "riskRewardRatio": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "wasExecuted": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "DashboardResponse": {
+        "required": [
+          "account",
+          "risk",
+          "openPositionCount",
+          "activeSignalCount",
+          "recentRecommendations",
+          "positions",
+          "marketRegime",
+          "orderMode"
+        ],
+        "type": "object",
+        "properties": {
+          "account": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DashboardAccountResponse"
+              }
+            ]
+          },
+          "risk": {
+            "$ref": "#/components/schemas/DashboardRiskResponse"
+          },
+          "openPositionCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "activeSignalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recentRecommendations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardRecommendationResponse"
+            }
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenPositionResponse"
+            }
+          },
+          "marketRegime": {
+            "type": "string"
+          },
+          "orderMode": {
+            "type": "string"
+          }
+        }
+      },
+      "DashboardRiskResponse": {
+        "required": [
+          "dailyPnL",
+          "dailyPnLPercent",
+          "totalUnrealizedPnL",
+          "isTradingHalted",
+          "openPositionCount",
+          "positionsPerSector",
+          "lastUpdated"
+        ],
+        "type": "object",
+        "properties": {
+          "dailyPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "dailyPnLPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalUnrealizedPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "isTradingHalted": {
+            "type": "boolean"
+          },
+          "openPositionCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "positionsPerSector": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "lastUpdated": {
+            "type": "string"
+          }
+        }
+      },
       "DataSource": {
         "enum": [
           "Alpaca",
@@ -3395,6 +3600,7 @@
           "targetPrice",
           "pattern",
           "unrealizedPnL",
+          "unrealizedPnLPercent",
           "accountId",
           "highSinceEntry",
           "entryAtr",
@@ -3445,6 +3651,10 @@
             "type": "string"
           },
           "unrealizedPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "unrealizedPnLPercent": {
             "type": "number",
             "format": "double"
           },
@@ -5304,7 +5514,8 @@
           "maxTotalPositions",
           "maxPositionsPerSector",
           "minExpectancy",
-          "minConfidence"
+          "minConfidence",
+          "orderMode"
         ],
         "type": "object",
         "properties": {
@@ -5335,6 +5546,9 @@
           "minConfidence": {
             "type": "number",
             "format": "double"
+          },
+          "orderMode": {
+            "type": "string"
           }
         }
       },

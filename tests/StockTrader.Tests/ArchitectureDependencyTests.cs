@@ -1997,8 +1997,7 @@ public class ArchitectureDependencyTests
         var endpointPaths = new[]
         {
             "Api/TradeEndpoints.cs",
-            "Api/PortfolioEndpoints.cs",
-            "Api/DashboardEndpoints.cs"
+            "Api/PortfolioEndpoints.cs"
         };
 
         foreach (var path in endpointPaths)
@@ -2009,6 +2008,13 @@ public class ArchitectureDependencyTests
             source.Should().NotContain("IOpenPositionStore");
             source.Should().NotContain("HoldingDays    = (DateTime.UtcNow");
         }
+
+        var dashboard = File.ReadAllText(Path.Combine(
+            repository, "Api/DashboardEndpoints.cs"));
+        var dashboardResponse = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/DashboardContracts.cs"));
+        dashboard.Should().Contain("IDashboardQuery");
+        dashboardResponse.Should().Contain("OpenPositionResponseMapper.Map");
 
         var orders = File.ReadAllText(Path.Combine(repository, "Api/OrderEndpoints.cs"));
         var contract = File.ReadAllText(Path.Combine(
@@ -2478,6 +2484,59 @@ public class ArchitectureDependencyTests
         dataServices.Should().Contain(
             "AddSingleton<IDailyReportActivityStore, DailyReportActivityStore>");
         notifications.Should().Contain("AddSingleton<IDailyReportPublisher>");
+    }
+
+    [Fact]
+    public void DashboardUsesOneExplicitReadModelWithoutFabricatedRiskMetrics()
+    {
+        var repository = FindRepositoryRoot();
+        var endpointPath = Path.Combine(repository, "Api/DashboardEndpoints.cs");
+        var endpoint = File.ReadAllText(endpointPath);
+        var contract = File.ReadAllText(Path.Combine(
+            repository, "Application/Dashboard/DashboardContracts.cs"));
+        var response = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/DashboardContracts.cs"));
+        var query = File.ReadAllText(Path.Combine(
+            repository, "Services/Dashboard/DashboardQuery.cs"));
+        var activityStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/DashboardActivityStore.cs"));
+        var riskContract = File.ReadAllText(Path.Combine(
+            repository, "Application/Risk/RiskOverviewContracts.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/endpoints.ts"));
+        var legacyTypes = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/types.ts"));
+        var page = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Dashboard.svelte"));
+
+        File.ReadAllLines(endpointPath).Length.Should().BeLessThanOrEqualTo(25);
+        endpoint.Should().Contain("IDashboardQuery");
+        endpoint.Should().Contain("Produces<DashboardResponse>");
+        endpoint.Should().NotContain("StockTrader.Data");
+        endpoint.Should().NotContain("StockTrader.Services");
+        endpoint.Should().NotContain("ISettingsRepository");
+        endpoint.Should().NotContain("IAccountManager");
+        endpoint.Should().NotContain("Task.WhenAll");
+        contract.Should().Contain("interface IDashboardQuery");
+        contract.Should().Contain("interface IDashboardActivityStore");
+        contract.Should().NotContain("StockTrader.Models");
+        response.Should().Contain("record DashboardResponse");
+        response.Should().Contain("OpenPositionResponseMapper.Map");
+        query.Should().Contain("IRiskOverviewQuery");
+        query.Should().Contain("IActiveBrokerAccountQuery");
+        activityStore.Should().Contain("CountAsync(signal => signal.IsActive");
+        activityStore.Should().Contain("ThenByDescending(recommendation => recommendation.Id)");
+        riskContract.Should().Contain("OpenPositionListSnapshot OpenPositions");
+        riskContract.Should().Contain("OrderMode OrderMode");
+        endpoints.Should().Contain("api.get<DashboardResponse>('/api/dashboard')");
+        endpoints.Should().NotContain("totalExposure: 0");
+        endpoints.Should().NotContain("maxDrawdown: Math.max");
+        legacyTypes.Should().NotContain("interface DashboardData");
+        page.Should().Contain("dashboard.risk.dailyPnL");
+        page.Should().Contain("dashboard.risk.dailyPnLPercent");
+        page.Should().NotContain("totalExposure");
+        page.Should().NotContain("maxDrawdown");
+        page.Should().NotContain("riskLevel");
     }
 
     private static string FindRepositoryRoot()
