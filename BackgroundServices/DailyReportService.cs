@@ -1,17 +1,14 @@
 using Microsoft.Extensions.Options;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Reporting;
 using StockTrader.Configuration;
-using StockTrader.Services.Market;
-using TimeZoneConverter;
+using StockTrader.Domain.MarketData;
 
 namespace StockTrader.BackgroundServices;
 
 /// <summary>계산과 데이터 접근을 애플리케이션 유스케이스에 위임하는 일일 리포트 스케줄 어댑터입니다.</summary>
 public sealed class DailyReportService : BackgroundService
 {
-    private static readonly TimeZoneInfo KoreanTime =
-        TZConvert.GetTimeZoneInfo("Asia/Seoul");
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IMarketCalendar _marketCalendar;
     private readonly TimeProvider _timeProvider;
@@ -83,11 +80,11 @@ public sealed class DailyReportService : BackgroundService
                 "Daily report schedule lookup failed — using configured ET fallback");
         }
 
-        var marketTimeZone = _marketCalendar.GetTimeZone(MarketType.US);
+        var marketTimeZone = _marketCalendar.GetTimeZone(MarketRegion.UnitedStates);
         var reportTime = koreanReportTime
             ?? TimeOnly.ParseExact(_settings.DailyReportTime, "HH:mm");
         var reportTimeZone = koreanReportTime.HasValue
-            ? KoreanTime
+            ? _marketCalendar.GetTimeZone(MarketRegion.Korea)
             : marketTimeZone;
 
         return DailyReportPolicy.CalculateDelay(
@@ -102,7 +99,7 @@ public sealed class DailyReportService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var generator = scope.ServiceProvider.GetRequiredService<IDailyReportGenerator>();
         var report = await generator.GenerateAndPublishAsync(
-            _marketCalendar.GetTimeZone(MarketType.US),
+            _marketCalendar.GetTimeZone(MarketRegion.UnitedStates),
             ct);
         _logger.LogInformation(
             "Daily report sent: {Signals} signals, {Trades} trades, PnL ${Pnl:N2}",

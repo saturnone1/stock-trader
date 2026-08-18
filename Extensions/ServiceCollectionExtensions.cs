@@ -30,7 +30,9 @@ using StockTrader.Application.Reporting;
 using StockTrader.Application.Dashboard;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Trading;
+using StockTrader.Application.MarketData;
 using StockTrader.Services.Dashboard;
+using StockTrader.Services.DataFeed;
 
 namespace StockTrader.Extensions;
 
@@ -88,6 +90,16 @@ public static class ServiceCollectionExtensions
                 "PatternScanMaxConsecutiveFailures must be positive")
             .Validate(settings => settings.PatternScanCooldownSeconds > 0,
                 "PatternScanCooldownSeconds must be positive")
+            .Validate(settings => settings.DailyDataSyncIntervalMinutes > 0,
+                "DailyDataSyncIntervalMinutes must be positive")
+            .Validate(settings => settings.DailyDataSyncCloseDelayMinutes >= 0,
+                "DailyDataSyncCloseDelayMinutes cannot be negative")
+            .Validate(settings => settings.DailyDataSyncMaxRetries > 0,
+                "DailyDataSyncMaxRetries must be positive")
+            .Validate(settings => settings.DailyDataSyncMaxConsecutiveFailures > 0,
+                "DailyDataSyncMaxConsecutiveFailures must be positive")
+            .Validate(settings => settings.DailyDataSyncCooldownSeconds > 0,
+                "DailyDataSyncCooldownSeconds must be positive")
             .Validate(settings => settings.PositionMonitoringIntervalSeconds > 0,
                 "PositionMonitoringIntervalSeconds must be positive")
             .Validate(settings => settings.PositionOrderResolutionMaxAttempts > 0,
@@ -212,6 +224,8 @@ public static class ServiceCollectionExtensions
 
         // Market Calendar (stateless - singleton)
         services.AddSingleton<IMarketCalendar, MarketCalendar>();
+        services.AddSingleton<DailyMarketDataSyncState>();
+        services.AddScoped<IDailyMarketDataSyncCycle, DailyMarketDataSyncCycle>();
 
         // Indicators (stateless - singleton)
         services.AddSingleton<IIndicatorService, IndicatorService>();

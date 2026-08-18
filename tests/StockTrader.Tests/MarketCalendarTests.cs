@@ -1,4 +1,5 @@
 using FluentAssertions;
+using StockTrader.Domain.MarketData;
 using StockTrader.Services.Market;
 
 namespace StockTrader.Tests;
@@ -11,8 +12,8 @@ public class MarketCalendarTests
         var calendar = new MarketCalendar(new FixedTimeProvider(
             new DateTimeOffset(2026, 8, 18, 14, 0, 0, TimeSpan.Zero)));
 
-        calendar.IsMarketOpen(MarketType.US).Should().BeTrue();
-        calendar.GetLocalNow(MarketType.US).Hour.Should().Be(10);
+        calendar.IsMarketOpen(MarketRegion.UnitedStates).Should().BeTrue();
+        calendar.GetLocalNow(MarketRegion.UnitedStates).Hour.Should().Be(10);
     }
 
     [Fact]
@@ -21,7 +22,7 @@ public class MarketCalendarTests
         var calendar = new MarketCalendar(new FixedTimeProvider(
             new DateTimeOffset(2026, 8, 22, 14, 0, 0, TimeSpan.Zero)));
 
-        calendar.IsMarketOpen(MarketType.US).Should().BeFalse();
+        calendar.IsMarketOpen(MarketRegion.UnitedStates).Should().BeFalse();
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

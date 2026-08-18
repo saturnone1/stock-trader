@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Execution;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Signals;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
-using StockTrader.Services.Market;
 using StockTrader.Services.Risk;
 using StockTrader.Services.Statistics;
 
@@ -65,7 +66,7 @@ public class SignalService : ISignalService
             .ToList();
         var customStrategies = await _strategies.GetByNamesAsync(customNames, ct);
         var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
-        var marketTimeZone = _marketCalendar.GetTimeZone(MarketType.US);
+        var marketTimeZone = _marketCalendar.GetTimeZone(MarketRegion.UnitedStates);
         var marketDate = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, marketTimeZone).Date;
         var marketSessionStartUtc = TimeZoneInfo.ConvertTimeToUtc(
             DateTime.SpecifyKind(marketDate, DateTimeKind.Unspecified), marketTimeZone);

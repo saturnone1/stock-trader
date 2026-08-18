@@ -5,10 +5,13 @@ public sealed record DataProviderDescriptor(
     DataSource Value,
     string DisplayName,
     bool IsImplemented,
-    string Market,
+    MarketRegion MarketRegion,
     string RegimeBenchmarkSymbol,
     IReadOnlyList<TimeFrame> SupportedTimeFrames,
-    IReadOnlyDictionary<TimeFrame, int> MaximumLookbackDays);
+    IReadOnlyDictionary<TimeFrame, int> MaximumLookbackDays)
+{
+    public string Market => MarketRegionCatalog.Get(MarketRegion).DisplayName;
+}
 
 public static class DataProviderCatalog
 {
@@ -20,9 +23,9 @@ public static class DataProviderCatalog
     private static readonly IReadOnlyDictionary<DataSource, DataProviderDescriptor> Descriptors =
         new Dictionary<DataSource, DataProviderDescriptor>
         {
-            [DataSource.Alpaca] = new(DataSource.Alpaca, "Alpaca", true, "미국",
+            [DataSource.Alpaca] = new(DataSource.Alpaca, "Alpaca", true, MarketRegion.UnitedStates,
                 UnitedStatesRegimeBenchmark, AllTimeFrames, new Dictionary<TimeFrame, int>()),
-            [DataSource.Yahoo] = new(DataSource.Yahoo, "Yahoo Finance", true, "미국",
+            [DataSource.Yahoo] = new(DataSource.Yahoo, "Yahoo Finance", true, MarketRegion.UnitedStates,
                 UnitedStatesRegimeBenchmark, AllTimeFrames,
                 new Dictionary<TimeFrame, int>
                 {
@@ -30,7 +33,7 @@ public static class DataProviderCatalog
                     [TimeFrame.FiveMinute] = 60,
                     [TimeFrame.FifteenMinute] = 60
                 }),
-            [DataSource.LsSecurities] = new(DataSource.LsSecurities, "LS증권", true, "한국",
+            [DataSource.LsSecurities] = new(DataSource.LsSecurities, "LS증권", true, MarketRegion.Korea,
                 KoreaRegimeBenchmark, AllTimeFrames,
                 new Dictionary<TimeFrame, int>
                 {
@@ -38,7 +41,7 @@ public static class DataProviderCatalog
                     [TimeFrame.FiveMinute] = 365,
                     [TimeFrame.FifteenMinute] = 365
                 }),
-            [DataSource.Polygon] = new(DataSource.Polygon, "Polygon", false, "미국",
+            [DataSource.Polygon] = new(DataSource.Polygon, "Polygon", false, MarketRegion.UnitedStates,
                 UnitedStatesRegimeBenchmark, [], new Dictionary<TimeFrame, int>())
         };
 

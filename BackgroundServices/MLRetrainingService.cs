@@ -1,9 +1,10 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Analysis;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
+using StockTrader.Domain.MarketData;
 using StockTrader.Services.ML;
 using StockTrader.Services.Notification;
-using TimeZoneConverter;
 
 namespace StockTrader.BackgroundServices;
 
@@ -13,12 +14,10 @@ namespace StockTrader.BackgroundServices;
 /// </summary>
 public sealed class MLRetrainingService : BackgroundService
 {
-    private static readonly TimeZoneInfo EasternTime =
-        TZConvert.GetTimeZoneInfo("America/New_York");
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly INotificationDispatcher _dispatcher;
     private readonly MLSettings _mlSettings;
+    private readonly IMarketCalendar _marketCalendar;
     private readonly TimeProvider _timeProvider;
     private readonly TimeOnly _retrainAfterEt;
     private readonly ILogger<MLRetrainingService> _logger;
@@ -29,12 +28,14 @@ public sealed class MLRetrainingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         INotificationDispatcher dispatcher,
         IOptions<MLSettings> mlSettings,
+        IMarketCalendar marketCalendar,
         TimeProvider timeProvider,
         ILogger<MLRetrainingService> logger)
     {
         _scopeFactory = scopeFactory;
         _dispatcher = dispatcher;
         _mlSettings = mlSettings.Value;
+        _marketCalendar = marketCalendar;
         _timeProvider = timeProvider;
         _retrainAfterEt = TimeOnly.ParseExact(_mlSettings.AutoRetrainAfterEt, "HH:mm");
         _logger = logger;
@@ -173,5 +174,8 @@ public sealed class MLRetrainingService : BackgroundService
             _timeProvider.GetUtcNow(),
             EasternTime,
             _retrainAfterEt);
+
+    private TimeZoneInfo EasternTime =>
+        _marketCalendar.GetTimeZone(MarketRegion.UnitedStates);
 
 }

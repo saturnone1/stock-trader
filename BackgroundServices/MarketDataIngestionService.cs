@@ -1,11 +1,12 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
-using StockTrader.Services.Market;
 using StockTrader.Services.Streaming;
 
 namespace StockTrader.BackgroundServices;
@@ -152,7 +153,7 @@ public class MarketDataIngestionService : BackgroundService
     private bool IsMarketHours()
     {
         // US 또는 KRX 어느 쪽이든 장이 열려 있으면 true
-        return _marketCalendar.IsMarketOpen(MarketType.US)
-            || _marketCalendar.IsMarketOpen(MarketType.KRX);
+        return _marketCalendar.IsMarketOpen(MarketRegion.UnitedStates)
+            || _marketCalendar.IsMarketOpen(MarketRegion.Korea);
     }
 }

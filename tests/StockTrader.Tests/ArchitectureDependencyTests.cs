@@ -1914,7 +1914,7 @@ public class ArchitectureDependencyTests
         }
 
         var sync = File.ReadAllText(Path.Combine(
-            repository, "BackgroundServices/DailyDataSyncService.cs"));
+            repository, "Services/DataFeed/DailyMarketDataSyncCycle.cs"));
         var ml = File.ReadAllText(Path.Combine(
             repository, "Services/ML/MLModelTrainingService.cs"));
         var regimeClassifier = File.ReadAllText(Path.Combine(
@@ -1922,7 +1922,7 @@ public class ArchitectureDependencyTests
         var signalScorer = File.ReadAllText(Path.Combine(
             repository, "Services/ML/SignalScorer.cs"));
         sync.Should().Contain("DailyMarketDataSyncPolicy.ResolveRequiredSymbols(");
-        sync.Should().Contain("_timeProvider.GetUtcNow()");
+        sync.Should().Contain("timeProvider.GetUtcNow()");
         sync.Should().NotContain("DateTime.UtcNow");
         ml.Should().Contain("_mlSettings.MinTrainingSamples");
         ml.Should().Contain("_timeProvider.GetUtcNow()");
@@ -1931,6 +1931,49 @@ public class ArchitectureDependencyTests
         regimeClassifier.Should().NotContain("DateTime.UtcNow");
         signalScorer.Should().Contain("_timeProvider.GetUtcNow()");
         signalScorer.Should().NotContain("DateTime.UtcNow");
+    }
+
+    [Fact]
+    public void DailyDataSyncWorkerOnlySchedulesTheProviderMarketCycle()
+    {
+        var repository = FindRepositoryRoot();
+        var workerPath = Path.Combine(
+            repository, "BackgroundServices/DailyDataSyncService.cs");
+        var cyclePath = Path.Combine(
+            repository, "Services/DataFeed/DailyMarketDataSyncCycle.cs");
+        var contractsPath = Path.Combine(
+            repository, "Application/MarketData/DailyMarketDataSyncContracts.cs");
+        var marketCatalogPath = Path.Combine(
+            repository, "Domain/MarketData/MarketRegionCatalog.cs");
+        var barStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OhlcvRepository.cs"));
+
+        var worker = File.ReadAllText(workerPath);
+        var cycle = File.ReadAllText(cyclePath);
+        var contracts = File.ReadAllText(contractsPath);
+
+        File.ReadAllLines(workerPath).Length.Should().BeLessThanOrEqualTo(110);
+        worker.Should().Contain("IDailyMarketDataSyncCycle");
+        worker.Should().Contain("PeriodicTimer(interval, timeProvider)");
+        worker.Should().NotContain("IOhlcvRepository");
+        worker.Should().NotContain("IDataFeedServiceFactory");
+        worker.Should().NotContain("ISettingsRepository");
+        worker.Should().NotContain("IStatisticsService");
+        worker.Should().NotContain("IMarketCalendar");
+        cycle.Should().Contain("DataProviderCatalog.Get(source).MarketRegion");
+        cycle.Should().Contain("DailyMarketDataSyncPolicy.EvaluateWindow(");
+        cycle.Should().Contain("var from = last?.Date");
+        cycle.Should().Contain("IsCompletedDailyTimestamp");
+        cycle.Should().NotContain("last?.AddDays(1)");
+        cycle.Should().NotContain("StockTrader.Data.Repositories");
+        cycle.Should().NotContain("IDataFeedService");
+        contracts.Should().NotContain("StockTrader.Services");
+        contracts.Should().NotContain("StockTrader.Data");
+        File.Exists(marketCatalogPath).Should().BeTrue();
+        File.Exists(Path.Combine(
+            repository, "Services/Market/IMarketCalendar.cs")).Should().BeFalse();
+        barStore.Should().Contain("ON CONFLICT(Symbol, TimeFrame, Timestamp) DO UPDATE SET");
+        barStore.Should().NotContain("INSERT OR IGNORE INTO OhlcvBars");
     }
 
     [Fact]

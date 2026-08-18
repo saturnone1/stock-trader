@@ -22,6 +22,11 @@ public class TradingSettings
     public int PatternScanMaxRetries { get; set; } = 3;
     public int PatternScanMaxConsecutiveFailures { get; set; } = 5;
     public int PatternScanCooldownSeconds { get; set; } = 300;
+    public int DailyDataSyncIntervalMinutes { get; set; } = 30;
+    public int DailyDataSyncCloseDelayMinutes { get; set; } = 60;
+    public int DailyDataSyncMaxRetries { get; set; } = 3;
+    public int DailyDataSyncMaxConsecutiveFailures { get; set; } = 5;
+    public int DailyDataSyncCooldownSeconds { get; set; } = 300;
     public int PositionMonitoringIntervalSeconds { get; set; } = 60;
     public int PositionOrderResolutionMaxAttempts { get; set; } = 10;
     public int PositionOrderResolutionDelayMilliseconds { get; set; } = 500;

@@ -1,6 +1,7 @@
 using Alpaca.Markets;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using TimeZoneConverter;
 using TimeFrame = StockTrader.Domain.MarketData.TimeFrame;
@@ -89,9 +90,11 @@ public class AlpacaDataFeedService : IDataFeedService
     {
         try
         {
-            var eastern = TZConvert.GetTimeZoneInfo("America/New_York");
-            var marketOpenEt = new DateTime(date.Year, date.Month, date.Day, 9, 30, 0, DateTimeKind.Unspecified);
-            var marketCloseEt = new DateTime(date.Year, date.Month, date.Day, 16, 0, 0, DateTimeKind.Unspecified);
+            var market = MarketRegionCatalog.Get(MarketRegion.UnitedStates);
+            var eastern = TZConvert.GetTimeZoneInfo(market.TimeZoneId);
+            var sessionDate = DateTime.SpecifyKind(date.Date, DateTimeKind.Unspecified);
+            var marketOpenEt = sessionDate.Add(market.RegularOpen);
+            var marketCloseEt = sessionDate.Add(market.RegularClose);
             var from = TimeZoneInfo.ConvertTimeToUtc(marketOpenEt, eastern);
             var to = TimeZoneInfo.ConvertTimeToUtc(marketCloseEt, eastern);
             var request = new HistoricalBarsRequest(symbol, from, to, BarTimeFrame.Minute)

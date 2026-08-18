@@ -1,7 +1,8 @@
+using StockTrader.Application.MarketData;
 using StockTrader.Application.StrategyPreview;
 using StockTrader.Api.Contracts;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models.Enums;
-using StockTrader.Services.Market;
 
 namespace StockTrader.Api;
 
@@ -119,7 +120,7 @@ public static class PatternPreviewEndpoints
             ? value
             : DateTime.SpecifyKind(value, DateTimeKind.Utc);
         var marketTime = TimeZoneInfo.ConvertTimeFromUtc(
-            utc, marketCalendar.GetTimeZone(MarketType.US));
+            utc, marketCalendar.GetTimeZone(MarketRegion.UnitedStates));
         return $"{marketTime:yyyy-MM-dd HH:mm} ET";
     }
 }

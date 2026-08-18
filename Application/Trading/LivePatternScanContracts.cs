@@ -1,8 +1,12 @@
 using StockTrader.Models;
+using StockTrader.Domain.MarketData;
 
 namespace StockTrader.Application.Trading;
 
-public sealed record LiveDailyScanContext(string RegimeBenchmarkSymbol);
+public sealed record LiveDailyScanContext(
+    DataSource Source,
+    MarketRegion MarketRegion,
+    string RegimeBenchmarkSymbol);
 
 /// <summary>현재 공급자 선택과 저장된 일봉 조회를 실시간 스캔 유스케이스에 제공합니다.</summary>
 public interface ILiveDailyScanData

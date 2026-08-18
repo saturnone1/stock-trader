@@ -1,11 +1,14 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Trading;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Indicators;
+using StockTrader.Services.Market;
 using StockTrader.Services.Order;
 using StockTrader.Services.Patterns;
 using StockTrader.Services.Signal;
@@ -21,6 +24,14 @@ public sealed class LivePatternScanCycleTests
     private readonly Mock<ILiveMarketRegimeEvaluator> _regime = new();
     private readonly Mock<ILivePatternDetection> _detection = new();
     private readonly Mock<ILiveSignalProcessor> _processor = new();
+    private readonly Mock<IMarketCalendar> _calendar = new();
+
+    public LivePatternScanCycleTests()
+    {
+        _calendar.Setup(service => service.GetLocalTime(
+                It.IsAny<MarketRegion>(), Observation.UtcDateTime))
+            .Returns(new DateTime(2026, 8, 18, 10, 30, 0));
+    }
 
     [Fact]
     public async Task InsufficientBarsDoNotConsumeTheDailyScan()
@@ -54,7 +65,7 @@ public sealed class LivePatternScanCycleTests
         _detection.Verify(service => service.ScanSymbolAsync(
             "AAPL", It.IsAny<OhlcvBar[]>(), It.IsAny<MarketRegime>(),
             It.IsAny<CancellationToken>()), Times.Once);
-        _data.Verify(service => service.ResolveContextAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _data.Verify(service => service.ResolveContextAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]
@@ -78,8 +89,10 @@ public sealed class LivePatternScanCycleTests
     public async Task BenchmarkChangeInvalidatesTheDailyRegimeCache()
     {
         _data.SetupSequence(service => service.ResolveContextAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new LiveDailyScanContext("SPY"))
-            .ReturnsAsync(new LiveDailyScanContext("QQQ"));
+            .ReturnsAsync(new LiveDailyScanContext(
+                DataSource.Yahoo, MarketRegion.UnitedStates, "SPY"))
+            .ReturnsAsync(new LiveDailyScanContext(
+                DataSource.Alpaca, MarketRegion.UnitedStates, "QQQ"));
         _data.Setup(service => service.LoadBarsAsync(
                 It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()))
@@ -98,6 +111,36 @@ public sealed class LivePatternScanCycleTests
         _data.Verify(service => service.LoadBarsAsync(
             "QQQ", It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task ProviderCompletionIsIndependentAndUsesItsOwnedMarketDate()
+    {
+        _data.SetupSequence(service => service.ResolveContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LiveDailyScanContext(
+                DataSource.Yahoo, MarketRegion.UnitedStates, "SPY"))
+            .ReturnsAsync(new LiveDailyScanContext(
+                DataSource.LsSecurities, MarketRegion.Korea, "069500"))
+            .ReturnsAsync(new LiveDailyScanContext(
+                DataSource.Yahoo, MarketRegion.UnitedStates, "SPY"));
+        _data.Setup(service => service.LoadBarsAsync(
+                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Bars(StrategyEvaluationPolicy.RegimeTrendBars));
+        ConfigureNoSignals();
+
+        var sut = CreateSut();
+        await sut.RunAsync("AAPL");
+        await sut.RunAsync("AAPL");
+        await sut.RunAsync("AAPL");
+
+        _detection.Verify(service => service.ScanSymbolAsync(
+            "AAPL", It.IsAny<OhlcvBar[]>(), It.IsAny<MarketRegime>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _calendar.Verify(service => service.GetLocalTime(
+            MarketRegion.UnitedStates, Observation.UtcDateTime), Times.Exactly(2));
+        _calendar.Verify(service => service.GetLocalTime(
+            MarketRegion.Korea, Observation.UtcDateTime), Times.Once);
     }
 
     [Fact]
@@ -138,19 +181,25 @@ public sealed class LivePatternScanCycleTests
             It.IsAny<IReadOnlyList<OhlcvBar>>(), Observation.UtcDateTime), Times.Once);
     }
 
-    private LivePatternScanCycle CreateSut() => new(
-        _data.Object,
-        _regime.Object,
-        _detection.Object,
-        _processor.Object,
-        new LivePatternScanState(),
-        new FixedTimeProvider(Observation),
-        NullLogger<LivePatternScanCycle>.Instance);
+    private LivePatternScanCycle CreateSut()
+    {
+        var timeProvider = new FixedTimeProvider(Observation);
+        return new LivePatternScanCycle(
+            _data.Object,
+            _regime.Object,
+            _detection.Object,
+            _processor.Object,
+            new LivePatternScanState(),
+            _calendar.Object,
+            timeProvider,
+            NullLogger<LivePatternScanCycle>.Instance);
+    }
 
     private void ConfigureData(Func<string, IReadOnlyList<OhlcvBar>> bars)
     {
         _data.Setup(service => service.ResolveContextAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new LiveDailyScanContext("SPY"));
+            .ReturnsAsync(new LiveDailyScanContext(
+                DataSource.Yahoo, MarketRegion.UnitedStates, "SPY"));
         _data.Setup(service => service.LoadBarsAsync(
                 It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()))

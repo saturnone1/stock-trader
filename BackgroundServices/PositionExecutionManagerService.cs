@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Execution;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
-using StockTrader.Services.Market;
+using StockTrader.Domain.MarketData;
 
 namespace StockTrader.BackgroundServices;
 
@@ -23,7 +24,7 @@ public sealed class PositionExecutionManagerService(
         {
             try
             {
-                if (marketCalendar.IsMarketOpen(MarketType.US))
+                if (marketCalendar.IsMarketOpen(MarketRegion.UnitedStates))
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
                     var cycle = scope.ServiceProvider

@@ -1,274 +1,79 @@
+using Microsoft.Extensions.Options;
 using StockTrader.Application.MarketData;
-using StockTrader.Application.Strategies;
-using StockTrader.Data.Repositories;
-using StockTrader.Models.Enums;
-using StockTrader.Services.DataFeed;
-using StockTrader.Services.Market;
-using StockTrader.Services.Statistics;
+using StockTrader.Configuration;
 
 namespace StockTrader.BackgroundServices;
 
-public class DailyDataSyncService : BackgroundService
+/// <summary>일봉 동기화 유스케이스의 시작 복구, 주기 실행, 복원 정책만 담당합니다.</summary>
+public sealed class DailyDataSyncService(
+    IServiceScopeFactory scopeFactory,
+    IOptions<TradingSettings> settings,
+    TimeProvider timeProvider,
+    ILogger<DailyDataSyncService> logger) : BackgroundService
 {
-    private const int MaxConsecutiveFailures = 5;
-    private static readonly TimeSpan CooldownPeriod = TimeSpan.FromMinutes(5);
-
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IMarketCalendar _marketCalendar;
-    private readonly TimeProvider _timeProvider;
-    private readonly ILogger<DailyDataSyncService> _logger;
-
-    private int _consecutiveFailures = 0;
-
-    // BUG-W04: 동일 날짜 중복 싱크 방지 — 마지막 싱크 완료 날짜(UTC)를 기록한다.
-    // PeriodicTimer는 30분마다 tick을 발생시키지만, 싱크는 하루에 단 1회만 실행해야 한다.
-    // DateOnly 사용: DateTime.Date 비교는 tick 경계에서 race condition 발생 가능.
-    private DateOnly _lastSyncDate = DateOnly.MinValue;
-
-    public DailyDataSyncService(
-        IServiceScopeFactory scopeFactory,
-        IMarketCalendar marketCalendar,
-        TimeProvider timeProvider,
-        ILogger<DailyDataSyncService> logger)
-    {
-        _scopeFactory = scopeFactory;
-        _marketCalendar = marketCalendar;
-        _timeProvider = timeProvider;
-        _logger = logger;
-    }
+    private int _consecutiveFailures;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("DailyDataSyncService started");
+        logger.LogInformation("DailyDataSyncService started");
+        await RunInitialSyncAsync(stoppingToken);
 
-        // 시작 시 daily bars가 부족하면 즉시 동기화 (패턴 스캐너가 데이터 없이 스킵하는 문제 방지)
-        await RunInitialSyncIfNeededAsync(stoppingToken);
-
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
-
+        var interval = TimeSpan.FromMinutes(settings.Value.DailyDataSyncIntervalMinutes);
+        using var timer = new PeriodicTimer(interval, timeProvider);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            // BUG-W04: 오늘 이미 싱크 완료했으면 스킵.
-            // 장 마감 조건(usReady/krxReady)이 30분 tick마다 계속 true가 되어
-            // 동일 날짜 데이터를 하루에 수십 번 재싱크하는 문제를 방지한다.
-            if (DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime) == _lastSyncDate)
-                continue;
-
-            // US 또는 KRX 장 마감 후 1시간이 지나야 동기화 시작
-            var usNow = _marketCalendar.GetLocalNow(MarketType.US);
-            var krxNow = _marketCalendar.GetLocalNow(MarketType.KRX);
-
-            var usWeekend = usNow.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
-            var krxWeekend = krxNow.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
-
-            var usClose = _marketCalendar.GetMarketClose(MarketType.US);
-            var krxClose = _marketCalendar.GetMarketClose(MarketType.KRX);
-            var usReady = !usWeekend && usNow.TimeOfDay >= usClose.Add(TimeSpan.FromHours(1));
-            var krxReady = !krxWeekend && krxNow.TimeOfDay >= krxClose.Add(TimeSpan.FromHours(1));
-
-            if (!usReady && !krxReady)
-                continue;
-
-            // Circuit breaker: cooldown when too many consecutive failures.
-            if (_consecutiveFailures >= MaxConsecutiveFailures)
+            if (Volatile.Read(ref _consecutiveFailures)
+                >= settings.Value.DailyDataSyncMaxConsecutiveFailures)
             {
-                _logger.LogWarning(
-                    "{Service} entering cooldown after {Failures} consecutive failures. " +
-                    "Waiting {Cooldown} before resuming",
-                    nameof(DailyDataSyncService), _consecutiveFailures, CooldownPeriod);
-
-                await Task.Delay(CooldownPeriod, stoppingToken);
-                _consecutiveFailures = 0;
+                var cooldown = TimeSpan.FromSeconds(
+                    settings.Value.DailyDataSyncCooldownSeconds);
+                logger.LogWarning(
+                    "{Service} entering cooldown after {Failures} consecutive failures. "
+                    + "Waiting {Cooldown} before resuming",
+                    nameof(DailyDataSyncService),
+                    _consecutiveFailures,
+                    cooldown);
+                await Task.Delay(cooldown, timeProvider, stoppingToken);
+                Interlocked.Exchange(ref _consecutiveFailures, 0);
             }
 
             try
             {
-                var errors = 0;
                 await RetryHelper.ExecuteWithRetryAsync(
-                    async () => { errors = await SyncDailyDataAsync(stoppingToken); },
-                    _logger,
+                    () => RunScheduledCycleAsync(stoppingToken),
+                    logger,
                     "DailyDataSync",
-                    maxRetries: 3,
-                    ct: stoppingToken);
-
-                // BUG-W04: 모든 심볼이 성공했을 때만 오늘 날짜를 기록한다.
-                // 부분 실패(일부 심볼 오류) 시에는 날짜를 기록하지 않아 다음 tick에서 재시도한다.
-                if (errors == 0)
-                    _lastSyncDate = DateOnly.FromDateTime(
-                        _timeProvider.GetUtcNow().UtcDateTime);
-                else
-                    _logger.LogWarning("Partial sync: {Errors} symbols failed, will retry next cycle", errors);
-
-                _consecutiveFailures = 0;
+                    maxRetries: settings.Value.DailyDataSyncMaxRetries,
+                    ct: stoppingToken,
+                    timeProvider: timeProvider);
+                Interlocked.Exchange(ref _consecutiveFailures, 0);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                _consecutiveFailures++;
-                _logger.LogError(ex,
+                Interlocked.Increment(ref _consecutiveFailures);
+                logger.LogError(
+                    exception,
                     "Error during daily data sync (consecutive failures: {Failures})",
-                    _consecutiveFailures);
+                    Volatile.Read(ref _consecutiveFailures));
             }
         }
     }
 
-    /// <summary>
-    /// 앱 시작 시 daily bars가 부족한 심볼이 있으면 즉시 동기화.
-    /// PatternScanner의 중앙 최소 봉 수보다 데이터가 적어 스킵하는 문제를 방지한다.
-    /// DailyDataSync는 장 마감 후에만 동작하므로, 장중 시작 시 데이터가 없을 수 있다.
-    /// </summary>
-    private async Task RunInitialSyncIfNeededAsync(CancellationToken ct)
+    private async Task RunInitialSyncAsync(CancellationToken ct)
     {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
-            var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
-            var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
-
-            var settings = await settingsRepo.GetAsync(ct);
-            var feedSelection = await dataFeedFactory.SelectAsync(null, ct);
-            var dataFeed = feedSelection.Service;
-            var symbols = DailyMarketDataSyncPolicy.ResolveRequiredSymbols(
-                settings.WatchlistSymbols,
-                feedSelection.Source);
-            var symbolsNeedingSync = new List<string>();
-            var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
-
-            foreach (var symbol in symbols)
-            {
-                var minBars = DailyMarketDataSyncPolicy.MinimumRequiredBars(
-                    symbol,
-                    feedSelection.Source);
-                var bars = await ohlcvRepo.GetBarsAsync(symbol, TimeFrame.Daily,
-                    observedAt.AddDays(-StrategyEvaluationPolicy.RegimeLookbackCalendarDays),
-                    observedAt,
-                    ct);
-                if (bars.Count < minBars)
-                    symbolsNeedingSync.Add(symbol);
-            }
-
-            if (symbolsNeedingSync.Count == 0)
-            {
-                _logger.LogInformation("Initial sync: all {Count} symbols have sufficient daily bars",
-                    symbols.Count);
-                return;
-            }
-
-            _logger.LogInformation(
-                "Initial sync: {NeedSync}/{Total} symbols need daily bars — syncing now: {Symbols}",
-                symbolsNeedingSync.Count, symbols.Count,
-                string.Join(", ", symbolsNeedingSync));
-            var synced = 0;
-
-            foreach (var symbol in symbolsNeedingSync)
-            {
-                try
-                {
-                    var bars = await dataFeed.GetHistoricalBarsAsync(
-                        symbol, TimeFrame.Daily,
-                        observedAt.AddDays(-StrategyEvaluationPolicy.RegimeLookbackCalendarDays),
-                        observedAt,
-                        ct);
-
-                    if (bars.Count > 0)
-                    {
-                        await ohlcvRepo.AddBarsAsync(bars, ct);
-                        synced++;
-                        _logger.LogDebug("Initial sync: {Count} daily bars for {Symbol}", bars.Count, symbol);
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Initial sync failed for {Symbol} — will retry at regular sync", symbol);
-                }
-            }
-
-            _logger.LogInformation("Initial sync complete: {Synced}/{NeedSync} symbols synced",
-                synced, symbolsNeedingSync.Count);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Initial sync check failed — scanner will use available data");
-        }
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var cycle = scope.ServiceProvider.GetRequiredService<IDailyMarketDataSyncCycle>();
+        await cycle.RunInitialSyncIfNeededAsync(ct);
     }
 
-    /// <summary>
-    /// 모든 심볼의 일봉 데이터를 동기화한다.
-    /// Returns: 동기화 중 발생한 심볼별 오류 수 (0 = 완전 성공).
-    /// </summary>
-    private async Task<int> SyncDailyDataAsync(CancellationToken ct)
+    private async Task RunScheduledCycleAsync(CancellationToken ct)
     {
-        using var scope = _scopeFactory.CreateScope();
-        var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
-        var feedSelection = await dataFeedFactory.SelectAsync(null, ct);
-        var dataFeed = feedSelection.Service;
-        var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
-        var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
-        var statsService = scope.ServiceProvider.GetRequiredService<IStatisticsService>();
-
-        var settings = await settingsRepo.GetAsync(ct);
-        var symbols = DailyMarketDataSyncPolicy.ResolveRequiredSymbols(
-            settings.WatchlistSymbols,
-            feedSelection.Source);
-        var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
-        var synced = 0;
-        var totalBars = 0;
-        var errors = 0;
-
-        foreach (var symbol in symbols)
-        {
-            try
-            {
-                var lastDate = await ohlcvRepo.GetLastTimestampAsync(symbol, TimeFrame.Daily, ct);
-                var from = lastDate?.AddDays(1) ?? observedAt.AddYears(-5);
-
-                var bars = await dataFeed.GetHistoricalBarsAsync(
-                    symbol, TimeFrame.Daily, from, observedAt, ct);
-
-                if (bars.Count > 0)
-                {
-                    await ohlcvRepo.AddBarsAsync(bars, ct);
-                    synced++;
-                    totalBars += bars.Count;
-                    _logger.LogDebug("Synced {Count} daily bars for {Symbol}", bars.Count, symbol);
-                }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                errors++;
-                _logger.LogError(ex, "Error syncing daily data for {Symbol}", symbol);
-            }
-        }
-
-        try
-        {
-            await statsService.RefreshAllStatsAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "통계 갱신 중 오류 (데이터 동기화는 완료됨)");
-        }
-
-        _logger.LogInformation(
-            "Daily sync complete: {Synced}/{Total} symbols, {Bars} bars synced, {Errors} errors",
-            synced, symbols.Count, totalBars, errors);
-
-        return errors;
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var cycle = scope.ServiceProvider.GetRequiredService<IDailyMarketDataSyncCycle>();
+        await cycle.RunScheduledAsync(ct);
     }
 }
