@@ -46,9 +46,9 @@ public static class TradeEndpoints
 
     private static async Task<IResult> GetHistoryAsync(
         ITradeActivityQuery query,
-        PatternType? pattern,
-        DateTime? from,
-        DateTime? to,
+        string? pattern,
+        string? from,
+        string? to,
         int? skip,
         int? take,
         CancellationToken ct)

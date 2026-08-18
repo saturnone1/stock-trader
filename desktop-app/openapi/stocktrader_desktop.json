@@ -252,23 +252,21 @@
             "name": "pattern",
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/PatternType"
+              "type": "string"
             }
           },
           {
             "name": "from",
             "in": "query",
             "schema": {
-              "type": "string",
-              "format": "date-time"
+              "type": "string"
             }
           },
           {
             "name": "to",
             "in": "query",
             "schema": {
-              "type": "string",
-              "format": "date-time"
+              "type": "string"
             }
           },
           {

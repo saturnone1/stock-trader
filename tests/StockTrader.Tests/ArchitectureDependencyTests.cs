@@ -2629,6 +2629,10 @@ public class ArchitectureDependencyTests
         endpoint.Should().Contain("ITradeActivityQuery query");
         endpoint.Should().Contain("Produces<TradeRecommendationListResponse>");
         endpoint.Should().Contain("Produces<TradeHistoryResponse>");
+        endpoint.Should().Contain("string? pattern");
+        endpoint.Should().Contain("string? from");
+        endpoint.Should().Contain("string? to");
+        endpoint.Should().NotContain("PatternType? pattern");
         endpoint.Should().NotContain("StockTrader.Data");
         endpoint.Should().NotContain("StockTrader.Models");
         endpoint.Should().NotContain("ITradeHistoryStore");
@@ -2640,6 +2644,9 @@ public class ArchitectureDependencyTests
         contracts.Should().Contain("record TradeHistoryResponse");
         query.Should().Contain("interface ITradeActivityStore");
         query.Should().Contain("interface ITradeActivityQuery");
+        query.Should().Contain("TradeActivityQueryPolicy.ParsePattern(query.Pattern");
+        query.Should().Contain("TradeActivityQueryPolicy.ParseUtc(query.From, \"시작일\"");
+        query.Should().Contain("TradeActivityQueryPolicy.ParseUtc(query.To, \"종료일\"");
         query.Should().NotContain("StockTrader.Data");
         query.Should().NotContain("StockTrader.Models");
         store.Should().Contain("IDbContextFactory<AppDbContext>");

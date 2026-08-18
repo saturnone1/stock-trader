@@ -1,3 +1,4 @@
+using System.Globalization;
 using StockTrader.Application.Execution;
 
 namespace StockTrader.Application.Trading;
@@ -107,9 +108,9 @@ public sealed record TradeHistoryPage(
     IReadOnlyList<TradeHistoryView> Trades);
 
 public sealed record TradeHistoryQuery(
-    PatternType? Pattern,
-    DateTime? From,
-    DateTime? To,
+    string? Pattern,
+    string? From,
+    string? To,
     int? Skip,
     int? Take);
 
@@ -155,13 +156,17 @@ public sealed class TradeActivityQueryService(
     {
         var skip = query.Skip ?? 0;
         var take = query.Take ?? TradeActivityQueryPolicy.DefaultHistoryPageSize;
-        var errors = TradeActivityQueryPolicy.ValidateHistory(
-            query.Pattern, query.From, query.To, skip, take);
+        var errors = new List<string>();
+        var pattern = TradeActivityQueryPolicy.ParsePattern(query.Pattern, errors);
+        var from = TradeActivityQueryPolicy.ParseUtc(query.From, "시작일", errors);
+        var to = TradeActivityQueryPolicy.ParseUtc(query.To, "종료일", errors);
+        errors.AddRange(TradeActivityQueryPolicy.ValidateHistory(
+            pattern, from, to, skip, take));
         if (errors.Count > 0)
             return new(null, errors);
 
         var slice = await store.GetHistoryAsync(
-            query.Pattern, query.From, query.To, skip, take, ct);
+            pattern, from, to, skip, take, ct);
         var trades = slice.Trades.Select(Project).ToArray();
         return new(new(slice.TotalCount, skip, take, trades), []);
     }
@@ -231,6 +236,36 @@ public static class TradeActivityQueryPolicy
         count is < 1 or > MaximumPageSize
             ? [$"추천 조회 건수는 1 이상 {MaximumPageSize} 이하여야 합니다."]
             : [];
+
+    public static PatternType? ParsePattern(string? value, ICollection<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        if (Enum.TryParse<PatternType>(value.Trim(), ignoreCase: true, out var pattern)
+            && PatternCatalog.TryGet(pattern, out _))
+            return pattern;
+        errors.Add($"알 수 없는 전략 코드({value.Trim()})입니다.");
+        return null;
+    }
+
+    public static DateTime? ParseUtc(
+        string? value,
+        string label,
+        ICollection<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        if (DateTimeOffset.TryParse(
+                value.Trim(),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces
+                    | DateTimeStyles.AssumeUniversal
+                    | DateTimeStyles.AdjustToUniversal,
+                out var timestamp))
+            return timestamp.UtcDateTime;
+        errors.Add($"거래 이력 {label} 형식이 올바르지 않습니다.");
+        return null;
+    }
 
     public static IReadOnlyList<string> ValidateHistory(
         PatternType? pattern,

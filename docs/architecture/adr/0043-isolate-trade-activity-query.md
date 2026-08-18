@@ -22,11 +22,11 @@ results or produce provider-specific failures.
   status and ratio projection, holding days, and validated pagination defaults.
 - `ITradeActivityStore` is a purpose-specific persistence port. Its SQLite adapter projects EF rows
   into storage-independent activity records and applies stable timestamp-plus-ID ordering.
-- The HTTP adapter binds typed pattern and date inputs, maps explicit response contracts, and
-  translates application validation outcomes to HTTP 400.
+- The HTTP adapter forwards raw optional filter text, maps explicit response contracts, and
+  translates application parsing and validation outcomes to one stable HTTP 400 contract.
 - Page sizes must be between 1 and 500, skip must be non-negative, and a start date cannot follow
-  the end date. Unknown numeric pattern codes are rejected by the application; invalid enum/date
-  text is rejected by ASP.NET binding instead of being ignored.
+  the end date. Unknown numeric or text pattern codes and invalid invariant date text are rejected
+  by the application instead of being ignored or producing a framework-owned empty 400 response.
 - The desktop consumes generated camel-case recommendation and history contracts without legacy
   casing fallbacks. Stable strategy/order codes remain in the contract while investor-facing names
   come from the central domain catalogs; custom trades use their stored strategy name.
