@@ -8,6 +8,7 @@ import {
   createFactorLab,
   createTimingLab,
   parseBacktestSymbols,
+  projectBacktestMetadata,
   toggleSelection
 } from './backtestWorkspace.js'
 
@@ -19,6 +20,25 @@ test('backtest reset factories return independent canonical research state', () 
   assert.equal(second.symbolsText, 'SPY, QQQ, TQQQ')
   assert.deepEqual(createTimingLab().selectedWindows, ['20-20', '20-10'])
   assert.deepEqual(createFactorLab().customExperiments, [createCustomFactorExperiment(1, 'custom-1')])
+  assert.equal(createBacktestForm().slippageModel, '')
+  assert.equal(createBacktestForm('Adaptive').slippageModel, 'Adaptive')
+})
+
+test('backtest metadata projects server-owned execution choices and default', () => {
+  const projected = projectBacktestMetadata({
+    timeFrames: [{ value: 'Daily', displayName: '일봉' }],
+    dataProviders: [{ value: 'Alpaca', displayName: 'Alpaca' }],
+    slippageModels: [
+      { value: 'Adaptive', displayName: '시장 상황 반영 (권장)', description: '변동성과 유동성 반영', isDefault: true },
+      { value: 'Fixed', displayName: '고정 비율', description: '입력 비율 고정', isDefault: false }
+    ]
+  })
+
+  assert.deepEqual(projected.timeFrameOptions, [['Daily', '일봉']])
+  assert.deepEqual(projected.dataSourceOptions, [['', '기본 설정'], ['Alpaca', 'Alpaca']])
+  assert.deepEqual(projected.slippageOptions[0], ['Adaptive', '시장 상황 반영 (권장)', '변동성과 유동성 반영'])
+  assert.equal(projected.defaultSlippageModel, 'Adaptive')
+  assert.throws(() => projectBacktestMetadata({}), /메타데이터가 비어 있습니다/)
 })
 
 test('symbol parsing preserves request order while signatures normalize cache identity', () => {

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using StockTrader.Domain.Backtesting;
 using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
@@ -78,7 +79,7 @@ public class CentralCatalogTests
     {
         var contract = StrategyBuilderMetadataResponse.Create();
 
-        contract.SchemaVersion.Should().Be(2);
+        contract.SchemaVersion.Should().Be(3);
         contract.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
@@ -90,6 +91,10 @@ public class CentralCatalogTests
         contract.DataProviders.Select(item => item.Value)
             .Should().BeEquivalentTo(DataProviderCatalog.Implemented.Select(item => item.Value));
         contract.RuleOperators.Should().Contain(["crosses_above", "crosses_below"]);
+        contract.SlippageModels.Select(item => item.Value)
+            .Should().BeEquivalentTo(Enum.GetValues<SlippageModel>());
+        contract.SlippageModels.Should().ContainSingle(item => item.IsDefault)
+            .Which.Value.Should().Be(BacktestExecutionCatalog.DefaultSlippageModel);
         contract.TimeFrames.Should().OnlyContain(item =>
             item.Preview.DefaultLookbackDays > 0
             && item.Preview.MaximumRangeDays >= item.Preview.DefaultLookbackDays
@@ -107,8 +112,9 @@ public class CentralCatalogTests
         var yahoo = root.GetProperty("dataProviders").EnumerateArray()
             .Single(item => item.GetProperty("value").GetString() == "Yahoo");
 
-        root.GetProperty("schemaVersion").GetInt32().Should().Be(2);
+        root.GetProperty("schemaVersion").GetInt32().Should().Be(3);
         root.GetProperty("timeFrames")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         yahoo.GetProperty("maximumLookbackDays").GetProperty("OneMinute").GetInt32().Should().Be(7);
+        root.GetProperty("slippageModels")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
     }
 }

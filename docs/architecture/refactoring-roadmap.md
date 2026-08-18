@@ -236,6 +236,11 @@
 - Production baseline evidence allowed the handwritten SQLite bridge to be retired. Startup now
   accepts only an empty database or one with EF migration history and fails closed without writes
   for an unbaselined legacy database. EF Core is the sole schema mutation engine.
+- Backtest slippage identity, labels, descriptions, and the default now live in the domain-owned
+  `BacktestExecutionCatalog`. The versioned strategy-builder metadata projects that catalog to the
+  desktop, where a fail-closed adapter supplies both the execution selector and its explanation.
+  Optimization entry and sizing candidates likewise render the existing server strategy catalog
+  instead of retaining separate arrays in the page and form component.
 
 Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
 remaining orchestration services and extending broker-order parity around the shared compiled

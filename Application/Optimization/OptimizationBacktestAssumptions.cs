@@ -1,4 +1,4 @@
-using StockTrader.Models;
+using StockTrader.Domain.Backtesting;
 
 namespace StockTrader.Application.Optimization;
 
@@ -10,5 +10,5 @@ public static class OptimizationBacktestAssumptions
 {
     public const decimal SlippagePercent = 0.05m;
     public const decimal CommissionPerTrade = 1.00m;
-    public const SlippageModel CostModel = SlippageModel.Adaptive;
+    public const SlippageModel CostModel = BacktestExecutionCatalog.DefaultSlippageModel;
 }

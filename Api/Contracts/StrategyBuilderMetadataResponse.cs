@@ -1,5 +1,6 @@
 using StockTrader.Application.StrategyPreview;
 using StockTrader.Application.Strategies;
+using StockTrader.Domain.Backtesting;
 using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
@@ -42,6 +43,11 @@ public sealed record DataProviderMetadataResponse(
     IReadOnlyDictionary<TimeFrame, int> MaximumLookbackDays);
 
 public sealed record StrategyOptionMetadataResponse(string Code, string DisplayName);
+public sealed record SlippageModelMetadataResponse(
+    SlippageModel Value,
+    string DisplayName,
+    string Description,
+    bool IsDefault);
 public sealed record ExitMethodMetadataResponse(
     string Code,
     string DisplayName,
@@ -65,10 +71,11 @@ public sealed record StrategyBuilderMetadataResponse(
     IReadOnlyList<StrategyOptionMetadataResponse> ScalingDirections,
     IReadOnlyList<ExitMethodMetadataResponse> StopMethods,
     IReadOnlyList<ExitMethodMetadataResponse> TargetMethods,
+    IReadOnlyList<SlippageModelMetadataResponse> SlippageModels,
     LiveStrategyConstraintsMetadataResponse LiveStrategyConstraints)
 {
     public static StrategyBuilderMetadataResponse Create() => new(
-        SchemaVersion: 2,
+        SchemaVersion: 3,
         DocumentVersion: StrategyDocumentVersions.Current,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
@@ -109,6 +116,12 @@ public sealed record StrategyBuilderMetadataResponse(
         ScalingDirections: StrategyCatalog.ScalingDirections.Select(ToResponse).ToArray(),
         StopMethods: StrategyCatalog.StopMethods.Select(ToResponse).ToArray(),
         TargetMethods: StrategyCatalog.TargetMethods.Select(ToResponse).ToArray(),
+        SlippageModels: BacktestExecutionCatalog.SlippageModels.Select(item =>
+            new SlippageModelMetadataResponse(
+                item.Value,
+                item.DisplayName,
+                item.Description,
+                item.IsDefault)).ToArray(),
         LiveStrategyConstraints: new(
             LiveStrategyCompatibilityPolicy.SupportedTimeFrames,
             LiveStrategyCompatibilityPolicy.SupportedEntryModes,

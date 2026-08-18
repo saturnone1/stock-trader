@@ -26,6 +26,7 @@
     createFactorLab,
     createTimingLab,
     createUniverseComparison,
+    projectBacktestMetadata,
     toggleSelection
   } from '../features/backtest/backtestWorkspace'
   import {
@@ -39,11 +40,8 @@
   let timeFrameOptions = []
   let dataSourceOptions = [['', '기본 설정']]
   let dataProviders = []
-
-  const slippageOptions = [
-    ['Adaptive', '적응형'],
-    ['Fixed', '고정 비율']
-  ]
+  let slippageOptions = []
+  let defaultSlippageModel = ''
 
   let patterns = []
   let loading = true
@@ -85,9 +83,15 @@
   async function loadMetadata() {
     try {
       const metadata = await metadataApi.getStrategyBuilder()
-      timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => [item.value, item.displayName])
-      dataProviders = metadata?.dataProviders ?? []
-      dataSourceOptions = [['', '기본 설정'], ...dataProviders.map((item) => [item.value, item.displayName])]
+      const projected = projectBacktestMetadata(metadata)
+      timeFrameOptions = projected.timeFrameOptions
+      dataProviders = projected.dataProviders
+      dataSourceOptions = projected.dataSourceOptions
+      slippageOptions = projected.slippageOptions
+      defaultSlippageModel = projected.defaultSlippageModel
+      if (!slippageOptions.some(([value]) => value === form.slippageModel)) {
+        form.slippageModel = defaultSlippageModel
+      }
     } catch (e) {
       error = e?.response?.data?.error || e?.message || '시간축·데이터 공급자 정보를 불러오지 못했습니다.'
     }
@@ -264,7 +268,7 @@
     runStatus = ''
     comparisonResults = []
     activeScenarioKey = ''
-    form = createBacktestForm()
+    form = createBacktestForm(defaultSlippageModel)
     timingLab = createTimingLab()
     factorLab = createFactorLab()
     factorLabLoading = false

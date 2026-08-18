@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Backtesting;
 using StockTrader.Configuration;
+using StockTrader.Domain.Backtesting;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Patterns;

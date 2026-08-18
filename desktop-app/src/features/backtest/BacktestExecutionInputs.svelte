@@ -6,6 +6,8 @@
   export let dataSourceOptions = []
   export let slippageOptions = []
   export let warning = ''
+
+  $: slippageDescription = slippageOptions.find(([value]) => value === form.slippageModel)?.[2] ?? ''
 </script>
 
 <div class="grid grid-cols-1 gap-4 xl:grid-cols-5">
@@ -18,10 +20,12 @@
 <div class="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-5">
   <label class="text-sm text-gray-300"><div class="mb-2 text-gray-500">타임프레임</div><select bind:value={form.timeFrame} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">{#each timeFrameOptions as [value, label]}<option value={value}>{label}</option>{/each}</select></label>
   <label class="text-sm text-gray-300"><div class="mb-2 text-gray-500">데이터 소스</div><select bind:value={form.dataSource} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">{#each dataSourceOptions as [value, label]}<option value={value}>{label}</option>{/each}</select></label>
-  <label class="text-sm text-gray-300"><div class="mb-2 text-gray-500">슬리피지 모델</div><select bind:value={form.slippageModel} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">{#each slippageOptions as [value, label]}<option value={value}>{label}</option>{/each}</select></label>
+  <label class="text-sm text-gray-300"><div class="mb-2 text-gray-500">체결 가격 보정 방식</div><select bind:value={form.slippageModel} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white">{#each slippageOptions as [value, label]}<option value={value}>{label}</option>{/each}</select></label>
   <label class="text-sm text-gray-300"><div class="mb-2 text-gray-500">슬리피지 %</div><input type="number" step="0.01" bind:value={form.slippagePercent} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
   <label class="text-sm text-gray-300"><div class="mb-2 text-gray-500">거래당 수수료</div><input type="number" step="0.1" bind:value={form.commissionPerTrade} class="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" /></label>
 </div>
+
+{#if slippageDescription}<p class="mt-2 text-xs text-gray-500">{slippageDescription}</p>{/if}
 
 {#if warning}
   <div class="mt-4 rounded-lg border border-yellow-700 bg-yellow-900/20 p-4 text-sm text-yellow-300"><div class="flex items-center gap-2"><TriangleAlert size={16} />{warning}</div></div>

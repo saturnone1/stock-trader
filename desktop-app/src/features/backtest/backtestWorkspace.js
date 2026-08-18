@@ -1,6 +1,6 @@
 import { uniqueSymbols } from './backtestResearch.js'
 
-export function createBacktestForm() {
+export function createBacktestForm(defaultSlippageModel = '') {
   return {
     symbolsText: 'SPY, QQQ, TQQQ',
     from: '',
@@ -8,7 +8,7 @@ export function createBacktestForm() {
     initialCapital: 100000,
     timeFrame: 'Daily',
     dataSource: '',
-    slippageModel: 'Adaptive',
+    slippageModel: defaultSlippageModel,
     slippagePercent: 0.05,
     commissionPerTrade: 1,
     enableWalkForward: false,
@@ -28,6 +28,25 @@ export function createBacktestForm() {
     overheatStage1Pct: 1.15,
     overheatStage2Pct: 1.25,
     smaPeriod: 200
+  }
+}
+
+export function projectBacktestMetadata(metadata) {
+  const timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => [item.value, item.displayName])
+  const dataProviders = metadata?.dataProviders ?? []
+  const slippageModels = metadata?.slippageModels ?? []
+  const defaultSlippageModel = slippageModels.find((item) => item.isDefault)?.value
+
+  if (!timeFrameOptions.length || !dataProviders.length || !slippageModels.length || !defaultSlippageModel) {
+    throw new Error('서버의 백테스트 실행 메타데이터가 비어 있습니다.')
+  }
+
+  return {
+    timeFrameOptions,
+    dataProviders,
+    dataSourceOptions: [['', '기본 설정'], ...dataProviders.map((item) => [item.value, item.displayName])],
+    slippageOptions: slippageModels.map((item) => [item.value, item.displayName, item.description]),
+    defaultSlippageModel
   }
 }
 

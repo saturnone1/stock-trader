@@ -3,6 +3,7 @@ using StockTrader.Application.Backtesting;
 using StockTrader.Application.Optimization;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
+using StockTrader.Domain.Backtesting;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -138,7 +139,7 @@ public class BacktestService : IBacktestService
         TimeFrame timeFrame = TimeFrame.Daily,
         BacktestRiskParameters? riskParams = null,
         PatternParameterOverrides? exitOverrides = null,
-        SlippageModel slippageModel = SlippageModel.Adaptive,
+        SlippageModel slippageModel = BacktestExecutionCatalog.DefaultSlippageModel,
         WeightStrategy? weightStrategy = null,
         PatternSettings? effectivePatternSettings = null,
         CancellationToken ct = default)

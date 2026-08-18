@@ -1625,6 +1625,40 @@ public class ArchitectureDependencyTests
         source.Should().NotContain("app.MapGet(");
     }
 
+    [Fact]
+    public void BacktestExecutionChoicesHaveOneDomainCatalogOwner()
+    {
+        var repository = FindRepositoryRoot();
+        var catalog = File.ReadAllText(Path.Combine(
+            repository, "Domain/Backtesting/BacktestExecutionCatalog.cs"));
+        var requestModel = File.ReadAllText(Path.Combine(repository, "Models/BacktestResult.cs"));
+        var metadata = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/StrategyBuilderMetadataResponse.cs"));
+        var backtestPage = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Backtest.svelte"));
+        var backtestWorkspace = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestWorkspace.js"));
+        var optimizationPage = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Optimization.svelte"));
+        var optimizationForm = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/optimization/OptimizationJobForm.svelte"));
+
+        catalog.Should().Contain("public enum SlippageModel");
+        catalog.Should().Contain("DefaultSlippageModel = SlippageModel.Adaptive");
+        requestModel.Should().Contain("BacktestExecutionCatalog.DefaultSlippageModel");
+        requestModel.Should().NotContain("public enum SlippageModel");
+        metadata.Should().Contain("SlippageModels: BacktestExecutionCatalog.SlippageModels");
+        backtestPage.Should().Contain("projectBacktestMetadata(metadata)");
+        backtestPage.Should().NotContain("['Adaptive'");
+        backtestWorkspace.Should().Contain("metadata?.slippageModels");
+        backtestWorkspace.Should().NotContain("slippageModel: 'Adaptive'");
+        optimizationPage.Should().NotContain("sizingModeOptions: ['FixedRisk'");
+        optimizationPage.Should().NotContain("entryLogicOptions: ['AND'");
+        optimizationForm.Should().Contain("{#each sizingModeOptions as [value, label]}");
+        optimizationForm.Should().NotContain("[['FixedRisk'");
+        optimizationForm.Should().NotContain("[['CurrentClose'");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

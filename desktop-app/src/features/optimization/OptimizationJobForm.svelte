@@ -11,6 +11,8 @@
   export let rankOptions = []
   export let logicOptionValues = []
   export let yesNoOptions = []
+  export let entryModeOptions = []
+  export let sizingModeOptions = []
   export let entryRuleOptions = []
   export let exitRuleOptions = []
   export let creating = false
@@ -170,8 +172,8 @@
             <label class="mb-2 flex items-center gap-2"><input type="checkbox" bind:checked={form.sweepEntryLogic} disabled={!form.timingFocusMode} /> 진입 로직</label>
             <label class="mb-2 flex items-center gap-2"><input type="checkbox" bind:checked={form.sweepExitLogic} disabled={!form.timingFocusMode} /> 청산 로직</label>
             <label class="mb-2 flex items-center gap-2"><input type="checkbox" bind:checked={form.sweepRequireBullRegime} disabled={!form.timingFocusMode} /> 강세장 제한 on/off</label>
-            <label class="mb-2 flex items-center gap-2"><input type="checkbox" bind:checked={form.sweepEntryMode} disabled={!form.timingFocusMode} /> 진입 방식(CurrentClose / NextOpen)</label>
-            <label class="flex items-center gap-2"><input type="checkbox" bind:checked={form.sweepSizingMode} disabled={!form.timingFocusMode} /> 사이징 방식(FixedRisk / Kelly / HalfKelly)</label>
+            <label class="mb-2 flex items-center gap-2"><input type="checkbox" bind:checked={form.sweepEntryMode} disabled={!form.timingFocusMode} /> 매수 시점 비교</label>
+            <label class="flex items-center gap-2"><input type="checkbox" bind:checked={form.sweepSizingMode} disabled={!form.timingFocusMode} /> 주문 금액 방식 비교</label>
           </div>
 
           <div class="rounded-lg border border-gray-800 bg-gray-950 p-4 text-sm text-gray-300">
@@ -276,7 +278,7 @@
             </div>
             <div>
               <div class="mb-2 text-xs text-gray-500">진입 방식</div>
-              {#each [['CurrentClose', '현재 봉 종가'], ['NextOpen', '다음 봉 시가']] as [value, label]}
+              {#each entryModeOptions as [value, label]}
                 <label class="mb-1 flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={form.entryModeOptions.includes(value)} on:change={(e) => form.entryModeOptions = e.currentTarget.checked ? [...form.entryModeOptions, value] : form.entryModeOptions.filter((item) => item !== value)} />
                   {label}
@@ -288,7 +290,7 @@
 
         <div class="rounded-lg border border-gray-800 bg-gray-900 p-4 text-sm text-gray-300">
           <div class="mb-3 font-medium text-white">사이징 방식</div>
-          {#each [['FixedRisk', '고정 리스크'], ['Kelly', '켈리'], ['HalfKelly', '하프 켈리']] as [value, label]}
+          {#each sizingModeOptions as [value, label]}
             <label class="mb-2 flex items-center gap-2 text-xs">
               <input type="checkbox" checked={form.sizingModeOptions.includes(value)} on:change={(e) => form.sizingModeOptions = e.currentTarget.checked ? [...form.sizingModeOptions, value] : form.sizingModeOptions.filter((item) => item !== value)} />
               {label}

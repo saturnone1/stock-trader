@@ -27,6 +27,8 @@
 
   let entryModeLabelMap = {}
   let sizingModeLabelMap = {}
+  let entryModeOptions = []
+  let sizingModeOptions = []
   let logicOptionValues = []
 
   const yesNoOptions = [
@@ -94,11 +96,11 @@
     defaultAllocationMin: 30,
     defaultAllocationMax: 100,
     defaultAllocationStep: 10,
-    entryLogicOptions: ['AND', 'OR'],
-    exitLogicOptions: ['OR', 'AND'],
+    entryLogicOptions: [],
+    exitLogicOptions: [],
     requireBullRegimeOptions: [true, false],
-    entryModeOptions: ['CurrentClose', 'NextOpen'],
-    sizingModeOptions: ['FixedRisk', 'Kelly', 'HalfKelly']
+    entryModeOptions: [],
+    sizingModeOptions: []
   }
 
   onMount(() => {
@@ -120,6 +122,8 @@
       dataSourceOptions = [['', '기본 설정'], ...(metadata?.dataProviders ?? []).map((item) => [item.value, item.displayName])]
       entryModeLabelMap = Object.fromEntries((metadata?.entryModes ?? []).map((item) => [item.code, item.displayName]))
       sizingModeLabelMap = Object.fromEntries((metadata?.sizingModes ?? []).map((item) => [item.code, item.displayName]))
+      entryModeOptions = (metadata?.entryModes ?? []).map((item) => [item.code, item.displayName])
+      sizingModeOptions = (metadata?.sizingModes ?? []).map((item) => [item.code, item.displayName])
       logicOptionValues = (metadata?.logicModes ?? []).map((item) => [item.code, item.displayName])
       form.entryModeOptions = (metadata?.entryModes ?? []).map((item) => item.code)
       form.sizingModeOptions = (metadata?.sizingModes ?? []).map((item) => item.code)
@@ -302,6 +306,8 @@
       {rankOptions}
       {logicOptionValues}
       {yesNoOptions}
+      {entryModeOptions}
+      {sizingModeOptions}
       entryRuleOptions={timingEntryRules()}
       exitRuleOptions={timingExitRules()}
       {creating}

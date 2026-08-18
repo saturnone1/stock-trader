@@ -4,6 +4,7 @@ using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
+using StockTrader.Domain.Backtesting;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;

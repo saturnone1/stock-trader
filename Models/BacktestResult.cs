@@ -1,19 +1,9 @@
 using StockTrader.Models.Enums;
 
 using StockTrader.Application.Strategies;
+using StockTrader.Domain.Backtesting;
 
 namespace StockTrader.Models;
-
-/// <summary>
-/// 슬리피지 계산 모델
-/// </summary>
-public enum SlippageModel
-{
-    /// <summary>고정 비율 (SlippagePercent 사용)</summary>
-    Fixed,
-    /// <summary>적응형: ATR(변동성) + 거래량(유동성) 기반 동적 계산</summary>
-    Adaptive
-}
 
 /// <summary>
 /// 백테스트 실행 시 패턴별 파라미터를 일시적으로 오버라이드합니다.
@@ -260,7 +250,7 @@ public class BacktestRequest
     /// <summary>
     /// 슬리피지 모델 선택. Fixed=고정비율, Adaptive=변동성/유동성 반영.
     /// </summary>
-    public SlippageModel SlippageModel { get; set; } = SlippageModel.Adaptive;
+    public SlippageModel SlippageModel { get; set; } = BacktestExecutionCatalog.DefaultSlippageModel;
 
     // Walk-Forward
     public bool EnableWalkForward { get; set; }

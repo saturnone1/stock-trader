@@ -1,6 +1,7 @@
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
 using StockTrader.Configuration;
+using StockTrader.Domain.Backtesting;
 using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models;
