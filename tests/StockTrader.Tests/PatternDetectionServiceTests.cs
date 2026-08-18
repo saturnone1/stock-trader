@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using StockTrader.Application.Statistics;
 using StockTrader.Application.SymbolProfiles;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
@@ -16,14 +17,14 @@ namespace StockTrader.Tests;
 public class PatternDetectionServiceTests
 {
     private readonly Mock<ISettingsRepository> _settingsRepoMock;
-    private readonly Mock<IPatternStatsRepository> _statsRepoMock;
+    private readonly Mock<IPatternStatisticsQuery> _patternStatisticsMock;
     private readonly Mock<ISignalScorer> _signalScorerMock;
     private readonly Mock<IMarketRegimeClassifier> _regimeClassifierMock;
 
     public PatternDetectionServiceTests()
     {
         _settingsRepoMock = new Mock<ISettingsRepository>();
-        _statsRepoMock = new Mock<IPatternStatsRepository>();
+        _patternStatisticsMock = new Mock<IPatternStatisticsQuery>();
         _signalScorerMock = new Mock<ISignalScorer>();
         _regimeClassifierMock = new Mock<IMarketRegimeClassifier>();
 
@@ -54,7 +55,7 @@ public class PatternDetectionServiceTests
         return new PatternDetectionService(
             detectors ?? Enumerable.Empty<IPatternDetector>(),
             _settingsRepoMock.Object,
-            _statsRepoMock.Object,
+            _patternStatisticsMock.Object,
             _signalScorerMock.Object,
             _regimeClassifierMock.Object,
             Mock.Of<ICustomStrategyDetectorFactory>(),
@@ -398,17 +399,19 @@ public class PatternDetectionServiceTests
             .ReturnsAsync(mlEnhancedConfidence);
 
         // PatternStats 조회 → WinRate 반환
-        _statsRepoMock
-            .Setup(r => r.GetAsync(
-                It.IsAny<PatternType>(),
-                It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PatternStats
+        _patternStatisticsMock
+            .Setup(query => query.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
             {
-                PatternType = PatternType.GapUpPullback,
-                WinRate = 0.65m,
-                AvgWinPercent = 0.05m,
-                AvgLossPercent = 0.02m
+                new PatternStatisticsSnapshot(
+                    PatternType.GapUpPullback,
+                    "AAPL",
+                    20,
+                    0.65m,
+                    0.05m,
+                    0.02m,
+                    0.1m,
+                    DateTime.UtcNow)
             });
 
         var signal = MakeSignal("AAPL", PatternType.GapUpPullback, confidence: originalConfidence);
@@ -479,10 +482,9 @@ public class PatternDetectionServiceTests
             .ReturnsAsync(0.7m);
 
         // Stats 없음 (null 반환)
-        _statsRepoMock
-            .Setup(r => r.GetAsync(
-                PatternType.Breakout, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((PatternStats?)null);
+        _patternStatisticsMock
+            .Setup(query => query.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatternStatisticsSnapshot>());
 
         var signal = MakeSignal("AAPL", PatternType.Breakout, 0.6m);
         var detector = MakeDetector(PatternType.Breakout, signal);
@@ -502,6 +504,47 @@ public class PatternDetectionServiceTests
                 0.5m,
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task ScanSymbol_SymbolStatsMissing_UsesAggregateWinRateForScoring()
+    {
+        SetupSettings(PatternType.Breakout);
+        _signalScorerMock.Setup(scorer => scorer.IsModelLoaded).Returns(true);
+        _signalScorerMock
+            .Setup(scorer => scorer.ScoreAsync(
+                It.IsAny<PatternSignal>(),
+                It.IsAny<OhlcvBar[]>(),
+                It.IsAny<MarketRegime>(),
+                0.61m,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0.79m);
+        _patternStatisticsMock
+            .Setup(query => query.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new PatternStatisticsSnapshot(
+                    PatternType.Breakout, null, 30, 0.61m, 0.04m, 0.02m, 0.08m,
+                    DateTime.UtcNow),
+                new PatternStatisticsSnapshot(
+                    PatternType.Breakout, "MSFT", 15, 0.92m, 0.04m, 0.02m, 0.08m,
+                    DateTime.UtcNow)
+            });
+        var detector = MakeDetector(
+            PatternType.Breakout,
+            MakeSignal("AAPL", PatternType.Breakout, 0.6m));
+
+        var signals = await CreateSut(new[] { detector.Object })
+            .ScanSymbolAsync("AAPL", MakeBars(), MakeRegime());
+
+        signals.Should().ContainSingle()
+            .Which.Confidence.Should().Be(0.79m);
+        _signalScorerMock.Verify(scorer => scorer.ScoreAsync(
+            It.IsAny<PatternSignal>(),
+            It.IsAny<OhlcvBar[]>(),
+            It.IsAny<MarketRegime>(),
+            0.61m,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

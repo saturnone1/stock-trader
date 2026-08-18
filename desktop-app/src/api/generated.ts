@@ -240,7 +240,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["SignalListResponse"];
+                    };
                 };
             };
         };
@@ -877,7 +879,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["PatternStatisticsListResponse"];
+                    };
                 };
             };
         };
@@ -3361,6 +3365,30 @@ export interface components {
             /** Format: date-time */
             to?: null | string;
         };
+        PatternStatisticsListResponse: {
+            /** Format: int32 */
+            count: number;
+            stats: components["schemas"]["PatternStatisticsResponse"][];
+        };
+        PatternStatisticsResponse: {
+            pattern: string;
+            symbol: null | string;
+            /** Format: int32 */
+            sampleSize: number;
+            /** Format: double */
+            winRate: number;
+            /** Format: double */
+            avgWinPercent: number;
+            /** Format: double */
+            avgLossPercent: number;
+            /** Format: double */
+            maxDrawdownPercent: number;
+            /** Format: double */
+            expectancy: number;
+            /** Format: double */
+            profitFactor: number;
+            lastUpdated: string;
+        };
         /** @enum {unknown} */
         PatternType: "GapUpPullback" | "Breakout" | "VwapReversion" | "RsiMeanReversion" | "TrendPullback" | "OpeningRangeBreakout" | "VolumeSpikeContinuation" | "EarningsDrift" | "IndexRegimeFilter" | "VolatilityExpansion" | "MomentumReversal" | "MultiTimeframeTrend" | "MeanReversionChannel" | "Rsi2Bollinger" | "VolatilityBreakout" | "Tqqq200Sma" | "CumulativeRsi2" | "Custom";
         PortfolioEquityPointResponse: {
@@ -3381,25 +3409,6 @@ export interface components {
             /** Format: int32 */
             positionCount: number;
         };
-        PortfolioPatternStatisticsResponse: {
-            pattern: string;
-            symbol: null | string;
-            /** Format: int32 */
-            sampleSize: number;
-            /** Format: double */
-            winRate: number;
-            /** Format: double */
-            avgWinPercent: number;
-            /** Format: double */
-            avgLossPercent: number;
-            /** Format: double */
-            maxDrawdownPercent: number;
-            /** Format: double */
-            expectancy: number;
-            /** Format: double */
-            profitFactor: number;
-            lastUpdated: string;
-        };
         PortfolioPerformanceResponse: {
             /** Format: int32 */
             totalTrades: number;
@@ -3411,7 +3420,7 @@ export interface components {
             avgLossPercent: number;
             /** Format: double */
             maxDrawdown: number;
-            patternStats: components["schemas"]["PortfolioPatternStatisticsResponse"][];
+            patternStats: components["schemas"]["PatternStatisticsResponse"][];
             equityCurve: components["schemas"]["PortfolioEquityPointResponse"][];
         };
         PositionRiskResponse: {
@@ -3607,6 +3616,33 @@ export interface components {
             message: string;
             /** Format: date-time */
             lastModified: string;
+        };
+        SignalListItemResponse: {
+            /** Format: int64 */
+            id: number;
+            symbol: string;
+            pattern: string;
+            /** Format: double */
+            entryPrice: number;
+            /** Format: double */
+            stopLossPrice: number;
+            /** Format: double */
+            targetPrice: number;
+            /** Format: double */
+            confidence: number;
+            /** Format: double */
+            riskReward: number;
+            details: string;
+            detectedAt: string;
+            /** Format: double */
+            patternWinRate: null | number;
+            /** Format: double */
+            patternExpectancy: null | number;
+        };
+        SignalListResponse: {
+            /** Format: int32 */
+            count: number;
+            signals: components["schemas"]["SignalListItemResponse"][];
         };
         /** @enum {unknown} */
         SlippageModel: "Fixed" | "Adaptive";

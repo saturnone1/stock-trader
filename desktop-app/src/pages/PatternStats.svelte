@@ -16,7 +16,7 @@
     loading = true
     try {
       const { data } = await patternStatsApi.list()
-      rows = data?.Stats ?? data?.stats ?? []
+      rows = data?.stats ?? []
       error = ''
     } catch (e) {
       error = e?.response?.data?.error || e?.message || '패턴 통계를 불러오지 못했습니다.'
@@ -46,9 +46,9 @@
   {:else}
     <div class="mb-6 grid grid-cols-4 gap-4">
       <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">패턴 수</div><div class="mt-2 text-2xl font-bold">{rows.length}</div></div>
-      <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">양수 기대값</div><div class="mt-2 text-2xl font-bold text-green-300">{rows.filter((r) => (r.Expectancy ?? 0) > 0).length}</div></div>
-      <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">최고 기대값</div><div class="mt-2 text-2xl font-bold">{Number(rows[0]?.Expectancy ?? 0).toFixed(3)}</div></div>
-      <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">최고 승률</div><div class="mt-2 text-2xl font-bold">{pct(Math.max(...rows.map((r) => Number(r.WinRate ?? 0))), 1)}</div></div>
+      <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">양수 기대값</div><div class="mt-2 text-2xl font-bold text-green-300">{rows.filter((r) => (r.expectancy ?? 0) > 0).length}</div></div>
+      <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">최고 기대값</div><div class="mt-2 text-2xl font-bold">{Number(rows[0]?.expectancy ?? 0).toFixed(3)}</div></div>
+      <div class="rounded-lg border border-gray-700 bg-gray-800 p-4"><div class="text-sm text-gray-400">최고 승률</div><div class="mt-2 text-2xl font-bold">{pct(Math.max(...rows.map((r) => Number(r.winRate ?? 0))), 1)}</div></div>
     </div>
 
     <div class="overflow-hidden rounded-lg border border-gray-700 bg-gray-800">
@@ -69,15 +69,15 @@
         <tbody>
           {#each rows as row}
             <tr class="border-t border-gray-700 hover:bg-gray-700/30">
-              <td class="px-4 py-3 font-medium">{row.Pattern}</td>
-              <td class="px-4 py-3 font-mono text-blue-400">{row.Symbol}</td>
-              <td class="px-4 py-3 text-right">{row.SampleSize}</td>
-              <td class="px-4 py-3 text-right">{pct(row.WinRate, 1)}</td>
-              <td class="px-4 py-3 text-right text-green-300">{pct(row.AvgWinPercent)}</td>
-              <td class="px-4 py-3 text-right text-red-300">{pct(row.AvgLossPercent)}</td>
-              <td class="px-4 py-3 text-right text-red-300">{pct(row.MaxDrawdownPercent)}</td>
-              <td class="px-4 py-3 text-right {(row.Expectancy ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}">{Number(row.Expectancy ?? 0).toFixed(3)}</td>
-              <td class="px-4 py-3 text-right">{Number(row.ProfitFactor ?? 0).toFixed(2)}</td>
+              <td class="px-4 py-3 font-medium">{row.pattern}</td>
+              <td class="px-4 py-3 font-mono text-blue-400">{row.symbol}</td>
+              <td class="px-4 py-3 text-right">{row.sampleSize}</td>
+              <td class="px-4 py-3 text-right">{pct(row.winRate, 1)}</td>
+              <td class="px-4 py-3 text-right text-green-300">{pct(row.avgWinPercent)}</td>
+              <td class="px-4 py-3 text-right text-red-300">{pct(row.avgLossPercent)}</td>
+              <td class="px-4 py-3 text-right text-red-300">{pct(row.maxDrawdownPercent)}</td>
+              <td class="px-4 py-3 text-right {(row.expectancy ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}">{Number(row.expectancy ?? 0).toFixed(3)}</td>
+              <td class="px-4 py-3 text-right">{Number(row.profitFactor ?? 0).toFixed(2)}</td>
             </tr>
           {/each}
         </tbody>

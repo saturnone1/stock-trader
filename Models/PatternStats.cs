@@ -1,3 +1,5 @@
+using StockTrader.Domain.Statistics;
+
 namespace StockTrader.Models;
 
 public class PatternStats
@@ -12,8 +14,13 @@ public class PatternStats
     public decimal MaxDrawdownPercent { get; set; }
     public DateTime LastUpdated { get; set; }
 
-    public decimal Expectancy => WinRate * AvgWinPercent - (1 - WinRate) * AvgLossPercent;
-    public decimal ProfitFactor => AvgLossPercent != 0
-        ? (WinRate * AvgWinPercent) / ((1 - WinRate) * AvgLossPercent)
-        : 0;
+    public decimal Expectancy => PatternStatisticsMetricPolicy.CalculateExpectancy(
+        WinRate,
+        AvgWinPercent,
+        AvgLossPercent);
+
+    public decimal ProfitFactor => PatternStatisticsMetricPolicy.CalculateProfitFactor(
+        WinRate,
+        AvgWinPercent,
+        AvgLossPercent);
 }

@@ -2,6 +2,7 @@ using FluentAssertions;
 using Moq;
 using StockTrader.Api.Contracts;
 using StockTrader.Application.Portfolio;
+using StockTrader.Application.Statistics;
 using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.Strategies;
@@ -72,8 +73,8 @@ public class PortfolioPerformancePolicyTests
             0.05m,
             0m,
             0m,
-            [new PortfolioPatternStatistics(
-                "Breakout", "TQQQ", 1, 1m, 0.05m, 0m, 0m, 0.05m, 0m, updatedAt)],
+            [new PatternStatisticsSnapshot(
+                PatternType.Breakout, "TQQQ", 1, 1m, 0.05m, 0m, 0m, updatedAt)],
             [new PortfolioEquityPoint(
                 exitTime, "TQQQ", "Breakout", 50m, 0.05m, 50m)]);
 
@@ -104,21 +105,19 @@ public class PortfolioPerformancePolicyTests
                     PnLPercent = 0.05m
                 }
             });
-        var statistics = new Mock<IPatternStatsRepository>();
+        var statistics = new Mock<IPatternStatisticsQuery>();
         statistics.Setup(store => store.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<PatternStats>
+            .ReturnsAsync(new List<PatternStatisticsSnapshot>
             {
-                new()
-                {
-                    PatternType = PatternType.Breakout,
-                    Symbol = "TQQQ",
-                    SampleSize = 4,
-                    WinRate = 0.75m,
-                    AvgWinPercent = 0.08m,
-                    AvgLossPercent = 0.04m,
-                    MaxDrawdownPercent = 0.06m,
-                    LastUpdated = new DateTime(2026, 8, 2, 0, 0, 0, DateTimeKind.Utc)
-                }
+                new(
+                    PatternType.Breakout,
+                    "TQQQ",
+                    4,
+                    0.75m,
+                    0.08m,
+                    0.04m,
+                    0.06m,
+                    new DateTime(2026, 8, 2, 0, 0, 0, DateTimeKind.Utc))
             });
         var settings = new Mock<ISettingsRepository>();
         settings.Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
@@ -133,7 +132,7 @@ public class PortfolioPerformancePolicyTests
         result.TotalTrades.Should().Be(1);
         result.MaxDrawdown.Should().Be(0m);
         result.PatternStats.Should().ContainSingle(stat =>
-            stat.Pattern == "Breakout"
+            stat.PatternType == PatternType.Breakout
             && stat.Symbol == "TQQQ"
             && stat.Expectancy == 0.05m);
         tradeHistory.Verify(store => store.GetTradesAsync(

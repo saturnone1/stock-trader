@@ -2358,6 +2358,72 @@ public class ArchitectureDependencyTests
         registrations.Should().Contain("AddScoped<IOpenPositionQuery, OpenPositionQuery>");
     }
 
+    [Fact]
+    public void SignalAndPatternStatisticsReadsUseApplicationQueriesAndOneMetricPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var signalEndpointPath = Path.Combine(repository, "Api/SignalEndpoints.cs");
+        var statsEndpointPath = Path.Combine(repository, "Api/PatternStatsEndpoints.cs");
+        var signalEndpoint = File.ReadAllText(signalEndpointPath);
+        var statsEndpoint = File.ReadAllText(statsEndpointPath);
+        var signalPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Signals/SignalListPolicy.cs"));
+        var statisticsSelectionPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Statistics/PatternStatisticsSelectionPolicy.cs"));
+        var statisticsContract = File.ReadAllText(Path.Combine(
+            repository, "Application/Statistics/PatternStatisticsContracts.cs"));
+        var metricPolicy = File.ReadAllText(Path.Combine(
+            repository, "Domain/Statistics/PatternStatisticsMetricPolicy.cs"));
+        var model = File.ReadAllText(Path.Combine(repository, "Models/PatternStats.cs"));
+        var portfolioQuery = File.ReadAllText(Path.Combine(
+            repository, "Services/Portfolio/PortfolioPerformanceQuery.cs"));
+        var patternDetection = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/PatternDetectionService.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+        var signalPage = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Signals.svelte"));
+        var statsPage = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/PatternStats.svelte"));
+
+        signalEndpoint.Should().Contain("ISignalListQuery");
+        signalEndpoint.Should().Contain("Produces<SignalListResponse>");
+        signalEndpoint.Should().NotContain("IPatternStatsRepository");
+        signalEndpoint.Should().NotContain("ToDictionary");
+        signalEndpoint.Should().NotContain("RiskReward");
+        File.ReadAllLines(signalEndpointPath).Length.Should().BeLessThanOrEqualTo(30);
+        statsEndpoint.Should().Contain("IPatternStatisticsQuery");
+        statsEndpoint.Should().Contain("Produces<PatternStatisticsListResponse>");
+        statsEndpoint.Should().NotContain("IPatternStatsRepository");
+        File.ReadAllLines(statsEndpointPath).Length.Should().BeLessThanOrEqualTo(30);
+
+        signalPolicy.Should().Contain("PatternStatisticsSelectionPolicy.Resolve(");
+        signalPolicy.Should().NotContain("StockTrader.Models");
+        statisticsSelectionPolicy.Should().Contain("StringComparison.OrdinalIgnoreCase");
+        statisticsSelectionPolicy.Should().Contain("string.IsNullOrWhiteSpace(statistic.Symbol)");
+        statisticsContract.Should().Contain("interface IPatternStatisticsQuery");
+        statisticsContract.Should().NotContain("StockTrader.Models");
+        metricPolicy.Should().Contain("CalculateExpectancy(");
+        metricPolicy.Should().Contain("CalculateProfitFactor(");
+        model.Should().Contain("PatternStatisticsMetricPolicy.CalculateExpectancy(");
+        model.Should().Contain("PatternStatisticsMetricPolicy.CalculateProfitFactor(");
+        portfolioQuery.Should().Contain("IPatternStatisticsQuery");
+        portfolioQuery.Should().NotContain("IPatternStatsRepository");
+        patternDetection.Should().Contain("IPatternStatisticsQuery");
+        patternDetection.Should().Contain("PatternStatisticsSelectionPolicy.Resolve(");
+        patternDetection.Should().NotContain("IPatternStatsRepository");
+        registrations.Should().Contain("AddScoped<IPatternStatisticsQuery, PatternStatisticsQuery>");
+        registrations.Should().Contain("AddScoped<ISignalListQuery, SignalListQuery>");
+
+        signalPage.Should().Contain("data?.signals");
+        signalPage.Should().NotContain("data?.Signals");
+        signalPage.Should().NotContain("row.PatternWinRate");
+        statsPage.Should().Contain("data?.stats");
+        statsPage.Should().NotContain("data?.Stats");
+        statsPage.Should().NotContain("row.Expectancy");
+        statsPage.Should().NotContain("row.Pattern");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

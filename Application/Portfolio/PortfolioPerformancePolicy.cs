@@ -1,3 +1,5 @@
+using StockTrader.Application.Statistics;
+
 namespace StockTrader.Application.Portfolio;
 
 /// <summary>
@@ -9,7 +11,7 @@ public static class PortfolioPerformancePolicy
     public static PortfolioPerformanceSnapshot Evaluate(
         IEnumerable<PortfolioCompletedTrade> source,
         decimal initialAccountEquity,
-        IReadOnlyList<PortfolioPatternStatistics> patternStats)
+        IReadOnlyList<PatternStatisticsSnapshot> patternStats)
     {
         if (initialAccountEquity <= 0m)
             throw new ArgumentOutOfRangeException(

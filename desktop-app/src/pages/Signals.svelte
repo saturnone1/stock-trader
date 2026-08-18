@@ -19,7 +19,7 @@
     loading = true
     try {
       const { data } = await signalApi.list({ search, sort })
-      rows = data?.signals ?? data?.Signals ?? []
+      rows = data?.signals ?? []
       error = ''
     } catch (e) {
       error = e?.response?.data?.error || e?.message || '시그널을 불러오지 못했습니다.'
@@ -30,8 +30,8 @@
 
   async function execute(row) {
     try {
-      await orderApi.executeSignal(row.Id ?? row.id)
-      message = `${row.Symbol ?? row.symbol} 시그널을 실행했습니다.`
+      await orderApi.executeSignal(row.id)
+      message = `${row.symbol} 시그널을 실행했습니다.`
       error = ''
     } catch (e) {
       error = e?.response?.data?.error || e?.message || '시그널 실행에 실패했습니다.'
@@ -70,22 +70,22 @@
         <div class="rounded-lg border border-gray-700 bg-gray-800 p-5">
           <div class="flex items-start justify-between mb-3">
             <div>
-              <div class="font-mono text-xl text-blue-400">{row.Symbol ?? row.symbol}</div>
-              <div class="text-sm text-gray-400">{row.Pattern ?? row.pattern}</div>
+              <div class="font-mono text-xl text-blue-400">{row.symbol}</div>
+              <div class="text-sm text-gray-400">{row.pattern}</div>
             </div>
             <div class="rounded bg-blue-950/60 px-2 py-1 text-xs text-blue-300">
-              {pct(row.Confidence ?? row.confidence ?? 0)}%
+              {pct(row.confidence ?? 0)}%
             </div>
           </div>
           <div class="grid grid-cols-3 gap-3 text-sm">
-            <div><div class="text-gray-500">Entry</div><div>{(row.EntryPrice ?? row.entryPrice ?? 0).toFixed(2)}</div></div>
-            <div><div class="text-gray-500">Stop</div><div class="text-red-300">{(row.StopLossPrice ?? row.stopLossPrice ?? 0).toFixed(2)}</div></div>
-            <div><div class="text-gray-500">Target</div><div class="text-green-300">{(row.TargetPrice ?? row.targetPrice ?? 0).toFixed(2)}</div></div>
+            <div><div class="text-gray-500">Entry</div><div>{(row.entryPrice ?? 0).toFixed(2)}</div></div>
+            <div><div class="text-gray-500">Stop</div><div class="text-red-300">{(row.stopLossPrice ?? 0).toFixed(2)}</div></div>
+            <div><div class="text-gray-500">Target</div><div class="text-green-300">{(row.targetPrice ?? 0).toFixed(2)}</div></div>
           </div>
           <div class="mt-4 flex justify-between text-xs text-gray-400">
-            <span>R/R {(row.RiskReward ?? row.riskReward ?? 0).toFixed(2)}</span>
+            <span>R/R {(row.riskReward ?? 0).toFixed(2)}</span>
             <div class="flex items-center gap-3">
-              <span>WinRate {pct(row.PatternWinRate ?? row.patternWinRate ?? 0)}%</span>
+              <span>WinRate {pct(row.patternWinRate ?? 0)}%</span>
               <button on:click={() => execute(row)} class="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600">
                 실행
               </button>

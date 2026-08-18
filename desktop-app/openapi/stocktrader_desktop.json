@@ -148,7 +148,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalListResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -636,7 +643,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternStatisticsListResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4885,6 +4899,82 @@
           }
         }
       },
+      "PatternStatisticsListResponse": {
+        "required": [
+          "count",
+          "stats"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "stats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PatternStatisticsResponse"
+            }
+          }
+        }
+      },
+      "PatternStatisticsResponse": {
+        "required": [
+          "pattern",
+          "symbol",
+          "sampleSize",
+          "winRate",
+          "avgWinPercent",
+          "avgLossPercent",
+          "maxDrawdownPercent",
+          "expectancy",
+          "profitFactor",
+          "lastUpdated"
+        ],
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sampleSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "winRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgWinPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgLossPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxDrawdownPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "profitFactor": {
+            "type": "number",
+            "format": "double"
+          },
+          "lastUpdated": {
+            "type": "string"
+          }
+        }
+      },
       "PatternType": {
         "enum": [
           "GapUpPullback",
@@ -4965,63 +5055,6 @@
           }
         }
       },
-      "PortfolioPatternStatisticsResponse": {
-        "required": [
-          "pattern",
-          "symbol",
-          "sampleSize",
-          "winRate",
-          "avgWinPercent",
-          "avgLossPercent",
-          "maxDrawdownPercent",
-          "expectancy",
-          "profitFactor",
-          "lastUpdated"
-        ],
-        "type": "object",
-        "properties": {
-          "pattern": {
-            "type": "string"
-          },
-          "symbol": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "sampleSize": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "winRate": {
-            "type": "number",
-            "format": "double"
-          },
-          "avgWinPercent": {
-            "type": "number",
-            "format": "double"
-          },
-          "avgLossPercent": {
-            "type": "number",
-            "format": "double"
-          },
-          "maxDrawdownPercent": {
-            "type": "number",
-            "format": "double"
-          },
-          "expectancy": {
-            "type": "number",
-            "format": "double"
-          },
-          "profitFactor": {
-            "type": "number",
-            "format": "double"
-          },
-          "lastUpdated": {
-            "type": "string"
-          }
-        }
-      },
       "PortfolioPerformanceResponse": {
         "required": [
           "totalTrades",
@@ -5057,7 +5090,7 @@
           "patternStats": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PortfolioPatternStatisticsResponse"
+              "$ref": "#/components/schemas/PatternStatisticsResponse"
             }
           },
           "equityCurve": {
@@ -5805,6 +5838,94 @@
           "lastModified": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SignalListItemResponse": {
+        "required": [
+          "id",
+          "symbol",
+          "pattern",
+          "entryPrice",
+          "stopLossPrice",
+          "targetPrice",
+          "confidence",
+          "riskReward",
+          "details",
+          "detectedAt",
+          "patternWinRate",
+          "patternExpectancy"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "stopLossPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "targetPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "riskReward": {
+            "type": "number",
+            "format": "double"
+          },
+          "details": {
+            "type": "string"
+          },
+          "detectedAt": {
+            "type": "string"
+          },
+          "patternWinRate": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "patternExpectancy": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "SignalListResponse": {
+        "required": [
+          "count",
+          "signals"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignalListItemResponse"
+            }
           }
         }
       },

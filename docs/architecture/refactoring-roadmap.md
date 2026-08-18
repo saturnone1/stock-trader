@@ -357,6 +357,13 @@ page default. `IOpenPositionQuery` also supplies portfolio, trade, and dashboard
 one observation time and durable-order status policy. The HTTP adapters map explicit contracts and
 own no position-status or performance formulas.
 
+Signal browsing and pattern-statistics ranking now cross `ISignalListQuery` and
+`IPatternStatisticsQuery`. Exact-symbol statistics take precedence over aggregate rows without
+constructing a duplicate pattern-key dictionary, while R/R and tie ordering are deterministic.
+Expectancy and profit factor have one domain policy shared by persistence entities and application
+snapshots. The two HTTP adapters are thin explicit-contract mappers, and the desktop consumes their
+generated camel-case fields without legacy casing fallbacks.
+
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 
 ## Phase 4 — Persistence and contracts

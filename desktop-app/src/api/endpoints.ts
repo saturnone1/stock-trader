@@ -1,5 +1,9 @@
 import { api } from './client';
 import type { DashboardData, Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus, SettingsResponse, SettingsUpdateRequest, SettingsUpdateResponse } from './types';
+import type { components } from './generated';
+
+type SignalListResponse = components['schemas']['SignalListResponse'];
+type PatternStatisticsListResponse = components['schemas']['PatternStatisticsListResponse'];
 
 const CUMULATIVE_RSI_PRESET_ID = -1001
 const CUMULATIVE_RSI_PRESET_NAME = '누적 RSI 절대수익'
@@ -392,7 +396,7 @@ export const analysisApi = {
 
 export const signalApi = {
   list: (params: Record<string, string | number | undefined> = {}) =>
-    api.get('/api/signals', { params }),
+    api.get<SignalListResponse>('/api/signals', { params }),
 };
 
 export const riskApi = {
@@ -425,7 +429,7 @@ export const mlApi = {
 };
 
 export const patternStatsApi = {
-  list: () => api.get('/api/pattern-stats'),
+  list: () => api.get<PatternStatisticsListResponse>('/api/pattern-stats'),
 };
 
 export const universeApi = {
