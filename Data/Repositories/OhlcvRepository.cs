@@ -39,8 +39,8 @@ public class OhlcvRepository : IOhlcvRepository
         var barList = bars.ToList();
         if (barList.Count == 0) return;
 
-        // INSERT OR IGNORE leverages the unique index on (Symbol, TimeFrame, Timestamp).
-        // No need to load existing rows into memory — SQLite deduplicates at DB level.
+        // A provider may first expose an in-progress bar and later return its completed values.
+        // The unique bar identity therefore upserts market fields instead of freezing the first sample.
         var conn = _db.Database.GetDbConnection();
         if (conn.State != System.Data.ConnectionState.Open)
             await conn.OpenAsync(ct);
@@ -50,9 +50,12 @@ public class OhlcvRepository : IOhlcvRepository
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText =
-                "INSERT OR IGNORE INTO OhlcvBars " +
+                "INSERT INTO OhlcvBars " +
                 "(Symbol, TimeFrame, Timestamp, Open, High, Low, Close, Volume, Vwap) " +
-                "VALUES (@sym, @tf, @ts, @open, @high, @low, @close, @vol, @vwap)";
+                "VALUES (@sym, @tf, @ts, @open, @high, @low, @close, @vol, @vwap) " +
+                "ON CONFLICT(Symbol, TimeFrame, Timestamp) DO UPDATE SET " +
+                "Open = excluded.Open, High = excluded.High, Low = excluded.Low, " +
+                "Close = excluded.Close, Volume = excluded.Volume, Vwap = excluded.Vwap";
 
             // Pre-create parameters once; rebind values per row
             var pSym   = cmd.CreateParameter(); pSym.ParameterName   = "@sym";   cmd.Parameters.Add(pSym);

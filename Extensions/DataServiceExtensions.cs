@@ -9,6 +9,7 @@ using StockTrader.Application.Execution;
 using StockTrader.Application.Reporting;
 using StockTrader.Application.Dashboard;
 using StockTrader.Application.Trading;
+using StockTrader.Application.MarketData;
 using StockTrader.Data.Repositories;
 using StockTrader.Data.Migrations;
 using StockTrader.Models.Enums;
@@ -89,6 +90,7 @@ public static class DataServiceExtensions
         // Data Feed Factory for runtime provider switching
         services.AddScoped<IDataFeedServiceFactory, DataFeedServiceFactory>();
         services.AddScoped<ILiveDailyScanData, LiveDailyScanData>();
+        services.AddScoped<IDailyMarketDataSyncData, DailyMarketDataSyncData>();
 
         return services;
     }

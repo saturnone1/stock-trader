@@ -1,8 +1,8 @@
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Trading;
+using StockTrader.Application.MarketData;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
-using TimeZoneConverter;
 
 namespace StockTrader.Services.Patterns;
 
@@ -13,22 +13,20 @@ public sealed class LivePatternScanCycle(
     ILivePatternDetection detection,
     ILiveSignalProcessor signalProcessor,
     LivePatternScanState state,
+    IMarketCalendar marketCalendar,
     TimeProvider timeProvider,
     ILogger<LivePatternScanCycle> logger) : ILivePatternScanCycle
 {
-    private static readonly TimeZoneInfo EasternTime =
-        TZConvert.GetTimeZoneInfo("America/New_York");
-
     public async Task RunAsync(string symbol, CancellationToken ct = default)
     {
         var normalized = MarketSymbolPolicy.Normalize(symbol);
         var observedAt = timeProvider.GetUtcNow().UtcDateTime;
+        var context = await data.ResolveContextAsync(ct);
         var marketDate = DateOnly.FromDateTime(
-            TimeZoneInfo.ConvertTimeFromUtc(observedAt, EasternTime));
-        if (state.WasScanned(normalized, marketDate))
+            marketCalendar.GetLocalTime(context.MarketRegion, observedAt));
+        if (state.WasScanned(normalized, context.Source, marketDate))
             return;
 
-        var context = await data.ResolveContextAsync(ct);
         var bars = await data.LoadBarsAsync(
             normalized,
             observedAt.AddDays(-StrategyEvaluationPolicy.LiveDailySignalLookbackDays),
@@ -60,7 +58,7 @@ public sealed class LivePatternScanCycle(
         if (detected.Count == 0)
         {
             logger.LogDebug("No signals for {Symbol}", normalized);
-            state.MarkScanned(normalized, marketDate);
+            state.MarkScanned(normalized, context.Source, marketDate);
             return;
         }
 
@@ -70,7 +68,7 @@ public sealed class LivePatternScanCycle(
             normalized,
             string.Join(", ", detected.Select(signal => signal.PatternType)));
         await signalProcessor.ProcessAsync(detected, ct);
-        state.MarkScanned(normalized, marketDate);
+        state.MarkScanned(normalized, context.Source, marketDate);
     }
 
     private async Task<MarketRegime> LoadRegimeAsync(

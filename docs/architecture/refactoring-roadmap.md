@@ -201,6 +201,15 @@
   failures are retried instead of being mistaken for completed scans. Direct tests lock insufficient
   history behavior, symbol/date deduplication, provider benchmark cache invalidation, regime math,
   and persistence-before-order sequencing.
+- Daily history synchronization now crosses `IDailyMarketDataSyncCycle` and a provider-bound data
+  session. The 79-line worker owns only initial invocation, configured periodic scheduling, retries,
+  and cooldown. A typed domain market catalog supplies provider market ownership, display names,
+  time zones, and regular-session boundaries. The cycle evaluates the selected provider's local
+  close window rather than treating either the US or KRX close as permission to sync all data.
+  Initial recovery rejects the current unfinished daily bar, scheduled fetches overlap the last
+  stored date, and SQLite upserts the canonical bar identity so completed OHLCV replaces an earlier
+  partial sample. Regression tests lock market routing, close boundaries, weekend behavior,
+  provider-switch invalidation, partial retry, completed-bar filtering, and storage replacement.
 - `ICustomStrategyDetector` is now the runtime contract used by preview, backtest, optimization,
   scanning, and live exits. `CustomStrategyDetectorFactory` is the sole production constructor for
   `RuleBasedDetector`; production code no longer creates or casts the concrete detector directly,

@@ -4,15 +4,16 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Execution;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Signals;
 using StockTrader.Application.Trading;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
 using StockTrader.Services.Broker;
-using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Order;
 using StockTrader.Services.Signal;
@@ -146,10 +147,10 @@ public class OrderServiceTests
     private void SetupMarketOpen()
     {
         _marketCalendarMock
-            .Setup(m => m.IsMarketOpen(MarketType.US))
+            .Setup(m => m.IsMarketOpen(MarketRegion.UnitedStates))
             .Returns(true);
         _marketCalendarMock
-            .Setup(m => m.GetLocalNow(MarketType.US))
+            .Setup(m => m.GetLocalNow(MarketRegion.UnitedStates))
             .Returns(new DateTime(2025, 6, 2, 10, 30, 0)); // 월요일 ET 10:30
     }
 
@@ -157,10 +158,10 @@ public class OrderServiceTests
     private void SetupMarketClosed()
     {
         _marketCalendarMock
-            .Setup(m => m.IsMarketOpen(MarketType.US))
+            .Setup(m => m.IsMarketOpen(MarketRegion.UnitedStates))
             .Returns(false);
         _marketCalendarMock
-            .Setup(m => m.GetLocalNow(MarketType.US))
+            .Setup(m => m.GetLocalNow(MarketRegion.UnitedStates))
             .Returns(new DateTime(2025, 6, 2, 20, 0, 0)); // 월요일 ET 20:00
     }
 

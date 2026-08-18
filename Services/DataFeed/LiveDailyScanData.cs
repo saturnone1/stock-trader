@@ -15,7 +15,10 @@ public sealed class LiveDailyScanData(
         CancellationToken ct = default)
     {
         var selection = await dataFeeds.SelectAsync(null, ct);
+        var provider = DataProviderCatalog.Get(selection.Source);
         return new LiveDailyScanContext(
+            selection.Source,
+            provider.MarketRegion,
             DataProviderCatalog.RegimeBenchmarkSymbol(selection.Source));
     }
 

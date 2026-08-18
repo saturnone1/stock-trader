@@ -23,6 +23,8 @@ infrastructure.
 - Timeframe facts: one backend catalog.
 - Provider capabilities, markets, lookback limits, and regime benchmark symbols: one backend
   provider catalog.
+- Market identity, display name, time zone, and regular-session boundaries: one domain market
+  catalog shared by provider metadata, calendars, scanning, synchronization, and scheduling.
 - Backtest and preview range policy: dedicated policy catalogs.
 - Indicator definitions: one registry that supplies calculation, validation, units, parameters,
   warmup, and supported timeframes.
@@ -180,6 +182,13 @@ bars, cached benchmark regime, detection, and signal processing through purpose-
 The daily completion marker is written only after detection and signal processing succeed, so a
 transient failure remains retryable while durable signal, recommendation, and entry claims prevent
 duplicate financial effects.
+Daily history synchronization follows the same split. `DailyDataSyncService` only starts the
+initial recovery and configured periodic/retry loop; `IDailyMarketDataSyncCycle` selects one
+provider-bound session and evaluates only that provider's typed market date and close window.
+Initial recovery excludes the current unfinished daily bar. Scheduled synchronization overlaps the
+last stored date, while SQLite OHLCV writes upsert the same bar identity so a later completed sample
+corrects an earlier partial value instead of being discarded. Live scan deduplication also includes
+the effective provider and its owned market date.
 The TQQQ long-trend strategy likewise owns its entry stop/target and rolling SMA stop-floor math in
 `Tqqq200SmaExecutionPolicy`. Its configured SMA period and multipliers feed detection, prepared
 backtest data, and live monitoring; adapters must not embed their own 200-day or multiplier values.

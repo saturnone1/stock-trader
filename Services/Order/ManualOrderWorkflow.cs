@@ -1,10 +1,11 @@
 using StockTrader.Application.Execution;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Domain.MarketData;
 using StockTrader.Services.Account;
-using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Signal;
 
@@ -70,8 +71,8 @@ public sealed class ManualOrderWorkflow
                 signal.StopLossPrice,
                 signal.TargetPrice),
             UtcNow,
-            _marketCalendar.IsMarketOpen(MarketType.US),
-            _marketCalendar.GetLocalNow(MarketType.US));
+            _marketCalendar.IsMarketOpen(MarketRegion.UnitedStates),
+            _marketCalendar.GetLocalNow(MarketRegion.UnitedStates));
         if (!signalDecision.IsAllowed)
         {
             _logger.LogWarning(

@@ -1,3 +1,5 @@
+using StockTrader.Application.MarketData;
+using StockTrader.Domain.MarketData;
 using TimeZoneConverter;
 
 namespace StockTrader.Services.Market;
@@ -8,25 +10,16 @@ namespace StockTrader.Services.Market;
 /// </summary>
 public class MarketCalendar : IMarketCalendar
 {
+    private static readonly IReadOnlyDictionary<MarketRegion, TimeZoneInfo> TimeZones =
+        MarketRegionCatalog.All.ToDictionary(
+            item => item.Value,
+            item => TZConvert.GetTimeZoneInfo(item.TimeZoneId));
+
     private readonly TimeProvider _timeProvider;
 
     public MarketCalendar(TimeProvider timeProvider) => _timeProvider = timeProvider;
 
-    private static readonly TimeZoneInfo EasternTime =
-        TZConvert.GetTimeZoneInfo("America/New_York");
-
-    private static readonly TimeZoneInfo KoreaTime =
-        TZConvert.GetTimeZoneInfo("Asia/Seoul");
-
-    // US: 09:30 ~ 16:00 ET
-    private static readonly TimeSpan UsOpen = new(9, 30, 0);
-    private static readonly TimeSpan UsClose = new(16, 0, 0);
-
-    // KRX: 09:00 ~ 15:30 KST
-    private static readonly TimeSpan KrxOpen = new(9, 0, 0);
-    private static readonly TimeSpan KrxClose = new(15, 30, 0);
-
-    public bool IsMarketOpen(MarketType market)
+    public bool IsMarketOpen(MarketRegion market)
     {
         var now = GetLocalNow(market);
 
@@ -38,27 +31,24 @@ public class MarketCalendar : IMarketCalendar
         return now.TimeOfDay >= open && now.TimeOfDay <= close;
     }
 
-    public TimeZoneInfo GetTimeZone(MarketType market) => market switch
-    {
-        MarketType.KRX => KoreaTime,
-        _ => EasternTime
-    };
+    public TimeZoneInfo GetTimeZone(MarketRegion market) =>
+        TimeZones.TryGetValue(market, out var timeZone)
+            ? timeZone
+            : throw new ArgumentOutOfRangeException(
+                nameof(market), market, "지원하지 않는 시장입니다.");
 
-    public TimeSpan GetMarketOpen(MarketType market) => market switch
-    {
-        MarketType.KRX => KrxOpen,
-        _ => UsOpen
-    };
+    public TimeSpan GetMarketOpen(MarketRegion market) =>
+        MarketRegionCatalog.Get(market).RegularOpen;
 
-    public TimeSpan GetMarketClose(MarketType market) => market switch
-    {
-        MarketType.KRX => KrxClose,
-        _ => UsClose
-    };
+    public TimeSpan GetMarketClose(MarketRegion market) =>
+        MarketRegionCatalog.Get(market).RegularClose;
 
-    public DateTime GetLocalNow(MarketType market)
-    {
-        return TimeZoneInfo.ConvertTimeFromUtc(_timeProvider.GetUtcNow().UtcDateTime, GetTimeZone(market));
-    }
+    public DateTime GetLocalNow(MarketRegion market) =>
+        GetLocalTime(market, _timeProvider.GetUtcNow().UtcDateTime);
+
+    public DateTime GetLocalTime(MarketRegion market, DateTime utc) =>
+        TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(utc, DateTimeKind.Utc),
+            GetTimeZone(market));
 
 }

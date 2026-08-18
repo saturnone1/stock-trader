@@ -1,9 +1,10 @@
 using StockTrader.Data.Repositories;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Trading;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
-using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 
 namespace StockTrader.Services.Order;
@@ -76,8 +77,8 @@ public class OrderService : IOrderService
         }
 
         // 3. 장외 시간 주문 차단 (Market Order + TimeInForce.Day는 정규장에서만 체결됨)
-        var nowEt = _marketCalendar.GetLocalNow(MarketType.US);
-        if (!_marketCalendar.IsMarketOpen(MarketType.US))
+        var nowEt = _marketCalendar.GetLocalNow(MarketRegion.UnitedStates);
+        if (!_marketCalendar.IsMarketOpen(MarketRegion.UnitedStates))
         {
             _logger.LogWarning(
                 "[ORDER BLOCKED] {Pattern} {Symbol}: 장외 시간 주문 차단 (ET {Time:HH:mm}, {DayOfWeek})",

@@ -111,6 +111,22 @@ public class CentralCatalogTests
     }
 
     [Theory]
+    [InlineData(DataSource.Alpaca, MarketRegion.UnitedStates, "미국")]
+    [InlineData(DataSource.Yahoo, MarketRegion.UnitedStates, "미국")]
+    [InlineData(DataSource.LsSecurities, MarketRegion.Korea, "한국")]
+    public void ProviderMarketOwnershipIsTypedAndDisplayCompatible(
+        DataSource source,
+        MarketRegion expectedRegion,
+        string expectedDisplay)
+    {
+        var provider = DataProviderCatalog.Get(source);
+
+        provider.MarketRegion.Should().Be(expectedRegion);
+        provider.Market.Should().Be(expectedDisplay);
+        MarketRegionCatalog.Get(expectedRegion).RegularClose.Should().BePositive();
+    }
+
+    [Theory]
     [InlineData(DataSource.Yahoo, TimeFrame.OneMinute, 7)]
     [InlineData(DataSource.Yahoo, TimeFrame.FiveMinute, 60)]
     [InlineData(DataSource.Yahoo, TimeFrame.Daily, null)]
