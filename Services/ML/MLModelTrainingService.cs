@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
@@ -124,8 +125,8 @@ public class MLModelTrainingService : IMLModelTrainingService
             _logger.LogInformation("ML 학습: 시그널 스코어러");
 
             using var tradeScope = _scopeFactory.CreateScope();
-            var tradeRepo = tradeScope.ServiceProvider.GetRequiredService<ITradeRepository>();
-            var trades = await tradeRepo.GetRecentAsync(limit: 5000, ct: ct);
+            var tradeHistory = tradeScope.ServiceProvider.GetRequiredService<ITradeHistoryStore>();
+            var trades = await tradeHistory.GetRecentAsync(limit: 5000, ct: ct);
 
             bool scorerTrained = false;
             double accuracy = 0;

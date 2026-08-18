@@ -325,4 +325,6 @@ defaults, active-profile selection, and modification time have one application o
   unsupported live actions before they mutate durable execution state.
 - `adr/0034-isolate-live-position-execution-store.md`: remove live position execution from the broad
   trade repository and commit fills through an isolated atomic persistence adapter.
+- `adr/0035-retire-broad-trade-repository.md`: split remaining trading reads and writes across four
+  focused ports, isolate EF contexts, and remove mutable open-position caching.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

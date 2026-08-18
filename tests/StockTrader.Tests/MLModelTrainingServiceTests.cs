@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
@@ -33,7 +34,7 @@ public class MLModelTrainingServiceTests
         var feeds = new Mock<IDataFeedServiceFactory>();
         feeds.Setup(value => value.SelectAsync(null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DataFeedSelection(DataSource.LsSecurities, feed.Object));
-        var trades = new Mock<ITradeRepository>();
+        var trades = new Mock<ITradeHistoryStore>();
         trades.Setup(value => value.GetRecentAsync(5000, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TradeRecord>());
         var services = new ServiceCollection()

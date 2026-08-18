@@ -1,5 +1,6 @@
 using StockTrader.Api.Contracts;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
@@ -11,12 +12,12 @@ public static class TradeEndpoints
     {
         // GET /api/trades/recommendations?count=50
         group.MapGet("/trades/recommendations", async (
-            ITradeRepository tradeRepo,
+            ITradeRecommendationStore recommendations,
             TimeProvider timeProvider,
             int? count,
             CancellationToken ct) =>
         {
-            var recs = await tradeRepo.GetRecentRecommendationsAsync(count ?? 50, ct);
+            var recs = await recommendations.GetRecentRecommendationsAsync(count ?? 50, ct);
 
             return Results.Ok(new
             {
@@ -55,11 +56,11 @@ public static class TradeEndpoints
 
         // GET /api/trades/positions — 진행 중 포지션
         group.MapGet("/trades/positions", async (
-            ITradeRepository tradeRepo,
+            IOpenPositionStore positionsStore,
             TimeProvider timeProvider,
             CancellationToken ct) =>
         {
-            var positions = await tradeRepo.GetOpenPositionsAsync(ct);
+            var positions = await positionsStore.GetOpenPositionsAsync(ct);
 
             return Results.Ok(new
             {
@@ -71,7 +72,7 @@ public static class TradeEndpoints
 
         // GET /api/trades/history?pattern=&from=&to=&skip=0&take=50
         group.MapGet("/trades/history", async (
-            ITradeRepository tradeRepo,
+            ITradeHistoryStore tradeHistory,
             string? pattern,
             string? from,
             string? to,
@@ -103,8 +104,8 @@ public static class TradeEndpoints
             int skipVal = skip ?? 0;
             int takeVal = take ?? 50;
 
-            var tradesTask = tradeRepo.GetTradesAsync(patternFilter, fromDate, toDate, skipVal, takeVal, ct);
-            var countTask  = tradeRepo.GetTradeCountAsync(patternFilter, fromDate, toDate, ct);
+            var tradesTask = tradeHistory.GetTradesAsync(patternFilter, fromDate, toDate, skipVal, takeVal, ct);
+            var countTask  = tradeHistory.GetTradeCountAsync(patternFilter, fromDate, toDate, ct);
 
             await Task.WhenAll(tradesTask, countTask);
 

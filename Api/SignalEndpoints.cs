@@ -1,3 +1,4 @@
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
@@ -9,7 +10,7 @@ public static class SignalEndpoints
     {
         // GET /api/signals?pattern=&search=&sort=latest&style=
         group.MapGet("/signals", async (
-            ITradeRepository tradeRepo,
+            IPatternSignalStore signalStore,
             IPatternStatsRepository statsRepo,
             string? pattern,
             string? search,
@@ -17,7 +18,7 @@ public static class SignalEndpoints
             string? style,
             CancellationToken ct) =>
         {
-            var signals = await tradeRepo.GetActiveSignalsAsync(ct);
+            var signals = await signalStore.GetActiveSignalsAsync(ct);
 
             // 패턴 필터
             if (!string.IsNullOrWhiteSpace(pattern) &&

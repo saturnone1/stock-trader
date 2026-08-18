@@ -116,7 +116,7 @@ public sealed class LiveEntryExecutionStore(
         db.Positions.Add(position);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        TradeReadCache.InvalidateAcceptedEntry(cache);
+        TradeReadCache.InvalidateRecommendations(cache);
         return true;
     }
 

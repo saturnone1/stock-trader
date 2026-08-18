@@ -1,3 +1,4 @@
+using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Risk;
@@ -12,13 +13,13 @@ public static class RiskEndpoints
         // GET /api/risk — 리스크 상태 전체
         group.MapGet("/risk", async (
             IRiskManagementService riskService,
-            ITradeRepository tradeRepo,
+            IOpenPositionStore positionsStore,
             ISettingsRepository settingsRepo,
             IOptions<TradingSettings> tradingOptions,
             CancellationToken ct) =>
         {
             var riskTask      = riskService.GetCurrentRiskStateAsync(ct);
-            var positionsTask = tradeRepo.GetOpenPositionsAsync(ct);
+            var positionsTask = positionsStore.GetOpenPositionsAsync(ct);
             var settingsTask  = settingsRepo.GetAsync(ct);
 
             await Task.WhenAll(riskTask, positionsTask, settingsTask);
