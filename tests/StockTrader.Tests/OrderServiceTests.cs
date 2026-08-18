@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Signals;
 using StockTrader.Application.Trading;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
@@ -94,6 +95,8 @@ public class OrderServiceTests
             _marketCalendarMock.Object,
             _signalServiceMock.Object,
             clock,
+            new ManualSignalEntryPolicy(
+                new SignalFreshnessPolicy(TimeSpan.FromHours(24))),
             new DbManualOrderSignalStore(effectiveDb),
             entryExecutions,
             NullLogger<ManualOrderWorkflow>.Instance);
@@ -624,8 +627,40 @@ public class OrderServiceTests
 
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("24시간 초과");
+        _signalServiceMock.Verify(service => service.EvaluateSignalsAsync(
+            It.IsAny<List<PatternSignal>>(), It.IsAny<CancellationToken>()), Times.Never);
         _accountManagerMock.Verify(manager => manager.GetActiveBrokerServiceAsync(
             It.IsAny<CancellationToken>()), Times.Never);
+        _brokerServiceMock.Verify(broker => broker.SubmitEntryOrderAsync(
+            It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PlaceManualOrder_FutureDatedSignal_FailsBeforeRecommendationEvaluation()
+    {
+        var now = new DateTimeOffset(2026, 8, 18, 14, 30, 0, TimeSpan.Zero);
+        SetupMarketOpen();
+        await using var db = CreateInMemoryDb();
+        var signal = new PatternSignal
+        {
+            Id = 81,
+            Symbol = "TQQQ",
+            PatternType = PatternType.GapUpPullback,
+            DetectedAt = now.UtcDateTime.AddSeconds(1),
+            EntryPrice = 100m,
+            StopLossPrice = 95m,
+            TargetPrice = 110m,
+        };
+        db.PatternSignals.Add(signal);
+        await db.SaveChangesAsync();
+
+        var result = await CreateSut(db, new FixedTimeProvider(now))
+            .PlaceManualOrderAsync(signal.Id);
+
+        result.Success.Should().BeFalse();
+        result.Message.Should().Contain("현재보다 미래");
+        _signalServiceMock.Verify(service => service.EvaluateSignalsAsync(
+            It.IsAny<List<PatternSignal>>(), It.IsAny<CancellationToken>()), Times.Never);
         _brokerServiceMock.Verify(broker => broker.SubmitEntryOrderAsync(
             It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()), Times.Never);
     }

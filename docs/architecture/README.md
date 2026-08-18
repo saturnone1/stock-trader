@@ -49,6 +49,8 @@ infrastructure.
   store, validated pagination, and explicit generated desktop contracts.
 - Legacy signal/recommendation compatibility: deterministic EF-owned supersession preserves raw
   audit rows while every operational reader excludes repeated pre-identity activity.
+- Signal actionability: one clocked policy and validated lifetime configuration shared by signal
+  browsing, dashboard counts, and manual entry.
 - Stock-analysis responses: one explicit generated contract with central pattern names and
   unit-correct percentage presentation in the desktop.
 - Live built-in configuration: one database-backed application service; entry detection and exit
@@ -370,4 +372,6 @@ defaults, active-profile selection, and modification time have one application o
   casing/unit fallbacks with one generated desktop contract.
 - `adr/0045-supersede-legacy-activity-duplicates.md`: preserve pre-identity activity rows while
   excluding deterministic same-day duplicates from operational reads.
+- `adr/0046-centralize-signal-actionability.md`: use one configured observation-time window for
+  signal browsing, dashboard counts, and manual execution.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

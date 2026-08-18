@@ -6,6 +6,7 @@ using StockTrader.Application.Accounts;
 using StockTrader.Application.Dashboard;
 using StockTrader.Application.Portfolio;
 using StockTrader.Application.Risk;
+using StockTrader.Application.Signals;
 using StockTrader.Models;
 using StockTrader.Services.Analysis;
 using StockTrader.Services.Account;
@@ -58,7 +59,11 @@ public sealed class DashboardQueryTests
         risk.Setup(query => query.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Risk(observedAt));
         var activity = new Mock<IDashboardActivityStore>();
-        activity.Setup(store => store.GetAsync(5, It.IsAny<CancellationToken>()))
+        activity.Setup(store => store.GetAsync(
+                5,
+                observedAt.AddHours(-24),
+                observedAt,
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DashboardActivitySnapshot(
                 7,
                 [new(1, "TQQQ", "Breakout", 100m, 97m, 106m, 2m, 0.1m, false, observedAt)]));
@@ -69,7 +74,9 @@ public sealed class DashboardQueryTests
             account.Object,
             risk.Object,
             activity.Object,
-            analysis.Object);
+            analysis.Object,
+            new SignalFreshnessPolicy(TimeSpan.FromHours(24)),
+            new FixedTimeProvider(new DateTimeOffset(observedAt)));
 
         var result = await sut.GetAsync();
         var response = DashboardResponse.Create(result);
@@ -109,4 +116,9 @@ public sealed class DashboardQueryTests
 
     private static DateTime Utc(int hour) =>
         new(2026, 8, 18, hour, 0, 0, DateTimeKind.Utc);
+
+    private sealed class FixedTimeProvider(DateTimeOffset observedAt) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => observedAt;
+    }
 }

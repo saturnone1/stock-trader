@@ -42,7 +42,10 @@ public interface ITradeRecommendationStore
 
 public interface IPatternSignalStore
 {
-    Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default);
+    Task<List<PatternSignal>> GetActionableSignalsAsync(
+        DateTime detectedFromInclusiveUtc,
+        DateTime detectedThroughInclusiveUtc,
+        CancellationToken ct = default);
     Task AddSignalsBatchAsync(
         IEnumerable<PatternSignal> signals,
         CancellationToken ct = default);

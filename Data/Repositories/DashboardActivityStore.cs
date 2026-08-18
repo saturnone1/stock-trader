@@ -9,12 +9,18 @@ public sealed class DashboardActivityStore(
 {
     public async Task<DashboardActivitySnapshot> GetAsync(
         int recommendationCount,
+        DateTime signalDetectedFromInclusiveUtc,
+        DateTime signalDetectedThroughInclusiveUtc,
         CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var activeSignalCount = await db.PatternSignals
             .AsNoTracking()
-            .CountAsync(signal => signal.IsActive && !signal.IsSuperseded, ct);
+            .CountAsync(signal => signal.IsActive
+                && !signal.IsSuperseded
+                && signal.DetectedAt >= signalDetectedFromInclusiveUtc
+                && signal.DetectedAt <= signalDetectedThroughInclusiveUtc,
+                ct);
         var rows = await db.TradeRecommendations
             .AsNoTracking()
             .Where(recommendation => !recommendation.IsSuperseded)

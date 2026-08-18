@@ -89,6 +89,15 @@ public static class ServiceCollectionExtensions
                 settings => settings.MinimumRegimeBars >= StockIndicatorSnapshotFactory.LongTrendPeriod,
                 $"MinimumRegimeBars must be at least {StockIndicatorSnapshotFactory.LongTrendPeriod}")
             .ValidateOnStart();
+        services.AddOptions<SignalLifecycleOptions>()
+            .Bind(configuration.GetSection(SignalLifecycleOptions.SectionName))
+            .Validate(
+                settings => settings.ActionableLifetimeHours > 0
+                    && settings.ActionableLifetimeHours
+                        <= SignalFreshnessPolicy.MaximumConfigurableLifetime.TotalHours,
+                $"ActionableLifetimeHours must be in (0, "
+                + $"{SignalFreshnessPolicy.MaximumConfigurableLifetime.TotalHours:F0}]")
+            .ValidateOnStart();
 
         // Database
         services.AddDbContextFactory<AppDbContext>(options =>
@@ -102,6 +111,14 @@ public static class ServiceCollectionExtensions
         services.AddBackgroundServices(includeHostedServices);
 
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(serviceProvider =>
+        {
+            var settings = serviceProvider
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<SignalLifecycleOptions>>()
+                .Value;
+            return new SignalFreshnessPolicy(
+                TimeSpan.FromHours(settings.ActionableLifetimeHours));
+        });
 
         // Market Calendar (stateless - singleton)
         services.AddSingleton<IMarketCalendar, MarketCalendar>();
@@ -131,6 +148,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IActiveBrokerAccountQuery, ActiveBrokerAccountQuery>();
         services.AddScoped<IDashboardQuery, DashboardQuery>();
         services.AddScoped<ManualOrderWorkflow>();
+        services.AddSingleton<ManualSignalEntryPolicy>();
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
