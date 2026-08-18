@@ -7,7 +7,6 @@ using StockTrader.Application.Trading;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
-using StockTrader.Services.Indicators;
 using StockTrader.Services.Market;
 using StockTrader.Services.Order;
 using StockTrader.Services.Patterns;
@@ -241,46 +240,44 @@ public sealed class LiveMarketRegimeEvaluatorTests
     [Fact]
     public void InsufficientBarsReturnUnknownWithoutCalculatingTrend()
     {
-        var indicators = new Mock<IIndicatorService>();
         var observedAt = new DateTime(2026, 8, 18, 14, 30, 0, DateTimeKind.Utc);
+        var bars = Bars(StrategyEvaluationPolicy.RegimeTrendBars - 1, 100m);
 
-        var result = new LiveMarketRegimeEvaluator(indicators.Object)
-            .Evaluate(Bars(StrategyEvaluationPolicy.RegimeTrendBars - 1, 100m), observedAt);
+        var result = new LiveMarketRegimeEvaluator().Evaluate(bars, observedAt);
 
-        result.RegimeLabel.Should().Be("Unknown");
-        result.AsOf.Should().Be(observedAt);
-        indicators.Verify(service => service.SMA(It.IsAny<decimal[]>(), It.IsAny<int>()), Times.Never);
+        result.RegimeLabel.Should().Be(MarketRegimeTrendPolicy.UnknownLabel);
+        result.SpyAbove200Ma.Should().BeFalse();
+        result.AsOf.Should().Be(bars[^1].Timestamp);
     }
 
     [Theory]
-    [InlineData(101, 100, true, "강세")]
-    [InlineData(99, 100, false, "약세")]
-    [InlineData(100, 100, false, "약세")]
+    [InlineData(101, true, "강세")]
+    [InlineData(99, false, "약세")]
+    [InlineData(100, false, "약세")]
     public void CompletedTrendClassifiesTheLatestClose(
         int latestClose,
-        int latestAverage,
         bool expectedAbove,
         string expectedLabel)
     {
-        var indicators = new Mock<IIndicatorService>();
         var bars = Bars(StrategyEvaluationPolicy.RegimeTrendBars, latestClose);
-        indicators.Setup(service => service.SMA(
-                It.Is<decimal[]>(closes => closes[closes.Length - 1] == latestClose),
-                StrategyEvaluationPolicy.RegimeTrendBars))
-            .Returns(Enumerable.Repeat((decimal)latestAverage, bars.Count).ToArray());
 
-        var result = new LiveMarketRegimeEvaluator(indicators.Object)
-            .Evaluate(bars, DateTime.UnixEpoch);
+        var result = new LiveMarketRegimeEvaluator()
+            .Evaluate(bars, bars[^1].Timestamp);
 
         result.SpyPrice.Should().Be(latestClose);
-        result.Spy200Ma.Should().Be(latestAverage);
+        result.Spy200Ma.Should().Be(
+            bars.TakeLast(StrategyEvaluationPolicy.RegimeTrendBars).Average(bar => bar.Close));
         result.SpyAbove200Ma.Should().Be(expectedAbove);
         result.RegimeLabel.Should().Be(expectedLabel);
     }
 
     private static IReadOnlyList<OhlcvBar> Bars(int count, decimal latestClose) =>
         Enumerable.Range(0, count)
-            .Select(index => new OhlcvBar { Close = index == count - 1 ? latestClose : 100m })
+            .Select(index => new OhlcvBar
+            {
+                Timestamp = DateTime.UnixEpoch.AddDays(index),
+                Close = index == count - 1 ? latestClose : 100m
+            })
             .ToArray();
 }
 

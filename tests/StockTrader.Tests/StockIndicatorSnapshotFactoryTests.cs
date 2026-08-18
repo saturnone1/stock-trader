@@ -36,21 +36,6 @@ public class StockIndicatorSnapshotFactoryTests
             (decimal)bars[^1].Volume / bars.TakeLast(20).Average(bar => (decimal)bar.Volume));
     }
 
-    [Fact]
-    public void CreateLongTrend_UsesTheSameTwoHundredBarTrendDefinition()
-    {
-        var factory = new StockIndicatorSnapshotFactory(new IndicatorService());
-        var bars = Bars(220);
-
-        var trend = factory.CreateLongTrend(bars);
-
-        trend.Price.Should().Be(220m);
-        trend.MovingAverage.Should().Be(120.5m);
-        trend.IsAboveMovingAverage.Should().BeTrue();
-        factory.Invoking(candidate => candidate.CreateLongTrend(bars.Take(199).ToArray()))
-            .Should().Throw<ArgumentException>();
-    }
-
     private static OhlcvBar[] Bars(int count) => Enumerable.Range(1, count)
         .Select(index => new OhlcvBar
         {

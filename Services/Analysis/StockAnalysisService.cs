@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Analysis;
+using StockTrader.Application.Strategies;
 using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
@@ -339,7 +340,7 @@ public class StockAnalysisService : IStockAnalysisService
         CancellationToken ct)
     {
         var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
-        var regime = new MarketRegime { AsOf = observedAt };
+        var regime = MarketRegimeTrendPolicy.Unknown(observedAt);
 
         try
         {
@@ -350,7 +351,7 @@ public class StockAnalysisService : IStockAnalysisService
                 regimeSymbol, TimeFrame.Daily,
                 observedAt.AddDays(-_settings.RegimeLookbackDays), observedAt, ct);
 
-            if (dbBars.Count >= _settings.MinimumRegimeBars)
+            if (dbBars.Count >= StrategyEvaluationPolicy.RegimeTrendBars)
             {
                 // DB에 충분한 데이터가 있으면 외부 API 호출 생략
                 regimeBars = dbBars;
@@ -371,19 +372,12 @@ public class StockAnalysisService : IStockAnalysisService
                     observedAt.AddDays(-_settings.RegimeLookbackDays), observedAt, ct);
             }
 
-            if (regimeBars.Count >= _settings.MinimumRegimeBars)
-            {
-                var trend = _indicatorSnapshots.CreateLongTrend(regimeBars);
-                regime.SpyPrice      = trend.Price;
-                regime.Spy200Ma      = trend.MovingAverage;
-                regime.SpyAbove200Ma = trend.IsAboveMovingAverage;
-                regime.RegimeLabel   = regime.SpyAbove200Ma ? "강세" : "약세";
-            }
+            regime = MarketRegimeTrendPolicy.Evaluate(regimeBars, observedAt);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Analysis] {Symbol} 레짐 계산 실패", regimeSymbol);
-            regime.RegimeLabel = "알 수 없음";
+            regime = MarketRegimeTrendPolicy.Unknown(observedAt);
         }
 
         return regime;

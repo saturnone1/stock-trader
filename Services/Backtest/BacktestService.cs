@@ -109,6 +109,15 @@ public class BacktestService : IBacktestService
             request.WeightStrategy,
             patternSettings,
             ct);
+        var requestedFrom = DateOnly.FromDateTime(request.From);
+        var requestedTo = DateOnly.FromDateTime(request.To);
+        if (regimes.Any(pair =>
+                pair.Key >= requestedFrom
+                && pair.Key <= requestedTo
+                && MarketRegimeTrendPolicy.IsUnknown(pair.Value)))
+        {
+            result.Warnings.Add(MarketRegimeTrendPolicy.InsufficientHistoryWarning);
+        }
         result.UsedTimeFrame = request.TimeFrame;
 
         if (request.EnableWalkForward)

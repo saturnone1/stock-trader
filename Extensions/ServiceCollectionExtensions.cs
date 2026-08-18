@@ -194,9 +194,6 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.HistoryLookbackDays > 0, "HistoryLookbackDays must be positive")
             .Validate(settings => settings.MinimumHistoryBars > 0, "MinimumHistoryBars must be positive")
             .Validate(settings => settings.RegimeLookbackDays > 0, "RegimeLookbackDays must be positive")
-            .Validate(
-                settings => settings.MinimumRegimeBars >= StockIndicatorSnapshotFactory.LongTrendPeriod,
-                $"MinimumRegimeBars must be at least {StockIndicatorSnapshotFactory.LongTrendPeriod}")
             .ValidateOnStart();
         services.AddOptions<SignalLifecycleOptions>()
             .Bind(configuration.GetSection(SignalLifecycleOptions.SectionName))

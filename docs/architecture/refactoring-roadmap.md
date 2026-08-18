@@ -372,6 +372,11 @@
   loss, re-entry delay, consecutive-loss halt, and resumed entry. The consolidation also corrected
   a live-only off-by-one defect that previously released a two-session cooldown after only one full
   trading day.
+- Completed benchmark trend evidence now lives in `MarketRegimeTrendPolicy`. Preview, backtest,
+  live scanning, stock analysis, and the ML base regime share one explicit as-of cutoff, trailing
+  200-day window, strict above-average boundary, and fail-closed unknown result for insufficient
+  history. The former optimistic preview/backtest fallback and duplicate analysis setting are
+  removed, and goldens characterize the intentional result correction.
 
 Remaining Phase 2 work is no longer contract or EF-entity separation. Current full-strategy goldens
 cover NextOpen preview/backtest/live fill and exit decisions, NextOpen entry-bar custom exits and
