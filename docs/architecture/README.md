@@ -92,6 +92,8 @@ live in pure execution policies rather than in backtest or worker adapters.
 `LongPositionScalingPolicy` likewise owns original-entry-based share rounding, scale-in weighted
 average price, adapter-supplied capital-cap enforcement, scale-out remaining cost, and post-fill
 execution counting. Preview and backtest only translate its decision into markers or trade records.
+Backtest scaling counts travel with each open position rather than living in processor memory, so
+recreating an orchestration component cannot reset a rule's maximum-fill limit.
 Live trading fails closed for scaling strategies until the
 broker adapter can persist and reconcile equivalent partial-order state.
 `LivePositionExitEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,

@@ -16,7 +16,7 @@ namespace StockTrader.Tests;
 public class BacktestPositionExitProcessorTests
 {
     [Fact]
-    public void Process_ScaleOutUsesOriginalEntryQuantityAfterEarlierPartialExit()
+    public void Process_ScaleOutStateSurvivesARecreatedProcessor()
     {
         var bars = Enumerable.Range(0, 60).Select(index => new OhlcvBar
         {
@@ -37,7 +37,7 @@ public class BacktestPositionExitProcessorTests
                 new ScalingRule
                 {
                     Direction = StrategyCatalog.ScalingOutDirection,
-                    Percent = 50m,
+                    Percent = 20m,
                     MaxCount = 1,
                     Conditions = [PassingRule()]
                 }
@@ -73,7 +73,7 @@ public class BacktestPositionExitProcessorTests
         var tradeLedger = new BacktestTradeLedger(
             portfolio, runtimeRegistry, SlippageModel.Fixed, 0m, 0m);
 
-        new BacktestPositionExitProcessor().Process(new BacktestPositionExitContext(
+        var context = new BacktestPositionExitContext(
             bars[^1].Timestamp,
             59,
             symbolData,
@@ -85,14 +85,23 @@ public class BacktestPositionExitProcessorTests
             portfolio,
             runtimeRegistry,
             tradeLedger,
-            new BacktestExecutionAdapter()));
+            new BacktestExecutionAdapter());
+
+        new BacktestPositionExitProcessor().Process(context);
 
         tradeLedger.Trades.Should().ContainSingle(trade =>
-            trade.ExitReason == "분할 매도(50%)"
-            && trade.Quantity == 4
+            trade.ExitReason == "분할 매도(20%)"
+            && trade.Quantity == 2
             && trade.ExitPrice == 110m);
-        portfolio.OpenPositions["AAA"].CurrentQuantity.Should().Be(1);
-        portfolio.OpenPositions["AAA"].TotalCost.Should().Be(100m);
+        portfolio.OpenPositions["AAA"].CurrentQuantity.Should().Be(3);
+        portfolio.OpenPositions["AAA"].TotalCost.Should().Be(300m);
+        portfolio.OpenPositions["AAA"].ScaleCounts.Should().ContainKey(0).WhoseValue.Should().Be(1);
+
+        new BacktestPositionExitProcessor().Process(context);
+
+        tradeLedger.Trades.Should().ContainSingle(
+            "the filled rule count belongs to the position, not the processor instance");
+        portfolio.OpenPositions["AAA"].CurrentQuantity.Should().Be(3);
     }
 
     private static EntryRule PassingRule() => new()

@@ -232,7 +232,7 @@ internal sealed class BacktestExecutionAdapter
         /// <summary>현재 수량 (스케일인/아웃으로 변동 가능)</summary>
         public int CurrentQuantity { get; set; }
         /// <summary>스케일링 규칙별 실행 횟수</summary>
-        public Dictionary<int, int>? ScaleCounts { get; set; }
+        public Dictionary<int, int> ScaleCounts { get; init; } = [];
         /// <summary>총 투자금 (가중 평균가 계산용)</summary>
         public decimal TotalCost { get; set; }
     }

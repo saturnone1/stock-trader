@@ -54,6 +54,7 @@ public class BacktestExecutionAdapterTests
     public void ProcessExitLogic_PartialExitPreservesEntryEquityAndUsesRemainingQuantity()
     {
         var (simulator, position, trades) = Setup(partial: true, equityAtEntry: 25_000m);
+        position.ScaleCounts[2] = 1;
         var bar = Bar(open: 101m, high: 106m, low: 99m, close: 105m);
 
         var stillOpen = Process(simulator, position, bar, trades);
@@ -62,6 +63,7 @@ public class BacktestExecutionAdapterTests
         stillOpen!.CurrentQuantity.Should().Be(5);
         stillOpen.Quantity.Should().Be(5);
         stillOpen.InitialQuantity.Should().Be(10);
+        stillOpen.ScaleCounts.Should().ContainKey(2).WhoseValue.Should().Be(1);
         stillOpen.EquityAtEntry.Should().Be(25_000m);
         trades.Should().ContainSingle(trade => trade.ExitReason == "부분 익절(1R)" && trade.Quantity == 5);
     }

@@ -869,6 +869,8 @@ public class ArchitectureDependencyTests
         preview.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
         exitProcessor.Should().Contain("LongPositionScalingPolicy.Apply(");
         exitProcessor.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
+        exitProcessor.Should().Contain("position.ScaleCounts");
+        exitProcessor.Should().NotContain("_positionScaleCounts");
         preview.Should().NotContain("Math.Round(position.InitialQuantity");
         exitProcessor.Should().NotContain("position.Quantity * scaling.Percent");
         scalingPolicy.Should().Contain("Math.Floor(rawQuantity)");

@@ -12,9 +12,6 @@ namespace StockTrader.Services.Backtest;
 /// </summary>
 internal sealed class BacktestPositionExitProcessor
 {
-    private readonly Dictionary<string, Dictionary<int, int>> _positionScaleCounts =
-        new(StringComparer.OrdinalIgnoreCase);
-
     public void Process(BacktestPositionExitContext context)
     {
         var openPositions = context.Portfolio.OpenPositions;
@@ -72,14 +69,8 @@ internal sealed class BacktestPositionExitProcessor
             var currentProfitPercent = position.EntryPrice > 0
                 ? (data.Bars[barIndex].Close - position.EntryPrice) / position.EntryPrice * 100
                 : 0;
-            if (!_positionScaleCounts.TryGetValue(symbol, out var scaleCounts))
-            {
-                scaleCounts = [];
-                _positionScaleCounts[symbol] = scaleCounts;
-            }
-
             var scalingMatch = detector.EvaluateScaling(
-                windowBars, currentProfitPercent, scaleCounts);
+                windowBars, currentProfitPercent, position.ScaleCounts);
             if (scalingMatch == null) continue;
             var scaling = scalingMatch.Rule;
 
@@ -105,7 +96,7 @@ internal sealed class BacktestPositionExitProcessor
             if (scalingDecision is null) continue;
 
             LongPositionScalingPolicy.RegisterExecution(
-                scaleCounts, scalingMatch.RuleIndex);
+                position.ScaleCounts, scalingMatch.RuleIndex);
 
             if (scalingDecision.Action == LongPositionScalingAction.ScaleIn)
             {
@@ -134,7 +125,6 @@ internal sealed class BacktestPositionExitProcessor
         int tradesBefore)
     {
         context.Portfolio.OpenPositions.Remove(symbol);
-        _positionScaleCounts.Remove(symbol);
         if (context.TradeLedger.Count <= tradesBefore) return;
 
         context.RuntimeRegistry.RegisterClosedTrade(

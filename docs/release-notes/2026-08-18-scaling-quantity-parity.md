@@ -14,6 +14,10 @@ Scaling-condition evaluation no longer consumes a rule's maximum execution count
 possible. A capital-capped scale-in or an impossible scale-out leaves the count available for a
 later bar.
 
+Backtest execution counts are now owned by each open position and survive position-state copies or
+recreation of the orchestration processor. They are no longer kept in a separate symbol dictionary
+whose lifetime could silently reset a rule's maximum-fill limit.
+
 Live execution continues to reject strategies containing scale-in or scale-out rules until broker
 order submission, partial-fill reconciliation, and persisted scaling state provide the same
 semantics. Golden tests lock this fail-closed boundary.

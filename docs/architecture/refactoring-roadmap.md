@@ -169,7 +169,9 @@
   weighted-average price, scale-out remaining cost, and adapter-supplied capital caps. Preview and
   backtest no longer disagree between nearest-share rounding and truncation, and backtest preserves
   the original quantity after partial exits. Rule execution counts advance only after an actual
-  scaling fill. Live execution remains explicitly rejected until broker
+  scaling fill and belong to each open position rather than an orchestration service dictionary,
+  preserving limits across processor recreation and position-state copies. Live execution remains
+  explicitly rejected until broker
   partial-order reconciliation can honor the same contract.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
