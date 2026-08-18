@@ -2,6 +2,12 @@
 
 ## Current progress
 
+- The 523-line LS broker adapter is now a thin facade over purpose-specific order, account, and
+  order-history clients. A central protocol catalog owns the current order/cancel TR codes and
+  official balance request fields, while one tolerant parser accepts documented numeric and string
+  response shapes. Order-history windows translate UTC boundaries to all overlapping Korean dates
+  and exact-filter parsed broker timestamps, preventing midnight boundary omissions and unrelated
+  evidence from entering reconciliation.
 - REST minute-bar ingestion now crosses `IIntradayMarketDataIngestionCycle` and a provider-bound
   session. The worker owns only injected-clock scheduling and configured recovery. The cycle checks
   the selected provider's market instead of either global market. Alpaca streaming follows the

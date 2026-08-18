@@ -1,31 +1,18 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using StockTrader.Application.Accounts;
 using StockTrader.Models;
-using StockTrader.Models.Enums;
 using StockTrader.Services.LsSecurities;
 
 namespace StockTrader.Services.Broker;
 
 /// <summary>
-/// LS증권 OPEN API 브로커 어댑터.
-/// REST API 기반 국내주식 매매 (매수/매도/취소, 잔고 조회, 체결 내역).
-/// 공식 문서: https://openapi.ls-sec.co.kr
+/// LS증권 브로커 기능을 목적별 프로토콜 클라이언트에 연결하는 얇은 facade입니다.
 /// </summary>
-public class LsSecuritiesBrokerService : IBrokerService
+public sealed class LsSecuritiesBrokerService : IBrokerService
 {
-    public BrokerType BrokerType => BrokerType.LsSecurities;
-
-    private readonly HttpClient _http;
-    private readonly LsAuthService _auth;
-    private readonly TimeProvider _timeProvider;
-    private readonly ILogger<LsSecuritiesBrokerService> _logger;
-
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy = null, // LS API는 PascalCase/특정 키 사용
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+    private readonly LsBrokerOrderClient _orders;
+    private readonly LsBrokerAccountClient _account;
+    private readonly LsBrokerOrderHistoryClient _history;
+    private readonly ILogger _logger;
 
     public LsSecuritiesBrokerService(
         HttpClient http,
@@ -33,104 +20,56 @@ public class LsSecuritiesBrokerService : IBrokerService
         TimeProvider timeProvider,
         ILogger<LsSecuritiesBrokerService> logger)
     {
-        _http = http;
-        _auth = auth;
-        _timeProvider = timeProvider;
+        http.BaseAddress = new Uri(auth.Settings.EffectiveBaseUrl);
+        var transport = new LsBrokerTransport(http, auth);
+        _orders = new LsBrokerOrderClient(transport, auth.Settings, timeProvider, logger);
+        _account = new LsBrokerAccountClient(transport, auth.Settings, timeProvider, logger);
+        _history = new LsBrokerOrderHistoryClient(
+            transport, auth.Settings, LsAuthService.KstZone, logger);
         _logger = logger;
-        _http.BaseAddress = new Uri(_auth.Settings.EffectiveBaseUrl);
     }
 
-    #region IBrokerService
+    public BrokerType BrokerType => BrokerType.LsSecurities;
 
-    /// <inheritdoc />
-    public async Task<BrokerOrder?> SubmitEntryOrderAsync(
+    public Task<BrokerOrder?> SubmitEntryOrderAsync(
         TradeRecommendation recommendation,
-        CancellationToken ct = default)
-    {
-        try
-        {
-            // BnsTpCode: 2=매수, 1=매도 (recommendation은 항상 매수 진입)
-            var orderBody = new Dictionary<string, object>
-            {
-                ["CSPAT00600InBlock1"] = new Dictionary<string, object>
-                {
-                    ["AcntNo"] = _auth.Settings.AccountNo,
-                    ["InptPwd"] = _auth.Settings.AccountPassword,
-                    ["IsuNo"] = $"A{recommendation.Symbol}", // LS 종목코드: A + 6자리
-                    ["OrdQty"] = recommendation.ShareQuantity,
-                    ["OrdPrc"] = recommendation.EntryPrice,
-                    ["BnsTpCode"] = "2", // 매수
-                    ["OrdprcPtnCode"] = "00", // 지정가
-                    ["MgntrnCode"] = "000", // 현금
-                    ["LoanDt"] = "",
-                    ["OrdCndiTpCode"] = "0"
-                }
-            };
+        CancellationToken ct = default) =>
+        _orders.SubmitEntryAsync(recommendation, ct);
 
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
-                "CSPAT00600", orderBody, ct: ct);
-            var response = await _http.SendAsync(request, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS] 매수 주문 실패: {Status} {Body}", response.StatusCode, json);
-                return null;
-            }
-
-            var orderId = string.Empty;
-            try
-            {
-                using var document = JsonDocument.Parse(json);
-                if (document.RootElement.TryGetProperty("CSPAT00600OutBlock2", out var block)
-                    && block.TryGetProperty("OrdNo", out var orderNumber))
-                    orderId = orderNumber.ToString();
-            }
-            catch (JsonException ex)
-            {
-                // 접수 성공 뒤 응답 파싱 실패를 제출 실패로 바꾸면 재시도 시 중복 주문 위험이 있다.
-                _logger.LogWarning(ex, "[LS] 진입 주문번호를 읽지 못함: {Symbol}",
-                    recommendation.Symbol);
-            }
-
-            _logger.LogInformation("[LS] 매수 주문 성공: {Symbol} {Qty}주 @ {Price}",
-                recommendation.Symbol, recommendation.ShareQuantity, recommendation.EntryPrice);
-            return new BrokerOrder
-            {
-                OrderId = orderId,
-                Symbol = recommendation.Symbol,
-                Direction = TradeDirection.Long,
-                Quantity = recommendation.ShareQuantity,
-                OrderPrice = recommendation.EntryPrice,
-                Status = BrokerOrderStatus.Accepted,
-                OrderType = BrokerOrderType.Limit,
-                SubmittedAt = _timeProvider.GetUtcNow().UtcDateTime,
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 매수 주문 중 예외: {Symbol}", recommendation.Symbol);
-            return null;
-        }
-    }
-
-    /// <inheritdoc />
     public Task<BrokerOrder?> IncreasePositionAsync(
         string symbol,
         int quantity,
         CancellationToken ct = default) =>
-        SubmitMarketPositionOrderAsync(symbol, quantity, "2", ct);
+        _orders.SubmitMarketAsync(symbol, quantity, LsBrokerSide.Buy, ct);
 
-    /// <inheritdoc />
-    public Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default) =>
+    public Task<bool> CancelOrderAsync(
+        string orderId,
+        CancellationToken ct = default) =>
+        _orders.CancelAsync(orderId, ct);
+
+    public Task<BrokerOrder?> ClosePositionAsync(
+        string symbol,
+        CancellationToken ct = default) =>
         ClosePositionCoreAsync(symbol, null, ct);
 
-    /// <inheritdoc />
     public Task<BrokerOrder?> ClosePositionAsync(
         string symbol,
         int quantity,
         CancellationToken ct = default) =>
         ClosePositionCoreAsync(symbol, quantity, ct);
+
+    public Task<IReadOnlyList<BrokerPositionSnapshot>> GetPositionsAsync(
+        CancellationToken ct = default) =>
+        _account.GetPositionsAsync(ct);
+
+    public Task<BrokerAccount?> GetAccountAsync(CancellationToken ct = default) =>
+        _account.GetAccountAsync(ct);
+
+    public Task<List<BrokerOrder>> GetOrderHistoryAsync(
+        DateTime from,
+        DateTime to,
+        CancellationToken ct = default) =>
+        _history.GetAsync(from, to, ct);
 
     private async Task<BrokerOrder?> ClosePositionCoreAsync(
         string symbol,
@@ -139,385 +78,41 @@ public class LsSecuritiesBrokerService : IBrokerService
     {
         try
         {
-            // 보유 잔고 조회 후 전량 시장가 매도
-            var positions = await GetPositionsAsync(ct);
-            var pos = positions.FirstOrDefault(p => p.Symbol == symbol
-                || p.Symbol == $"A{symbol}");
-
-            if (pos == null || pos.Quantity <= 0)
+            var normalized = LsBrokerProtocol.NormalizeSymbol(symbol);
+            var positions = await _account.GetPositionsAsync(ct);
+            var position = positions.FirstOrDefault(item =>
+                string.Equals(
+                    LsBrokerProtocol.NormalizeSymbol(item.Symbol),
+                    normalized,
+                    StringComparison.OrdinalIgnoreCase));
+            if (position is null || position.Quantity <= 0)
             {
                 _logger.LogWarning("[LS] 청산할 포지션 없음: {Symbol}", symbol);
                 return null;
             }
 
-            var sellQuantity = requestedQuantity ?? pos.Quantity;
-            if (sellQuantity <= 0 || sellQuantity > pos.Quantity)
+            var sellQuantity = requestedQuantity ?? position.Quantity;
+            if (sellQuantity <= 0 || sellQuantity > position.Quantity)
             {
                 _logger.LogWarning(
                     "[LS] 잘못된 청산 수량: {Symbol} 요청={Requested} 보유={Available}",
-                    symbol, sellQuantity, pos.Quantity);
+                    symbol,
+                    sellQuantity,
+                    position.Quantity);
                 return null;
             }
 
-            return await SubmitMarketPositionOrderAsync(symbol, sellQuantity, "1", ct);
+            return await _orders.SubmitMarketAsync(
+                normalized, sellQuantity, LsBrokerSide.Sell, ct);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            _logger.LogError(ex, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
             return null;
         }
     }
-
-    private async Task<BrokerOrder?> SubmitMarketPositionOrderAsync(
-        string symbol,
-        int quantity,
-        string sideCode,
-        CancellationToken ct)
-    {
-        if (quantity <= 0 || string.IsNullOrWhiteSpace(symbol))
-            return null;
-
-        try
-        {
-            var orderBody = new Dictionary<string, object>
-            {
-                ["CSPAT00600InBlock1"] = new Dictionary<string, object>
-                {
-                    ["AcntNo"] = _auth.Settings.AccountNo,
-                    ["InptPwd"] = _auth.Settings.AccountPassword,
-                    ["IsuNo"] = $"A{symbol}",
-                    ["OrdQty"] = quantity,
-                    ["OrdPrc"] = 0,       // 시장가
-                    ["BnsTpCode"] = sideCode,
-                    ["OrdprcPtnCode"] = "03", // 시장가
-                    ["MgntrnCode"] = "000",
-                    ["LoanDt"] = "",
-                    ["OrdCndiTpCode"] = "0"
-                }
-            };
-
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
-                "CSPAT00600", orderBody, ct: ct);
-            var response = await _http.SendAsync(request, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS] 포지션 조정 실패: {Symbol} {Status} {Body}",
-                    symbol, response.StatusCode, json);
-                return null;
-            }
-
-            var orderId = string.Empty;
-            try
-            {
-                using var document = JsonDocument.Parse(json);
-                if (document.RootElement.TryGetProperty("CSPAT00600OutBlock2", out var block)
-                    && block.TryGetProperty("OrdNo", out var orderNumber))
-                    orderId = orderNumber.ToString();
-            }
-            catch (JsonException ex)
-            {
-                // HTTP 주문 접수는 성공했다. 주문번호 파싱 실패를 제출 실패로 바꾸면
-                // 재시도 시 중복 매도가 될 수 있으므로 ID 미상 접수로 유지한다.
-                _logger.LogWarning(ex, "[LS] 포지션 조정 주문번호를 읽지 못함: {Symbol}", symbol);
-            }
-
-            var direction = sideCode == "2" ? TradeDirection.Long : TradeDirection.Short;
-            _logger.LogInformation("[LS] 포지션 조정 접수: {Direction} {Symbol} {Qty}주",
-                direction, symbol, quantity);
-            return new BrokerOrder
-            {
-                OrderId = orderId,
-                Symbol = symbol,
-                Direction = direction,
-                Quantity = quantity,
-                Status = BrokerOrderStatus.Accepted,
-                OrderType = BrokerOrderType.Market,
-                SubmittedAt = _timeProvider.GetUtcNow().UtcDateTime,
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 포지션 조정 중 예외: {Symbol}", symbol);
-            return null;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
-    {
-        try
-        {
-            if (!long.TryParse(orderId, out var orderNo))
-            {
-                _logger.LogWarning("[LS] 잘못된 주문번호 형식: {OrderId}", orderId);
-                return false;
-            }
-
-            var cancelBody = new Dictionary<string, object>
-            {
-                ["CSPAT00800InBlock1"] = new Dictionary<string, object>
-                {
-                    ["AcntNo"] = _auth.Settings.AccountNo,
-                    ["InptPwd"] = _auth.Settings.AccountPassword,
-                    ["OrgOrdNo"] = orderNo,
-                    ["IsuNo"] = "",
-                    ["OrdQty"] = 0 // 전량 취소
-                }
-            };
-
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
-                "CSPAT00800", cancelBody, ct: ct);
-            var response = await _http.SendAsync(request, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS] 주문 취소 실패: {OrderId} {Status} {Body}",
-                    orderId, response.StatusCode, json);
-                return false;
-            }
-
-            _logger.LogInformation("[LS] 주문 취소 성공: {OrderId}", orderId);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 주문 취소 중 예외: {OrderId}", orderId);
-            return false;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<BrokerPositionSnapshot>> GetPositionsAsync(
-        CancellationToken ct = default)
-    {
-        try
-        {
-            var body = new Dictionary<string, object>
-            {
-                ["t0424InBlock"] = new Dictionary<string, object>
-                {
-                    ["pession"] = "0",
-                    ["cts_expcode"] = "",
-                    ["cts_medession"] = "0"
-                }
-            };
-
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/accno",
-                "t0424", body, ct: ct);
-            var response = await _http.SendAsync(request, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS] 잔고 조회 실패: {Status} {Body}", response.StatusCode, json);
-                return [];
-            }
-
-            using var doc = JsonDocument.Parse(json);
-            var positions = new List<BrokerPositionSnapshot>();
-
-            if (doc.RootElement.TryGetProperty("t0424OutBlock1", out var items))
-            {
-                foreach (var item in items.EnumerateArray())
-                {
-                    var symbol = item.GetProperty("expcode").GetString() ?? "";
-                    var qty = item.TryGetProperty("janqty", out var jq) ? jq.GetInt64() : 0;
-                    var avgPrice = item.TryGetProperty("pamt", out var pa) ? pa.GetDecimal() : 0;
-                    var curPrice = item.TryGetProperty("price", out var pr) ? pr.GetDecimal() : 0;
-
-                    if (qty <= 0) continue;
-
-                    positions.Add(new BrokerPositionSnapshot(
-                        symbol,
-                        (int)qty,
-                        avgPrice,
-                        curPrice));
-                }
-            }
-
-            _logger.LogInformation("[LS] 보유 종목 {Count}건 조회", positions.Count);
-            return positions;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 보유 종목 조회 중 예외");
-            return [];
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<BrokerAccount?> GetAccountAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            var body = new Dictionary<string, object>
-            {
-                ["CSPAQ12300InBlock1"] = new Dictionary<string, object>
-                {
-                    ["RecCnt"] = 1,
-                    ["BalCreTp"] = "0",
-                    ["CmsnAppTpCode"] = "0",
-                    ["D2balBaseQryTp"] = "0",
-                    ["UprcTpCode"] = "0"
-                }
-            };
-
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/accno",
-                "CSPAQ12300", body, ct: ct);
-            var response = await _http.SendAsync(request, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS] 계좌 조회 실패: {Status} {Body}", response.StatusCode, json);
-                return null;
-            }
-
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("CSPAQ12300OutBlock2", out var block2))
-            {
-                _logger.LogWarning("[LS] 계좌 응답에 OutBlock2 없음: {Body}", json);
-                return null;
-            }
-
-            return new BrokerAccount
-            {
-                AccountId = _auth.Settings.AccountNo,
-                TotalEquity = block2.TryGetProperty("DpsastTotamt", out var te) ? te.GetDecimal() : 0,
-                Cash = block2.TryGetProperty("D2Dps", out var cash) ? cash.GetDecimal() : 0,
-                BuyingPower = block2.TryGetProperty("MnyOrdAbleAmt", out var bp) ? bp.GetDecimal() : 0,
-                UnrealizedPnL = block2.TryGetProperty("InvstOrgAmt", out var upl) ? upl.GetDecimal() : 0,
-                FetchedAt = _timeProvider.GetUtcNow().UtcDateTime,
-                StatusMessage = "정상"
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 계좌 조회 중 예외");
-            return null;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<List<BrokerOrder>> GetOrderHistoryAsync(DateTime from, DateTime to,
-        CancellationToken ct = default)
-    {
-        try
-        {
-            // CSPAQ13700은 단일 일자(OrdDt) 조회 TR — from~to 범위를 순차 조회
-            var allOrders = new List<BrokerOrder>();
-            for (var date = from.Date; date <= to.Date; date = date.AddDays(1))
-            {
-                var dayOrders = await GetOrdersForDateAsync(date, ct);
-                allOrders.AddRange(dayOrders);
-            }
-            _logger.LogInformation("[LS] 주문 내역 {Count}건 조회 ({From:d}~{To:d})",
-                allOrders.Count, from, to);
-            return allOrders;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 체결내역 조회 중 예외");
-            return [];
-        }
-    }
-
-    private async Task<List<BrokerOrder>> GetOrdersForDateAsync(
-        DateTime date,
-        CancellationToken ct)
-    {
-        try
-        {
-            var body = new Dictionary<string, object>
-            {
-                ["CSPAQ13700InBlock1"] = new Dictionary<string, object>
-                {
-                    ["RecCnt"] = 300,
-                    ["AcntNo"] = _auth.Settings.AccountNo,
-                    ["InptPwd"] = _auth.Settings.AccountPassword,
-                    ["OrdMktCode"] = "00",
-                    ["BnsTpCode"] = "0",
-                    ["IsuNo"] = "",
-                    ["ExecYn"] = "0",
-                    ["OrdDt"] = date.ToString("yyyyMMdd"),
-                    ["SrtOrdNo2"] = 0,
-                    ["BkseqTpCode"] = "0",
-                    ["OrdPtnCode"] = "00"
-                }
-            };
-
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/accno",
-                "CSPAQ13700", body, ct: ct);
-            var response = await _http.SendAsync(request, ct);
-            var json = await response.Content.ReadAsStringAsync(ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("[LS] 체결내역 조회 실패: {Status} {Body}", response.StatusCode, json);
-                return [];
-            }
-
-            using var doc = JsonDocument.Parse(json);
-            var orders = new List<BrokerOrder>();
-
-            if (doc.RootElement.TryGetProperty("CSPAQ13700OutBlock3", out var items))
-            {
-                foreach (var item in items.EnumerateArray())
-                {
-                    if (!LsOrderTimestampParser.TryParseUtc(
-                            item,
-                            date,
-                            LsAuthService.KstZone,
-                            out var submittedAt))
-                    {
-                        _logger.LogWarning(
-                            "[LS] 실제 주문시각을 읽지 못한 주문내역을 제외함: {Date:yyyy-MM-dd}",
-                            date);
-                        continue;
-                    }
-
-                    var ordNo = item.TryGetProperty("OrdNo", out var on) ? on.GetInt64().ToString() : "";
-                    var symbol = item.TryGetProperty("IsuNo", out var isn) ? isn.GetString() ?? "" : "";
-                    var bnsCode = item.TryGetProperty("BnsTpCode", out var bn) ? bn.GetString() : "0";
-                    var ordQty = item.TryGetProperty("OrdQty", out var oq) ? oq.GetInt64() : 0;
-                    var execQty = item.TryGetProperty("ExecQty", out var eq) ? eq.GetInt64() : 0;
-                    var ordPrc = item.TryGetProperty("OrdPrc", out var op) ? op.GetDecimal() : 0;
-                    var execPrc = item.TryGetProperty("ExecPrc", out var ep) ? ep.GetDecimal() : 0;
-
-                    // A 접두어 제거
-                    if (symbol.StartsWith("A"))
-                        symbol = symbol[1..];
-
-                    orders.Add(new BrokerOrder
-                    {
-                        OrderId = ordNo,
-                        Symbol = symbol,
-                        Direction = bnsCode == "2" ? TradeDirection.Long : TradeDirection.Short,
-                        Quantity = (int)ordQty,
-                        FilledQuantity = (int)execQty,
-                        OrderPrice = ordPrc > 0 ? ordPrc : null,
-                        AverageFillPrice = execPrc > 0 ? execPrc : null,
-                        Status = execQty >= ordQty ? BrokerOrderStatus.Filled
-                            : execQty > 0 ? BrokerOrderStatus.PartiallyFilled
-                            : BrokerOrderStatus.Pending,
-                        OrderType = BrokerOrderType.Limit,
-                        SubmittedAt = submittedAt
-                    });
-                }
-            }
-
-            _logger.LogInformation("[LS] 주문 내역 {Count}건 조회", orders.Count);
-            return orders;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LS] 체결내역 조회 중 예외");
-            return [];
-        }
-    }
-
-    #endregion
 }

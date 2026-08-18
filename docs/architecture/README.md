@@ -47,6 +47,9 @@ infrastructure.
   for reconnect timing, buffer flushing, watchlist synchronization, and activity staleness.
 - LS provider timing: one deterministic KST token-expiry/rate-limit policy and injected clock shared
   by authentication, account/order adapters, and market-data boundaries.
+- LS broker protocol: one request catalog and one tolerant response parser, with purpose-specific
+  order, account, and order-history clients behind the broker facade. UTC evidence windows are
+  translated to overlapping KST trading dates and then filtered by the exact requested interval.
 - Live position order state: one application execution port for conditional claim, broker evidence,
   release, and atomic position/realized-trade fill commit.
 - Open-position display state: one application query for holding duration, durable-order status,
@@ -450,4 +453,12 @@ defaults, active-profile selection, and modification time have one application o
   provider market and replace stale partial OHLCV through overlapping upsert synchronization.
 - `adr/0056-isolate-provider-market-intraday-ingestion.md`: bind REST minute-bar polling and realtime
   fallback to the effective provider and make worker recovery observable.
+- `adr/0057-centralize-backtest-period-metrics.md`: calculate annualized backtest metrics from the
+  explicit evaluation period rather than trade activity dates.
+- `adr/0058-type-backtest-result-contract.md`: project unit-preserving backtest results through one
+  generated API and desktop contract.
+- `adr/0059-centralize-market-regime-trend.md`: give completed-bar benchmark trend evidence one
+  deterministic, fail-closed owner across preview, backtest, live, analysis, and ML.
+- `adr/0060-isolate-ls-broker-protocol.md`: isolate current LS request shapes, tolerant response
+  parsing, and exact UTC-to-KST order-history evidence behind purpose-specific clients.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

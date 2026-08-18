@@ -3231,7 +3231,14 @@ public class ArchitectureDependencyTests
             repository, "Services/Broker/LsOrderTimestampParser.cs"));
         var lsBroker = File.ReadAllText(Path.Combine(
             repository, "Services/Broker/LsSecuritiesBrokerService.cs"));
-        var normalizedLsBroker = lsBroker.ReplaceLineEndings("\n");
+        var lsProtocol = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/LsBrokerProtocol.cs"));
+        var lsResponseParser = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/LsBrokerResponseParser.cs"));
+        var lsHistoryClient = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/LsBrokerOrderHistoryClient.cs"));
+        var lsHistoryWindow = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/LsOrderHistoryWindow.cs"));
         var lsAuth = File.ReadAllText(Path.Combine(
             repository, "Services/LsSecurities/LsAuthService.cs"));
         var lsTiming = File.ReadAllText(Path.Combine(
@@ -3262,8 +3269,28 @@ public class ArchitectureDependencyTests
         lsTimestampParser.Should().Contain("OrdTime");
         lsTimestampParser.Should().Contain("TimeZoneInfo.ConvertTimeToUtc(");
         lsTimestampParser.Should().NotContain("DateTime.UtcNow");
-        normalizedLsBroker.Should().Contain(
-            "\"/stock/accno\",\n                \"CSPAQ13700\"");
+        lsBroker.Should().Contain("LsBrokerOrderClient");
+        lsBroker.Should().Contain("LsBrokerAccountClient");
+        lsBroker.Should().Contain("LsBrokerOrderHistoryClient");
+        lsBroker.Should().NotContain("JsonDocument");
+        lsBroker.Should().NotContain("CreateRequestAsync");
+        File.ReadAllLines(Path.Combine(
+            repository, "Services/Broker/LsSecuritiesBrokerService.cs"))
+            .Length.Should().BeLessThanOrEqualTo(150);
+        lsProtocol.Should().Contain("CSPAT00601");
+        lsProtocol.Should().Contain("CSPAT00801");
+        lsProtocol.Should().Contain("CSPAQ13700");
+        lsProtocol.Should().Contain("[\"prcgb\"]");
+        lsProtocol.Should().Contain("[\"chegb\"]");
+        lsProtocol.Should().Contain("[\"dangb\"]");
+        lsProtocol.Should().Contain("[\"charge\"]");
+        lsProtocol.Should().NotContain("CSPAT00600InBlock1");
+        lsProtocol.Should().NotContain("pession");
+        lsProtocol.Should().NotContain("cts_medession");
+        lsResponseParser.Should().Contain("CSPAT00600OutBlock2");
+        lsHistoryClient.Should().Contain("KoreanTradingDates(");
+        lsHistoryClient.Should().Contain("ParseOrderHistory(");
+        lsHistoryWindow.Should().Contain("TimeZoneInfo.ConvertTimeFromUtc(");
         lsAuth.Should().Contain("TimeProvider timeProvider");
         lsAuth.Should().Contain("LsOperationalTimingPolicy.CalculateTokenExpiryUtc(");
         lsAuth.Should().Contain("Task.Delay(delay, _timeProvider, ct)");
