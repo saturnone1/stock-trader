@@ -6,6 +6,9 @@
   import { collectPatternValidationIssues } from '../features/pattern-builder/patternValidation'
   import { createPatternWorkspaceModel } from '../features/pattern-builder/patternWorkspace'
   import { createPatternEditorCommands } from '../features/pattern-builder/patternEditorCommands'
+  import { emptyPatternMetadata, projectPatternMetadata } from '../features/pattern-builder/patternMetadata'
+  import { buildPatternPreviewModel, findSelectedRule, summarizeRule } from '../features/pattern-builder/patternPreviewModel'
+  import { dayOptions, glossaryTooltips, monthOptions, operatorLabels, paramKeyLabels } from '../features/pattern-builder/patternBuilderUiCatalog'
   import PatternWorkspaceSidebar from '../features/pattern-builder/PatternWorkspaceSidebar.svelte'
   import PatternStrategyTree from '../features/pattern-builder/PatternStrategyTree.svelte'
   import PatternRuleInspector from '../features/pattern-builder/PatternRuleInspector.svelte'
@@ -19,71 +22,7 @@
     blankScalingRule: (...args) => workspaceModel.blankScalingRule(...args)
   })
 
-  let indicatorPalette = []
-  let operatorOptions = []
-  let entryModeOptions = []
-  let timeFrameOptions = []
-  let sizingModeOptions = []
-  let logicOptions = []
-  let scalingDirectionOptions = []
-  let stopTypeOptions = []
-  let targetTypeOptions = []
-  let indicatorOptions = []
-  let indicatorSet = new Set()
-  let positiveParamKeys = new Set(['multiplier', 'multiple', 'percent'])
-  const dayOptions = [
-    { value: 1, label: '월' }, { value: 2, label: '화' }, { value: 3, label: '수' },
-    { value: 4, label: '목' }, { value: 5, label: '금' }, { value: 6, label: '토' }, { value: 0, label: '일' }
-  ]
-  const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1)
-  let indicatorLabels = {}
-  let indicatorValueGuides = {}
-  let indicatorFieldConfigs = {}
-  const operatorLabels = {
-    '>': '초과',
-    '<': '미만',
-    '>=': '이상',
-    '<=': '이하',
-    crosses_above: '상향 돌파',
-    crosses_below: '하향 이탈'
-  }
-  let entryModeLabels = {}
-  let sizingModeLabels = {}
-  let logicLabels = {}
-  let scalingDirectionLabels = {}
-  let stopTypeLabels = {}
-  let targetTypeLabels = {}
-  let liveStrategyConstraints = null
-  const paramKeyLabels = {
-    period: '기간',
-    cumulativePeriod: '누적 기간',
-    bars: '봉 수',
-    lookback: '되돌아보기',
-    stddev: '표준편차',
-    percent: '퍼센트',
-    multiple: 'R 배수',
-    multiplier: '배수',
-    smooth: '평활',
-    slow: '느린 기간',
-    fast: '빠른 기간',
-    signal: '시그널 기간'
-  }
-  const glossaryTooltips = {
-    workspace: '저장한 매매 전략을 고르고 새 전략을 만드는 곳입니다.',
-    pattern: '한 전략에서 언제 사고, 얼마나 사고, 언제 팔지 정하는 기본 설정입니다.',
-    strategy: '매수 조건부터 손절·익절과 거래 제한까지 실제 매매 순서대로 구성합니다.',
-    rule: 'RSI가 30 이하인지, 거래량이 평균보다 큰지처럼 매수·매도를 판단하는 한 가지 조건입니다.',
-    entryGroup: '같이 확인할 매수 조건을 한 상황으로 묶습니다. 모든 조건 또는 하나 이상의 조건을 만족하도록 정할 수 있습니다.',
-    exitRule: '보유한 종목을 언제 팔지 정하는 조건입니다.',
-    weightTier: '시장 상황이나 조건에 따라 투자 비중을 다르게 정합니다.',
-    scalingRule: '보유 중 추가로 사거나 일부를 팔 시점과 수량을 정합니다.',
-    runtime: '거래 가능한 시기, 손실 후 휴식, 동시 보유 한도처럼 전략 전체의 안전장치를 정합니다.',
-    dynamicExit: 'ATR, 이동평균, 이전 고점·저점 등을 이용해 손절가와 목표가를 계산합니다.',
-    ruleInspector: '선택한 매수·매도 조건의 지표와 기준값을 바꾸는 곳입니다.',
-    entryMode: '신호가 뜬 현재 봉 종가에 바로 들어갈지, 다음 봉 시가에 들어갈지 정합니다.',
-    sizingMode: '주문 크기를 어떤 방식으로 계산할지 정합니다.'
-  }
-  let dynamicExitFieldConfigs = { stop: {}, target: {} }
+  let builderMetadata = emptyPatternMetadata()
   let patterns = []
   let selectedPattern = null
   let workspace = null
@@ -112,64 +51,11 @@
   }
 
   function applyMetadata(metadata) {
-    const indicators = metadata?.indicators ?? []
-    const categories = []
-    const grouped = new Map()
-
-    indicatorOptions = indicators.map((item) => ({
-      label: item.displayName,
-      indicator: item.code,
-      operator: item.defaultOperator,
-      value: item.defaultThreshold,
-      params: Object.fromEntries((item.parameters ?? []).map((parameter) => [parameter.key, parameter.defaultValue]))
-    }))
-    indicators.forEach((item) => {
-      if (!grouped.has(item.category)) {
-        grouped.set(item.category, [])
-        categories.push(item.category)
-      }
-      grouped.get(item.category).push(indicatorOptions.find((option) => option.indicator === item.code))
+    builderMetadata = projectPatternMetadata(metadata)
+    workspaceModel.configure({
+      indicatorFieldConfigs: builderMetadata.indicatorFieldConfigs,
+      dynamicExitFieldConfigs: builderMetadata.dynamicExitFieldConfigs
     })
-    indicatorPalette = categories.map((title) => ({ title, items: grouped.get(title) }))
-    indicatorSet = new Set(indicators.map((item) => item.code))
-    indicatorLabels = Object.fromEntries(indicators.map((item) => [item.code, item.displayName]))
-    indicatorValueGuides = Object.fromEntries(indicators.filter((item) => item.valueGuide).map((item) => [item.code, item.valueGuide]))
-    indicatorFieldConfigs = Object.fromEntries(indicators.map((item) => [item.code, (item.parameters ?? []).map((parameter) => ({
-      key: parameter.key,
-      label: parameter.displayName,
-      step: String(parameter.step),
-      defaultValue: parameter.defaultValue
-    }))]))
-    positiveParamKeys = new Set([
-      'multiplier', 'multiple', 'percent',
-      ...indicators.flatMap((item) => (item.parameters ?? []).filter((parameter) => parameter.mustBePositive).map((parameter) => parameter.key))
-    ])
-    operatorOptions = metadata?.ruleOperators ?? []
-    timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => ({ value: item.value, label: item.displayName }))
-    const setOptions = (items) => (items ?? []).map((item) => item.code)
-    const setLabels = (items) => Object.fromEntries((items ?? []).map((item) => [item.code, item.displayName]))
-    const exitConfigs = (items) => Object.fromEntries((items ?? []).map((item) => [item.code, (item.parameters ?? []).map((parameter) => ({
-      key: parameter.key, label: parameter.displayName, step: String(parameter.step), defaultValue: parameter.defaultValue
-    }))]))
-    entryModeOptions = setOptions(metadata?.entryModes)
-    sizingModeOptions = setOptions(metadata?.sizingModes)
-    logicOptions = setOptions(metadata?.logicModes)
-    scalingDirectionOptions = setOptions(metadata?.scalingDirections)
-    stopTypeOptions = setOptions(metadata?.stopMethods)
-    targetTypeOptions = setOptions(metadata?.targetMethods)
-    entryModeLabels = setLabels(metadata?.entryModes)
-    sizingModeLabels = setLabels(metadata?.sizingModes)
-    logicLabels = setLabels(metadata?.logicModes)
-    scalingDirectionLabels = setLabels(metadata?.scalingDirections)
-    stopTypeLabels = setLabels(metadata?.stopMethods)
-    targetTypeLabels = setLabels(metadata?.targetMethods)
-    dynamicExitFieldConfigs = { stop: exitConfigs(metadata?.stopMethods), target: exitConfigs(metadata?.targetMethods) }
-    liveStrategyConstraints = metadata?.liveStrategyConstraints
-    workspaceModel.configure({ indicatorFieldConfigs, dynamicExitFieldConfigs })
-
-    if (!indicatorOptions.length || !timeFrameOptions.length || !operatorOptions.length || !entryModeOptions.length || !stopTypeOptions.length) {
-      throw new Error('서버의 전략 구성 메타데이터가 비어 있습니다.')
-    }
   }
 
   const blankRule = (...args) => workspaceModel.blankRule(...args)
@@ -224,13 +110,20 @@
 
   const buildPatternPayload = (...args) => workspaceModel.buildPatternPayload(...args)
   $: validationIssues = workspace ? collectPatternValidationIssues(workspace, {
-    indicatorSet,
-    positiveParamKeys,
+    indicatorSet: builderMetadata.indicatorSet,
+    positiveParamKeys: builderMetadata.positiveParamKeys,
     paramKeyLabels,
-    liveStrategyConstraints
+    liveStrategyConstraints: builderMetadata.liveStrategyConstraints
   }) : []
-  $: previewPattern = workspace ? buildPatternPayload(workspace) : null
-  $: previewSelectedSummary = getSelectedPreviewSummary()
+  $: previewModel = buildPatternPreviewModel(workspace, selectedNode, buildPatternPayload, {
+    indicators: builderMetadata.indicatorLabels,
+    parameters: paramKeyLabels,
+    operators: operatorLabels,
+    entryModes: builderMetadata.entryModeLabels,
+    logicModes: builderMetadata.logicLabels,
+    stopTypes: builderMetadata.stopTypeLabels,
+    targetTypes: builderMetadata.targetTypeLabels
+  })
 
   async function loadPatterns() {
     loading = true
@@ -364,37 +257,35 @@
     applyEditorCommand(editorCommands.duplicateNode(workspace, selectedNode, node))
   }
   function ruleSummary(rule) {
-    const indicatorLabel = indicatorLabels[rule.indicator] ?? rule.indicator
-    const params = Object.entries(rule.params || {}).map(([key, value]) => `${paramKeyLabels[key] ?? key}:${value}`).join(', ')
-    const compare = rule.compareIndicator
-      ? ` 대비 ${indicatorLabels[rule.compareIndicator] ?? rule.compareIndicator}`
-      : ` ${operatorLabels[rule.operator] ?? rule.operator} ${rule.value}`
-    const meta = [rule.withinBars ? `최근 ${rule.withinBars}봉 내` : '', rule.consecutiveBars ? `${rule.consecutiveBars}봉 연속` : ''].filter(Boolean).join(' · ')
-    return `${indicatorLabel}${params ? `(${params})` : ''}${compare}${meta ? ` · ${meta}` : ''}`
+    return summarizeRule(rule, {
+      indicators: builderMetadata.indicatorLabels,
+      parameters: paramKeyLabels,
+      operators: operatorLabels
+    })
   }
 
   function displayEntryMode(value) {
-    return entryModeLabels[value] ?? value
+    return builderMetadata.entryModeLabels[value] ?? value
   }
 
   function displaySizingMode(value) {
-    return sizingModeLabels[value] ?? value
+    return builderMetadata.sizingModeLabels[value] ?? value
   }
 
   function displayLogic(value) {
-    return logicLabels[value] ?? value
+    return builderMetadata.logicLabels[value] ?? value
   }
 
   function displayScalingDirection(value) {
-    return scalingDirectionLabels[value] ?? value
+    return builderMetadata.scalingDirectionLabels[value] ?? value
   }
 
   function displayStopType(value) {
-    return stopTypeLabels[value] ?? value
+    return builderMetadata.stopTypeLabels[value] ?? value
   }
 
   function displayTargetType(value) {
-    return targetTypeLabels[value] ?? value
+    return builderMetadata.targetTypeLabels[value] ?? value
   }
 
   function tooltipFor(key) {
@@ -406,33 +297,7 @@
   }
 
   function getCurrentRule() {
-    if (!workspace) return null
-    if (selectedNode.type === 'entryRule') return workspace.entryGroups[selectedNode.groupIndex]?.rules[selectedNode.ruleIndex] ?? null
-    if (selectedNode.type === 'exitRule') return workspace.exitGroups[selectedNode.groupIndex]?.rules[selectedNode.ruleIndex] ?? null
-    if (selectedNode.type === 'tierRule') return workspace.weightTiers[selectedNode.tierIndex]?.conditions[selectedNode.ruleIndex] ?? null
-    if (selectedNode.type === 'scalingRuleCondition') return workspace.scalingRules[selectedNode.scalingIndex]?.conditions[selectedNode.ruleIndex] ?? null
-    return null
-  }
-
-  function getSelectedPreviewSummary() {
-    if (!workspace) return ''
-    const rule = getCurrentRule()
-    if (rule) return ruleSummary(rule)
-    if (selectedNode.type === 'dynamicExit') {
-      return `손절 ${displayStopType(workspace.dynamicExit.stopType)} · 목표 ${displayTargetType(workspace.dynamicExit.targetType)}`
-    }
-    if (selectedNode.type === 'general') {
-      return `${displayEntryMode(workspace.entryMode)} · 손절 ${workspace.atrStopMultiplier} ATR · 목표 ${workspace.atrTargetMultiplier} ATR`
-    }
-    if (selectedNode.type === 'group') {
-      const group = workspace.entryGroups[selectedNode.groupIndex]
-      return `${group?.label ?? '매수 상황'} · ${displayLogic(group?.logic)}`
-    }
-    if (selectedNode.type === 'exitGroup') {
-      const group = workspace.exitGroups[selectedNode.groupIndex]
-      return `${group?.label ?? '매도 상황'} · ${displayLogic(group?.logic)}`
-    }
-    return ''
+    return findSelectedRule(workspace, selectedNode)
   }
 
   function updateRuleField(field, value) {
@@ -555,12 +420,12 @@
           </div>
         {/if}
 
-        <PatternPreview pattern={previewPattern} selectedRuleSummary={previewSelectedSummary} bind:timeFrame={workspace.timeFrame} on:timeframechange={touch} />
+        <PatternPreview pattern={previewModel.pattern} selectedRuleSummary={previewModel.selectedRuleSummary} bind:timeFrame={workspace.timeFrame} on:timeframechange={touch} />
 
         <PatternStrategyTree
           {workspace}
           {selectedNode}
-          {timeFrameOptions}
+          timeFrameOptions={builderMetadata.timeFrameOptions}
           {tooltipFor}
           {selectNode}
           {displayEntryMode}
@@ -586,19 +451,19 @@
     {selectedNode}
     {tooltipFor}
     {touch}
-    {timeFrameOptions}
-    {entryModeOptions}
-    {sizingModeOptions}
-    {logicOptions}
-    {scalingDirectionOptions}
-    {stopTypeOptions}
-    {targetTypeOptions}
+    timeFrameOptions={builderMetadata.timeFrameOptions}
+    entryModeOptions={builderMetadata.entryModeOptions}
+    sizingModeOptions={builderMetadata.sizingModeOptions}
+    logicOptions={builderMetadata.logicOptions}
+    scalingDirectionOptions={builderMetadata.scalingDirectionOptions}
+    stopTypeOptions={builderMetadata.stopTypeOptions}
+    targetTypeOptions={builderMetadata.targetTypeOptions}
     {dayOptions}
     {monthOptions}
-    {indicatorPalette}
-    {operatorOptions}
+    indicatorPalette={builderMetadata.indicatorPalette}
+    operatorOptions={builderMetadata.operatorOptions}
     {operatorLabels}
-    {indicatorValueGuides}
+    indicatorValueGuides={builderMetadata.indicatorValueGuides}
     {displayEntryMode}
     {displaySizingMode}
     {displayLogic}

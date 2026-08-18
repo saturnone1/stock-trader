@@ -342,9 +342,13 @@ a trust defect where adding the first condition after deleting every group silen
 default condition and the requested condition. Workspace selection/creation, the strategy tree,
 and the rule/settings inspector are now
 rendered by `PatternWorkspaceSidebar.svelte`, `PatternStrategyTree.svelte`, and
-`PatternRuleInspector.svelte`. `PatternBuilder.svelte` is consequently a 624-line orchestration
-shell, down from 1,630 lines, with server metadata, API state, validation, and command coordination
-kept in the parent.
+`PatternRuleInspector.svelte`. Server strategy-builder metadata is now projected by
+`patternMetadata.js`, selected-node chart explanations and preview payloads live in
+`patternPreviewModel.js`, and stable Korean UI terminology lives in `patternBuilderUiCatalog.js`.
+Goldens lock catalog ordering/defaults, fail-closed behavior, selected-rule lookup, and the exact
+chart explanation contract. `PatternBuilder.svelte` is consequently a 489-line API/state
+coordinator, down from 1,630 lines; an architecture test prevents metadata projection, preview
+selection logic, or UI terminology from drifting back into the page.
 
 `Optimization.svelte` now delegates its complete input surface and job/result presentation to
 `OptimizationJobForm.svelte` and `OptimizationJobList.svelte`. Request validation, API payload

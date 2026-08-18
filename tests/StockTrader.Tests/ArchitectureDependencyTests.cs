@@ -204,6 +204,16 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/pattern-builder/patternEditorCommands.js"));
         var editorCommandTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/patternEditorCommands.test.js"));
+        var metadata = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternMetadata.js"));
+        var metadataTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternMetadata.test.js"));
+        var previewModel = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternPreviewModel.js"));
+        var previewModelTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternPreviewModel.test.js"));
+        var uiCatalog = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/pattern-builder/patternBuilderUiCatalog.js"));
         var workspaceSidebar = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/PatternWorkspaceSidebar.svelte"));
         var strategyTree = File.ReadAllText(Path.Combine(
@@ -211,9 +221,12 @@ public class ArchitectureDependencyTests
         var ruleInspector = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/pattern-builder/PatternRuleInspector.svelte"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(630);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(500);
         page.Should().Contain("from '../features/pattern-builder/patternValidation'");
         page.Should().Contain("from '../features/pattern-builder/patternWorkspace'");
+        page.Should().Contain("from '../features/pattern-builder/patternMetadata'");
+        page.Should().Contain("from '../features/pattern-builder/patternPreviewModel'");
+        page.Should().Contain("from '../features/pattern-builder/patternBuilderUiCatalog'");
         page.Should().NotContain("function collectValidationIssues(");
         page.Should().NotContain("function buildWorkspace(");
         page.Should().NotContain("function buildPatternPayload(");
@@ -223,7 +236,9 @@ public class ArchitectureDependencyTests
         page.Should().NotContain("언제 살까?");
         page.Should().NotContain("선택한 조건 바꾸기");
         page.Should().Contain("collectPatternValidationIssues(workspace");
-        page.Should().Contain("workspaceModel.configure({ indicatorFieldConfigs, dynamicExitFieldConfigs })");
+        page.Should().Contain("projectPatternMetadata(metadata)");
+        page.Should().Contain("indicatorFieldConfigs: builderMetadata.indicatorFieldConfigs");
+        page.Should().Contain("buildPatternPreviewModel(workspace, selectedNode");
         validation.Should().Contain("export function collectPatternValidationIssues(");
         validation.Should().Contain("supportsPartialExit");
         validation.Should().Contain("supportsScaling");
@@ -241,6 +256,13 @@ public class ArchitectureDependencyTests
         editorCommandTests.Should().Contain("creates exactly the requested buy or sell condition");
         editorCommandTests.Should().Contain("do not dirty state at list boundaries");
         editorCommandTests.Should().Contain("safe no-ops");
+        metadata.Should().Contain("export function projectPatternMetadata(");
+        metadata.Should().Contain("liveStrategyConstraints");
+        metadataTests.Should().Contain("incomplete server metadata fails closed");
+        previewModel.Should().Contain("export function buildPatternPreviewModel(");
+        previewModel.Should().Contain("export function findSelectedRule(");
+        previewModelTests.Should().Contain("preserve the chart explanation contract");
+        uiCatalog.Should().Contain("export const glossaryTooltips");
         page.Should().Contain("<PatternWorkspaceSidebar");
         page.Should().Contain("<PatternStrategyTree");
         page.Should().Contain("<PatternRuleInspector");
