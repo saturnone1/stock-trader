@@ -184,7 +184,9 @@ neither optimization background component imports `Data` or `Models`; the pollin
 below 200 lines. Pending selection is claimed with a status-guarded database update, so concurrent
 workers cannot both start the same job. Ranked result merging and its following progress checkpoint
 commit in one SQLite transaction; a restart therefore observes either the whole completed chunk or
-none of it.
+none of it. User pause, resume, and cancel commands also cross `OptimizationJobControlService` and a
+status-guarded persistence port. Their legal transitions live in an application policy, concurrent
+commands cannot overwrite each other, and startup recovery uses the same purpose-specific boundary.
 
 ## Decision records
 
@@ -215,4 +217,6 @@ none of it.
   tickets and centralize queue/status transitions behind one lifecycle port.
 - `adr/0014-commit-optimization-chunks-atomically.md`: claim queued work once and commit each result
   chunk with its restart checkpoint.
+- `adr/0015-control-optimization-jobs-conditionally.md`: own user control transitions in the
+  application layer and persist them with status-guarded updates.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

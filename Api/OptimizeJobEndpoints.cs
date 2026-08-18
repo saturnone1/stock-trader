@@ -22,6 +22,7 @@ public static class OptimizeJobEndpoints
         group.MapPost("/", async (
             CreateOptimizeJobRequest req,
             IOptimizationRepository repo,
+            TimeProvider clock,
             CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.Name))
@@ -45,7 +46,7 @@ public static class OptimizeJobEndpoints
                 RequestJson           = requestJson,
                 TotalCombinations     = totalCombinations,
                 Status                = OptimizationJobStatus.Pending,
-                CreatedAt             = DateTime.UtcNow,
+                CreatedAt             = clock.GetUtcNow().UtcDateTime,
             };
 
             var created = await repo.CreateJobAsync(job);
@@ -73,13 +74,14 @@ public static class OptimizeJobEndpoints
         group.MapGet("/{id:int}", async (
             int id,
             IOptimizationRepository repo,
+            TimeProvider clock,
             CancellationToken ct) =>
         {
             var job = await repo.GetJobAsync(id);
             if (job is null)
                 return Results.NotFound();
 
-            return Results.Ok(ToDetail(job));
+            return Results.Ok(ToDetail(job, clock.GetUtcNow().UtcDateTime));
         });
 
         group.MapPost("/{id:int}/settings", async (
@@ -130,62 +132,47 @@ public static class OptimizeJobEndpoints
         // ── POST /api/optimize-jobs/{id}/cancel — 취소 ─────────────────────────
         group.MapPost("/{id:int}/cancel", async (
             int id,
+            OptimizationJobControlService controls,
             IOptimizationRepository repo,
+            TimeProvider clock,
             CancellationToken ct) =>
-        {
-            var job = await repo.GetJobAsync(id);
-            if (job is null)
-                return Results.NotFound();
-
-            if (job.Status is OptimizationJobStatus.Completed
-                           or OptimizationJobStatus.Cancelled
-                           or OptimizationJobStatus.Failed)
-                return Results.BadRequest(new { error = $"이미 종료된 Job입니다. 현재 상태: {job.Status}" });
-
-            job.Status      = OptimizationJobStatus.Cancelled;
-            job.CompletedAt = DateTime.UtcNow;
-            await repo.UpdateJobAsync(job);
-
-            return Results.Ok(ToSummary(job));
-        });
+            await ApplyControlAsync(
+                id,
+                OptimizationJobControlCommand.Cancel,
+                controls,
+                repo,
+                clock.GetUtcNow().UtcDateTime,
+                ct));
 
         // ── POST /api/optimize-jobs/{id}/pause — 일시정지 ──────────────────────
         group.MapPost("/{id:int}/pause", async (
             int id,
+            OptimizationJobControlService controls,
             IOptimizationRepository repo,
+            TimeProvider clock,
             CancellationToken ct) =>
-        {
-            var job = await repo.GetJobAsync(id);
-            if (job is null)
-                return Results.NotFound();
-
-            if (job.Status is not (OptimizationJobStatus.Pending or OptimizationJobStatus.Running))
-                return Results.BadRequest(new { error = $"Pending 또는 Running 상태일 때만 일시정지할 수 있습니다. 현재 상태: {job.Status}" });
-
-            job.Status = OptimizationJobStatus.Paused;
-            await repo.UpdateJobAsync(job);
-
-            return Results.Ok(ToSummary(job));
-        });
+            await ApplyControlAsync(
+                id,
+                OptimizationJobControlCommand.Pause,
+                controls,
+                repo,
+                clock.GetUtcNow().UtcDateTime,
+                ct));
 
         // ── POST /api/optimize-jobs/{id}/resume — 재개 ─────────────────────────
         group.MapPost("/{id:int}/resume", async (
             int id,
+            OptimizationJobControlService controls,
             IOptimizationRepository repo,
+            TimeProvider clock,
             CancellationToken ct) =>
-        {
-            var job = await repo.GetJobAsync(id);
-            if (job is null)
-                return Results.NotFound();
-
-            if (job.Status is not OptimizationJobStatus.Paused)
-                return Results.BadRequest(new { error = $"Paused 상태일 때만 재개할 수 있습니다. 현재 상태: {job.Status}" });
-
-            job.Status = OptimizationJobStatus.Pending;
-            await repo.UpdateJobAsync(job);
-
-            return Results.Ok(ToSummary(job));
-        });
+            await ApplyControlAsync(
+                id,
+                OptimizationJobControlCommand.Resume,
+                controls,
+                repo,
+                clock.GetUtcNow().UtcDateTime,
+                ct));
 
         // ── DELETE /api/optimize-jobs/{id} — 삭제 ──────────────────────────────
         group.MapDelete("/{id:int}", async (
@@ -227,6 +214,48 @@ public static class OptimizeJobEndpoints
         return api;
     }
 
+    private static async Task<IResult> ApplyControlAsync(
+        int jobId,
+        OptimizationJobControlCommand command,
+        OptimizationJobControlService controls,
+        IOptimizationRepository repository,
+        DateTime observedAt,
+        CancellationToken cancellationToken)
+    {
+        var result = await controls.ApplyAsync(
+            jobId, command, observedAt, cancellationToken);
+        if (result.Outcome == OptimizationJobControlOutcome.NotFound)
+            return Results.NotFound();
+
+        if (result.Outcome == OptimizationJobControlOutcome.ConcurrentChange)
+            return Results.Conflict(new
+            {
+                error = $"작업 상태가 동시에 변경되었습니다. 현재 상태: {result.State}"
+            });
+
+        if (result.Outcome == OptimizationJobControlOutcome.InvalidState)
+            return Results.BadRequest(new
+            {
+                error = InvalidControlMessage(command, result.State!.Value)
+            });
+
+        var job = await repository.GetJobSummaryAsync(jobId);
+        return job is null ? Results.NotFound() : Results.Ok(ToSummary(job));
+    }
+
+    private static string InvalidControlMessage(
+        OptimizationJobControlCommand command,
+        OptimizationJobControlState state) => command switch
+    {
+        OptimizationJobControlCommand.Cancel =>
+            $"이미 종료된 Job입니다. 현재 상태: {state}",
+        OptimizationJobControlCommand.Pause =>
+            $"Pending 또는 Running 상태일 때만 일시정지할 수 있습니다. 현재 상태: {state}",
+        OptimizationJobControlCommand.Resume =>
+            $"Paused 상태일 때만 재개할 수 있습니다. 현재 상태: {state}",
+        _ => throw new ArgumentOutOfRangeException(nameof(command), command, null)
+    };
+
     // ── 매핑 헬퍼 ─────────────────────────────────────────────────────────────
 
     private static OptimizeJobSummary ToSummary(OptimizationJob job) => new()
@@ -248,9 +277,9 @@ public static class OptimizeJobEndpoints
         LastAutoApplyMessage = job.LastAutoApplyMessage,
     };
 
-    private static OptimizeJobDetail ToDetail(OptimizationJob job)
+    private static OptimizeJobDetail ToDetail(OptimizationJob job, DateTime observedAt)
     {
-        var elapsed   = CalculateElapsedSeconds(job);
+        var elapsed   = CalculateElapsedSeconds(job, observedAt);
         var remaining = CalculateRemainingSeconds(job, elapsed);
 
         // 상위 3개 미리보기
@@ -340,10 +369,12 @@ public static class OptimizeJobEndpoints
         return Math.Min(Math.Round(raw, 2), 100m);
     }
 
-    private static double? CalculateElapsedSeconds(OptimizationJob job)
+    private static double? CalculateElapsedSeconds(
+        OptimizationJob job,
+        DateTime observedAt)
     {
         if (job.StartedAt is null) return null;
-        var end = job.CompletedAt ?? DateTime.UtcNow;
+        var end = job.CompletedAt ?? observedAt;
         return (end - job.StartedAt.Value).TotalSeconds;
     }
 

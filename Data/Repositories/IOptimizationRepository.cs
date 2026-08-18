@@ -54,10 +54,4 @@ public interface IOptimizationRepository
         int resultId,
         OptimizationPerformanceMetrics metrics);
 
-    // 스타트업 복구
-
-    /// <summary>
-    /// 앱 재시작 시 Running 상태로 남겨진 작업을 Pending으로 리셋한다 (비정상 종료 복구).
-    /// </summary>
-    Task ResetRunningJobsAsync();
 }

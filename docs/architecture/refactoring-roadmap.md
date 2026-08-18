@@ -190,7 +190,11 @@
   guarded by a 200-line cap. Pending jobs are claimed by a status-guarded database update, preventing
   two concurrent workers from starting the same row. Ranked chunk results and their restart
   checkpoint now commit in one SQLite transaction, with failure-injection coverage proving that a
-  result-write failure also rolls back the progress advance.
+  result-write failure also rolls back the progress advance. `OptimizationJobControlService` now
+  owns pause, resume, and cancel legality through a pure transition policy. Its SQLite port applies
+  status-guarded updates, so concurrent operator commands cannot overwrite one another, and startup
+  recovery no longer resolves the broad optimization repository. Optimization job API timestamps
+  and elapsed-time projections now use the injected application clock.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

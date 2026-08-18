@@ -230,28 +230,6 @@ public class OptimizationRepository : IOptimizationRepository
         await db.SaveChangesAsync();
     }
 
-    // ── 스타트업 복구 ─────────────────────────────────────────────────────────
-
-    public async Task ResetRunningJobsAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var runningJobs = await db.OptimizationJobs
-            .Where(j => j.Status == OptimizationJobStatus.Running)
-            .ToListAsync();
-
-        foreach (var job in runningJobs)
-        {
-            // 진행 중이던 청크는 재실행되어야 하므로 CurrentChunkIndex를 직전 청크로 되돌린다
-            if (job.CurrentChunkIndex > 0)
-                job.CurrentChunkIndex--;
-
-            job.Status = OptimizationJobStatus.Pending;
-        }
-
-        if (runningJobs.Count > 0)
-            await db.SaveChangesAsync();
-    }
-
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     private static async Task MergeRankedResultsAsync(

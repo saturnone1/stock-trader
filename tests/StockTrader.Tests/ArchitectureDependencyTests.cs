@@ -1020,6 +1020,14 @@ public class ArchitectureDependencyTests
             repository, "Data/Repositories/OptimizationJobLifecycle.cs"));
         var optimizationRepository = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/OptimizationRepository.cs"));
+        var controlUseCase = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationJobControlService.cs"));
+        var controlStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationJobControlStore.cs"));
+        var jobEndpoints = File.ReadAllText(Path.Combine(
+            repository, "Api/OptimizeJobEndpoints.cs"));
+        var initialization = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ApplicationInitializationExtensions.cs"));
 
         source.Should().Contain("IOptimizationEvaluationContextPreparer");
         source.Should().Contain("IOptimizationJobExecutionStore");
@@ -1064,6 +1072,19 @@ public class ArchitectureDependencyTests
         optimizationRepository.Should().Contain("BeginTransactionAsync()");
         optimizationRepository.Should().Contain("MergeRankedResultsAsync(");
         optimizationRepository.Should().Contain("job.TestedCombinations = testedCombinations");
+        controlUseCase.Should().Contain("OptimizationJobControlPolicy.Resolve(");
+        controlUseCase.Should().Contain("IOptimizationJobControlStore");
+        controlUseCase.Should().NotContain("StockTrader.Models");
+        controlUseCase.Should().NotContain("StockTrader.Data");
+        controlStore.Should().Contain("ExecuteUpdateAsync(");
+        controlStore.Should().Contain("job.Id == jobId && job.Status == from");
+        jobEndpoints.Should().Contain("OptimizationJobControlService controls");
+        jobEndpoints.Should().Contain("clock.GetUtcNow().UtcDateTime");
+        jobEndpoints.Should().NotContain("DateTime.UtcNow");
+        jobEndpoints.Should().NotContain("job.Status = OptimizationJobStatus.Paused");
+        jobEndpoints.Should().NotContain("job.Status = OptimizationJobStatus.Cancelled");
+        initialization.Should().Contain("RecoverInterruptedAsync()");
+        initialization.Should().NotContain("IOptimizationRepository");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
         source.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
         source.Should().Contain("TimeProvider");

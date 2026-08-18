@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using StockTrader.Application.Optimization;
 using StockTrader.BackgroundServices;
 using StockTrader.Data;
 using StockTrader.Data.Migrations;
-using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
@@ -66,7 +66,8 @@ public static class ApplicationInitializationExtensions
     {
         try
         {
-            await services.GetRequiredService<IOptimizationRepository>().ResetRunningJobsAsync();
+            await services.GetRequiredService<OptimizationJobControlService>()
+                .RecoverInterruptedAsync();
         }
         catch (Exception exception)
         {

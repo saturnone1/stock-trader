@@ -23,6 +23,8 @@ public static class DataServiceExtensions
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
         services.AddScoped<IOptimizationJobExecutionStore, OptimizationJobExecutionStore>();
         services.AddScoped<IOptimizationJobLifecycle, OptimizationJobLifecycle>();
+        services.AddScoped<IOptimizationJobControlStore, OptimizationJobControlStore>();
+        services.AddScoped<OptimizationJobControlService>();
         services.AddScoped<ICompiledStrategyRepository, CompiledStrategyRepository>();
         services.AddScoped<ICustomPatternStore, CustomPatternStore>();
         services.AddScoped<DatabaseSchemaMigrator>();
