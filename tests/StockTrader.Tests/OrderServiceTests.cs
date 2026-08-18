@@ -49,16 +49,31 @@ public class OrderServiceTests
 
     // ── SUT 팩토리 ──────────────────────────────────────────────────────────
 
-    private OrderService CreateSut() => new OrderService(
-        _accountManagerMock.Object,
-        _tradeRepoMock.Object,
-        _settingsRepoMock.Object,
-        _notificationServiceMock.Object,
-        _marketCalendarMock.Object,
-        _signalServiceMock.Object,
-        TimeProvider.System,
-        CreateInMemoryDb(),
-        NullLogger<OrderService>.Instance);
+    private OrderService CreateSut(
+        AppDbContext? db = null,
+        TimeProvider? timeProvider = null)
+    {
+        var effectiveDb = db ?? CreateInMemoryDb();
+        var clock = timeProvider ?? TimeProvider.System;
+        var manualOrders = new ManualOrderWorkflow(
+            _accountManagerMock.Object,
+            _tradeRepoMock.Object,
+            _notificationServiceMock.Object,
+            _marketCalendarMock.Object,
+            _signalServiceMock.Object,
+            clock,
+            effectiveDb,
+            NullLogger<ManualOrderWorkflow>.Instance);
+        return new OrderService(
+            _accountManagerMock.Object,
+            _tradeRepoMock.Object,
+            _settingsRepoMock.Object,
+            _notificationServiceMock.Object,
+            _marketCalendarMock.Object,
+            manualOrders,
+            clock,
+            NullLogger<OrderService>.Instance);
+    }
 
     // ── 테스트 데이터 헬퍼 ─────────────────────────────────────────────────
 
@@ -410,6 +425,181 @@ public class OrderServiceTests
         savedPosition.StopLossPrice.Should().Be(198m);
         savedPosition.TargetPrice.Should().Be(228m);
         savedPosition.InitialRiskDistance.Should().Be(10m);
+    }
+
+    [Fact]
+    public async Task PlaceOrder_SpecificAccount_PersistsAccountOwnership()
+    {
+        SetupSettingsWithMode(OrderMode.AutoOrder);
+        SetupMarketOpen();
+        _accountManagerMock
+            .Setup(manager => manager.GetBrokerServiceForAccountAsync(
+                42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
+        _brokerServiceMock
+            .Setup(broker => broker.PlaceOrderAsync(
+                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        Position? savedPosition = null;
+        _tradeRepoMock
+            .Setup(repository => repository.SavePositionAsync(
+                It.IsAny<Position>(), It.IsAny<CancellationToken>()))
+            .Callback<Position, CancellationToken>((position, _) => savedPosition = position)
+            .Returns(Task.CompletedTask);
+
+        await CreateSut().PlaceOrderAsync(CreateRecommendation(), accountId: 42);
+
+        savedPosition.Should().NotBeNull();
+        savedPosition!.AccountId.Should().Be(42);
+        _accountManagerMock.Verify(manager => manager.GetActiveAccountAsync(
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PlaceManualOrder_BrokerFill_UsesTheSamePositionFactoryAsAutomaticEntry()
+    {
+        var now = new DateTimeOffset(2026, 8, 18, 14, 30, 0, TimeSpan.Zero);
+        SetupMarketOpen();
+        await using var db = CreateInMemoryDb();
+        var signal = new PatternSignal
+        {
+            Id = 7,
+            Symbol = "TQQQ",
+            PatternType = PatternType.GapUpPullback,
+            DetectedAt = now.UtcDateTime.AddHours(-1),
+            EntryPrice = 100m,
+            StopLossPrice = 95m,
+            TargetPrice = 110m,
+        };
+        db.PatternSignals.Add(signal);
+        await db.SaveChangesAsync();
+        var recommendation = CreateRecommendation(
+            "TQQQ", 10, 100m, 95m, 110m);
+        recommendation.GeneratedAt = now.UtcDateTime;
+        _signalServiceMock
+            .Setup(service => service.EvaluateSignalsAsync(
+                It.IsAny<List<PatternSignal>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([recommendation]);
+        _accountManagerMock
+            .Setup(manager => manager.GetActiveBrokerServiceAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
+        _accountManagerMock
+            .Setup(manager => manager.GetActiveAccountAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TradingAccount { Id = 9, IsActive = true, IsEnabled = true });
+        _brokerServiceMock
+            .Setup(broker => broker.PlaceOrderAsync(
+                recommendation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _brokerServiceMock
+            .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new Position
+            {
+                Symbol = "TQQQ",
+                Quantity = 7,
+                EntryPrice = 108m,
+                CurrentPrice = 109m,
+            }]);
+        Position? savedPosition = null;
+        _tradeRepoMock
+            .Setup(repository => repository.SavePositionAsync(
+                It.IsAny<Position>(), It.IsAny<CancellationToken>()))
+            .Callback<Position, CancellationToken>((position, _) => savedPosition = position)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateSut(db, new FixedTimeProvider(now))
+            .PlaceManualOrderAsync(signal.Id);
+
+        result.Success.Should().BeTrue();
+        result.Message.Should().Contain("Qty=7").And.Contain("Entry=$108.00");
+        savedPosition.Should().NotBeNull();
+        savedPosition!.AccountId.Should().Be(9);
+        savedPosition.Quantity.Should().Be(7);
+        savedPosition.EntryPrice.Should().Be(108m);
+        savedPosition.CurrentPrice.Should().Be(109m);
+        savedPosition.StopLossPrice.Should().Be(103m);
+        savedPosition.TargetPrice.Should().Be(118m);
+        savedPosition.InitialRiskDistance.Should().Be(5m);
+        savedPosition.OpenedAt.Should().Be(now.UtcDateTime);
+    }
+
+    [Fact]
+    public async Task PlaceManualOrder_StaleSignal_FailsBeforeBrokerSubmission()
+    {
+        var now = new DateTimeOffset(2026, 8, 18, 14, 30, 0, TimeSpan.Zero);
+        SetupMarketOpen();
+        await using var db = CreateInMemoryDb();
+        var signal = new PatternSignal
+        {
+            Id = 8,
+            Symbol = "TQQQ",
+            PatternType = PatternType.GapUpPullback,
+            DetectedAt = now.UtcDateTime.AddHours(-25),
+            EntryPrice = 100m,
+            StopLossPrice = 95m,
+            TargetPrice = 110m,
+        };
+        db.PatternSignals.Add(signal);
+        await db.SaveChangesAsync();
+        _signalServiceMock
+            .Setup(service => service.EvaluateSignalsAsync(
+                It.IsAny<List<PatternSignal>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([CreateRecommendation("TQQQ", 10, 100m, 95m, 110m)]);
+
+        var result = await CreateSut(db, new FixedTimeProvider(now))
+            .PlaceManualOrderAsync(signal.Id);
+
+        result.Success.Should().BeFalse();
+        result.Message.Should().Contain("24시간 초과");
+        _accountManagerMock.Verify(manager => manager.GetActiveBrokerServiceAsync(
+            It.IsAny<CancellationToken>()), Times.Never);
+        _brokerServiceMock.Verify(broker => broker.PlaceOrderAsync(
+            It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PlaceManualOrder_BrokerRejects_DoesNotPersistFalseExecution()
+    {
+        var now = new DateTimeOffset(2026, 8, 18, 14, 30, 0, TimeSpan.Zero);
+        SetupMarketOpen();
+        await using var db = CreateInMemoryDb();
+        var signal = new PatternSignal
+        {
+            Id = 9,
+            Symbol = "TQQQ",
+            PatternType = PatternType.GapUpPullback,
+            DetectedAt = now.UtcDateTime.AddHours(-1),
+            EntryPrice = 100m,
+            StopLossPrice = 95m,
+            TargetPrice = 110m,
+        };
+        db.PatternSignals.Add(signal);
+        await db.SaveChangesAsync();
+        _signalServiceMock
+            .Setup(service => service.EvaluateSignalsAsync(
+                It.IsAny<List<PatternSignal>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([CreateRecommendation("TQQQ", 10, 100m, 95m, 110m)]);
+        _accountManagerMock
+            .Setup(manager => manager.GetActiveBrokerServiceAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_brokerServiceMock.Object);
+        _brokerServiceMock
+            .Setup(broker => broker.PlaceOrderAsync(
+                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateSut(db, new FixedTimeProvider(now))
+            .PlaceManualOrderAsync(signal.Id);
+
+        result.Success.Should().BeFalse();
+        result.Message.Should().Contain("브로커가 주문을 거부");
+        _tradeRepoMock.Verify(repository => repository.AddRecommendationAsync(
+            It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()), Times.Never);
+        _tradeRepoMock.Verify(repository => repository.SavePositionAsync(
+            It.IsAny<Position>(), It.IsAny<CancellationToken>()), Times.Never);
+        _notificationServiceMock.Verify(service => service.Notify(
+            It.IsAny<TradeRecommendation>()), Times.Never);
     }
 
     // ── PlaceOrder: AutoOrder 모드 — 브로커 실패 ───────────────────────────
@@ -798,5 +988,10 @@ public class OrderServiceTests
         // Assert
         result.Should().HaveCount(1);
         result[0].Symbol.Should().Be("GOOG");
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

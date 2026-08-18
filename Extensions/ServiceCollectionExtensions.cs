@@ -78,6 +78,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IStatisticsService, StatisticsService>();
         services.AddScoped<ISignalService, SignalService>();
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
+        services.AddScoped<ManualOrderWorkflow>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ILivePositionExitCoordinator, LivePositionExitCoordinator>();
         services.AddScoped<LivePositionExitEvaluator>();

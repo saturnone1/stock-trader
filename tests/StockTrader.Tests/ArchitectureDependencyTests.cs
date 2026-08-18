@@ -1391,13 +1391,28 @@ public class ArchitectureDependencyTests
             repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
         var order = File.ReadAllText(Path.Combine(repository, "Services/Order/OrderService.cs"));
+        var manualOrder = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/ManualOrderWorkflow.cs"));
+        var liveEntry = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LiveEntryPositionFactory.cs"));
         var parity = File.ReadAllText(Path.Combine(
             repository, "tests/StockTrader.Tests/CustomStrategyExecutionParityTests.cs"));
 
         preview.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
         backtest.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
         preview.Should().Contain("LongEntryFillPolicy.Reprice(");
-        order.Should().Contain("LongEntryFillPolicy.ReanchorExecutedFill(");
+        order.Split("LiveEntryPositionFactory.Create(").Length.Should().Be(2);
+        manualOrder.Should().Contain("LiveEntryPositionFactory.Create(");
+        order.Should().NotContain("new Position");
+        manualOrder.Should().NotContain("new Position");
+        liveEntry.Should().Contain("LongEntryFillPolicy.ReanchorExecutedFill(");
+        liveEntry.Should().NotContain("StockTrader.Services");
+        liveEntry.Should().NotContain("StockTrader.Data");
+        order.Should().Contain("_manualOrders.ExecuteAsync(signalId, ct)");
+        File.ReadAllLines(Path.Combine(repository, "Services/Order/OrderService.cs"))
+            .Length.Should().BeLessThanOrEqualTo(220);
+        File.ReadAllLines(Path.Combine(repository, "Services/Order/ManualOrderWorkflow.cs"))
+            .Length.Should().BeLessThanOrEqualTo(220);
         order.Should().Contain("_timeProvider.GetUtcNow()");
         order.Should().NotContain("DateTime.UtcNow");
         order.Should().NotContain("actualEntry - stopDistance");
@@ -1405,7 +1420,7 @@ public class ArchitectureDependencyTests
         parity.Should().Contain("PreviewBacktestAndLiveFill_RunTheSameCompiledNextOpenStrategy");
         parity.Should().Contain("PreviewAndBacktest_RunTheSameCompiledFractionalScaleOut");
         parity.Should().Contain("ScalingStrategy_IsRejectedForLiveUntilBrokerExecutionHasParity");
-        parity.Should().Contain("previewEntry.StopPrice.Should().Be(liveFill.StopPrice)");
+        parity.Should().Contain("previewEntry.StopPrice.Should().Be(livePosition.StopLossPrice)");
         parity.Should().Contain("liveExit.Reason.Should().Be(previewExit.Reason)");
         preview.Should().NotContain("current.Low <= position.StopPrice");
         preview.Should().NotContain("current.High >= position.TargetPrice");

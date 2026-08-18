@@ -345,13 +345,28 @@ public class CustomStrategyExecutionParityTests
             new MarketRegime { SpyAbove200Ma = true },
             CancellationToken.None);
         liveSignal.Should().NotBeNull();
-        var liveFill = LongEntryFillPolicy.ReanchorExecutedFill(
-            liveSignal!.EntryPrice,
-            liveSignal.StopLossPrice,
-            liveSignal.TargetPrice,
-            bars[51].Open);
+        var livePosition = LiveEntryPositionFactory.Create(
+            new TradeRecommendation
+            {
+                Symbol = "AAA",
+                PatternType = PatternType.Custom,
+                CustomPatternName = strategy.Name,
+                EntryPrice = liveSignal!.EntryPrice,
+                StopLossPrice = liveSignal.StopLossPrice,
+                TargetPrice = liveSignal.TargetPrice,
+                ShareQuantity = 1,
+            },
+            new Position
+            {
+                Symbol = "AAA",
+                Quantity = 1,
+                EntryPrice = bars[51].Open,
+                CurrentPrice = bars[51].Open,
+            },
+            accountId: 1,
+            preview!.Markers.Single(marker => marker.Type == "ENTRY").Date);
 
-        var previewEntry = preview!.Markers.Single(marker => marker.Type == "ENTRY");
+        var previewEntry = preview.Markers.Single(marker => marker.Type == "ENTRY");
         var previewExit = preview.Markers.Single(marker => marker.Type == "EXIT");
         var backtestTrade = backtest.Trades.Should().ContainSingle().Subject;
         var repository = new Mock<IOhlcvRepository>();
@@ -361,21 +376,9 @@ public class CustomStrategyExecutionParityTests
             .ReturnsAsync(bars.ToList());
         var patternSettings = new Mock<IOptionsMonitor<PatternSettings>>();
         patternSettings.SetupGet(value => value.CurrentValue).Returns(new PatternSettings());
-        var livePosition = new Position
-        {
-            Symbol = "AAA",
-            PatternType = PatternType.Custom,
-            CustomPatternName = strategy.Name,
-            EntryPrice = liveFill.EntryPrice,
-            StopLossPrice = liveFill.StopPrice,
-            TargetPrice = liveFill.TargetPrice,
-            CurrentPrice = previewExit.Price,
-            Quantity = 1,
-            OpenedAt = previewEntry.Date,
-            HighSinceEntry = previewExit.Price,
-            InitialRiskDistance = liveFill.RiskDistance,
-            EntryAtr = atr[50]
-        };
+        livePosition.CurrentPrice = previewExit.Price;
+        livePosition.HighSinceEntry = previewExit.Price;
+        livePosition.EntryAtr = atr[50];
         var liveExit = await new LivePositionExitEvaluator(
                 indicators,
                 factory,
@@ -392,9 +395,9 @@ public class CustomStrategyExecutionParityTests
 
         previewEntry.Date.Should().Be(backtestTrade.EntryTime);
         previewEntry.Price.Should().Be(backtestTrade.EntryPrice);
-        previewEntry.Price.Should().Be(liveFill.EntryPrice);
-        previewEntry.StopPrice.Should().Be(liveFill.StopPrice);
-        previewEntry.TargetPrice.Should().Be(liveFill.TargetPrice);
+        previewEntry.Price.Should().Be(livePosition.EntryPrice);
+        previewEntry.StopPrice.Should().Be(livePosition.StopLossPrice);
+        previewEntry.TargetPrice.Should().Be(livePosition.TargetPrice);
         previewExit.Date.Should().Be(backtestTrade.ExitTime);
         previewExit.Price.Should().Be(backtestTrade.ExitPrice);
         previewExit.Reason.Should().Be(backtestTrade.ExitReason);

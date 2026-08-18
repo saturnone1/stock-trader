@@ -1,7 +1,4 @@
-using Microsoft.EntityFrameworkCore;
 using StockTrader.Application.Execution;
-using StockTrader.Configuration;
-using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -9,7 +6,6 @@ using StockTrader.Services.Account;
 using StockTrader.Services.Broker;
 using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
-using StockTrader.Services.Signal;
 
 namespace StockTrader.Services.Order;
 
@@ -31,9 +27,8 @@ public class OrderService : IOrderService
     private readonly ISettingsRepository _settingsRepo;
     private readonly INotificationService _notificationService;
     private readonly IMarketCalendar _marketCalendar;
-    private readonly ISignalService _signalService;
+    private readonly ManualOrderWorkflow _manualOrders;
     private readonly TimeProvider _timeProvider;
-    private readonly AppDbContext _db;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
@@ -42,9 +37,8 @@ public class OrderService : IOrderService
         ISettingsRepository settingsRepo,
         INotificationService notificationService,
         IMarketCalendar marketCalendar,
-        ISignalService signalService,
+        ManualOrderWorkflow manualOrders,
         TimeProvider timeProvider,
-        AppDbContext db,
         ILogger<OrderService> logger)
     {
         _accountManager = accountManager;
@@ -52,9 +46,8 @@ public class OrderService : IOrderService
         _settingsRepo = settingsRepo;
         _notificationService = notificationService;
         _marketCalendar = marketCalendar;
-        _signalService = signalService;
+        _manualOrders = manualOrders;
         _timeProvider = timeProvider;
-        _db = db;
         _logger = logger;
     }
 
@@ -123,62 +116,25 @@ public class OrderService : IOrderService
 
             // 시장가 주문은 신호 가격과 다른 가격에 체결될 수 있다. 실제 브로커 평균단가를
             // 확인한 뒤에만 로컬 포지션을 생성해 손익·손절·목표가의 기준을 일치시킨다.
-            var brokerPosition = await WaitForBrokerPositionAsync(
+            var brokerPosition = await BrokerPositionConfirmation.WaitForAsync(
                 brokerService, recommendation.Symbol, ct);
-            var actualEntry = brokerPosition?.EntryPrice > 0
-                ? brokerPosition.EntryPrice
-                : recommendation.EntryPrice;
-            var actualQuantity = brokerPosition?.Quantity > 0
-                ? brokerPosition.Quantity
-                : recommendation.ShareQuantity;
-            var fill = LongEntryFillPolicy.ReanchorExecutedFill(
-                recommendation.EntryPrice,
-                recommendation.StopLossPrice,
-                recommendation.TargetPrice,
-                actualEntry);
-
-            var position = new Position
-            {
-                Symbol = recommendation.Symbol,
-                Quantity = actualQuantity,
-                EntryPrice = actualEntry,
-                CurrentPrice = brokerPosition?.CurrentPrice > 0 ? brokerPosition.CurrentPrice : actualEntry,
-                StopLossPrice = fill.StopPrice,
-                TargetPrice = fill.TargetPrice,
-                PatternType = recommendation.PatternType,
-                CustomPatternName = recommendation.CustomPatternName,
-                OpenedAt = _timeProvider.GetUtcNow().UtcDateTime,
-                HighSinceEntry = actualEntry,
-                InitialRiskDistance = fill.RiskDistance
-            };
+            var resolvedAccountId = accountId
+                ?? (await _accountManager.GetActiveAccountAsync(ct))?.Id
+                ?? 0;
+            var position = LiveEntryPositionFactory.Create(
+                recommendation,
+                brokerPosition,
+                resolvedAccountId,
+                _timeProvider.GetUtcNow().UtcDateTime);
             await _tradeRepo.SavePositionAsync(position, ct);
 
             _logger.LogInformation(
                 "[ORDER PLACED] {Symbol}: Qty={Qty}, Entry=${Entry:F2}, Account={AccountId}",
-                recommendation.Symbol, recommendation.ShareQuantity, recommendation.EntryPrice,
+                position.Symbol, position.Quantity, position.EntryPrice,
                 accountId?.ToString() ?? "active");
         }
 
         return success;
-    }
-
-    private static async Task<Position?> WaitForBrokerPositionAsync(
-        IBrokerService brokerService, string symbol, CancellationToken ct)
-    {
-        const int maxAttempts = 10;
-        for (var attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            if (attempt > 0)
-                await Task.Delay(500, ct);
-
-            var positions = await brokerService.GetPositionsAsync(ct);
-            if (positions == null) return null;
-            var position = positions.FirstOrDefault(item => string.Equals(
-                    item.Symbol, symbol, StringComparison.OrdinalIgnoreCase));
-            if (position is { EntryPrice: > 0, Quantity: > 0 })
-                return position;
-        }
-        return null;
     }
 
     /// <inheritdoc />
@@ -219,159 +175,7 @@ public class OrderService : IOrderService
     }
 
     /// <inheritdoc />
-    public async Task<(bool Success, string Message)> PlaceManualOrderAsync(
+    public Task<(bool Success, string Message)> PlaceManualOrderAsync(
         long signalId, CancellationToken ct = default)
-    {
-        // 1. DB에서 PatternSignal 조회 (활성/비활성 모두 허용 — 수동 매매이므로)
-        var signal = await _db.PatternSignals.FindAsync(new object[] { signalId }, ct);
-        if (signal == null)
-        {
-            _logger.LogWarning("[MANUAL ORDER] Signal {SignalId} not found", signalId);
-            return (false, $"시그널 ID {signalId}을(를) 찾을 수 없습니다.");
-        }
-
-        // 2. SignalService를 통해 리스크 체크 + TradeRecommendation 생성
-        //    수동 주문도 동일한 리스크/포지션 사이징 로직을 적용한다.
-        var recommendations = await _signalService.EvaluateSignalsAsync(
-            new List<PatternSignal> { signal }, ct);
-
-        TradeRecommendation recommendation;
-        if (recommendations.Count == 0)
-        {
-            // 리스크 체크 통과 실패 시에도 최소 수량(1주)으로 수동 주문을 허용한다.
-            // 사용자가 직접 결정하는 수동 매매이므로 리스크 필터를 우회한다.
-            _logger.LogWarning(
-                "[MANUAL ORDER] Signal {SignalId} ({Pattern} {Symbol}) failed risk check — " +
-                "proceeding with qty=1 as manual override",
-                signalId, signal.PatternType, signal.Symbol);
-
-            var settings = await _settingsRepo.GetAsync(ct);
-            recommendation = new TradeRecommendation
-            {
-                Symbol = signal.Symbol,
-                PatternType = signal.PatternType,
-                CustomPatternName = signal.CustomPatternName,
-                GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime,
-                EntryPrice = signal.EntryPrice,
-                StopLossPrice = signal.StopLossPrice,
-                TargetPrice = signal.TargetPrice,
-                PositionSize = signal.EntryPrice,   // 1주 기준
-                ShareQuantity = 1,
-                Expectancy = 0m,
-                WasExecuted = false,
-                Mode = OrderMode.AutoOrder           // 수동이므로 항상 AutoOrder로 처리
-            };
-        }
-        else
-        {
-            recommendation = recommendations[0];
-            recommendation.Mode = OrderMode.AutoOrder; // 수동 트리거이므로 AlertOnly 무시
-        }
-
-        // 3. 장외 시간 확인 (수동 매매도 시장가 주문은 정규장에서만 체결)
-        var nowEt = _marketCalendar.GetLocalNow(MarketType.US);
-        if (!_marketCalendar.IsMarketOpen(MarketType.US))
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 장외 시간 ({Time:HH:mm} ET, {DayOfWeek})",
-                signal.Symbol, nowEt, nowEt.DayOfWeek);
-            return (false, $"장외 시간입니다 (ET {nowEt:HH:mm}, {nowEt.DayOfWeek}). 정규장(09:30–16:00 ET) 중에 다시 시도하세요.");
-        }
-
-        // 4. 수량 검증
-        if (recommendation.ShareQuantity <= 0)
-        {
-            _logger.LogWarning("[MANUAL ORDER] {Symbol}: 주문 수량이 0입니다 (계좌 잔고 부족 가능성)",
-                signal.Symbol);
-            return (false, $"{signal.Symbol}: 계산된 주문 수량이 0입니다. 계좌 잔고를 확인하세요.");
-        }
-
-        // 4.5 시그널 유효성 검증 — 시장가 주문이므로 기본 논리 검증 수행
-        // (진입가 감지 이후 시간 경과 + 가격 레벨 일관성 확인)
-        var signalAge = _timeProvider.GetUtcNow().UtcDateTime - signal.DetectedAt;
-        var maxSignalAge = TimeSpan.FromHours(24); // 일봉 시그널 기준 24시간
-        if (signalAge > maxSignalAge)
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 시그널이 {Age:F1}시간 전 생성됨 (한계={Limit}h)",
-                signal.Symbol, signalAge.TotalHours, maxSignalAge.TotalHours);
-            return (false,
-                $"{signal.Symbol} 시그널이 {signalAge.TotalHours:F0}시간 전 생성됨. " +
-                $"24시간 초과 시그널은 주문할 수 없습니다.");
-        }
-
-        if (recommendation.StopLossPrice >= recommendation.EntryPrice)
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 손절가({SL:F2}) >= 진입가({Entry:F2}) — 시그널 무효",
-                signal.Symbol, recommendation.StopLossPrice, recommendation.EntryPrice);
-            return (false,
-                $"{signal.Symbol} 손절가({recommendation.StopLossPrice:F2})가 " +
-                $"진입가({recommendation.EntryPrice:F2}) 이상입니다. 시그널이 유효하지 않습니다.");
-        }
-
-        if (recommendation.TargetPrice <= recommendation.EntryPrice)
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 목표가({Target:F2}) <= 진입가({Entry:F2}) — 시그널 무효",
-                signal.Symbol, recommendation.TargetPrice, recommendation.EntryPrice);
-            return (false,
-                $"{signal.Symbol} 목표가({recommendation.TargetPrice:F2})가 " +
-                $"진입가({recommendation.EntryPrice:F2}) 이하입니다. 시그널이 유효하지 않습니다.");
-        }
-
-        // 5. 활성 브로커를 통한 주문 제출
-        //    BUG-C01 수정: 브로커 주문 성공 후에만 DB 저장 + 알림 발송
-        //    (이전 구현은 주문 전에 저장하여 실패 시 거짓 레코드가 남는 문제가 있었음)
-        var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
-        if (brokerService == null)
-        {
-            _logger.LogWarning("[MANUAL ORDER] No active broker service for {Symbol}", signal.Symbol);
-            return (false, "활성 브로커 계좌가 없습니다. 계좌 관리에서 계좌를 설정하세요.");
-        }
-
-        try
-        {
-            var placed = await brokerService.PlaceOrderAsync(recommendation, ct);
-            if (!placed)
-            {
-                _logger.LogWarning("[MANUAL ORDER FAILED] {Symbol}: 브로커가 주문을 거부했습니다", signal.Symbol);
-                return (false, $"{signal.Symbol} 주문 실패: 브로커가 주문을 거부했습니다.");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[MANUAL ORDER FAILED] {Symbol}: 브로커 주문 실패", signal.Symbol);
-            return (false, $"{signal.Symbol} 주문 실패: {ex.Message}");
-        }
-
-        // 주문 성공 후 DB 저장 + 알림 발송
-        await _tradeRepo.AddRecommendationAsync(recommendation, ct);
-        _notificationService.Notify(recommendation);
-
-        recommendation.WasExecuted = true;
-        await _tradeRepo.UpdateRecommendationAsync(recommendation, ct);
-
-        var position = new Position
-        {
-            Symbol = recommendation.Symbol,
-            Quantity = recommendation.ShareQuantity,
-            EntryPrice = recommendation.EntryPrice,
-            CurrentPrice = recommendation.EntryPrice,
-            StopLossPrice = recommendation.StopLossPrice,
-            TargetPrice = recommendation.TargetPrice,
-            PatternType = recommendation.PatternType,
-            CustomPatternName = recommendation.CustomPatternName,
-            OpenedAt = _timeProvider.GetUtcNow().UtcDateTime,
-            HighSinceEntry = recommendation.EntryPrice
-        };
-        await _tradeRepo.SavePositionAsync(position, ct);
-
-        _logger.LogInformation(
-            "[MANUAL ORDER PLACED] {Symbol}: Qty={Qty}, Entry=${Entry:F2}, Pattern={Pattern}",
-            recommendation.Symbol, recommendation.ShareQuantity,
-            recommendation.EntryPrice, recommendation.PatternType);
-
-        return (true, $"{recommendation.Symbol} 수동 주문 완료 (Qty={recommendation.ShareQuantity}, Entry=${recommendation.EntryPrice:F2})");
-    }
+        => _manualOrders.ExecuteAsync(signalId, ct);
 }
