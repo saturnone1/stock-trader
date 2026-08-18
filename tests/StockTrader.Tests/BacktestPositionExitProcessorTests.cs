@@ -95,6 +95,7 @@ public class BacktestPositionExitProcessorTests
             && trade.Quantity == 2
             && trade.ExitPrice == 110m);
         portfolio.OpenPositions["AAA"].CurrentQuantity.Should().Be(3);
+        portfolio.OpenPositions["AAA"].Quantity.Should().Be(3);
         portfolio.OpenPositions["AAA"].TotalCost.Should().Be(300m);
         portfolio.OpenPositions["AAA"].ScaleCounts.Should().ContainKey(0).WhoseValue.Should().Be(1);
 

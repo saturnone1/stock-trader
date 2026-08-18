@@ -81,8 +81,16 @@ internal sealed class BacktestPendingEntryProcessor
 
             var position = BacktestOpenPositionFactory.CreateNextOpen(
                 pending, fill, entryBar, barIndex, sizing.Quantity);
+            var instructions = BacktestStrategyExecutionInstructionResolver.Resolve(
+                position,
+                data,
+                barIndex,
+                context.MaxWindow,
+                context.MaxTotalPositions,
+                context.Portfolio.CurrentEquity,
+                context.RuntimeRegistry);
 
-            // 시가 진입 봉의 고가·저가는 실제 보유 구간이므로 즉시 체결 정책을 평가한다.
+            // 시가 진입 봉의 장중 가격과 종가 전략 규칙은 모두 실제 보유 구간이다.
             var tradesBefore = context.TradeLedger.Count;
             var exitResult = context.ExecutionAdapter.ProcessExitLogic(
                 position,
@@ -96,7 +104,9 @@ internal sealed class BacktestPendingEntryProcessor
                 context.ExitPolicies,
                 context.ExitOverrides,
                 symbol,
-                context.TradeLedger.Trades);
+                context.TradeLedger.Trades,
+                instructions.Exit,
+                instructions.Scaling);
             context.TradeLedger.SettleSince(tradesBefore);
 
             if (exitResult != null)
@@ -125,6 +135,7 @@ internal sealed record BacktestPendingEntryContext(
     DateOnly TradingDay,
     int TimelineIndex,
     int MaxTotalPositions,
+    int MaxWindow,
     IReadOnlyDictionary<string, PreparedSymbolData> SymbolData,
     BacktestPortfolioState Portfolio,
     BacktestStrategyRuntimeRegistry RuntimeRegistry,

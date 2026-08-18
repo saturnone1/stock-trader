@@ -44,6 +44,11 @@ public sealed record PositionExecutionEvent(
 
 public sealed record StrategyExitInstruction(decimal Price, string Reason);
 
+public static class LongPositionExecutionReasons
+{
+    public const string StrategyRuleExit = "청산 규칙 충족";
+}
+
 public sealed record LongPositionBarResult(
     LongPositionExecutionState State,
     IReadOnlyList<PositionExecutionEvent> Events,

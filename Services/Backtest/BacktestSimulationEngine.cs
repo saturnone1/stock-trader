@@ -105,6 +105,7 @@ public sealed class BacktestSimulationEngine
                     tradingDay,
                     timelineIndex,
                     maxTotalPositions,
+                    maxWindow,
                     symbolDataMap,
                     portfolio,
                     runtimeRegistry,
