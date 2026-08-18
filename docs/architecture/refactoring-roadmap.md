@@ -2,6 +2,11 @@
 
 ## Current progress
 
+- Persistence entities no longer manufacture audit history from the process clock. Strategy,
+  symbol-profile, financial-import, financial-snapshot, and optimization writes retain their
+  application-owned timestamps, while notification rendering uses the injected clock and an explicit
+  UTC label. Architecture and payload tests prevent these adapters from regaining hidden wall-clock
+  dependencies.
 - Central timeframe, indicator, operator, strategy, and provider catalogs are active.
 - Authentication policy now runs in `Application/Authentication` against a purpose-specific user
   store and injected `TimeProvider`. PBKDF2 verification, lockout boundaries, registration, and

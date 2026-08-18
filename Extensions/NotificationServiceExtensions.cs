@@ -34,14 +34,18 @@ public static class NotificationServiceExtensions
             var settingsProvider = sp.GetRequiredService<INotificationSettingsProvider>();
             var fallback         = sp.GetRequiredService<IOptions<NotificationSettings>>();
             var logger           = sp.GetRequiredService<ILogger<DiscordNotificationChannel>>();
-            return new DiscordNotificationChannel(http, settingsProvider, fallback, logger);
+            var timeProvider     = sp.GetRequiredService<TimeProvider>();
+            return new DiscordNotificationChannel(
+                http, settingsProvider, fallback, logger, timeProvider);
         });
         services.AddSingleton<INotificationChannel, EmailNotificationChannel>(sp =>
         {
             var settingsProvider = sp.GetRequiredService<INotificationSettingsProvider>();
             var fallback         = sp.GetRequiredService<IOptions<NotificationSettings>>();
             var logger           = sp.GetRequiredService<ILogger<EmailNotificationChannel>>();
-            return new EmailNotificationChannel(settingsProvider, fallback, logger);
+            var timeProvider     = sp.GetRequiredService<TimeProvider>();
+            return new EmailNotificationChannel(
+                settingsProvider, fallback, logger, timeProvider);
         });
 
         // NotificationDispatcher: 모든 채널에 병렬 발송 (DB 설정 우선)

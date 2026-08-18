@@ -31,7 +31,7 @@ public class OptimizationJob
     public int ChunkSize { get; set; } = 200;
 
     // 시간
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public DateTime? LastProgressAt { get; set; }

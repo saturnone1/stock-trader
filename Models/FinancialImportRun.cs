@@ -10,6 +10,6 @@ public class FinancialImportRun
     public int ImportedCount { get; set; }
     public int SkippedCount { get; set; }
     public string? ErrorMessage { get; set; }
-    public DateTime StartedAt { get; set; } = DateTime.UtcNow;
+    public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
