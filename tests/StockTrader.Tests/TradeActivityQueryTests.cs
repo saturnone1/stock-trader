@@ -90,7 +90,8 @@ public sealed class TradeActivityQueryTests
         var sut = new TradeActivityQueryService(store.Object, TimeProvider.System);
 
         var outcome = await sut.GetHistoryAsync(new(
-            PatternType.Breakout, OnDay(1), OnDay(20), null, null));
+            nameof(PatternType.Breakout), OnDay(1).ToString("O"), OnDay(20).ToString("O"),
+            null, null));
 
         outcome.Succeeded.Should().BeTrue();
         outcome.Value!.TotalCount.Should().Be(2);
@@ -107,10 +108,27 @@ public sealed class TradeActivityQueryTests
         var sut = new TradeActivityQueryService(store.Object, TimeProvider.System);
 
         var outcome = await sut.GetHistoryAsync(new(
-            (PatternType)999, OnDay(10), OnDay(1), -1, 501));
+            "999", OnDay(10).ToString("O"), OnDay(1).ToString("O"), -1, 501));
 
         outcome.Succeeded.Should().BeFalse();
         outcome.Errors.Should().HaveCount(4);
+        store.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task InvalidPatternAndDateTextReturnStableApplicationErrors()
+    {
+        var store = new Mock<ITradeActivityStore>();
+        var sut = new TradeActivityQueryService(store.Object, TimeProvider.System);
+
+        var outcome = await sut.GetHistoryAsync(new(
+            "NotAPattern", "not-a-date", "also-not-a-date", null, null));
+
+        outcome.Succeeded.Should().BeFalse();
+        outcome.Errors.Should().Equal(
+            "알 수 없는 전략 코드(NotAPattern)입니다.",
+            "거래 이력 시작일 형식이 올바르지 않습니다.",
+            "거래 이력 종료일 형식이 올바르지 않습니다.");
         store.VerifyNoOtherCalls();
     }
 

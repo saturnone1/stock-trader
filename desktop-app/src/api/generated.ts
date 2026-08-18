@@ -358,7 +358,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    pattern?: components["schemas"]["PatternType"];
+                    pattern?: string;
                     from?: string;
                     to?: string;
                     skip?: number;
