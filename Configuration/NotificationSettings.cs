@@ -24,6 +24,7 @@ public class NotificationSettings
     // ── Daily Report ─────────────────────────────────────────────────
     /// <summary>일일 요약 리포트 발송 시간 (HH:mm, ET 기준). 예: "16:30"</summary>
     public string DailyReportTime { get; set; } = "16:30";
+    public int DailyReportRetryDelayMinutes { get; set; } = 60;
 
     // ── Retry ─────────────────────────────────────────────────────────
     public int MaxRetryAttempts { get; set; } = 3;

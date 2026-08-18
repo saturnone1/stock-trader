@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Reporting;
 using StockTrader.Configuration;
 using StockTrader.Models;
 
@@ -10,7 +11,7 @@ namespace StockTrader.Services.Notification;
 /// 재시도 로직: NotificationSettings.MaxRetryAttempts 설정에 따라 지수 백오프로 재시도.
 /// 채널 활성 여부는 DB UserSettings를 우선 확인하고, 없으면 appsettings.json을 fallback으로 사용한다.
 /// </summary>
-public sealed class NotificationDispatcher : INotificationDispatcher
+public sealed class NotificationDispatcher : INotificationDispatcher, IDailyReportPublisher
 {
     private readonly IEnumerable<INotificationChannel> _channels;
     private readonly INotificationSettingsProvider _settingsProvider;
@@ -67,7 +68,7 @@ public sealed class NotificationDispatcher : INotificationDispatcher
         await Task.WhenAll(tasks);
     }
 
-    public async Task DispatchDailyReportAsync(DailyReportData report, CancellationToken ct = default)
+    public async Task PublishAsync(DailyReportData report, CancellationToken ct = default)
     {
         var activeChannels = await GetActiveChannelsAsync(ct);
         if (activeChannels.Count == 0)

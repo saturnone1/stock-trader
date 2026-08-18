@@ -364,6 +364,13 @@ Expectancy and profit factor have one domain policy shared by persistence entiti
 snapshots. The two HTTP adapters are thin explicit-contract mappers, and the desktop consumes their
 generated camel-case fields without legacy casing fallbacks.
 
+Daily reporting now crosses `IDailyReportGenerator`, `IDailyReportActivityStore`,
+`IActiveAccountEquityReader`, and `IDailyReportPublisher`. A deterministic policy owns ET/KST
+scheduling, market-local half-open day windows, PnL projection, and stable summaries. The hosted
+service is a 113-line scheduling adapter with no repository, broker, entity, or notification-channel
+dependency. The correction includes trades by exit day, removes the 50-signal truncation, and
+preserves 23/25-hour DST days by converting both local midnights independently.
+
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 
 ## Phase 4 — Persistence and contracts

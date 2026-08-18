@@ -40,6 +40,8 @@ infrastructure.
   total unrealized PnL, and the observation instant shared by every API consumer.
 - Pattern statistics and signal browsing: one storage-independent statistics query, one domain
   metric policy, and one deterministic signal filter/R/R/statistic-selection policy.
+- Daily reporting: one deterministic schedule/window/projection policy, one activity read port, and
+  isolated account-equity and notification adapters.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -345,4 +347,6 @@ defaults, active-profile selection, and modification time have one application o
   application projections and calculate drawdown from initial account equity over complete history.
 - `adr/0039-isolate-signal-statistics-queries.md`: centralize pattern-statistics metrics and resolve
   signal statistics by exact symbol without endpoint persistence or formula ownership.
+- `adr/0040-isolate-daily-report-use-case.md`: isolate report scheduling, DST-safe market-day
+  windows, activity reads, equity access, and notification publication behind application ports.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Reporting;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Models.Enums;

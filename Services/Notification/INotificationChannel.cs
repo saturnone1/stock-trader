@@ -1,3 +1,4 @@
+using StockTrader.Application.Reporting;
 using StockTrader.Models;
 
 namespace StockTrader.Services.Notification;
@@ -29,15 +30,3 @@ public interface INotificationChannel
     /// <summary>채널 연결 테스트 (Settings 페이지 "테스트 발송" 버튼용)</summary>
     Task<bool> TestConnectionAsync(CancellationToken ct = default);
 }
-
-/// <summary>일일 요약 리포트에 담을 데이터</summary>
-public record DailyReportData(
-    DateOnly ReportDate,
-    int TotalSignals,
-    int ExecutedTrades,
-    decimal DailyPnl,
-    decimal DailyPnlPercent,
-    IReadOnlyList<string> TopSignals,
-    IReadOnlyList<string> ExecutedSymbols,
-    string MarketRegimeSummary
-);

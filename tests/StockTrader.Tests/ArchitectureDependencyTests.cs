@@ -2424,6 +2424,62 @@ public class ArchitectureDependencyTests
         statsPage.Should().NotContain("row.Pattern");
     }
 
+    [Fact]
+    public void DailyReportWorkerIsAThinAdapterOverDeterministicApplicationPorts()
+    {
+        var repository = FindRepositoryRoot();
+        var workerPath = Path.Combine(
+            repository, "BackgroundServices/DailyReportService.cs");
+        var worker = File.ReadAllText(workerPath);
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Application/Reporting/DailyReportContracts.cs"));
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Reporting/DailyReportPolicy.cs"));
+        var generator = File.ReadAllText(Path.Combine(
+            repository, "Application/Reporting/DailyReportGenerator.cs"));
+        var activityStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/DailyReportActivityStore.cs"));
+        var services = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+        var dataServices = File.ReadAllText(Path.Combine(
+            repository, "Extensions/DataServiceExtensions.cs"));
+        var notifications = File.ReadAllText(Path.Combine(
+            repository, "Extensions/NotificationServiceExtensions.cs"));
+
+        File.ReadAllLines(workerPath).Length.Should().BeLessThanOrEqualTo(120);
+        worker.Should().Contain("IDailyReportScheduleQuery");
+        worker.Should().Contain("IDailyReportGenerator");
+        worker.Should().Contain("DailyReportPolicy.CalculateDelay(");
+        worker.Should().NotContain("ISettingsRepository");
+        worker.Should().NotContain("ITradeHistoryStore");
+        worker.Should().NotContain("ITradeRecommendationStore");
+        worker.Should().NotContain("IAccountManager");
+        worker.Should().NotContain("INotificationDispatcher");
+        worker.Should().NotContain("DateTime.UtcNow");
+        worker.Should().NotContain(".Sum(");
+        worker.Should().NotContain("new DailyReportData");
+
+        contracts.Should().Contain("interface IDailyReportActivityStore");
+        contracts.Should().Contain("interface IActiveAccountEquityReader");
+        contracts.Should().Contain("interface IDailyReportPublisher");
+        contracts.Should().NotContain("StockTrader.Models");
+        contracts.Should().NotContain("StockTrader.Data");
+        contracts.Should().NotContain("StockTrader.Services");
+        policy.Should().Contain("TimeZoneInfo.ConvertTimeToUtc(localStart");
+        policy.Should().Contain("TimeZoneInfo.ConvertTimeToUtc(localEnd");
+        policy.Should().NotContain("DateTime.UtcNow");
+        generator.Should().Contain("timeProvider.GetUtcNow()");
+        generator.Should().Contain("Task.WhenAll(activityTask, equityTask)");
+        activityStore.Should().Contain("trade.ExitTime >= fromUtc");
+        activityStore.Should().Contain("trade.ExitTime < toUtc");
+        activityStore.Should().NotContain("Take(50)");
+        services.Should().Contain("AddScoped<IDailyReportGenerator, DailyReportGenerator>");
+        services.Should().Contain("DailyReportRetryDelayMinutes must be positive");
+        dataServices.Should().Contain(
+            "AddSingleton<IDailyReportActivityStore, DailyReportActivityStore>");
+        notifications.Should().Contain("AddSingleton<IDailyReportPublisher>");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

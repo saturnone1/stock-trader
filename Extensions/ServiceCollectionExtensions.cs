@@ -3,6 +3,7 @@ using StockTrader.Configuration;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Analysis;
+using StockTrader.Services.Account;
 using StockTrader.Services.Backtest;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Market;
@@ -25,6 +26,7 @@ using StockTrader.Application.Portfolio;
 using StockTrader.Services.Portfolio;
 using StockTrader.Application.Statistics;
 using StockTrader.Application.Signals;
+using StockTrader.Application.Reporting;
 
 namespace StockTrader.Extensions;
 
@@ -56,7 +58,17 @@ public static class ServiceCollectionExtensions
             .Validate(settings => TimeSpan.TryParse(settings.MarketCloseET, out _), "MarketCloseET must be a valid time")
             .ValidateOnStart();
         services.Configure<PatternSettings>(configuration.GetSection("Patterns"));
-        services.Configure<NotificationSettings>(configuration.GetSection("Notification"));
+        services.AddOptions<NotificationSettings>()
+            .Bind(configuration.GetSection("Notification"))
+            .Validate(
+                settings => TimeOnly.TryParseExact(settings.DailyReportTime, "HH:mm", out _),
+                "DailyReportTime must use HH:mm")
+            .Validate(settings => settings.MaxRetryAttempts > 0, "MaxRetryAttempts must be positive")
+            .Validate(settings => settings.RetryDelaySeconds > 0, "RetryDelaySeconds must be positive")
+            .Validate(
+                settings => settings.DailyReportRetryDelayMinutes > 0,
+                "DailyReportRetryDelayMinutes must be positive")
+            .ValidateOnStart();
         services.Configure<MLSettings>(configuration.GetSection("ML"));
         services.Configure<LsSecuritiesSettings>(configuration.GetSection("LsSecurities"));
         services.Configure<FinancialDataPipelineSettings>(configuration.GetSection("FinancialDataPipeline"));
@@ -108,6 +120,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRiskOverviewQuery, RiskOverviewQuery>();
         services.AddScoped<IPortfolioPerformanceQuery, PortfolioPerformanceQuery>();
         services.AddScoped<IOpenPositionQuery, OpenPositionQuery>();
+        services.AddScoped<IDailyReportScheduleQuery, DailyReportScheduleQuery>();
+        services.AddScoped<IDailyReportGenerator, DailyReportGenerator>();
+        services.AddSingleton<IActiveAccountEquityReader, ActiveAccountEquityReader>();
         services.AddScoped<ManualOrderWorkflow>();
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<IOrderService, OrderService>();
