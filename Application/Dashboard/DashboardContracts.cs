@@ -29,6 +29,8 @@ public interface IDashboardActivityStore
 {
     Task<DashboardActivitySnapshot> GetAsync(
         int recommendationCount,
+        DateTime signalDetectedFromInclusiveUtc,
+        DateTime signalDetectedThroughInclusiveUtc,
         CancellationToken ct = default);
 }
 

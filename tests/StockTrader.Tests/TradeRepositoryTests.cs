@@ -410,12 +410,15 @@ public class TradingDataStoreTests
             .UseInMemoryDatabase($"activity-{Guid.NewGuid()}")
             .Options;
         await using var db = new AppDbContext(options);
+        var now = DateTime.UtcNow;
         var visibleSignal = Signal(
-            "AAPL", PatternType.Breakout, null, DateTime.UtcNow, DateTime.UtcNow);
+            "AAPL", PatternType.Breakout, null, now, now);
         var hiddenSignal = Signal(
-            "MSFT", PatternType.Breakout, null, DateTime.UtcNow, DateTime.UtcNow);
+            "MSFT", PatternType.Breakout, null, now, now);
         hiddenSignal.IsSuperseded = true;
-        db.PatternSignals.AddRange(visibleSignal, hiddenSignal);
+        var expiredSignal = Signal(
+            "OLD", PatternType.Breakout, null, now.AddHours(-2), now.AddHours(-2));
+        db.PatternSignals.AddRange(visibleSignal, hiddenSignal, expiredSignal);
         var visibleRecommendation = Recommendation(90, 100m);
         var hiddenRecommendation = Recommendation(91, 101m);
         hiddenRecommendation.IsSuperseded = true;
@@ -428,13 +431,15 @@ public class TradingDataStoreTests
         var manualSignalStore = new ManualOrderSignalStore(
             new TestDbContextFactory(options));
 
-        (await signalStore.GetActiveSignalsAsync()).Should().ContainSingle()
+        (await signalStore.GetActionableSignalsAsync(
+            now.AddHours(-1),
+            now.AddHours(1))).Should().ContainSingle()
             .Which.Id.Should().Be(visibleSignal.Id);
         (await recommendationStore.GetRecentRecommendationsAsync()).Should().ContainSingle()
             .Which.Id.Should().Be(visibleRecommendation.Id);
         (await manualSignalStore.LoadAsync(visibleSignal.Id)).Should().NotBeNull();
         (await manualSignalStore.LoadAsync(hiddenSignal.Id)).Should().BeNull();
-        (await db.PatternSignals.CountAsync()).Should().Be(2);
+        (await db.PatternSignals.CountAsync()).Should().Be(3);
         (await db.TradeRecommendations.CountAsync()).Should().Be(2);
     }
 

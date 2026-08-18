@@ -6,14 +6,21 @@ namespace StockTrader.Services.Signal;
 
 public sealed class SignalListQuery(
     IPatternSignalStore signals,
-    IPatternStatisticsQuery statistics)
+    IPatternStatisticsQuery statistics,
+    SignalFreshnessPolicy freshness,
+    TimeProvider timeProvider)
     : ISignalListQuery
 {
     public async Task<SignalListSnapshot> GetAsync(
         SignalBrowseRequest request,
         CancellationToken ct = default)
     {
-        var signalsTask = signals.GetActiveSignalsAsync(ct);
+        var observedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var window = freshness.GetWindow(observedAtUtc);
+        var signalsTask = signals.GetActionableSignalsAsync(
+            window.DetectedFromInclusiveUtc,
+            window.DetectedThroughInclusiveUtc,
+            ct);
         var statisticsTask = statistics.GetAllAsync(ct);
         await Task.WhenAll(signalsTask, statisticsTask);
 

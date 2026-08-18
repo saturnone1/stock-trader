@@ -427,6 +427,12 @@ with an explicit superseded state. One ordered EF migration marks only older, ex
 duplicates, never executed or uncertain recommendations. Every operational activity reader excludes
 that state, while current writes remain protected by `SignalBarAt`/`SourceSignalId` unique indexes.
 
+Signal actionability now has one observation-time policy. Signal browsing and dashboard counts pass
+the same inclusive freshness window into persistence, and manual execution rejects expired or
+future-dated observations before recommendation sizing. The operational lifetime is validated typed
+configuration rather than a workflow-owned constant, while historical rows remain available for
+audit.
+
 Live signal recommendation now reads completed strategy trades, total open positions, executed
 session entries, and ticker sectors through `ILiveSignalEvaluationStore`. Its snapshot contains no
 EF entities, and cooldown, drawdown, and sizing rules consume the persistence-independent

@@ -12,11 +12,22 @@ public sealed class PatternSignalStore(
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
-    public async Task<List<PatternSignal>> GetActiveSignalsAsync(CancellationToken ct = default)
+    public async Task<List<PatternSignal>> GetActionableSignalsAsync(
+        DateTime detectedFromInclusiveUtc,
+        DateTime detectedThroughInclusiveUtc,
+        CancellationToken ct = default)
     {
+        if (detectedFromInclusiveUtc > detectedThroughInclusiveUtc)
+            throw new ArgumentException("Signal observation window is inverted.");
+
         if (cache.TryGetValue(TradeReadCache.ActiveSignals, out List<PatternSignal>? cached)
             && cached is not null)
-            return cached;
+        {
+            return FilterToWindow(
+                cached,
+                detectedFromInclusiveUtc,
+                detectedThroughInclusiveUtc);
+        }
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var signals = await db.PatternSignals
@@ -25,7 +36,10 @@ public sealed class PatternSignalStore(
             .OrderByDescending(signal => signal.DetectedAt)
             .ToListAsync(ct);
         cache.Set(TradeReadCache.ActiveSignals, signals, CacheTtl);
-        return signals;
+        return FilterToWindow(
+            signals,
+            detectedFromInclusiveUtc,
+            detectedThroughInclusiveUtc);
     }
 
     public async Task AddSignalsBatchAsync(
@@ -101,4 +115,12 @@ public sealed class PatternSignalStore(
         signal.PatternType,
         signal.CustomPatternName,
         signal.SignalBarAt!.Value);
+
+    private static List<PatternSignal> FilterToWindow(
+        IEnumerable<PatternSignal> signals,
+        DateTime detectedFromInclusiveUtc,
+        DateTime detectedThroughInclusiveUtc) => signals
+        .Where(signal => signal.DetectedAt >= detectedFromInclusiveUtc
+            && signal.DetectedAt <= detectedThroughInclusiveUtc)
+        .ToList();
 }

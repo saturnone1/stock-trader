@@ -20,6 +20,8 @@ public sealed class DashboardActivityStoreTests
                 Signal(true),
                 Signal(true),
                 Signal(false),
+                Signal(true, detectedAt: Utc(8)),
+                Signal(true, detectedAt: Utc(12)),
                 Signal(true, superseded: true));
             db.TradeRecommendations.AddRange(
                 Recommendation("OLDER", 1, Utc(11)),
@@ -30,7 +32,7 @@ public sealed class DashboardActivityStoreTests
         }
         var store = new DashboardActivityStore(new TestDbContextFactory(options));
 
-        var result = await store.GetAsync(2);
+        var result = await store.GetAsync(2, Utc(9), Utc(11));
 
         result.ActiveSignalCount.Should().Be(2);
         result.RecentRecommendations.Select(item => item.Symbol)
@@ -38,13 +40,16 @@ public sealed class DashboardActivityStoreTests
         result.RecentRecommendations[0].RiskRewardRatio.Should().Be(2m);
     }
 
-    private static PatternSignal Signal(bool active, bool superseded = false) => new()
+    private static PatternSignal Signal(
+        bool active,
+        bool superseded = false,
+        DateTime? detectedAt = null) => new()
     {
         Symbol = Guid.NewGuid().ToString("N"),
         PatternType = PatternType.Breakout,
         IsActive = active,
         IsSuperseded = superseded,
-        DetectedAt = Utc(10)
+        DetectedAt = detectedAt ?? Utc(10)
     };
 
     private static TradeRecommendation Recommendation(

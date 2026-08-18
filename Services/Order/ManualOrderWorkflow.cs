@@ -16,14 +16,13 @@ namespace StockTrader.Services.Order;
 /// </summary>
 public sealed class ManualOrderWorkflow
 {
-    private static readonly TimeSpan MaxSignalAge = TimeSpan.FromHours(24);
-
     private readonly IAccountManager _accounts;
     private readonly ITradeRecommendationStore _recommendations;
     private readonly INotificationService _notifications;
     private readonly IMarketCalendar _marketCalendar;
     private readonly ISignalService _signals;
     private readonly TimeProvider _timeProvider;
+    private readonly ManualSignalEntryPolicy _entryPolicy;
     private readonly IManualOrderSignalStore _signalStore;
     private readonly ILiveEntryExecutionCoordinator _entryExecutions;
     private readonly ILogger<ManualOrderWorkflow> _logger;
@@ -35,6 +34,7 @@ public sealed class ManualOrderWorkflow
         IMarketCalendar marketCalendar,
         ISignalService signals,
         TimeProvider timeProvider,
+        ManualSignalEntryPolicy entryPolicy,
         IManualOrderSignalStore signalStore,
         ILiveEntryExecutionCoordinator entryExecutions,
         ILogger<ManualOrderWorkflow> logger)
@@ -45,6 +45,7 @@ public sealed class ManualOrderWorkflow
         _marketCalendar = marketCalendar;
         _signals = signals;
         _timeProvider = timeProvider;
+        _entryPolicy = entryPolicy;
         _signalStore = signalStore;
         _entryExecutions = entryExecutions;
         _logger = logger;
@@ -61,11 +62,37 @@ public sealed class ManualOrderWorkflow
             return (false, $"시그널 ID {signalId}을(를) 찾을 수 없습니다.");
         }
 
+        var signalDecision = _entryPolicy.EvaluateSignal(
+            new ManualSignalEntryCandidate(
+                signal.Symbol,
+                signal.DetectedAt,
+                signal.EntryPrice,
+                signal.StopLossPrice,
+                signal.TargetPrice),
+            UtcNow,
+            _marketCalendar.IsMarketOpen(MarketType.US),
+            _marketCalendar.GetLocalNow(MarketType.US));
+        if (!signalDecision.IsAllowed)
+        {
+            _logger.LogWarning(
+                "[MANUAL ORDER BLOCKED] {Symbol}: {Code} - {Message}",
+                signal.Symbol,
+                signalDecision.Code,
+                signalDecision.Message);
+            return (false, signalDecision.Message!);
+        }
+
         var recommendation = await CreateRecommendationAsync(signal, ct);
         recommendation.SourceSignalId = signal.Id;
-        var validationError = Validate(signal, recommendation);
-        if (validationError is not null)
-            return (false, validationError);
+        var recommendationDecision = ManualSignalEntryPolicy.EvaluateRecommendation(
+            new ManualRecommendationEntryCandidate(
+                signal.Symbol,
+                recommendation.ShareQuantity,
+                recommendation.EntryPrice,
+                recommendation.StopLossPrice,
+                recommendation.TargetPrice));
+        if (!recommendationDecision.IsAllowed)
+            return (false, recommendationDecision.Message!);
 
         var account = await _accounts.GetBrokerContextAsync(ct: ct);
         if (account is null)
@@ -159,56 +186,6 @@ public sealed class ManualOrderWorkflow
             WasExecuted = false,
             Mode = OrderMode.AutoOrder,
         };
-    }
-
-    private string? Validate(PatternSignal signal, TradeRecommendation recommendation)
-    {
-        var nowEt = _marketCalendar.GetLocalNow(MarketType.US);
-        if (!_marketCalendar.IsMarketOpen(MarketType.US))
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 장외 시간 ({Time:HH:mm} ET, {DayOfWeek})",
-                signal.Symbol, nowEt, nowEt.DayOfWeek);
-            return $"장외 시간입니다 (ET {nowEt:HH:mm}, {nowEt.DayOfWeek}). " +
-                   "정규장(09:30–16:00 ET) 중에 다시 시도하세요.";
-        }
-
-        if (recommendation.ShareQuantity <= 0)
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER] {Symbol}: 주문 수량이 0입니다 (계좌 잔고 부족 가능성)", signal.Symbol);
-            return $"{signal.Symbol}: 계산된 주문 수량이 0입니다. 계좌 잔고를 확인하세요.";
-        }
-
-        var signalAge = UtcNow - signal.DetectedAt;
-        if (signalAge > MaxSignalAge)
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 시그널이 {Age:F1}시간 전 생성됨 (한계={Limit}h)",
-                signal.Symbol, signalAge.TotalHours, MaxSignalAge.TotalHours);
-            return $"{signal.Symbol} 시그널이 {signalAge.TotalHours:F0}시간 전 생성됨. " +
-                   "24시간 초과 시그널은 주문할 수 없습니다.";
-        }
-
-        if (recommendation.StopLossPrice >= recommendation.EntryPrice)
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 손절가({SL:F2}) >= 진입가({Entry:F2}) — 시그널 무효",
-                signal.Symbol, recommendation.StopLossPrice, recommendation.EntryPrice);
-            return $"{signal.Symbol} 손절가({recommendation.StopLossPrice:F2})가 " +
-                   $"진입가({recommendation.EntryPrice:F2}) 이상입니다. 시그널이 유효하지 않습니다.";
-        }
-
-        if (recommendation.TargetPrice <= recommendation.EntryPrice)
-        {
-            _logger.LogWarning(
-                "[MANUAL ORDER BLOCKED] {Symbol}: 목표가({Target:F2}) <= 진입가({Entry:F2}) — 시그널 무효",
-                signal.Symbol, recommendation.TargetPrice, recommendation.EntryPrice);
-            return $"{signal.Symbol} 목표가({recommendation.TargetPrice:F2})가 " +
-                   $"진입가({recommendation.EntryPrice:F2}) 이하입니다. 시그널이 유효하지 않습니다.";
-        }
-
-        return null;
     }
 
     private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;

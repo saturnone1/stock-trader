@@ -2717,6 +2717,45 @@ public class ArchitectureDependencyTests
         }
     }
 
+    [Fact]
+    public void SignalActionabilityHasOneClockedPolicyAndNoManualAgeConstant()
+    {
+        var repository = FindRepositoryRoot();
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Signals/SignalFreshnessPolicy.cs"));
+        var signalQuery = File.ReadAllText(Path.Combine(
+            repository, "Services/Signal/SignalListQuery.cs"));
+        var dashboard = File.ReadAllText(Path.Combine(
+            repository, "Services/Dashboard/DashboardQuery.cs"));
+        var manualOrder = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/ManualOrderWorkflow.cs"));
+        var manualPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/ManualSignalEntryPolicy.cs"));
+        var signalStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/PatternSignalStore.cs"));
+        var dashboardStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/DashboardActivityStore.cs"));
+        var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
+
+        policy.Should().Contain("SignalFreshnessStatus.FutureDated");
+        policy.Should().Contain("SignalFreshnessWindow");
+        signalQuery.Should().Contain("freshness.GetWindow(observedAtUtc)");
+        signalQuery.Should().Contain("timeProvider.GetUtcNow()");
+        dashboard.Should().Contain("signalFreshness.GetWindow(");
+        dashboard.Should().Contain("timeProvider.GetUtcNow()");
+        manualOrder.Should().Contain("_entryPolicy.EvaluateSignal(");
+        manualOrder.Should().NotContain("MaxSignalAge");
+        manualOrder.Should().NotContain("TimeSpan.FromHours(24)");
+        manualPolicy.Should().Contain("freshness.Evaluate(");
+        manualPolicy.Should().Contain("SignalFreshnessStatus.FutureDated");
+        signalStore.Should().Contain("detectedFromInclusiveUtc");
+        signalStore.Should().Contain("detectedThroughInclusiveUtc");
+        dashboardStore.Should().Contain("signalDetectedFromInclusiveUtc");
+        dashboardStore.Should().Contain("signalDetectedThroughInclusiveUtc");
+        settings.Should().Contain("\"SignalLifecycle\"");
+        settings.Should().Contain("\"ActionableLifetimeHours\": 24");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
