@@ -3,7 +3,6 @@ using StockTrader.Application.Trading;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
-using StockTrader.Services.Broker;
 using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 
@@ -145,33 +144,6 @@ public class OrderService : IOrderService
             execution.Position.EntryPrice,
             account.Account.Id);
         return true;
-    }
-
-    /// <inheritdoc />
-    public async Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)
-    {
-        var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
-        if (brokerService == null)
-        {
-            _logger.LogWarning("[ORDER CANCEL] No active broker service to cancel order {OrderId}", orderId);
-            return false;
-        }
-        if (!BrokerCatalog.Get(brokerService.BrokerType).Capabilities.CanCancelOrder)
-        {
-            _logger.LogWarning(
-                "[ORDER CANCEL] Broker {BrokerType} does not support order cancellation",
-                brokerService.BrokerType);
-            return false;
-        }
-
-        var success = await brokerService.CancelOrderAsync(orderId, ct);
-
-        if (success)
-            _logger.LogInformation("[ORDER CANCELLED] OrderId={OrderId}", orderId);
-        else
-            _logger.LogWarning("[ORDER CANCEL FAILED] OrderId={OrderId}", orderId);
-
-        return success;
     }
 
     /// <inheritdoc />
