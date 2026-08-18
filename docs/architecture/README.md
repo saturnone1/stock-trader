@@ -36,6 +36,8 @@ infrastructure.
   adapters, workers, and live execution guards.
 - Live position order state: one application execution port for conditional claim, broker evidence,
   release, and atomic position/realized-trade fill commit.
+- Open-position display state: one application query for holding duration, durable-order status,
+  total unrealized PnL, and the observation instant shared by every API consumer.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -337,4 +339,6 @@ defaults, active-profile selection, and modification time have one application o
   behind one use case and route every persisted position through its owning account.
 - `adr/0037-isolate-risk-overview-and-clock.md`: move risk-screen projection behind one application
   query, inject observation time, and count legacy accountless positions exactly once.
+- `adr/0038-isolate-portfolio-performance.md`: move open-position and performance reads behind
+  application projections and calculate drawdown from initial account equity over complete history.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

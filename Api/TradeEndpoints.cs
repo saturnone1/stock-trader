@@ -1,5 +1,6 @@
 using StockTrader.Api.Contracts;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Portfolio;
 using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -56,19 +57,16 @@ public static class TradeEndpoints
 
         // GET /api/trades/positions — 진행 중 포지션
         group.MapGet("/trades/positions", async (
-            IOpenPositionStore positionsStore,
-            TimeProvider timeProvider,
+            IOpenPositionQuery query,
             CancellationToken ct) =>
         {
-            var positions = await positionsStore.GetOpenPositionsAsync(ct);
-
-            return Results.Ok(new
-            {
-                Count = positions.Count,
-                Positions = positions.Select(p => OpenPositionResponseMapper.Map(
-                    p, timeProvider.GetUtcNow().UtcDateTime))
-            });
-        }).RequireAuthorization();
+            var snapshot = await query.GetAsync(ct);
+            return Results.Ok(new OpenPositionsResponse(
+                snapshot.Count,
+                snapshot.Positions.Select(OpenPositionResponseMapper.Map).ToArray()));
+        })
+            .Produces<OpenPositionsResponse>()
+            .RequireAuthorization();
 
         // GET /api/trades/history?pattern=&from=&to=&skip=0&take=50
         group.MapGet("/trades/history", async (

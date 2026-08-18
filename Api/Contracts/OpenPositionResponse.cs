@@ -1,5 +1,4 @@
-using StockTrader.Application.Execution;
-using StockTrader.Models;
+using StockTrader.Application.Portfolio;
 
 namespace StockTrader.Api.Contracts;
 
@@ -28,34 +27,39 @@ public sealed record OpenPositionResponse(
     int OrderQuantity,
     bool OrderMarksPartialProfit);
 
+public sealed record PortfolioHoldingsResponse(
+    IReadOnlyList<OpenPositionResponse> Positions,
+    decimal TotalUnrealizedPnL,
+    int PositionCount);
+
+public sealed record OpenPositionsResponse(
+    int Count,
+    IReadOnlyList<OpenPositionResponse> Positions);
+
 public static class OpenPositionResponseMapper
 {
-    public static OpenPositionResponse Map(Position position, DateTime utcNow)
-    {
-        var order = LivePositionOrderStatusPolicy.Evaluate(position, utcNow);
-        return new OpenPositionResponse(
-            position.Id,
-            position.Symbol,
-            position.Sector,
-            position.Quantity,
-            position.EntryPrice,
-            position.CurrentPrice,
-            position.StopLossPrice,
-            position.TargetPrice,
-            position.PatternType.ToString(),
-            position.UnrealizedPnL,
-            position.AccountId,
-            position.HighSinceEntry,
-            position.EntryAtr,
-            Math.Max(0, (utcNow - position.OpenedAt).Days),
-            position.OpenedAt.ToString("o"),
-            order.State.ToString(),
-            order.RequestedAt?.ToString("o"),
-            order.Reason,
-            order.Kind?.ToString(),
-            order.HasBrokerOrderId,
-            order.PendingSeconds,
-            order.RequestedQuantity,
-            order.MarksPartialProfit);
-    }
+    public static OpenPositionResponse Map(OpenPositionSnapshot position) => new(
+        position.Id,
+        position.Symbol,
+        position.Sector,
+        position.Quantity,
+        position.EntryPrice,
+        position.CurrentPrice,
+        position.StopLossPrice,
+        position.TargetPrice,
+        position.Pattern,
+        position.UnrealizedPnL,
+        position.AccountId,
+        position.HighSinceEntry,
+        position.EntryAtr,
+        position.HoldingDays,
+        position.OpenedAt.ToString("o"),
+        position.OrderStatus,
+        position.OrderRequestedAt?.ToString("o"),
+        position.OrderReason,
+        position.OrderKind,
+        position.HasBrokerOrderId,
+        position.OrderPendingSeconds,
+        position.OrderQuantity,
+        position.OrderMarksPartialProfit);
 }

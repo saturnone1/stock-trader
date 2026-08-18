@@ -1,8 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
+using StockTrader.Application.Portfolio;
 using StockTrader.Application.Risk;
-using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -25,29 +25,19 @@ public class RiskOverviewQueryTests
                 OpenPositionCount = 2,
                 LastUpdated = observedAt.UtcDateTime
             });
-        var positions = new Mock<IOpenPositionStore>();
-        positions.Setup(store => store.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Position>
-            {
-                new()
-                {
-                    Symbol = "TQQQ",
-                    EntryPrice = 100m,
-                    CurrentPrice = 106m,
-                    StopLossPrice = 97m,
-                    Quantity = 10,
-                    OpenedAt = observedAt.UtcDateTime.AddDays(-4)
-                },
-                new()
-                {
-                    Symbol = "AAPL",
-                    EntryPrice = 200m,
-                    CurrentPrice = 198m,
-                    StopLossPrice = 200m,
-                    Quantity = 5,
-                    OpenedAt = observedAt.UtcDateTime.AddHours(1)
-                }
-            });
+        var positions = new Mock<IOpenPositionQuery>();
+        positions.Setup(query => query.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OpenPositionListSnapshot(
+                [
+                    Position(
+                        "TQQQ", 100m, 106m, 97m, 10,
+                        observedAt.UtcDateTime.AddDays(-4)),
+                    Position(
+                        "AAPL", 200m, 198m, 200m, 5,
+                        observedAt.UtcDateTime.AddHours(1))
+                ],
+                50m,
+                observedAt.UtcDateTime));
         var settings = new Mock<ISettingsRepository>();
         settings.Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UserSettings
@@ -63,8 +53,7 @@ public class RiskOverviewQueryTests
             risk.Object,
             positions.Object,
             settings.Object,
-            Options.Create(new TradingSettings { MinConfidence = 0.4m }),
-            new FixedTimeProvider(observedAt));
+            Options.Create(new TradingSettings { MinConfidence = 0.4m }));
 
         var result = await sut.GetAsync();
 
@@ -97,8 +86,34 @@ public class RiskOverviewQueryTests
             .Should().Be(expected);
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset observedAt) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => observedAt;
-    }
+    private static OpenPositionSnapshot Position(
+        string symbol,
+        decimal entryPrice,
+        decimal currentPrice,
+        decimal stopLossPrice,
+        int quantity,
+        DateTime openedAt) => new(
+        0,
+        symbol,
+        string.Empty,
+        quantity,
+        entryPrice,
+        currentPrice,
+        stopLossPrice,
+        0m,
+        "GapUpPullback",
+        (currentPrice - entryPrice) * quantity,
+        0,
+        0m,
+        0m,
+        0,
+        openedAt,
+        "Ready",
+        null,
+        null,
+        null,
+        false,
+        0,
+        0,
+        false);
 }

@@ -80,7 +80,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioHoldingsResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -92,7 +99,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioPerformanceResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -168,7 +182,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenPositionsResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3348,6 +3369,146 @@
           }
         }
       },
+      "OpenPositionResponse": {
+        "required": [
+          "id",
+          "symbol",
+          "sector",
+          "quantity",
+          "entryPrice",
+          "currentPrice",
+          "stopLossPrice",
+          "targetPrice",
+          "pattern",
+          "unrealizedPnL",
+          "accountId",
+          "highSinceEntry",
+          "entryAtr",
+          "holdingDays",
+          "openedAt",
+          "orderStatus",
+          "orderRequestedAt",
+          "orderReason",
+          "orderKind",
+          "hasBrokerOrderId",
+          "orderPendingSeconds",
+          "orderQuantity",
+          "orderMarksPartialProfit"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "sector": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "currentPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "stopLossPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "targetPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "unrealizedPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "accountId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "highSinceEntry": {
+            "type": "number",
+            "format": "double"
+          },
+          "entryAtr": {
+            "type": "number",
+            "format": "double"
+          },
+          "holdingDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "openedAt": {
+            "type": "string"
+          },
+          "orderStatus": {
+            "type": "string"
+          },
+          "orderRequestedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "orderReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "orderKind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasBrokerOrderId": {
+            "type": "boolean"
+          },
+          "orderPendingSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderQuantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderMarksPartialProfit": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OpenPositionsResponse": {
+        "required": [
+          "count",
+          "positions"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenPositionResponse"
+            }
+          }
+        }
+      },
       "OptimizeParams": {
         "type": "object",
         "properties": {
@@ -4745,6 +4906,167 @@
           "CumulativeRsi2",
           "Custom"
         ]
+      },
+      "PortfolioEquityPointResponse": {
+        "required": [
+          "date",
+          "symbol",
+          "pattern",
+          "pnL",
+          "pnLPercent",
+          "cumulativePnL"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "pnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "pnLPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "cumulativePnL": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "PortfolioHoldingsResponse": {
+        "required": [
+          "positions",
+          "totalUnrealizedPnL",
+          "positionCount"
+        ],
+        "type": "object",
+        "properties": {
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenPositionResponse"
+            }
+          },
+          "totalUnrealizedPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "positionCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PortfolioPatternStatisticsResponse": {
+        "required": [
+          "pattern",
+          "symbol",
+          "sampleSize",
+          "winRate",
+          "avgWinPercent",
+          "avgLossPercent",
+          "maxDrawdownPercent",
+          "expectancy",
+          "profitFactor",
+          "lastUpdated"
+        ],
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sampleSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "winRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgWinPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgLossPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxDrawdownPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "profitFactor": {
+            "type": "number",
+            "format": "double"
+          },
+          "lastUpdated": {
+            "type": "string"
+          }
+        }
+      },
+      "PortfolioPerformanceResponse": {
+        "required": [
+          "totalTrades",
+          "winRate",
+          "avgWinPercent",
+          "avgLossPercent",
+          "maxDrawdown",
+          "patternStats",
+          "equityCurve"
+        ],
+        "type": "object",
+        "properties": {
+          "totalTrades": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "winRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgWinPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgLossPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxDrawdown": {
+            "type": "number",
+            "format": "double"
+          },
+          "patternStats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPatternStatisticsResponse"
+            }
+          },
+          "equityCurve": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortfolioEquityPointResponse"
+            }
+          }
+        }
       },
       "PositionRiskResponse": {
         "required": [

@@ -350,6 +350,13 @@ Risk services and monitoring use one injected observation clock per evaluation, 
 are validated typed options, and legacy accountless positions contribute to portfolio PnL exactly
 once. The endpoint contains no persistence access or portfolio arithmetic.
 
+Portfolio performance now delegates to `IPortfolioPerformanceQuery` and a deterministic policy.
+Maximum drawdown starts from validated account equity, completed trades have a stable exit-time and
+ID order, and the query explicitly reads complete history instead of inheriting the 1,000-row API
+page default. `IOpenPositionQuery` also supplies portfolio, trade, and dashboard position lists from
+one observation time and durable-order status policy. The HTTP adapters map explicit contracts and
+own no position-status or performance formulas.
+
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 
 ## Phase 4 — Persistence and contracts
