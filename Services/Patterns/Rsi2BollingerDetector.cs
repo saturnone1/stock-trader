@@ -97,7 +97,8 @@ public class Rsi2BollingerDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.Rsi2Bollinger,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = Math.Round(stopLoss, 2),
             TargetPrice = Math.Round(target, 2),

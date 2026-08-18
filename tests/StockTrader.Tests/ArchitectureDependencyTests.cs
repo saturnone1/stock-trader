@@ -531,7 +531,8 @@ public class ArchitectureDependencyTests
 
         File.ReadAllLines(detectorPath).Length.Should().BeLessThanOrEqualTo(280);
         detector.Should().Contain("DynamicExitPricePolicy.Resolve(");
-        detector.Should().Contain("_timeProvider.GetUtcNow().UtcDateTime");
+        detector.Should().Contain("DetectedAt = curr.Timestamp");
+        detector.Should().Contain("SignalBarAt = curr.Timestamp");
         detector.Should().NotContain("DateTime.UtcNow");
         detector.Should().NotContain("\"BOLLINGER_LOWER\" =>");
         detector.Should().NotContain("GetPrevLow(");
@@ -541,6 +542,27 @@ public class ArchitectureDependencyTests
         tests.Should().Contain("UsesStrategyAtrDefaultsWhenNoDynamicConfigurationExists");
         tests.Should().Contain("PreviousRangeExcludesTheCurrentBar");
         tests.Should().Contain("IndicatorBasedLevelsUseTheSharedEvaluationContext");
+    }
+
+    [Fact]
+    public void PatternDetectorsUseTheEvaluatedBarAsTheirDeterministicSignalTime()
+    {
+        var repository = FindRepositoryRoot();
+        var detectorFiles = Directory.EnumerateFiles(
+                Path.Combine(repository, "Services/Patterns"),
+                "*Detector.cs",
+                SearchOption.TopDirectoryOnly)
+            .Select(path => new { Path = path, Source = File.ReadAllText(path) })
+            .Where(file => file.Source.Contains("DetectedAt =", StringComparison.Ordinal))
+            .ToArray();
+
+        detectorFiles.Should().NotBeEmpty();
+        detectorFiles
+            .Where(file => file.Source.Contains("DateTime.UtcNow", StringComparison.Ordinal)
+                || !file.Source.Contains("SignalBarAt =", StringComparison.Ordinal))
+            .Select(file => Path.GetFileName(file.Path))
+            .Should().BeEmpty(
+                "연구·미리보기·백테스트 감지는 실행 시계가 아니라 평가한 봉으로 재현되어야 합니다");
     }
 
     [Fact]
@@ -580,7 +602,7 @@ public class ArchitectureDependencyTests
             "미리보기·백테스트·최적화·실시간 경로는 구체 감지기를 직접 조립하거나 캐스팅하면 안 됩니다");
         contract.Should().Contain("public interface ICustomStrategyDetector : IPatternDetector");
         contract.Should().Contain("public interface ICustomStrategyDetectorFactory");
-        factory.Should().Contain("new RuleBasedDetector(_indicators, strategy, _timeProvider)");
+        factory.Should().Contain("new RuleBasedDetector(_indicators, strategy)");
         detector.Should().Contain("internal RuleBasedDetector(");
         registrations.Should().Contain(
             "AddSingleton<ICustomStrategyDetectorFactory, CustomStrategyDetectorFactory>()");

@@ -34,7 +34,9 @@ public class PatternDetectionServiceTests
     /// <summary>
     /// SUT 생성 헬퍼. detectors가 없으면 빈 목록으로 생성.
     /// </summary>
-    private PatternDetectionService CreateSut(IEnumerable<IPatternDetector>? detectors = null)
+    private PatternDetectionService CreateSut(
+        IEnumerable<IPatternDetector>? detectors = null,
+        TimeProvider? timeProvider = null)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")
@@ -53,6 +55,7 @@ public class PatternDetectionServiceTests
             Mock.Of<IOhlcvRepository>(),
             strategies,
             db,
+            timeProvider ?? TimeProvider.System,
             NullLogger<PatternDetectionService>.Instance);
     }
 
@@ -126,9 +129,31 @@ public class PatternDetectionServiceTests
             IsActive = true
         };
 
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
     // ────────────────────────────────────────────────────────────
     // ScanSymbolAsync Tests
     // ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ScanSymbol_StampsObservationAndSignalBarTimesSeparately()
+    {
+        SetupSettings(PatternType.Breakout);
+        var observedAt = new DateTimeOffset(2026, 8, 18, 7, 30, 0, TimeSpan.Zero);
+        var bars = MakeBars();
+        var detector = MakeDetector(
+            PatternType.Breakout,
+            MakeSignal("AAPL", PatternType.Breakout));
+        var sut = CreateSut([detector.Object], new FixedTimeProvider(observedAt));
+
+        var signal = (await sut.ScanSymbolAsync("AAPL", bars, MakeRegime())).Single();
+
+        signal.DetectedAt.Should().Be(observedAt.UtcDateTime);
+        signal.SignalBarAt.Should().Be(bars[^1].Timestamp);
+    }
 
     [Fact]
     public async Task ScanSymbol_NoEnabledPatterns_ReturnsEmpty()

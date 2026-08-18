@@ -79,7 +79,8 @@ public class MultiTimeframeTrendDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.MultiTimeframeTrend,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
             TargetPrice = target,

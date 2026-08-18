@@ -56,7 +56,8 @@ public class VolatilityExpansionDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.VolatilityExpansion,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
             TargetPrice = targetPrice,

@@ -334,6 +334,71 @@ public class TradeRepositoryTests
         (await db.Positions.AsNoTracking().SingleAsync()).ExecutionRequestedAt.Should().BeNull();
     }
 
+    [Fact]
+    public async Task AddSignalsBatchAsync_IsIdempotentPerStrategyAndSignalBar()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+        await using var db = new AppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var repository = new TradeRepository(db, cache);
+        var barAt = new DateTime(2026, 8, 17, 0, 0, 0, DateTimeKind.Utc);
+
+        await repository.AddSignalsBatchAsync([
+            Signal("AAPL", PatternType.Breakout, null, barAt, barAt.AddHours(1)),
+            Signal("AAPL", PatternType.Breakout, null, barAt, barAt.AddHours(2)),
+            Signal("AAPL", PatternType.Custom, "alpha", barAt, barAt.AddHours(1)),
+            Signal("AAPL", PatternType.Custom, "beta", barAt, barAt.AddHours(1))
+        ]);
+        await repository.AddSignalsBatchAsync([
+            Signal("aapl", PatternType.Breakout, null, barAt, barAt.AddHours(3)),
+            Signal("AAPL", PatternType.Custom, "ALPHA", barAt, barAt.AddHours(3))
+        ]);
+
+        var stored = await db.PatternSignals.AsNoTracking().OrderBy(signal => signal.Id).ToListAsync();
+        stored.Should().HaveCount(3);
+        stored.Select(signal => signal.CustomPatternName).Should().BeEquivalentTo([null, "alpha", "beta"]);
+    }
+
+    [Fact]
+    public async Task AddSignalAsync_RejectsMissingSignalBarIdentity()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"signals-{Guid.NewGuid()}")
+            .Options;
+        await using var db = new AppDbContext(options);
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var repository = new TradeRepository(db, cache);
+        var signal = Signal("AAPL", PatternType.Breakout, null, DateTime.UtcNow, DateTime.UtcNow);
+        signal.SignalBarAt = null;
+
+        var act = () => repository.AddSignalAsync(signal);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*signal bar timestamp*");
+    }
+
+    private static PatternSignal Signal(
+        string symbol,
+        PatternType patternType,
+        string? customPatternName,
+        DateTime signalBarAt,
+        DateTime detectedAt) => new()
+        {
+            Symbol = symbol,
+            PatternType = patternType,
+            CustomPatternName = customPatternName,
+            SignalBarAt = signalBarAt,
+            DetectedAt = detectedAt,
+            EntryPrice = 100m,
+            StopLossPrice = 95m,
+            TargetPrice = 110m,
+            Confidence = 0.8m,
+            IsActive = true
+        };
+
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

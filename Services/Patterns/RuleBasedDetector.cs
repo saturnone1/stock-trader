@@ -17,7 +17,6 @@ public class RuleBasedDetector : ICustomStrategyDetector
     private readonly RuleIndicatorEvaluator _indicatorEvaluator;
     private readonly RuleConditionEvaluator _conditionEvaluator;
     private readonly RuleGroupEvaluator _groupEvaluator;
-    private readonly TimeProvider _timeProvider;
     private readonly CompiledStrategy _strategy;
     private readonly StrategyDocument _definition;
     private readonly List<EntryRule> _rules;
@@ -42,21 +41,18 @@ public class RuleBasedDetector : ICustomStrategyDetector
 
     internal RuleBasedDetector(
         IIndicatorService indicators,
-        StrategyDocument definition,
-        TimeProvider timeProvider)
-        : this(indicators, Compile(definition), timeProvider)
+        StrategyDocument definition)
+        : this(indicators, Compile(definition))
     {
     }
 
     internal RuleBasedDetector(
         IIndicatorService indicators,
-        CompiledStrategy strategy,
-        TimeProvider timeProvider)
+        CompiledStrategy strategy)
     {
         _indicatorEvaluator = new RuleIndicatorEvaluator(indicators);
         _conditionEvaluator = new RuleConditionEvaluator(_indicatorEvaluator);
         _groupEvaluator = new RuleGroupEvaluator(_conditionEvaluator);
-        _timeProvider = timeProvider;
         _strategy = strategy;
         _definition = strategy.Source;
         _rules = strategy.EntryRules.ToList();
@@ -197,7 +193,8 @@ public class RuleBasedDetector : ICustomStrategyDetector
             Symbol = symbol,
             PatternType = PatternType.Custom,
             CustomPatternName = _definition.Name,
-            DetectedAt = _timeProvider.GetUtcNow().UtcDateTime,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
             TargetPrice = target,

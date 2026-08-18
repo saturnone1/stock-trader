@@ -44,7 +44,7 @@ public class BacktestPositionExitProcessorTests
                 }
             })
         };
-        var detector = new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System);
+        var detector = new RuleBasedDetector(new IndicatorService(), definition);
         var portfolio = new BacktestPortfolioState(100_000m, bars[0].Timestamp);
         portfolio.OpenPositions["AAA"] = new BacktestExecutionAdapter.OpenPosition
         {

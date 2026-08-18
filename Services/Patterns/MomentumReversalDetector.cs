@@ -81,7 +81,8 @@ public class MomentumReversalDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.MomentumReversal,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
             TargetPrice = target,

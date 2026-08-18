@@ -149,7 +149,8 @@ public class Tqqq200SmaDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.Tqqq200Sma,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = Math.Round(entryLevels.StopPrice, 2),
             TargetPrice = Math.Round(entryLevels.TargetPrice, 2),

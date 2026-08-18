@@ -46,7 +46,8 @@ public class VwapReversionDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.VwapReversion,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = curr.Low,
             TargetPrice = currentVwap,
