@@ -2764,6 +2764,59 @@ public class ArchitectureDependencyTests
         endpoints.Should().NotContain("export const mlApi");
     }
 
+    [Fact]
+    public void AuthenticationPolicyIsClockedApplicationCodeBehindPurposeSpecificStores()
+    {
+        var repository = FindRepositoryRoot();
+        var service = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/Authentication/AuthenticationService.cs"));
+        var userPort = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/Authentication/IAuthenticationUserStore.cs"));
+        var auditContracts = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/Authentication/SecurityAuditContracts.cs"));
+        var userStore = File.ReadAllText(Path.Combine(
+            repository,
+            "Data/Repositories/AuthenticationUserStore.cs"));
+        var auditStore = File.ReadAllText(Path.Combine(
+            repository,
+            "Data/Repositories/SecurityAuditStore.cs"));
+        var auditAdapter = File.ReadAllText(Path.Combine(
+            repository,
+            "Services/Auth/AuditService.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/AuthEndpoints.cs"));
+
+        service.Should().Contain("IAuthenticationUserStore users");
+        service.Should().Contain("TimeProvider timeProvider");
+        service.Should().Contain("timeProvider.GetUtcNow()");
+        service.Should().NotContain("StockTrader.Data");
+        service.Should().NotContain("StockTrader.Models");
+        service.Should().NotContain("Microsoft.EntityFrameworkCore");
+        service.Should().NotContain("DateTime.UtcNow");
+        userPort.Should().NotContain("AppDbContext");
+        userPort.Should().NotContain("AppUser");
+        auditContracts.Should().Contain("interface ISecurityAuditStore");
+        auditContracts.Should().Contain("interface ISecurityAuditSink");
+        userStore.Should().Contain("IDbContextFactory<AppDbContext>");
+        userStore.Should().Contain(": IAuthenticationUserStore");
+        userStore.Should().Contain("RecordFailedLoginAsync(");
+        userStore.Should().Contain("entity.LockedUntil <= observedAt");
+        userStore.Should().Contain("ExecuteUpdateAsync(");
+        auditStore.Should().Contain(": ISecurityAuditStore");
+        auditAdapter.Should().Contain("ISecurityAuditStore _store");
+        auditAdapter.Should().Contain("TimeProvider _timeProvider");
+        auditAdapter.Should().NotContain("AppDbContext");
+        auditAdapter.Should().NotContain("DateTime.UtcNow");
+        endpoints.Should().Contain("IUserAuthenticationService auth");
+        endpoints.Should().Contain("AuthenticationPolicy policy");
+        endpoints.Should().NotContain("IOptionsMonitor<SecuritySettings>");
+        endpoints.Should().NotContain("StockTrader.Data");
+        File.Exists(Path.Combine(repository, "Services/Auth/AuthService.cs"))
+            .Should().BeFalse();
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

@@ -51,6 +51,8 @@ infrastructure.
   audit rows while every operational reader excludes repeated pre-identity activity.
 - Signal actionability: one clocked policy and validated lifetime configuration shared by signal
   browsing, dashboard counts, and manual entry.
+- Authentication state: one clocked application use case, a purpose-specific user store, and a
+  best-effort audit sink backed by a separate append-only persistence port.
 - Stock-analysis responses: one explicit generated contract with central pattern names and
   unit-correct percentage presentation in the desktop.
 - Live built-in configuration: one database-backed application service; entry detection and exit

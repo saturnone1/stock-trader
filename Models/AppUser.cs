@@ -17,7 +17,7 @@ public class AppUser
     /// <summary>Random 32-byte salt (Base64-encoded).</summary>
     public string Salt { get; set; } = string.Empty;
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
 
     public DateTime? LastLoginAt { get; set; }
 

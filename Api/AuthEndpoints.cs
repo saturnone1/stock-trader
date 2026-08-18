@@ -1,9 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.Extensions.Options;
-using StockTrader.Configuration;
-using StockTrader.Services.Auth;
+using StockTrader.Application.Authentication;
 
 namespace StockTrader.Api;
 
@@ -23,7 +21,9 @@ public static class AuthEndpoints
         return api;
     }
 
-    private static async Task<IResult> LoginAsync(HttpContext context, IAuthService auth)
+    private static async Task<IResult> LoginAsync(
+        HttpContext context,
+        IUserAuthenticationService auth)
     {
         var credentials = await ReadCredentialsAsync(context.Request);
         if (credentials is null)
@@ -38,7 +38,9 @@ public static class AuthEndpoints
         return Results.Ok(new { message = "로그인 성공", username = credentials.Value.Username });
     }
 
-    private static async Task<IResult> LogoutAsync(HttpContext context, IAuditService audit)
+    private static async Task<IResult> LogoutAsync(
+        HttpContext context,
+        ISecurityAuditSink audit)
     {
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
@@ -60,43 +62,35 @@ public static class AuthEndpoints
     }
 
     private static async Task<IResult> BootstrapAsync(
-        IAuthService auth,
-        IOptionsMonitor<SecuritySettings> security)
+        IUserAuthenticationService auth,
+        AuthenticationPolicy policy)
     {
         var hasUsers = await auth.HasAnyUserAsync();
         return Results.Ok(new
         {
             hasUsers,
-            allowRegistration = !hasUsers || security.CurrentValue.AllowRegistration,
+            allowRegistration = !hasUsers || policy.AllowRegistration,
         });
     }
 
     private static async Task<IResult> RegisterAsync(
         HttpContext context,
-        IAuthService auth,
-        IOptionsMonitor<SecuritySettings> security)
+        IUserAuthenticationService auth)
     {
         var credentials = await ReadCredentialsAsync(context.Request);
         if (credentials is null)
             return Results.BadRequest(new { error = "Invalid JSON body." });
 
-        var wasFirstUser = !await auth.HasAnyUserAsync();
         var result = await auth.RegisterAsync(credentials.Value.Username, credentials.Value.Password);
         if (!result.Success)
             return Results.BadRequest(new { error = result.ErrorMessage });
 
-        if (wasFirstUser)
-        {
-            security.CurrentValue.AllowRegistration = false;
-            context.RequestServices.GetRequiredService<ILoggerFactory>()
-                .CreateLogger(typeof(AuthEndpoints))
-                .LogInformation("First user '{Username}' registered. AllowRegistration set to false.",
-                    credentials.Value.Username);
-        }
         return Results.Ok(new { message = "사용자 등록 완료", userId = result.UserId });
     }
 
-    private static async Task<IResult> ChangePasswordAsync(HttpContext context, IAuthService auth)
+    private static async Task<IResult> ChangePasswordAsync(
+        HttpContext context,
+        IUserAuthenticationService auth)
     {
         if (!context.User.Identity?.IsAuthenticated ?? true)
             return Results.Unauthorized();
