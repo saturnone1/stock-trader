@@ -76,15 +76,8 @@ public sealed class PatternPreviewSimulationEngine
         var safetyBlockedEntries = 0;
         var exitPolicy = LongPositionExitPolicyCatalog.ForCustom(strategy.Source);
 
-        void Realize(PreviewPosition openPosition, decimal price, int quantity)
+        void Complete(PreviewPosition openPosition)
         {
-            if (quantity > 0)
-                openPosition.RealizedPnl += (price - openPosition.EntryPrice) * quantity;
-        }
-
-        void Complete(PreviewPosition openPosition, decimal price)
-        {
-            Realize(openPosition, price, openPosition.CurrentQuantity);
             var cycleReturn = openPosition.InvestedCapital > 0
                 ? openPosition.RealizedPnl / openPosition.InvestedCapital
                 : 0;
@@ -103,58 +96,12 @@ public sealed class PatternPreviewSimulationEngine
             if (position is not null && index >= position.EntryIndex)
             {
                 var strategyExit = input.Runtime.ShouldExit(window)
-                    ? new StrategyExitInstruction(current.Close, "청산 규칙 충족")
+                    ? new StrategyExitInstruction(
+                        current.Close,
+                        LongPositionExecutionReasons.StrategyRuleExit)
                     : null;
-                var result = LongPositionExecutionPolicy.Evaluate(
-                    new LongPositionExecutionState(
-                        position.EntryPrice,
-                        position.StopPrice,
-                        position.TargetPrice,
-                        position.HighestPrice,
-                        position.LowestPrice,
-                        position.InitialRisk,
-                        position.EntryAtr,
-                        position.EntryIndex,
-                        position.CurrentQuantity,
-                        position.PartialProfitTaken,
-                        position.BreakevenApplied,
-                        position.TrailingActivated),
-                    current,
-                    index,
-                    input.Atr[index],
-                    exitPolicy,
-                    strategyExit);
-
-                position.Apply(result.State);
-
-                foreach (var executionEvent in result.Events)
-                {
-                    if (executionEvent.Type == PositionExecutionEventType.StopMoved)
-                    {
-                        markers.Add(new PatternPreviewMarker(
-                            current.Timestamp,
-                            "STOP_MOVE",
-                            executionEvent.Price,
-                            Details: executionEvent.Reason));
-                    }
-                    else if (executionEvent.Type == PositionExecutionEventType.PartialExit)
-                    {
-                        Realize(position, executionEvent.Price, executionEvent.Quantity);
-                        markers.Add(new PatternPreviewMarker(
-                            current.Timestamp,
-                            "PARTIAL_EXIT",
-                            executionEvent.Price,
-                            Details: $"보유 수량의 {executionEvent.Quantity * 100m / (executionEvent.Quantity + position.CurrentQuantity):F0}% 매도",
-                            Reason: executionEvent.Reason));
-                    }
-                }
-
-                var policyExit = result.Events.LastOrDefault(
-                    item => item.Type == PositionExecutionEventType.Exit);
-                string? closeReason = policyExit?.Reason;
-                var closePrice = policyExit?.Price ?? current.Close;
-
-                if (closeReason is null && input.Runtime.HasScalingRules)
+                LongPositionScalingInstruction? scaling = null;
+                if (input.Runtime.HasScalingRules)
                 {
                     var profitPercent = position.EntryPrice > 0
                         ? (current.Close - position.EntryPrice) / position.EntryPrice * 100m
@@ -163,53 +110,69 @@ public sealed class PatternPreviewSimulationEngine
                         window, profitPercent, position.ScaleCounts);
                     if (scalingMatch is not null)
                     {
-                        var scaling = scalingMatch.Rule;
-                        var scalingDecision = LongPositionScalingPolicy.Apply(
-                            new LongPositionScalingState(
-                                position.InitialQuantity,
-                                position.CurrentQuantity,
-                                position.EntryPrice,
-                                position.TotalCost),
-                            scaling.Direction,
-                            scaling.Percent,
-                            current.Close);
-                        if (scalingDecision?.Action == LongPositionScalingAction.ScaleIn)
-                        {
-                            LongPositionScalingPolicy.RegisterExecution(
-                                position.ScaleCounts, scalingMatch.RuleIndex);
-                            position.InvestedCapital +=
-                                current.Close * scalingDecision.ExecutedQuantity;
-                            position.CurrentQuantity = scalingDecision.State.CurrentQuantity;
-                            position.EntryPrice = scalingDecision.State.EntryPrice;
-                            position.TotalCost = scalingDecision.State.TotalCost;
-                            markers.Add(new PatternPreviewMarker(
-                                current.Timestamp,
-                                StrategyCatalog.ScalingInDirection,
-                                current.Close,
-                                Details: $"최초 수량의 {scaling.Percent:F0}% 추가 매수"
-                                    + $"({scalingDecision.ExecutedQuantity}주) · 새 평균가 {position.EntryPrice:F2}"));
-                        }
-                        else if (scalingDecision?.Action == LongPositionScalingAction.ScaleOut)
-                        {
-                            LongPositionScalingPolicy.RegisterExecution(
-                                position.ScaleCounts, scalingMatch.RuleIndex);
-                            Realize(position, current.Close, scalingDecision.ExecutedQuantity);
-                            position.CurrentQuantity = scalingDecision.State.CurrentQuantity;
-                            position.EntryPrice = scalingDecision.State.EntryPrice;
-                            position.TotalCost = scalingDecision.State.TotalCost;
-                            markers.Add(new PatternPreviewMarker(
-                                current.Timestamp,
-                                StrategyCatalog.ScalingOutDirection,
-                                current.Close,
-                                Details: $"최초 수량의 {scaling.Percent:F0}% 일부 매도"
-                                    + $"({scalingDecision.ExecutedQuantity}주)"));
-                        }
+                        scaling = new LongPositionScalingInstruction(
+                            scalingMatch.RuleIndex,
+                            scalingMatch.Rule.Direction,
+                            scalingMatch.Rule.Percent);
                     }
                 }
 
-                if (closeReason is not null)
+                var result = LongPositionExecutionSessionPolicy.Evaluate(
+                    position.ToSessionState(),
+                    current,
+                    index,
+                    input.Atr[index],
+                    exitPolicy,
+                    strategyExit,
+                    scaling: scaling);
+
+                position.Apply(result.State);
+
+                foreach (var executionEvent in result.Events)
                 {
-                    Complete(position, closePrice);
+                    if (executionEvent.Type == LongPositionSessionEventType.StopMoved)
+                    {
+                        markers.Add(new PatternPreviewMarker(
+                            current.Timestamp,
+                            "STOP_MOVE",
+                            executionEvent.Price,
+                            Details: executionEvent.Reason));
+                    }
+                    else if (executionEvent.Type == LongPositionSessionEventType.PartialExit)
+                    {
+                        markers.Add(new PatternPreviewMarker(
+                            current.Timestamp,
+                            "PARTIAL_EXIT",
+                            executionEvent.Price,
+                            Details: $"보유 수량의 {executionEvent.Quantity * 100m / (executionEvent.Quantity + executionEvent.QuantityAfter):F0}% 매도",
+                            Reason: executionEvent.Reason));
+                    }
+                    else if (executionEvent.Type == LongPositionSessionEventType.ScaleIn)
+                    {
+                        position.InvestedCapital += current.Close * executionEvent.Quantity;
+                        markers.Add(new PatternPreviewMarker(
+                            current.Timestamp,
+                            StrategyCatalog.ScalingInDirection,
+                            current.Close,
+                            Details: $"최초 수량의 {scaling!.Percent:F0}% 추가 매수"
+                                + $"({executionEvent.Quantity}주) · 새 평균가 {executionEvent.EntryPriceAfter:F2}"));
+                    }
+                    else if (executionEvent.Type == LongPositionSessionEventType.ScaleOut)
+                    {
+                        markers.Add(new PatternPreviewMarker(
+                            current.Timestamp,
+                            StrategyCatalog.ScalingOutDirection,
+                            current.Close,
+                            Details: $"최초 수량의 {scaling!.Percent:F0}% 일부 매도"
+                                + $"({executionEvent.Quantity}주)"));
+                    }
+                }
+
+                var policyExit = result.Events.LastOrDefault(
+                    item => item.Type == LongPositionSessionEventType.Exit);
+                if (result.IsClosed && policyExit is not null)
+                {
+                    Complete(position);
                     tradeTransition = StrategyTradeTransitionPolicy.Apply(
                         tradeTransition,
                         new StrategyTradeTransitionRequest(
@@ -224,7 +187,7 @@ public sealed class PatternPreviewSimulationEngine
                         circuitBreaker.MaxDrawdownPercent);
 
                     markers.Add(new PatternPreviewMarker(
-                        current.Timestamp, "EXIT", closePrice, Reason: closeReason));
+                        current.Timestamp, "EXIT", policyExit.Price, Reason: policyExit.Reason));
                     position = null;
                 }
             }
@@ -414,19 +377,40 @@ public sealed class PatternPreviewSimulationEngine
         public decimal TotalCost { get; set; }
         public decimal RealizedPnl { get; set; }
         public decimal AllocationScale { get; init; } = 1m;
-        public Dictionary<int, int> ScaleCounts { get; } = [];
+        public Dictionary<int, int> ScaleCounts { get; private set; } = [];
 
-        public void Apply(LongPositionExecutionState state)
+        public LongPositionSessionState ToSessionState() => new(
+            new LongPositionExecutionState(
+                EntryPrice,
+                StopPrice,
+                TargetPrice,
+                HighestPrice,
+                LowestPrice,
+                InitialRisk,
+                EntryAtr,
+                EntryIndex,
+                CurrentQuantity,
+                PartialProfitTaken,
+                BreakevenApplied,
+                TrailingActivated),
+            InitialQuantity,
+            TotalCost,
+            RealizedPnl,
+            ScaleCounts);
+
+        public void Apply(LongPositionSessionState state)
         {
-            var quantityChanged = CurrentQuantity != state.CurrentQuantity;
-            StopPrice = state.StopPrice;
-            HighestPrice = state.HighestPrice;
-            LowestPrice = state.LowestPrice;
-            CurrentQuantity = state.CurrentQuantity;
-            if (quantityChanged) TotalCost = state.EntryPrice * state.CurrentQuantity;
-            PartialProfitTaken = state.PartialProfitTaken;
-            BreakevenApplied = state.BreakevenApplied;
-            TrailingActivated = state.TrailingActivated;
+            EntryPrice = state.Execution.EntryPrice;
+            StopPrice = state.Execution.StopPrice;
+            HighestPrice = state.Execution.HighestPrice;
+            LowestPrice = state.Execution.LowestPrice;
+            CurrentQuantity = state.Execution.CurrentQuantity;
+            TotalCost = state.TotalCost;
+            RealizedPnl = state.RealizedPnl;
+            PartialProfitTaken = state.Execution.PartialProfitTaken;
+            BreakevenApplied = state.Execution.BreakevenApplied;
+            TrailingActivated = state.Execution.TrailingActivated;
+            ScaleCounts = new Dictionary<int, int>(state.ScalingExecutionCounts);
         }
     }
 }

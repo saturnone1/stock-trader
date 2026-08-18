@@ -11,8 +11,10 @@
 - Historical data preparation and derived indicator arrays are shared by backtest, walk-forward,
   synchronous optimization, and background optimization through `BacktestDataPreparer`.
 - Pattern preview and backtest now share `LongEntryFillPolicy` and
-  `LongPositionExecutionPolicy`. The shared policy owns long-entry repricing, gap-stop fills,
-  same-bar exit priority, partial profit, target/time exits, and next-bar protective-stop updates.
+  `LongPositionExecutionSessionPolicy`. The session composes the lower-level bar and scaling
+  policies and atomically owns long-entry state projection, gap-stop fills, same-bar exit priority,
+  partial profit, target/strategy/time exits, scale-in/out, realized PnL, weighted cost, execution
+  counts, and next-bar protective-stop updates.
 - Live position monitoring delegates stop, target, strategy/time priority, breakeven, and trailing
   decisions to `LiveLongPositionDecisionPolicy`, while broker submission and actual fill lookup stay
   in the live adapter. Both execution policies share the same position state and protective-stop
@@ -56,14 +58,17 @@
   portfolio caps, minimum Kelly samples, Kelly/Half-Kelly selection, and the 25% Kelly ceiling.
   Daily, one-minute, and weekly golden simulations lock the same entry, target fill, quantity, and
   portfolio return across timeframe variants.
-- `BacktestPositionExitProcessor` owns the invariant order of intrabar fills, close-based strategy
-  exits, scale-ins, and scale-outs. Strategy cooldown/circuit-breaker transitions are isolated in
+- `BacktestPositionExitProcessor` delegates the invariant order of intrabar fills, close-based
+  strategy exits, scale-ins, and scale-outs to the common position session.
+  `BacktestStrategyExecutionInstructionResolver` is the sole backtest adapter for custom exit and
+  scaling rules, including the central scale-in capital cap, and is shared by ordinary held bars and
+  NextOpen entry bars. Strategy cooldown/circuit-breaker transitions are isolated in
   `BacktestStrategyTransitionPolicy`, and NextOpen fills re-run the central sizing cap after repricing.
   The unused legacy `SimulateSymbolAsync` second simulation loop has been removed; the
   remaining adapter only maps the shared long-position execution policy into backtest trade records.
   Live recommendations now use the same capital-cap and whole-share floor helpers. Golden fixtures
-  cover NextOpen gap repricing/entry-bar exits and close-based scale-outs in addition to the three
-  timeframe baseline.
+  cover NextOpen gap repricing, custom-rule exits and scale-outs on the entry bar, and close-based
+  scale-outs in addition to the three timeframe baseline.
 - `BacktestOpenPositionFactory` is the single backtest position-construction contract for current-close
   and NextOpen entries. `BacktestPendingEntryProcessor` owns delayed-entry eligibility, gap repricing,
   sizing, entry-bar execution, and strategy-state updates. The old `TradeSimulator` name is now
@@ -272,9 +277,10 @@
 Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
 remaining orchestration services and extending broker-order parity around the shared compiled
 strategy and execution policies. Current full-strategy goldens cover NextOpen preview/backtest/live
-fill and exit decisions, fractional scale-out preview/backtest parity, and multi-symbol indicator
-cache isolation against per-symbol previews. Live scaling remains fail-closed until partial broker
-orders can be persisted and reconciled with the same execution contract.
+fill and exit decisions, NextOpen entry-bar custom exits and scale-outs, fractional scale-out
+preview/backtest parity, and multi-symbol indicator cache isolation against per-symbol previews.
+Live scaling remains fail-closed until partial broker orders can be persisted and reconciled with
+the same session contract.
 
 ## Phase 0 — Guardrails and governance
 

@@ -27,7 +27,9 @@ internal sealed class BacktestExecutionAdapter
         Dictionary<PatternType, LongPositionExitPolicy> exitPolicyCache,
         PatternParameterOverrides? exitOverrides,
         string symbol,
-        List<TradeRecord> trades)
+        List<TradeRecord> trades,
+        StrategyExitInstruction? customStrategyExit = null,
+        LongPositionScalingInstruction? scaling = null)
     {
         var currentAtr = currentAtrRaw > 0 ? currentAtrRaw : openPosition.EntryAtr;
 
@@ -42,28 +44,15 @@ internal sealed class BacktestExecutionAdapter
             exitPolicyCache[openPosition.PatternType] = policy;
         }
 
-        var strategyExit = openPosition.PatternType == PatternType.CumulativeRsi2
+        var strategyExit = customStrategyExit ?? (openPosition.PatternType == PatternType.CumulativeRsi2
             ? CumulativeRsi2ExitDecisionPolicy.Resolve(
                 currentBar.Close,
                 currentCumulativeRsi2,
                 currentCumulativeRsi2TrendMa,
                 cumulativeRsi2Config.ExitThreshold,
                 cumulativeRsi2Config.LongTrendMaPeriod)
-            : null;
+            : null);
 
-        var state = new LongPositionExecutionState(
-            openPosition.EntryPrice,
-            openPosition.StopLoss,
-            openPosition.Target,
-            openPosition.HighestHighSinceEntry,
-            openPosition.LowestLowSinceEntry,
-            openPosition.RiskDistance,
-            openPosition.EntryAtr,
-            openPosition.EntryBarIndex,
-            openPosition.CurrentQuantity > 0 ? openPosition.CurrentQuantity : openPosition.Quantity,
-            openPosition.PartialProfitTaken,
-            openPosition.BreakevenApplied,
-            openPosition.TrailingStopActivated);
         var tqqqSmaExit = openPosition.PatternType == PatternType.Tqqq200Sma;
         var stopReason = tqqqSmaExit ? "장기 추세선 이탈" : "손절";
         policy = policy with
@@ -71,74 +60,89 @@ internal sealed class BacktestExecutionAdapter
             StopReason = stopReason,
             ProtectedStopReason = tqqqSmaExit ? stopReason : "트레일링 손절"
         };
-        var result = LongPositionExecutionPolicy.Evaluate(
-            state,
+        var result = LongPositionExecutionSessionPolicy.Evaluate(
+            ToSessionState(openPosition),
             currentBar,
             barIndex,
             currentAtr,
             policy,
             strategyExit,
-            tqqqSmaExit && dynamicStopFloor > 0 ? dynamicStopFloor : null);
+            tqqqSmaExit && dynamicStopFloor > 0 ? dynamicStopFloor : null,
+            scaling);
 
-        var positionForFill = openPosition;
         foreach (var executionEvent in result.Events)
         {
-            if (executionEvent.Type == PositionExecutionEventType.StopMoved)
+            if (executionEvent.Type is LongPositionSessionEventType.StopMoved
+                or LongPositionSessionEventType.ScaleIn)
                 continue;
 
             trades.Add(CreateTradeRecord(
                 symbol,
-                positionForFill,
+                openPosition,
                 executionEvent.Price,
                 currentBar.Timestamp,
                 executionEvent.Reason,
                 executionEvent.Quantity));
 
-            if (executionEvent.Type == PositionExecutionEventType.PartialExit)
-                positionForFill = CopyWithExecutionState(openPosition, result.State, quantityBecomesRemaining: true);
         }
 
         if (result.IsClosed)
             return null;
 
-        return CopyWithExecutionState(
-            openPosition,
-            result.State,
-            result.Events.Any(item => item.Type == PositionExecutionEventType.PartialExit));
+        return CopyWithSessionState(openPosition, result.State);
     }
 
-    private static OpenPosition CopyWithExecutionState(
+    private static LongPositionSessionState ToSessionState(OpenPosition position) => new(
+        new LongPositionExecutionState(
+            position.EntryPrice,
+            position.StopLoss,
+            position.Target,
+            position.HighestHighSinceEntry,
+            position.LowestLowSinceEntry,
+            position.RiskDistance,
+            position.EntryAtr,
+            position.EntryBarIndex,
+            position.CurrentQuantity > 0 ? position.CurrentQuantity : position.Quantity,
+            position.PartialProfitTaken,
+            position.BreakevenApplied,
+            position.TrailingStopActivated),
+        position.InitialQuantity > 0 ? position.InitialQuantity : position.Quantity,
+        position.TotalCost,
+        position.RealizedPnl,
+        position.ScaleCounts);
+
+    private static OpenPosition CopyWithSessionState(
         OpenPosition source,
-        LongPositionExecutionState state,
-        bool quantityBecomesRemaining)
+        LongPositionSessionState state)
     {
         return new OpenPosition
         {
             PatternType = source.PatternType,
             CustomPatternName = source.CustomPatternName,
-            EntryPrice = source.EntryPrice,
+            EntryPrice = state.Execution.EntryPrice,
             OriginalStop = source.OriginalStop,
-            StopLoss = state.StopPrice,
+            StopLoss = state.Execution.StopPrice,
             Target = source.Target,
-            Quantity = quantityBecomesRemaining ? state.CurrentQuantity : source.Quantity,
+            Quantity = state.Execution.CurrentQuantity,
             InitialQuantity = source.InitialQuantity > 0
                 ? source.InitialQuantity
                 : source.Quantity,
-            CurrentQuantity = state.CurrentQuantity,
-            TotalCost = quantityBecomesRemaining ? source.EntryPrice * state.CurrentQuantity : source.TotalCost,
+            CurrentQuantity = state.Execution.CurrentQuantity,
+            TotalCost = state.TotalCost,
             EntryTime = source.EntryTime,
             EntryBarIndex = source.EntryBarIndex,
             EntryAtr = source.EntryAtr,
             EntryVolume = source.EntryVolume,
-            HighestHighSinceEntry = state.HighestPrice,
-            LowestLowSinceEntry = state.LowestPrice,
-            TrailingStopActivated = state.TrailingActivated,
-            BreakevenApplied = state.BreakevenApplied,
-            PartialProfitTaken = state.PartialProfitTaken,
+            HighestHighSinceEntry = state.Execution.HighestPrice,
+            LowestLowSinceEntry = state.Execution.LowestPrice,
+            TrailingStopActivated = state.Execution.TrailingActivated,
+            BreakevenApplied = state.Execution.BreakevenApplied,
+            PartialProfitTaken = state.Execution.PartialProfitTaken,
             RiskDistance = source.RiskDistance,
             EquityAtEntry = source.EquityAtEntry,
             CustomExitProfile = source.CustomExitProfile,
-            ScaleCounts = source.ScaleCounts,
+            ScaleCounts = new Dictionary<int, int>(state.ScalingExecutionCounts),
+            RealizedPnl = state.RealizedPnl,
         };
     }
 
@@ -161,22 +165,22 @@ internal sealed class BacktestExecutionAdapter
 
         return new TradeRecord
         {
-            Symbol         = symbol,
-            PatternType    = pos.PatternType,
+            Symbol = symbol,
+            PatternType = pos.PatternType,
             CustomPatternName = pos.CustomPatternName,
-            EntryPrice     = pos.EntryPrice,
-            ExitPrice      = exitPrice,
-            Quantity       = qty,
-            EntryTime      = pos.EntryTime,
-            ExitTime       = exitTime,
-            PnL            = pnl,
-            PnLPercent     = pnlPct,
-            ExitReason     = exitReason,
-            EntryAtr       = pos.EntryAtr,
-            EntryVolume    = pos.EntryVolume,
-            EquityAtEntry  = pos.EquityAtEntry,
-            MaePercent     = maePercent,
-            MfePercent     = mfePercent
+            EntryPrice = pos.EntryPrice,
+            ExitPrice = exitPrice,
+            Quantity = qty,
+            EntryTime = pos.EntryTime,
+            ExitTime = exitTime,
+            PnL = pnl,
+            PnLPercent = pnlPct,
+            ExitReason = exitReason,
+            EntryAtr = pos.EntryAtr,
+            EntryVolume = pos.EntryVolume,
+            EquityAtEntry = pos.EquityAtEntry,
+            MaePercent = maePercent,
+            MfePercent = mfePercent
         };
     }
 
@@ -235,6 +239,7 @@ internal sealed class BacktestExecutionAdapter
         public Dictionary<int, int> ScaleCounts { get; init; } = [];
         /// <summary>총 투자금 (가중 평균가 계산용)</summary>
         public decimal TotalCost { get; set; }
+        public decimal RealizedPnl { get; set; }
     }
 
 }

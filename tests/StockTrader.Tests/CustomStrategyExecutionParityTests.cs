@@ -405,6 +405,132 @@ public class CustomStrategyExecutionParityTests
         liveExit.Reason.Should().Be(previewExit.Reason);
     }
 
+    [Fact]
+    public async Task PreviewAndBacktest_ApplyCustomExitOnTheNextOpenEntryBar()
+    {
+        var bars = Bars();
+        bars[51].Open = 100m;
+        bars[51].High = 106m;
+        bars[51].Low = 99m;
+        bars[51].Close = 105m;
+        var definition = new StrategyDocument
+        {
+            Name = "next-open-entry-bar-exit-parity",
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
+            EntryRulesJson = JsonSerializer.Serialize(new[] { PassingPriceChangeRule() }),
+            ExitRulesJson = JsonSerializer.Serialize(new[] { PassingPriceChangeRule() }),
+            AtrStopMultiplier = 10m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0
+        };
+
+        var (preview, backtest) = await RunPreviewAndBacktestAsync(definition, bars);
+
+        var previewExit = preview.Markers.Should().ContainSingle(marker =>
+            marker.Type == "EXIT").Subject;
+        var backtestExit = backtest.Trades.Should().ContainSingle().Subject;
+        previewExit.Date.Should().Be(bars[51].Timestamp);
+        backtestExit.ExitTime.Should().Be(previewExit.Date);
+        backtestExit.ExitPrice.Should().Be(previewExit.Price);
+        backtestExit.ExitReason.Should().Be(LongPositionExecutionReasons.StrategyRuleExit);
+        previewExit.Reason.Should().Be(backtestExit.ExitReason);
+    }
+
+    [Fact]
+    public async Task PreviewAndBacktest_ApplyScaleOutOnTheNextOpenEntryBar()
+    {
+        var bars = Bars();
+        bars[51].Open = 100m;
+        bars[51].High = 106m;
+        bars[51].Low = 99m;
+        bars[51].Close = 105m;
+        var definition = new StrategyDocument
+        {
+            Name = "next-open-entry-bar-scaling-parity",
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
+            EntryRulesJson = JsonSerializer.Serialize(new[] { PassingPriceChangeRule() }),
+            ScalingRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new ScalingRule
+                {
+                    Direction = StrategyCatalog.ScalingOutDirection,
+                    Percent = 20m,
+                    MaxCount = 1,
+                    Conditions = [PassingPriceChangeRule()]
+                }
+            }),
+            AtrStopMultiplier = 10m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0
+        };
+
+        var (preview, backtest) = await RunPreviewAndBacktestAsync(definition, bars);
+
+        var previewScaleOut = preview.Markers.Should().ContainSingle(marker =>
+            marker.Type == StrategyCatalog.ScalingOutDirection).Subject;
+        var backtestScaleOut = backtest.Trades.Should().ContainSingle(trade =>
+            trade.ExitReason == "분할 매도(20%)").Subject;
+        previewScaleOut.Date.Should().Be(bars[51].Timestamp);
+        backtestScaleOut.ExitTime.Should().Be(previewScaleOut.Date);
+        backtestScaleOut.ExitPrice.Should().Be(previewScaleOut.Price);
+        previewScaleOut.Details.Should().Contain("(20주)");
+
+        var initialQuantity = backtest.Trades.Sum(trade => trade.Quantity);
+        backtestScaleOut.Quantity.Should().Be((int)Math.Floor(initialQuantity * 0.20m));
+    }
+
+    private static async Task<(PatternPreviewResult Preview, BacktestResult Backtest)>
+        RunPreviewAndBacktestAsync(StrategyDocument definition, OhlcvBar[] bars)
+    {
+        var compilation = StrategyCompiler.Compile(definition);
+        compilation.Errors.Should().BeEmpty();
+        var strategy = compilation.Strategy!;
+        var atr = Enumerable.Repeat(1m, bars.Length).ToArray();
+        var factory = new CustomStrategyDetectorFactory(
+            new IndicatorService(),
+            new FixedTimeProvider(
+                new DateTimeOffset(2024, 3, 1, 0, 0, 0, TimeSpan.Zero)));
+        var preview = await new PatternPreviewSimulationEngine().RunAsync(
+            new PatternPreviewSimulationInput(
+                "AAA",
+                TimeFrame.Daily,
+                bars[50].Timestamp,
+                bars[^1].Timestamp.AddDays(1),
+                bars,
+                atr,
+                new Dictionary<string, OhlcvBar[]>(),
+                [],
+                factory.Create(strategy)));
+        var backtest = await new BacktestSimulationEngine(
+                new BacktestSignalEntryProcessor(
+                    NullLogger<BacktestSignalEntryProcessor>.Instance))
+            .RunAsync(
+                ["AAA"],
+                new Dictionary<string, PreparedSymbolData>
+                {
+                    ["AAA"] = Prepared(bars, atr)
+                },
+                [factory.Create(strategy)],
+                [],
+                bars[50].Timestamp,
+                bars[^1].Timestamp,
+                100_000m,
+                0m,
+                0m,
+                TimeFrame.Daily,
+                new BacktestRiskParameters(0.01m, 0.03m, 10, 2),
+                null,
+                SlippageModel.Fixed,
+                [],
+                bars[0].Timestamp,
+                new BacktestExecutionAdapter(),
+                null,
+                new CumulativeRsi2Config(),
+                CancellationToken.None);
+
+        return (preview!, backtest);
+    }
+
     private static PreparedSymbolData Prepared(OhlcvBar[] bars, decimal[] atr)
     {
         var closes = bars.Select(bar => bar.Close).ToArray();

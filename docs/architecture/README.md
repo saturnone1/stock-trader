@@ -80,8 +80,11 @@ same backtest, then compares each outcome with an isolated preview. This locks p
 cache isolation and prevents one symbol's calculation state from changing another symbol's trade.
 
 Long-position execution now crosses a second named boundary in `Application/Execution`.
-Pattern preview and backtest must delegate entry repricing and per-bar exit ordering to this pure
-policy instead of implementing private OHLC rules. Because OHLC data does not reveal intrabar
+Pattern preview and backtest must delegate entry repricing and position state transitions to
+`LongPositionExecutionSessionPolicy` instead of implementing private OHLC, realized-PnL, cost, or
+scaling mutations. The session composes `LongPositionExecutionPolicy` and
+`LongPositionScalingPolicy`, returning one ordered event stream and one canonical state. Because
+OHLC data does not reveal intrabar
 ordering, the policy deliberately uses the conservative sequence: the stop known at bar open,
 then partial profit, target/strategy/time exit, and finally protective-stop updates that take
 effect on the next bar. `LongPositionExitPolicyCatalog` is the sole owner of built-in defaults and
@@ -93,8 +96,11 @@ calculation. Snapshot parity fixtures compare bar-based and live decisions where
 fully observable. Built-in close rules such as cumulative RSI2 trend-break/threshold decisions also
 live in pure execution policies rather than in backtest or worker adapters.
 `LongPositionScalingPolicy` likewise owns original-entry-based share rounding, scale-in weighted
-average price, adapter-supplied capital-cap enforcement, scale-out remaining cost, and post-fill
-execution counting. Preview and backtest only translate its decision into markers or trade records.
+average price, adapter-supplied capital-cap enforcement, and scale-out remaining cost. The common
+session owns post-fill execution counting and realized PnL. Preview and backtest only translate
+session events into markers or trade records. Backtest custom-rule instructions come from one
+`BacktestStrategyExecutionInstructionResolver`; ordinary held bars and NextOpen entry bars cannot
+silently use different exit or scaling rules.
 Backtest scaling counts travel with each open position rather than living in processor memory, so
 recreating an orchestration component cannot reset a rule's maximum-fill limit.
 Live trading fails closed for scaling strategies until the

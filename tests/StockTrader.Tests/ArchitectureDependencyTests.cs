@@ -1013,6 +1013,12 @@ public class ArchitectureDependencyTests
             repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var exitProcessor = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestPositionExitProcessor.cs"));
+        var pendingEntryProcessor = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPendingEntryProcessor.cs"));
+        var instructionResolver = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestStrategyExecutionInstructionResolver.cs"));
+        var executionSession = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LongPositionExecutionSessionPolicy.cs"));
         var scalingPolicy = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/LongPositionScalingPolicy.cs"));
         var ruleRuntime = File.ReadAllText(Path.Combine(
@@ -1031,11 +1037,20 @@ public class ArchitectureDependencyTests
         engine.Should().NotContain("LongEntryFillPolicy.Reprice(");
         executionAdapter.Should().NotContain("SimulateSymbolAsync(");
         executionAdapter.Should().NotContain("DetectAsync(");
-        preview.Should().Contain("LongPositionScalingPolicy.Apply(");
-        preview.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
-        exitProcessor.Should().Contain("LongPositionScalingPolicy.Apply(");
-        exitProcessor.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
-        exitProcessor.Should().Contain("position.ScaleCounts");
+        preview.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
+        executionAdapter.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
+        executionSession.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
+        executionSession.Should().Contain("LongPositionScalingPolicy.Apply(");
+        executionSession.Should().Contain("LongPositionScalingPolicy.RegisterExecution(");
+        exitProcessor.Should().Contain("BacktestStrategyExecutionInstructionResolver.Resolve(");
+        pendingEntryProcessor.Should().Contain("BacktestStrategyExecutionInstructionResolver.Resolve(");
+        instructionResolver.Should().Contain("detector.EvaluateScaling(");
+        instructionResolver.Should().Contain("BacktestScaleInCapacityPolicy.CalculateMaxPositionCost(");
+        preview.Should().NotContain("LongPositionScalingPolicy.Apply(");
+        preview.Should().NotContain("LongPositionScalingPolicy.RegisterExecution(");
+        exitProcessor.Should().NotContain("LongPositionScalingPolicy.Apply(");
+        exitProcessor.Should().NotContain("LongPositionScalingPolicy.RegisterExecution(");
+        pendingEntryProcessor.Should().NotContain("LongPositionScalingPolicy.Apply(");
         exitProcessor.Should().NotContain("_positionScaleCounts");
         preview.Should().NotContain("Math.Round(position.InitialQuantity");
         exitProcessor.Should().NotContain("position.Quantity * scaling.Percent");
@@ -1390,6 +1405,8 @@ public class ArchitectureDependencyTests
         var preview = File.ReadAllText(Path.Combine(
             repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
+        var executionSession = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LongPositionExecutionSessionPolicy.cs"));
         var order = File.ReadAllText(Path.Combine(repository, "Services/Order/OrderService.cs"));
         var manualOrder = File.ReadAllText(Path.Combine(
             repository, "Services/Order/ManualOrderWorkflow.cs"));
@@ -1398,8 +1415,11 @@ public class ArchitectureDependencyTests
         var parity = File.ReadAllText(Path.Combine(
             repository, "tests/StockTrader.Tests/CustomStrategyExecutionParityTests.cs"));
 
-        preview.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
-        backtest.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
+        preview.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
+        backtest.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
+        executionSession.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
+        preview.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
+        backtest.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         preview.Should().Contain("LongEntryFillPolicy.Reprice(");
         order.Split("LiveEntryPositionFactory.Create(").Length.Should().Be(2);
         manualOrder.Should().Contain("LiveEntryPositionFactory.Create(");
@@ -1419,6 +1439,8 @@ public class ArchitectureDependencyTests
         order.Should().NotContain("actualEntry + targetDistance");
         parity.Should().Contain("PreviewBacktestAndLiveFill_RunTheSameCompiledNextOpenStrategy");
         parity.Should().Contain("PreviewAndBacktest_RunTheSameCompiledFractionalScaleOut");
+        parity.Should().Contain("PreviewAndBacktest_ApplyCustomExitOnTheNextOpenEntryBar");
+        parity.Should().Contain("PreviewAndBacktest_ApplyScaleOutOnTheNextOpenEntryBar");
         parity.Should().Contain("ScalingStrategy_IsRejectedForLiveUntilBrokerExecutionHasParity");
         parity.Should().Contain("previewEntry.StopPrice.Should().Be(livePosition.StopLossPrice)");
         parity.Should().Contain("liveExit.Reason.Should().Be(previewExit.Reason)");
