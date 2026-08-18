@@ -336,6 +336,11 @@ Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 - Separate API contracts from EF entities.
 - Generate TypeScript contracts from OpenAPI.
 
+Progress: settings reads and writes now cross explicit generated contracts and an application
+management use case. The API no longer binds the EF settings entity, secret values are write-only,
+and catalog/risk/watchlist validation completes before the SQLite adapter mutates state. The
+injected clock is the sole owner of user-visible modification time.
+
 Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate automatically.
 
 ## Phase 5 — Desktop decomposition

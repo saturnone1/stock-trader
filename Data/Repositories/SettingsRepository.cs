@@ -12,19 +12,22 @@ public class SettingsRepository : ISettingsRepository
 
     private readonly AppDbContext _db;
     private readonly IMemoryCache _cache;
+    private readonly TimeProvider _timeProvider;
 
-    public SettingsRepository(AppDbContext db, IMemoryCache cache)
+    public SettingsRepository(AppDbContext db, IMemoryCache cache, TimeProvider timeProvider)
     {
         _db = db;
         _cache = cache;
+        _timeProvider = timeProvider;
     }
 
     public async Task<UserSettings> GetAsync(CancellationToken ct = default)
     {
         if (_cache.TryGetValue(CacheKey, out UserSettings? cached) && cached != null)
-            return cached;
+            return UserSettingsCopy.Create(cached);
 
         var settings = await _db.UserSettings
+            .AsNoTracking()
             .OrderBy(item => item.Id)
             .FirstOrDefaultAsync(ct);
         if (settings == null)
@@ -42,23 +45,23 @@ public class SettingsRepository : ISettingsRepository
                 WatchlistSymbols = new List<string> { "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "SPY" },
                 AccountSize = 100_000m,
                 SoundAlerts = true,
-                LastModified = DateTime.UtcNow
+                LastModified = _timeProvider.GetUtcNow().UtcDateTime
             };
             _db.UserSettings.Add(settings);
             await _db.SaveChangesAsync(ct);
+            _db.Entry(settings).State = EntityState.Detached;
         }
 
-        _cache.Set(CacheKey, settings, CacheTtl);
-        return settings;
+        _cache.Set(CacheKey, UserSettingsCopy.Create(settings), CacheTtl);
+        return UserSettingsCopy.Create(settings);
     }
 
     public async Task SaveAsync(UserSettings settings, CancellationToken ct = default)
     {
-        settings.LastModified = DateTime.UtcNow;
         _db.UserSettings.Update(settings);
         await _db.SaveChangesAsync(ct);
+        _db.Entry(settings).State = EntityState.Detached;
 
-        // 저장 후 캐시 무효화 — 다음 GetAsync에서 DB에서 최신 값을 로드한다
-        _cache.Remove(CacheKey);
+        _cache.Set(CacheKey, UserSettingsCopy.Create(settings), CacheTtl);
     }
 }

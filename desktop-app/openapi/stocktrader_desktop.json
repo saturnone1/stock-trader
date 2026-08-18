@@ -243,7 +243,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -251,9 +258,36 @@
         "tags": [
           "StockTrader"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2418,6 +2452,12 @@
           }
         }
       },
+      "OrderMode": {
+        "enum": [
+          "AlertOnly",
+          "AutoOrder"
+        ]
+      },
       "ParamRange": {
         "type": "object",
         "properties": {
@@ -3566,6 +3606,415 @@
               "type": "number",
               "format": "double"
             }
+          }
+        }
+      },
+      "SettingsErrorResponse": {
+        "required": [
+          "errors"
+        ],
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SettingsOptionResponse": {
+        "required": [
+          "code",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SettingsResponse": {
+        "required": [
+          "id",
+          "orderMode",
+          "preferredDataSource",
+          "enabledPatterns",
+          "watchlistSymbols",
+          "soundAlerts",
+          "accountSize",
+          "riskPerTradePercent",
+          "dailyLossLimitPercent",
+          "maxTotalPositions",
+          "maxPositionsPerSector",
+          "minExpectancy",
+          "liveParameterOverridesJson",
+          "enableTelegram",
+          "telegramBotTokenConfigured",
+          "telegramChatId",
+          "enableDiscord",
+          "discordWebhookConfigured",
+          "enableEmail",
+          "smtpHost",
+          "smtpPort",
+          "smtpUseSsl",
+          "smtpUsername",
+          "smtpPasswordConfigured",
+          "emailFrom",
+          "emailTo",
+          "dailyReportTimeKst",
+          "tqqq200SmaAllowedSymbols",
+          "lastModified",
+          "orderModes",
+          "dataProviders",
+          "patterns"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderMode": {
+            "$ref": "#/components/schemas/OrderMode"
+          },
+          "preferredDataSource": {
+            "$ref": "#/components/schemas/DataSource"
+          },
+          "enabledPatterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PatternType"
+            }
+          },
+          "watchlistSymbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "soundAlerts": {
+            "type": "boolean"
+          },
+          "accountSize": {
+            "type": "number",
+            "format": "double"
+          },
+          "riskPerTradePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "dailyLossLimitPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxTotalPositions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxPositionsPerSector": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "minExpectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "liveParameterOverridesJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enableTelegram": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "telegramBotTokenConfigured": {
+            "type": "boolean"
+          },
+          "telegramChatId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enableDiscord": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "discordWebhookConfigured": {
+            "type": "boolean"
+          },
+          "enableEmail": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "smtpHost": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "smtpPort": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "smtpUseSsl": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "smtpUsername": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "smtpPasswordConfigured": {
+            "type": "boolean"
+          },
+          "emailFrom": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "emailTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dailyReportTimeKst": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tqqq200SmaAllowedSymbols": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastModified": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "orderModes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingsOptionResponse"
+            }
+          },
+          "dataProviders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingsOptionResponse"
+            }
+          },
+          "patterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingsOptionResponse"
+            }
+          }
+        }
+      },
+      "SettingsUpdateRequest": {
+        "required": [
+          "orderMode",
+          "preferredDataSource",
+          "enabledPatterns",
+          "watchlistSymbols",
+          "soundAlerts",
+          "accountSize",
+          "riskPerTradePercent",
+          "dailyLossLimitPercent",
+          "maxTotalPositions",
+          "maxPositionsPerSector",
+          "minExpectancy"
+        ],
+        "type": "object",
+        "properties": {
+          "orderMode": {
+            "$ref": "#/components/schemas/OrderMode"
+          },
+          "preferredDataSource": {
+            "$ref": "#/components/schemas/DataSource"
+          },
+          "enabledPatterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PatternType"
+            }
+          },
+          "watchlistSymbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "soundAlerts": {
+            "type": "boolean"
+          },
+          "accountSize": {
+            "type": "number",
+            "format": "double"
+          },
+          "riskPerTradePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "dailyLossLimitPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxTotalPositions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxPositionsPerSector": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "minExpectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "liveParameterOverridesJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enableTelegram": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "telegramBotToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "telegramChatId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enableDiscord": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "discordWebhookUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enableEmail": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "smtpHost": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "smtpPort": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "smtpUseSsl": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "smtpUsername": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "smtpPassword": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "emailFrom": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "emailTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dailyReportTimeKst": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tqqq200SmaAllowedSymbols": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SettingsUpdateResponse": {
+        "required": [
+          "message",
+          "lastModified"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "lastModified": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

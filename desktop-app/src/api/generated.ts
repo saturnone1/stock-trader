@@ -409,7 +409,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["SettingsResponse"];
+                    };
                 };
             };
         };
@@ -420,14 +422,29 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SettingsUpdateRequest"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["SettingsUpdateResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettingsErrorResponse"];
+                    };
                 };
             };
         };
@@ -2460,6 +2477,8 @@ export interface components {
             /** Format: double */
             oosPercent?: number;
         };
+        /** @enum {unknown} */
+        OrderMode: "AlertOnly" | "AutoOrder";
         ParamRange: {
             /** Format: double */
             min?: null | number;
@@ -2781,6 +2800,98 @@ export interface components {
             ruleIndex?: number;
             paramKey?: string;
             values?: number[];
+        };
+        SettingsErrorResponse: {
+            errors: string[];
+        };
+        SettingsOptionResponse: {
+            code: string;
+            displayName: string;
+            description?: null | string;
+        };
+        SettingsResponse: {
+            /** Format: int64 */
+            id: number;
+            orderMode: components["schemas"]["OrderMode"];
+            preferredDataSource: components["schemas"]["DataSource"];
+            enabledPatterns: components["schemas"]["PatternType"][];
+            watchlistSymbols: string[];
+            soundAlerts: boolean;
+            /** Format: double */
+            accountSize: number;
+            /** Format: double */
+            riskPerTradePercent: number;
+            /** Format: double */
+            dailyLossLimitPercent: number;
+            /** Format: int32 */
+            maxTotalPositions: number;
+            /** Format: int32 */
+            maxPositionsPerSector: number;
+            /** Format: double */
+            minExpectancy: number;
+            liveParameterOverridesJson: null | string;
+            enableTelegram: null | boolean;
+            telegramBotTokenConfigured: boolean;
+            telegramChatId: null | string;
+            enableDiscord: null | boolean;
+            discordWebhookConfigured: boolean;
+            enableEmail: null | boolean;
+            smtpHost: null | string;
+            /** Format: int32 */
+            smtpPort: null | number;
+            smtpUseSsl: null | boolean;
+            smtpUsername: null | string;
+            smtpPasswordConfigured: boolean;
+            emailFrom: null | string;
+            emailTo: null | string;
+            dailyReportTimeKst: null | string;
+            tqqq200SmaAllowedSymbols: null | string;
+            /** Format: date-time */
+            lastModified: string;
+            orderModes: components["schemas"]["SettingsOptionResponse"][];
+            dataProviders: components["schemas"]["SettingsOptionResponse"][];
+            patterns: components["schemas"]["SettingsOptionResponse"][];
+        };
+        SettingsUpdateRequest: {
+            orderMode: components["schemas"]["OrderMode"];
+            preferredDataSource: components["schemas"]["DataSource"];
+            enabledPatterns: components["schemas"]["PatternType"][];
+            watchlistSymbols: string[];
+            soundAlerts: boolean;
+            /** Format: double */
+            accountSize: number;
+            /** Format: double */
+            riskPerTradePercent: number;
+            /** Format: double */
+            dailyLossLimitPercent: number;
+            /** Format: int32 */
+            maxTotalPositions: number;
+            /** Format: int32 */
+            maxPositionsPerSector: number;
+            /** Format: double */
+            minExpectancy: number;
+            liveParameterOverridesJson?: null | string;
+            enableTelegram?: null | boolean;
+            telegramBotToken?: null | string;
+            telegramChatId?: null | string;
+            enableDiscord?: null | boolean;
+            discordWebhookUrl?: null | string;
+            enableEmail?: null | boolean;
+            smtpHost?: null | string;
+            /** Format: int32 */
+            smtpPort?: null | number;
+            smtpUseSsl?: null | boolean;
+            smtpUsername?: null | string;
+            smtpPassword?: null | string;
+            emailFrom?: null | string;
+            emailTo?: null | string;
+            dailyReportTimeKst?: null | string;
+            tqqq200SmaAllowedSymbols?: null | string;
+        };
+        SettingsUpdateResponse: {
+            message: string;
+            /** Format: date-time */
+            lastModified: string;
         };
         /** @enum {unknown} */
         SlippageModel: "Fixed" | "Adaptive";
