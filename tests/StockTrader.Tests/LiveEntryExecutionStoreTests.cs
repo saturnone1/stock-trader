@@ -12,7 +12,7 @@ namespace StockTrader.Tests;
 public sealed class LiveEntryExecutionStoreTests
 {
     [Fact]
-    public async Task AcceptedEntryCommitsRecommendationAndPositionTogether()
+    public async Task ClaimedFillCommitsRecommendationAndPositionTogether()
     {
         await using var database = await TestDatabase.CreateAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
@@ -24,15 +24,21 @@ public sealed class LiveEntryExecutionStoreTests
             await seed.SaveChangesAsync();
         }
         var position = Position(accountId: 27);
+        var requestedAt = new DateTime(2026, 8, 18, 15, 1, 0);
 
-        await store.CommitAcceptedEntryAsync(recommendation, position);
+        (await store.TryClaimAsync(recommendation, 27, requestedAt)).Should().BeTrue();
+        (await store.SetExecutionNoteAsync(
+            recommendation, requestedAt, "접수 확인 필요")).Should().BeTrue();
+        (await store.SetOrderEvidenceAsync(
+            recommendation, requestedAt, "entry-1")).Should().BeTrue();
+        (await store.CommitFilledEntryAsync(
+            recommendation, requestedAt, position)).Should().BeTrue();
 
         await using var verify = database.Factory.CreateDbContext();
         (await verify.TradeRecommendations.SingleAsync()).WasExecuted.Should().BeTrue();
         var storedPosition = await verify.Positions.SingleAsync();
         storedPosition.AccountId.Should().Be(27);
         storedPosition.Symbol.Should().Be("TQQQ");
-        recommendation.WasExecuted.Should().BeTrue();
         position.Id.Should().BeGreaterThan(0);
     }
 
@@ -45,11 +51,12 @@ public sealed class LiveEntryExecutionStoreTests
         var recommendation = Recommendation();
         recommendation.Id = 999;
 
-        var action = () => store.CommitAcceptedEntryAsync(
+        (await store.TryClaimAsync(
+            recommendation, 27, DateTime.UtcNow)).Should().BeFalse();
+        (await store.CommitFilledEntryAsync(
             recommendation,
-            Position(accountId: 27));
-
-        await action.Should().ThrowAsync<InvalidOperationException>();
+            DateTime.UtcNow,
+            Position(accountId: 27))).Should().BeFalse();
         await using var verify = database.Factory.CreateDbContext();
         (await verify.Positions.CountAsync()).Should().Be(0);
     }
@@ -68,14 +75,41 @@ public sealed class LiveEntryExecutionStoreTests
             await seed.SaveChangesAsync();
         }
 
-        var action = () => store.CommitAcceptedEntryAsync(
+        (await store.TryClaimAsync(
+            recommendation, 27, DateTime.UtcNow)).Should().BeFalse();
+        (await store.CommitFilledEntryAsync(
             recommendation,
-            Position(accountId: 27));
-
-        await action.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*already committed*");
+            DateTime.UtcNow,
+            Position(accountId: 27))).Should().BeFalse();
         await using var verify = database.Factory.CreateDbContext();
         (await verify.Positions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClaimAllowsOnlyOneWorkerAndSurvivesReload()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var store = new LiveEntryExecutionStore(database.Factory, cache);
+        var recommendation = Recommendation();
+        await using (var seed = database.Factory.CreateDbContext())
+        {
+            seed.TradeRecommendations.Add(recommendation);
+            await seed.SaveChangesAsync();
+        }
+        var requestedAt = new DateTime(2026, 8, 18, 15, 1, 0);
+
+        (await store.TryClaimAsync(recommendation, 27, requestedAt)).Should().BeTrue();
+        (await store.TryClaimAsync(recommendation, 27, requestedAt.AddSeconds(1)))
+            .Should().BeFalse();
+        (await store.SetExecutionNoteAsync(
+            recommendation, requestedAt, "접수 확인 필요")).Should().BeTrue();
+
+        var restored = await store.LoadAsync(recommendation.Id);
+        restored!.EntryRequestedAt.Should().Be(requestedAt);
+        restored.EntryAccountId.Should().Be(27);
+        restored.EntryExecutionNote.Should().Be("접수 확인 필요");
+        (await store.LoadPendingAsync()).Should().ContainSingle();
     }
 
     [Fact]

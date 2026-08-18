@@ -494,4 +494,8 @@ export const orderApi = {
     api.post('/api/orders/close-position', { symbol }),
   reconcilePositionOrder: (symbol: string) =>
     api.post('/api/orders/reconcile-position-order', { symbol }),
+  reconcileEntryOrder: (recommendationId: number | string) =>
+    api.post('/api/orders/reconcile-entry-order', {
+      recommendationId: Number(recommendationId),
+    }),
 };

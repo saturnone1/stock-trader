@@ -43,6 +43,11 @@ public interface IAccountManager
         int? accountId = null,
         CancellationToken ct = default);
 
+    /// <summary>비활성화된 계좌라도 이미 제출된 주문의 읽기 전용 재조정을 허용합니다.</summary>
+    Task<AccountBrokerContext?> GetBrokerContextForReconciliationAsync(
+        int accountId,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<AccountConnectionStatus>> GetAllConnectionStatusAsync(
         CancellationToken ct = default);
 

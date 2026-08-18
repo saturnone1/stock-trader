@@ -105,15 +105,35 @@ public class OrderService : IOrderService
         }
 
         var execution = await _entryExecutions.ExecuteAsync(recommendation, account, ct);
-        if (!execution.BrokerAccepted)
+        if (!execution.ShouldPreventRetry)
             return false;
+        if (execution.Status == LiveEntryExecutionStatus.AlreadyCompleted)
+        {
+            _logger.LogInformation(
+                "[ORDER SKIPPED] Recommendation {RecommendationId} was already executed",
+                recommendation.Id);
+            return true;
+        }
         if (!execution.IsTracked)
         {
-            _logger.LogCritical(
-                "[ORDER ACCEPTED, TRACKING FAILED] {Symbol}: Account={AccountId} OrderId={OrderId}",
-                recommendation.Symbol,
-                account.Account.Id,
-                execution.Order?.OrderId);
+            if (execution.Status == LiveEntryExecutionStatus.AwaitingBroker)
+            {
+                _logger.LogInformation(
+                    "[ORDER PENDING] {Symbol}: Account={AccountId} OrderId={OrderId}",
+                    recommendation.Symbol,
+                    account.Account.Id,
+                    execution.Order?.OrderId);
+            }
+            else
+            {
+                _logger.LogCritical(
+                    "[ORDER REQUIRES RECONCILIATION] {Symbol}: Account={AccountId} "
+                    + "OrderId={OrderId} Status={Status}",
+                    recommendation.Symbol,
+                    account.Account.Id,
+                    execution.Order?.OrderId,
+                    execution.Status);
+            }
             return true;
         }
 

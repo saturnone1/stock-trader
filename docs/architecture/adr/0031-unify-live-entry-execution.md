@@ -47,3 +47,5 @@ This decision does not yet provide a durable pre-submission claim or restart-tim
 new entries. A process failure after broker acceptance but before local commit remains detectable in
 broker history and critical logs but requires operator reconciliation; durable entry claims are a
 separate follow-up because they require persisted lifecycle fields and recovery rules.
+
+ADR 0032 supersedes this final limitation with a durable claim and restart reconciliation lifecycle.

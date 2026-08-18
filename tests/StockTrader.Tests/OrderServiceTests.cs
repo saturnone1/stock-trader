@@ -116,6 +116,7 @@ public class OrderServiceTests
     {
         return new TradeRecommendation
         {
+            Id = 1,
             Symbol = symbol,
             PatternType = PatternType.GapUpPullback,
             GeneratedAt = DateTime.UtcNow,
@@ -419,7 +420,9 @@ public class OrderServiceTests
         Symbol = recommendation.Symbol,
         Direction = TradeDirection.Long,
         Quantity = recommendation.ShareQuantity,
-        Status = BrokerOrderStatus.Accepted,
+        FilledQuantity = recommendation.ShareQuantity,
+        AverageFillPrice = recommendation.EntryPrice,
+        Status = BrokerOrderStatus.Filled,
         OrderType = BrokerOrderType.BracketOrder,
         SubmittedAt = recommendation.GeneratedAt
     };
@@ -461,7 +464,14 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(manager => manager.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        SetupEntryAccepted();
+        var recommendation = CreateRecommendation(
+            "TSLA", 5, 200m, 190m, 220m);
+        var filledOrder = AcceptedOrder(recommendation);
+        filledOrder.AverageFillPrice = 208m;
+        _brokerServiceMock
+            .Setup(broker => broker.SubmitEntryOrderAsync(
+                recommendation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(filledOrder);
         _brokerServiceMock
             .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new Position
@@ -478,8 +488,7 @@ public class OrderServiceTests
             .Callback<Position, CancellationToken>((position, _) => savedPosition = position)
             .Returns(Task.CompletedTask);
 
-        await CreateSut().PlaceOrderAsync(CreateRecommendation(
-            "TSLA", 5, 200m, 190m, 220m));
+        await CreateSut().PlaceOrderAsync(recommendation);
 
         savedPosition.Should().NotBeNull();
         savedPosition!.EntryPrice.Should().Be(208m);
@@ -547,6 +556,12 @@ public class OrderServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManagedTradingAccount { Id = 9, IsActive = true, IsEnabled = true });
         SetupEntryAccepted(recommendation);
+        var manualFill = AcceptedOrder(recommendation);
+        manualFill.AverageFillPrice = 108m;
+        _brokerServiceMock
+            .Setup(broker => broker.SubmitEntryOrderAsync(
+                recommendation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(manualFill);
         _brokerServiceMock
             .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new Position
@@ -567,12 +582,12 @@ public class OrderServiceTests
             .PlaceManualOrderAsync(signal.Id);
 
         result.Success.Should().BeTrue();
-        result.Message.Should().Contain("Qty=7").And.Contain("Entry=$108.00");
+        result.Message.Should().Contain("Qty=10").And.Contain("Entry=$108.00");
         savedPosition.Should().NotBeNull();
         savedPosition!.AccountId.Should().Be(9);
-        savedPosition.Quantity.Should().Be(7);
+        savedPosition.Quantity.Should().Be(10);
         savedPosition.EntryPrice.Should().Be(108m);
-        savedPosition.CurrentPrice.Should().Be(109m);
+        savedPosition.CurrentPrice.Should().Be(108m);
         savedPosition.StopLossPrice.Should().Be(103m);
         savedPosition.TargetPrice.Should().Be(118m);
         savedPosition.InitialRiskDistance.Should().Be(5m);
@@ -1057,15 +1072,68 @@ public class OrderServiceTests
     private sealed class RepositoryBackedEntryStore(ITradeRepository repository)
         : ILiveEntryExecutionStore
     {
-        public async Task CommitAcceptedEntryAsync(
+        public Task<bool> TryClaimAsync(
             TradeRecommendation recommendation,
+            int accountId,
+            DateTime requestedAt,
+            CancellationToken ct = default)
+        {
+            recommendation.EntryRequestedAt = requestedAt;
+            recommendation.EntryAccountId = accountId;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> SetOrderEvidenceAsync(
+            TradeRecommendation recommendation,
+            DateTime requestedAt,
+            string orderId,
+            CancellationToken ct = default)
+        {
+            recommendation.EntryOrderId = orderId;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> ReleaseClaimAsync(
+            TradeRecommendation recommendation,
+            DateTime requestedAt,
+            string note,
+            CancellationToken ct = default)
+        {
+            recommendation.EntryRequestedAt = null;
+            recommendation.EntryExecutionNote = note;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> SetExecutionNoteAsync(
+            TradeRecommendation recommendation,
+            DateTime requestedAt,
+            string note,
+            CancellationToken ct = default)
+        {
+            recommendation.EntryExecutionNote = note;
+            return Task.FromResult(true);
+        }
+
+        public async Task<bool> CommitFilledEntryAsync(
+            TradeRecommendation recommendation,
+            DateTime requestedAt,
             Position position,
             CancellationToken ct = default)
         {
             recommendation.WasExecuted = true;
             await repository.UpdateRecommendationAsync(recommendation, ct);
             await repository.SavePositionAsync(position, ct);
+            return true;
         }
+
+        public Task<TradeRecommendation?> LoadAsync(
+            long recommendationId,
+            CancellationToken ct = default) => Task.FromResult<TradeRecommendation?>(null);
+
+        public Task<IReadOnlyList<TradeRecommendation>> LoadPendingAsync(
+            int count = 100,
+            CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TradeRecommendation>>([]);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

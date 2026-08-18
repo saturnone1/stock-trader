@@ -49,4 +49,21 @@ public static class LiveEntryPositionFactory
             InitialRiskDistance = fill.RiskDistance,
         };
     }
+
+    public static Position CreateFromFill(
+        TradeRecommendation recommendation,
+        int accountId,
+        int filledQuantity,
+        decimal averageFillPrice,
+        DateTime filledAt) => Create(
+            recommendation,
+            new Position
+            {
+                Symbol = recommendation.Symbol,
+                Quantity = filledQuantity,
+                EntryPrice = averageFillPrice,
+                CurrentPrice = averageFillPrice,
+            },
+            accountId,
+            filledAt);
 }

@@ -5,9 +5,42 @@ namespace StockTrader.Application.Execution;
 /// <summary>브로커가 접수한 신규 진입의 추천 상태와 포지션을 원자적으로 반영합니다.</summary>
 public interface ILiveEntryExecutionStore
 {
-    Task CommitAcceptedEntryAsync(
+    Task<bool> TryClaimAsync(
         TradeRecommendation recommendation,
+        int accountId,
+        DateTime requestedAt,
+        CancellationToken ct = default);
+
+    Task<bool> SetOrderEvidenceAsync(
+        TradeRecommendation recommendation,
+        DateTime requestedAt,
+        string orderId,
+        CancellationToken ct = default);
+
+    Task<bool> SetExecutionNoteAsync(
+        TradeRecommendation recommendation,
+        DateTime requestedAt,
+        string note,
+        CancellationToken ct = default);
+
+    Task<bool> ReleaseClaimAsync(
+        TradeRecommendation recommendation,
+        DateTime requestedAt,
+        string note,
+        CancellationToken ct = default);
+
+    Task<bool> CommitFilledEntryAsync(
+        TradeRecommendation recommendation,
+        DateTime requestedAt,
         Position position,
+        CancellationToken ct = default);
+
+    Task<TradeRecommendation?> LoadAsync(
+        long recommendationId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<TradeRecommendation>> LoadPendingAsync(
+        int count = 100,
         CancellationToken ct = default);
 }
 

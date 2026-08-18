@@ -20,6 +20,9 @@ public static class OrderEndpoints
         orders.MapPost("/close-position", ClosePositionAsync).RequireRateLimiting("api");
         orders.MapPost("/reconcile-position-order", ReconcilePositionOrderAsync)
             .RequireRateLimiting("api");
+        orders.MapPost("/reconcile-entry-order", ReconcileEntryOrderAsync)
+            .Accepts<EntryRecommendationRequest>("application/json")
+            .RequireRateLimiting("api");
         return api;
     }
 
@@ -188,6 +191,75 @@ public static class OrderEndpoints
             brokerStatus = reconciliation.Order?.Status.ToString(),
             fillPrice = reconciliation.Order?.AverageFillPrice,
             filledQuantity = reconciliation.FilledQuantity
+        });
+    }
+
+    private static async Task<IResult> ReconcileEntryOrderAsync(
+        EntryRecommendationRequest request,
+        HttpContext context,
+        IAccountManager accounts,
+        ILiveEntryExecutionStore store,
+        ILiveEntryExecutionCoordinator executions,
+        TimeProvider timeProvider)
+    {
+        if (!context.User.Identity?.IsAuthenticated ?? true)
+            return Results.Unauthorized();
+        if (request.RecommendationId <= 0)
+            return Results.BadRequest(new { error = "'recommendationId' must be positive." });
+
+        var recommendation = await store.LoadAsync(
+            request.RecommendationId, context.RequestAborted);
+        if (recommendation is null)
+            return Results.NotFound(new { error = "추천 내역을 찾을 수 없습니다." });
+        if (!recommendation.EntryRequestedAt.HasValue)
+        {
+            var state = LiveEntryOrderStatusPolicy.Evaluate(
+                recommendation, timeProvider.GetUtcNow().UtcDateTime);
+            return Results.Ok(new
+            {
+                status = state.State.ToString(),
+                message = recommendation.WasExecuted
+                    ? "이미 체결 반영이 완료된 진입입니다."
+                    : "확인할 대기 진입 주문이 없습니다."
+            });
+        }
+        if (!recommendation.EntryAccountId.HasValue)
+        {
+            return Results.Conflict(new
+            {
+                error = "대기 진입에 계좌 정보가 없어 자동 재조정을 중단했습니다."
+            });
+        }
+
+        var account = await accounts.GetBrokerContextForReconciliationAsync(
+            recommendation.EntryAccountId.Value,
+            context.RequestAborted);
+        if (account is null)
+            return Results.BadRequest(new { error = "진입 주문 계좌에 연결할 수 없습니다." });
+
+        var result = await executions.ReconcileAsync(
+            recommendation, account, ct: context.RequestAborted);
+        var message = result.Status switch
+        {
+            LiveEntryExecutionStatus.Completed => "브로커 체결을 확인하고 포지션 반영을 완료했습니다.",
+            LiveEntryExecutionStatus.Rejected => "브로커의 최종 실패를 확인해 다시 주문할 수 있습니다.",
+            LiveEntryExecutionStatus.AwaitingBroker => "브로커의 최종 체결 상태를 기다리고 있습니다.",
+            LiveEntryExecutionStatus.SubmissionUnconfirmed =>
+                "접수 여부가 아직 확인되지 않았습니다. 중복 주문 방지를 위해 다시 주문하지 마세요.",
+            LiveEntryExecutionStatus.AmbiguousEvidence =>
+                "일치 가능한 주문이 여러 개라 자동 반영을 중단했습니다. 브로커 내역을 확인하세요.",
+            LiveEntryExecutionStatus.EvidenceMismatch =>
+                "주문 정보가 추천과 달라 자동 반영을 중단했습니다. 브로커 내역을 확인하세요.",
+            LiveEntryExecutionStatus.ConcurrentChange => "다른 작업이 상태를 변경했습니다. 목록을 새로고침하세요.",
+            _ => "진입 주문 상태를 확인했습니다."
+        };
+        return Results.Ok(new
+        {
+            status = result.Status.ToString(),
+            message,
+            brokerStatus = result.Order?.Status.ToString(),
+            fillPrice = result.Order?.AverageFillPrice,
+            filledQuantity = result.Order?.FilledQuantity
         });
     }
 
