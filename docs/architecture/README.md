@@ -51,6 +51,8 @@ infrastructure.
   metric policy, and one deterministic signal filter/R/R/statistic-selection policy.
 - Daily reporting: one deterministic schedule/window/projection policy, one activity read port, and
   isolated account-equity and notification adapters.
+- REST intraday ingestion: one provider-bound application cycle; market-open and realtime fallback
+  decisions use the effective provider rather than global US/KRX or streaming state.
 - Dashboard reads: one storage-independent query reusing the risk/position observation, one focused
   activity store, one active-account projection, and an explicit generated desktop contract.
 - Trade activity reads: one storage-independent recommendation/history query, one focused activity
@@ -189,6 +191,17 @@ Initial recovery excludes the current unfinished daily bar. Scheduled synchroniz
 last stored date, while SQLite OHLCV writes upsert the same bar identity so a later completed sample
 corrects an earlier partial value instead of being discarded. Live scan deduplication also includes
 the effective provider and its owned market date.
+REST intraday ingestion now follows a matching provider-bound split. `MarketDataIngestionService`
+owns only its injected-clock interval, retries, cooldown, and scoped invocation.
+`IIntradayMarketDataIngestionCycle` resolves the effective provider before checking market or
+realtime state, polls only that provider's regular market session, saves one successful batch before
+publishing symbols, and surfaces a provider-wide outage to worker recovery. Alpaca streaming
+connects only while Alpaca is selected. A provider switch rejects old callbacks, drains the buffered
+batch, and exposes a transition state so Yahoo or LS REST polling cannot overlap the old stream.
+Both ingestion modes publish scanner work only after persistence; failed stream flushes retain their
+batch for serialized retry. `IRealtimeBarIngestionBuffer` owns callback admission and batching while
+`IRealtimeBarBatchSink` owns the commit-then-publish adapter, leaving the Alpaca worker below 400
+lines and free of repository or channel access.
 The TQQQ long-trend strategy likewise owns its entry stop/target and rolling SMA stop-floor math in
 `Tqqq200SmaExecutionPolicy`. Its configured SMA period and multipliers feed detection, prepared
 backtest data, and live monitoring; adapters must not embed their own 200-day or multiplier values.
@@ -421,4 +434,10 @@ defaults, active-profile selection, and modification time have one application o
 - `adr/0053-isolate-live-entry-reconciliation-cycle.md`: keep the hosted worker as a clocked
   scheduler while a purpose-specific cycle owns account-grouped entry reconciliation and isolates
   provider failures.
+- `adr/0054-isolate-live-pattern-scan-cycle.md`: keep the scanner worker as channel/recovery plumbing
+  while a provider-aware application cycle owns daily detection and completion state.
+- `adr/0055-isolate-provider-market-daily-sync.md`: bind daily completion windows to the effective
+  provider market and replace stale partial OHLCV through overlapping upsert synchronization.
+- `adr/0056-isolate-provider-market-intraday-ingestion.md`: bind REST minute-bar polling and realtime
+  fallback to the effective provider and make worker recovery observable.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

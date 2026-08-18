@@ -16,6 +16,7 @@ using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
 using StockTrader.Services.Financial;
 using StockTrader.Services.LsSecurities;
+using StockTrader.Services.Streaming;
 
 namespace StockTrader.Extensions;
 
@@ -91,6 +92,11 @@ public static class DataServiceExtensions
         services.AddScoped<IDataFeedServiceFactory, DataFeedServiceFactory>();
         services.AddScoped<ILiveDailyScanData, LiveDailyScanData>();
         services.AddScoped<IDailyMarketDataSyncData, DailyMarketDataSyncData>();
+        services.AddScoped<IIntradayMarketDataIngestionData, IntradayMarketDataIngestionData>();
+        services.AddScoped<IIntradayMarketDataIngestionCycle, IntradayMarketDataIngestionCycle>();
+        services.AddScoped<IRealtimeMarketDataSelectionReader, RealtimeMarketDataSelectionReader>();
+        services.AddSingleton<IRealtimeBarBatchSink, RealtimeBarBatchSink>();
+        services.AddSingleton<IRealtimeBarIngestionBuffer, RealtimeBarIngestionBuffer>();
 
         return services;
     }

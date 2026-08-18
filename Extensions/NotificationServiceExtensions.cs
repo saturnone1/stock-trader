@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Reporting;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Streaming;
@@ -59,7 +60,11 @@ public static class NotificationServiceExtensions
         services.AddSingleton<INotificationService, BackendNotificationService>();
 
         // Streaming status (singleton for cross-service coordination)
-        services.AddSingleton<IStreamingStatusService, StreamingStatusService>();
+        services.AddSingleton<StreamingStatusService>();
+        services.AddSingleton<IStreamingStatusService>(serviceProvider =>
+            serviceProvider.GetRequiredService<StreamingStatusService>());
+        services.AddSingleton<IRealtimeMarketDataStatus>(serviceProvider =>
+            serviceProvider.GetRequiredService<StreamingStatusService>());
 
         return services;
     }
