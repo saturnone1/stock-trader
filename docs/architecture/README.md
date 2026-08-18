@@ -52,6 +52,8 @@ infrastructure.
 - Financial collection state: one application port; SEC symbol, interval, parsing, and ratio rules
   are deterministic policies outside workers and persistence adapters.
 - Order execution modes and their operator-facing meaning: one domain catalog.
+- Compiled custom-position instructions: one application resolver for close-rule and scaling-rule
+  evaluation, canonical exit reason, profit input, execution-count state, and execution-session DTOs.
 - Broker identity and operation-specific capabilities: one domain catalog used by account metadata,
   adapters, workers, and live execution guards.
 - Broker balance positions: one purpose-specific application snapshot without EF strategy state or
@@ -169,9 +171,10 @@ live in pure execution policies rather than in backtest or worker adapters.
 `LongPositionScalingPolicy` likewise owns original-entry-based share rounding, scale-in weighted
 average price, adapter-supplied capital-cap enforcement, and scale-out remaining cost. The common
 session owns post-fill execution counting and realized PnL. Preview and backtest only translate
-session events into markers or trade records. Backtest custom-rule instructions come from one
-`BacktestStrategyExecutionInstructionResolver`; ordinary held bars and NextOpen entry bars cannot
-silently use different exit or scaling rules.
+session events into markers or trade records. `CompiledStrategyPositionInstructionResolver` is the
+single owner of custom close-rule and scaling-rule interpretation for preview, backtest, and live
+execution. The backtest adapter only selects the causal bar window and portfolio cap, so ordinary
+held bars and NextOpen entry bars cannot silently use different exit or scaling rules.
 Backtest scaling counts travel with each open position rather than living in processor memory, so
 recreating an orchestration component cannot reset a rule's maximum-fill limit.
 Live partial-profit fills use the same common-session share rounding and atomically move the
@@ -482,4 +485,6 @@ defaults, active-profile selection, and modification time have one application o
   service location, preserve one global training claim, and expose atomic generated status contracts.
 - `adr/0064-publish-risk-state-as-one-application-generation.md`: move runtime risk management
   inward, isolate broker and persistence evidence, and atomically publish multi-account state.
+- `adr/0065-unify-compiled-position-instructions.md`: route preview, backtest, and live custom close
+  and scaling conditions through one compiled-strategy instruction resolver.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
