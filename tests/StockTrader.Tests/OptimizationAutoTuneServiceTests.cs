@@ -1,12 +1,12 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
 using StockTrader.Application.Strategies;
-using StockTrader.BackgroundServices;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -19,28 +19,10 @@ public class OptimizationAutoTuneServiceTests
     [Fact]
     public void SelectPromotionCandidate_PrefersPositiveOosCandidate()
     {
-        var badOos = new OptimizationResult
-        {
-            Id = 1,
-            TotalReturn = 30m,
-            SortinoRatio = 1.5m,
-            TotalTrades = 40,
-            OosTotalReturn = -5m,
-            OosSortinoRatio = -0.2m,
-            OosTotalTrades = 20
-        };
-        var goodOos = new OptimizationResult
-        {
-            Id = 2,
-            TotalReturn = 12m,
-            SortinoRatio = 0.8m,
-            TotalTrades = 35,
-            OosTotalReturn = 6m,
-            OosSortinoRatio = 0.4m,
-            OosTotalTrades = 18
-        };
+        var badOos = Candidate(1, 30m, 1.5m, 40, -5m, -0.2m, 20);
+        var goodOos = Candidate(2, 12m, 0.8m, 35, 6m, 0.4m, 18);
 
-        var selected = OptimizationAutoTuneService.SelectPromotionCandidate(
+        var selected = OptimizationPromotionPolicy.SelectCandidate(
             [badOos, goodOos],
             rankBy: "sortinoRatio",
             minTrades: 10);
@@ -53,21 +35,25 @@ public class OptimizationAutoTuneServiceTests
     public async Task HandleCompletedJobAsync_AutoAppliesAndRequeuesSameJob()
     {
         var services = new ServiceCollection();
-        var dbName = Guid.NewGuid().ToString();
+        var connectionString = $"Data Source=autotune-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+        await using var keeper = new SqliteConnection(connectionString);
+        await keeper.OpenAsync();
 
         services.AddLogging();
         services.AddMemoryCache();
-        services.AddDbContextFactory<AppDbContext>(options => options.UseInMemoryDatabase(dbName));
+        services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
+        services.AddScoped<IOptimizationAutoTuneStore, OptimizationAutoTuneStore>();
         services.AddScoped<ICustomPatternStore, CustomPatternStore>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<AppDbContext>(sp => sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<OptimizationAutoTuneService>();
+        services.AddScoped<OptimizationAutoTuneService>();
 
         await using var provider = services.BuildServiceProvider();
         using var seedScope = provider.CreateScope();
         var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.EnsureCreatedAsync();
         var repo = seedScope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
 
         var pattern = new CustomPatternDefinition
@@ -125,8 +111,11 @@ public class OptimizationAutoTuneServiceTests
             OosTotalTrades = 12
         });
 
-        var sut = provider.GetRequiredService<OptimizationAutoTuneService>();
-        await sut.HandleCompletedJobAsync(job.Id);
+        using (var serviceScope = provider.CreateScope())
+        {
+            var sut = serviceScope.ServiceProvider.GetRequiredService<OptimizationAutoTuneService>();
+            await sut.HandleCompletedJobAsync(job.Id);
+        }
 
         using var assertScope = provider.CreateScope();
         var assertDb = assertScope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -172,21 +161,25 @@ public class OptimizationAutoTuneServiceTests
     public async Task ApplyResultAsync_ManuallyAppliesSelectedResultAndIncrementsCount()
     {
         var services = new ServiceCollection();
-        var dbName = Guid.NewGuid().ToString();
+        var connectionString = $"Data Source=autotune-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+        await using var keeper = new SqliteConnection(connectionString);
+        await keeper.OpenAsync();
 
         services.AddLogging();
         services.AddMemoryCache();
-        services.AddDbContextFactory<AppDbContext>(options => options.UseInMemoryDatabase(dbName));
+        services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
+        services.AddScoped<IOptimizationAutoTuneStore, OptimizationAutoTuneStore>();
         services.AddScoped<ICustomPatternStore, CustomPatternStore>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<AppDbContext>(sp => sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<OptimizationAutoTuneService>();
+        services.AddScoped<OptimizationAutoTuneService>();
 
         await using var provider = services.BuildServiceProvider();
         using var seedScope = provider.CreateScope();
         var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.EnsureCreatedAsync();
         var repo = seedScope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
 
         var pattern = new CustomPatternDefinition
@@ -252,7 +245,8 @@ public class OptimizationAutoTuneServiceTests
         };
         await repo.UpsertResultAsync(invalidResult);
 
-        var sut = provider.GetRequiredService<OptimizationAutoTuneService>();
+        using var serviceScope = provider.CreateScope();
+        var sut = serviceScope.ServiceProvider.GetRequiredService<OptimizationAutoTuneService>();
         var rejected = await sut.ApplyResultAsync(job.Id, invalidResult.Id, isAutoApply: false);
 
         rejected.Success.Should().BeFalse();
@@ -298,4 +292,31 @@ public class OptimizationAutoTuneServiceTests
             ]
         }
     });
+
+    private static OptimizationPromotionCandidate Candidate(
+        int id,
+        decimal totalReturn,
+        decimal sortino,
+        int trades,
+        decimal? oosReturn,
+        decimal? oosSortino,
+        int? oosTrades) => new(
+            id,
+            new OptimizeParamSnapshot(),
+            totalReturn,
+            sortino,
+            SharpeRatio: 0m,
+            WinRate: 0m,
+            trades,
+            ProfitFactor: 0m,
+            CalmarRatio: 0m,
+            AnnualizedReturn: 0m,
+            oosReturn,
+            oosSortino,
+            OosSharpeRatio: null,
+            OosWinRate: null,
+            oosTrades,
+            OosProfitFactor: null,
+            OosCalmarRatio: null,
+            OosAnnualizedReturn: null);
 }

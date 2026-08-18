@@ -192,6 +192,10 @@ Creation, list/detail projection, settings updates, result reads, and terminal d
 module contains no persistence entity, repository, result JSON, combination-count formula, or job
 projection math. The SQLite adapter returns the stored result ID explicitly, so selecting “apply
 this result” identifies the chosen row instead of silently falling back to the automatic candidate.
+Manual and automatic result promotion now cross the scoped `OptimizationAutoTuneService` and
+`IOptimizationAutoTuneStore`. Candidate eligibility and IS/OOS ranking are pure application policy;
+persisted request/parameter JSON remains in the SQLite adapter. Apply counts use an atomic database
+increment, and continuous-job result deletion plus reset commit in one transaction.
 
 ## Decision records
 
@@ -226,4 +230,6 @@ this result” identifies the chosen row instead of silently falling back to the
   application layer and persist them with status-guarded updates.
 - `adr/0016-isolate-optimization-job-management.md`: separate job administration and projections
   from EF entities and preserve result identity across the HTTP boundary.
+- `adr/0017-isolate-optimization-auto-tune.md`: keep result-promotion policy independent from
+  persistence and make apply metadata and continuous recycling atomic.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

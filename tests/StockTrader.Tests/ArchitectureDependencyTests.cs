@@ -592,9 +592,9 @@ public class ArchitectureDependencyTests
         dbContext.Should().Contain("HasIndex(p => p.NormalizedName).IsUnique()");
         contracts.Should().NotContain("NormalizedName");
         var autoTune = File.ReadAllText(Path.Combine(
-            repository, "BackgroundServices/OptimizationAutoTuneService.cs"));
+            repository, "Application/Optimization/OptimizationAutoTuneService.cs"));
         autoTune.Should().Contain("CustomPatternManagementService");
-        autoTune.Should().Contain("patternManagement.UpdateAsync(");
+        autoTune.Should().Contain("_patterns.UpdateAsync(");
         autoTune.Should().NotContain("db.CustomPatterns");
         autoTune.Should().NotContain("CopyPatternValues(");
         autoTune.Should().NotContain("DateTime.UtcNow");
@@ -682,7 +682,9 @@ public class ArchitectureDependencyTests
         var jobExecutor = File.ReadAllText(Path.Combine(
             repository, "BackgroundServices/OptimizationJobExecutor.cs"));
         var autoTune = File.ReadAllText(Path.Combine(
-            repository, "BackgroundServices/OptimizationAutoTuneService.cs"));
+            repository, "Application/Optimization/OptimizationAutoTuneService.cs"));
+        var autoTuneStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationAutoTuneStore.cs"));
 
         document.Should().Contain("public sealed class StrategyDocument");
         document.Should().Contain("public int? StoredStrategyId { get; set; }");
@@ -706,8 +708,10 @@ public class ArchitectureDependencyTests
         jobManagement.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
         jobEndpoints.Should().NotContain("OptimizeRequestJsonCodec.Serialize(");
         jobExecutor.Should().Contain("OptimizeRequestJsonCodec.Deserialize(");
-        autoTune.Should().Contain("OptimizeRequestJsonCodec.Deserialize(");
-        autoTune.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
+        autoTune.Should().Contain("IOptimizationAutoTuneStore");
+        autoTune.Should().NotContain("JsonSerializer");
+        autoTuneStore.Should().Contain("OptimizeRequestJsonCodec.Deserialize(");
+        autoTuneStore.Should().Contain("OptimizeRequestJsonCodec.Serialize(");
     }
 
     [Fact]
@@ -1047,6 +1051,10 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/OptimizationModels.cs"));
         var repositoryContract = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/IOptimizationRepository.cs"));
+        var autoTune = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationAutoTuneService.cs"));
+        var autoTuneStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationAutoTuneStore.cs"));
 
         source.Should().Contain("IOptimizationEvaluationContextPreparer");
         source.Should().Contain("IOptimizationJobExecutionStore");
@@ -1131,6 +1139,26 @@ public class ArchitectureDependencyTests
         repositoryContract.Should().NotContain("GetJobAsync(");
         repositoryContract.Should().NotContain("GetJobsAsync(");
         repositoryContract.Should().NotContain("DeleteJobAsync(");
+        autoTune.Should().Contain("IOptimizationAutoTuneStore");
+        autoTune.Should().Contain("OptimizationPromotionPolicy.SelectCandidate(");
+        autoTune.Should().NotContain("StockTrader.Data");
+        autoTune.Should().NotContain("StockTrader.Models");
+        autoTune.Should().NotContain("IServiceScopeFactory");
+        autoTune.Should().NotContain("IOptimizationRepository");
+        autoTune.Should().NotContain("JsonSerializer");
+        autoTuneStore.Should().Contain("class OptimizationAutoTuneStore : IOptimizationAutoTuneStore");
+        autoTuneStore.Should().Contain("job.AppliedResultCount + 1");
+        autoTuneStore.Should().Contain("BeginTransactionAsync(ct)");
+        autoTuneStore.Should().Contain("ExecuteDeleteAsync(ct)");
+        worker.Should().Contain("GetRequiredService<OptimizationAutoTuneService>()");
+        File.ReadAllLines(Path.Combine(
+                repository,
+                "Application/Optimization/OptimizationAutoTuneService.cs"))
+            .Length.Should().BeLessThanOrEqualTo(250);
+        File.ReadAllLines(Path.Combine(
+                repository,
+                "Data/Repositories/OptimizationAutoTuneStore.cs"))
+            .Length.Should().BeLessThanOrEqualTo(200);
         initialization.Should().Contain("RecoverInterruptedAsync()");
         initialization.Should().NotContain("IOptimizationRepository");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");

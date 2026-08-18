@@ -16,7 +16,6 @@ public static class BackgroundServiceExtensions
         // Components called by endpoints or other use cases are registered independently from
         // hosted execution so build-time API contract generation cannot start external loops.
         services.AddSingleton<OptimizationJobExecutor>();
-        services.AddSingleton<OptimizationAutoTuneService>();
         services.AddSingleton<FinancialSnapshotIngestionService>();
 
         if (!includeHostedServices)

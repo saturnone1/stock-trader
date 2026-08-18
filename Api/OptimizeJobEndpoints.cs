@@ -1,5 +1,4 @@
 using StockTrader.Application.Optimization;
-using StockTrader.BackgroundServices;
 
 namespace StockTrader.Api;
 

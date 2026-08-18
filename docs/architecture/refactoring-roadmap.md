@@ -200,6 +200,10 @@
   imports persistence entities, repositories, or JSON. Combination counting and progress/remaining
   projections are application policies. The SQLite mapper now preserves each stored result ID,
   fixing manual result application that previously sent `null` and selected the automatic candidate.
+- Optimization result promotion is now a scoped application use case behind
+  `IOptimizationAutoTuneStore`. The ranking policy no longer consumes EF results, apply counters use
+  an atomic SQL increment, and continuous recycling deletes old results and resets the job in one
+  transaction. Persisted request and candidate JSON are confined to the SQLite adapter.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

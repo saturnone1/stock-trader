@@ -13,20 +13,17 @@ public class ContinuousOptimizationService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly OptimizationJobExecutor _executor;
-    private readonly OptimizationAutoTuneService _autoTuneService;
     private readonly ILogger<ContinuousOptimizationService> _logger;
     private readonly TimeProvider _clock;
 
     public ContinuousOptimizationService(
         IServiceScopeFactory scopeFactory,
         OptimizationJobExecutor executor,
-        OptimizationAutoTuneService autoTuneService,
         ILogger<ContinuousOptimizationService> logger,
         TimeProvider clock)
     {
         _scopeFactory = scopeFactory;
         _executor = executor;
-        _autoTuneService = autoTuneService;
         _logger = logger;
         _clock = clock;
     }
@@ -69,7 +66,7 @@ public class ContinuousOptimizationService : BackgroundService
                 await PersistExecutionDispositionAsync(job.Id, disposition);
 
                 if (disposition == OptimizationJobExecutionDisposition.Completed)
-                    await _autoTuneService.HandleCompletedJobAsync(job.Id, stoppingToken);
+                    await UseAutoTuneAsync(job.Id, stoppingToken);
 
                 if (disposition == OptimizationJobExecutionDisposition.Completed)
                 {
@@ -168,6 +165,14 @@ public class ContinuousOptimizationService : BackgroundService
         var lifecycle = scope.ServiceProvider
             .GetRequiredService<IOptimizationJobLifecycle>();
         await action(lifecycle);
+    }
+
+    private async Task UseAutoTuneAsync(int jobId, CancellationToken ct)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var autoTune = scope.ServiceProvider
+            .GetRequiredService<OptimizationAutoTuneService>();
+        await autoTune.HandleCompletedJobAsync(jobId, ct);
     }
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
