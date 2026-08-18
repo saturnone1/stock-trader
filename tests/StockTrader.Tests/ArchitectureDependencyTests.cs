@@ -2041,8 +2041,17 @@ public class ArchitectureDependencyTests
             repository, "Data/Repositories/LivePositionExecutionStore.cs"));
         var broadRepositoryPath = Path.Combine(
             repository, "Data/Repositories/TradeRepository.cs");
-        var broadContract = File.ReadAllText(Path.Combine(
-            repository, "Data/Repositories/ITradeRepository.cs"));
+        var broadContractPath = Path.Combine(
+            repository, "Data/Repositories/ITradeRepository.cs");
+        var tradingPorts = File.ReadAllText(Path.Combine(
+            repository, "Application/Trading/TradingDataPorts.cs"));
+        var purposeBuiltStores = new[]
+        {
+            "TradeHistoryStore.cs",
+            "OpenPositionStore.cs",
+            "TradeRecommendationStore.cs",
+            "PatternSignalStore.cs"
+        };
 
         coordinator.Should().Contain("ILivePositionExecutionStore");
         coordinator.Should().Contain("_store.CommitFillAsync(");
@@ -2053,9 +2062,17 @@ public class ArchitectureDependencyTests
         contract.Should().Contain("PositionExecutionTrade");
         store.Should().Contain("IDbContextFactory<AppDbContext>");
         store.Should().Contain("BeginTransactionAsync(");
-        broadContract.Should().NotContain("PositionExecutionClaim");
-        broadContract.Should().NotContain("PositionExecutionFill");
-        File.ReadAllLines(broadRepositoryPath).Length.Should().BeLessThanOrEqualTo(350);
+        tradingPorts.Should().Contain("ITradeHistoryStore");
+        tradingPorts.Should().Contain("IOpenPositionStore");
+        tradingPorts.Should().Contain("ITradeRecommendationStore");
+        tradingPorts.Should().Contain("IPatternSignalStore");
+        File.Exists(broadRepositoryPath).Should().BeFalse();
+        File.Exists(broadContractPath).Should().BeFalse();
+        foreach (var purposeBuiltStore in purposeBuiltStores)
+        {
+            File.ReadAllText(Path.Combine(repository, "Data/Repositories", purposeBuiltStore))
+                .Should().Contain("IDbContextFactory<AppDbContext>");
+        }
     }
 
     [Fact]

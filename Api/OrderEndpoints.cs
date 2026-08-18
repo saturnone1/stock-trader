@@ -1,4 +1,5 @@
 using StockTrader.Application.Execution;
+using StockTrader.Application.Trading;
 using StockTrader.Api.Contracts;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Account;
@@ -65,7 +66,7 @@ public static class OrderEndpoints
     private static async Task<IResult> ClosePositionAsync(
         HttpContext context,
         IAccountManager accounts,
-        ITradeRepository trades,
+        IOpenPositionStore positionsStore,
         ILivePositionExecutionCoordinator executions)
     {
         if (!context.User.Identity?.IsAuthenticated ?? true)
@@ -89,7 +90,7 @@ public static class OrderEndpoints
         if (broker == null)
             return Results.BadRequest(new { error = "활성 브로커 계좌가 없습니다. 계좌 관리에서 계좌를 설정하세요." });
 
-        var positions = (await trades.GetOpenPositionsAsync(context.RequestAborted))
+        var positions = (await positionsStore.GetOpenPositionsAsync(context.RequestAborted))
             .Where(item => item.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         if (positions.Length == 0)
@@ -131,7 +132,7 @@ public static class OrderEndpoints
     private static async Task<IResult> ReconcilePositionOrderAsync(
         HttpContext context,
         IAccountManager accounts,
-        ITradeRepository trades,
+        IOpenPositionStore positionsStore,
         ILivePositionExecutionCoordinator executions)
     {
         if (!context.User.Identity?.IsAuthenticated ?? true)
@@ -152,7 +153,7 @@ public static class OrderEndpoints
         if (symbol.Length == 0)
             return Results.BadRequest(new { error = "'symbol' must not be empty." });
 
-        var positions = (await trades.GetOpenPositionsAsync(context.RequestAborted))
+        var positions = (await positionsStore.GetOpenPositionsAsync(context.RequestAborted))
             .Where(item => item.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         if (positions.Length != 1)

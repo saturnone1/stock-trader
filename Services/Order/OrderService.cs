@@ -1,4 +1,5 @@
 using StockTrader.Data.Repositories;
+using StockTrader.Application.Trading;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
@@ -22,7 +23,8 @@ namespace StockTrader.Services.Order;
 public class OrderService : IOrderService
 {
     private readonly IAccountManager _accountManager;
-    private readonly ITradeRepository _tradeRepo;
+    private readonly ITradeRecommendationStore _recommendations;
+    private readonly IOpenPositionStore _positions;
     private readonly ISettingsRepository _settingsRepo;
     private readonly INotificationService _notificationService;
     private readonly IMarketCalendar _marketCalendar;
@@ -32,7 +34,8 @@ public class OrderService : IOrderService
 
     public OrderService(
         IAccountManager accountManager,
-        ITradeRepository tradeRepo,
+        ITradeRecommendationStore recommendations,
+        IOpenPositionStore positions,
         ISettingsRepository settingsRepo,
         INotificationService notificationService,
         IMarketCalendar marketCalendar,
@@ -41,7 +44,8 @@ public class OrderService : IOrderService
         ILogger<OrderService> logger)
     {
         _accountManager = accountManager;
-        _tradeRepo = tradeRepo;
+        _recommendations = recommendations;
+        _positions = positions;
         _settingsRepo = settingsRepo;
         _notificationService = notificationService;
         _marketCalendar = marketCalendar;
@@ -61,7 +65,7 @@ public class OrderService : IOrderService
         var userSettings = await _settingsRepo.GetAsync(ct);
 
         // 1. 항상 추천 내역 저장 및 알림 발송 (모드에 무관)
-        await _tradeRepo.AddRecommendationAsync(recommendation, ct);
+        await _recommendations.AddRecommendationAsync(recommendation, ct);
         _notificationService.Notify(recommendation);
 
         // 2. AlertOnly 모드: 실제 주문 없이 로그만 기록
@@ -190,7 +194,7 @@ public class OrderService : IOrderService
 
         // 브로커에서 포지션을 가져오지 못한 경우 DB 폴백
         _logger.LogDebug("Broker returned no positions, falling back to local DB");
-        return await _tradeRepo.GetOpenPositionsAsync(ct);
+        return await _positions.GetOpenPositionsAsync(ct);
     }
 
     /// <inheritdoc />

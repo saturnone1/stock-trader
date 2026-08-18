@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using StockTrader.Api.Contracts;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Account;
 using StockTrader.Services.Analysis;
@@ -14,7 +15,9 @@ public static class DashboardEndpoints
         group.MapGet("/dashboard", async (
             IAccountManager accountManager,
             IRiskManagementService riskService,
-            ITradeRepository tradeRepo,
+            IOpenPositionStore positionsStore,
+            IPatternSignalStore signalStore,
+            ITradeRecommendationStore recommendationStore,
             IStockAnalysisService analysisService,
             ISettingsRepository settingsRepo,
             TimeProvider timeProvider,
@@ -23,9 +26,9 @@ public static class DashboardEndpoints
             // 병렬로 데이터 수집
             var accountTask      = accountManager.GetActiveBrokerServiceAsync(ct);
             var riskTask         = riskService.GetCurrentRiskStateAsync(ct);
-            var positionsTask    = tradeRepo.GetOpenPositionsAsync(ct);
-            var signalsTask      = tradeRepo.GetActiveSignalsAsync(ct);
-            var recsTask         = tradeRepo.GetRecentRecommendationsAsync(5, ct);
+            var positionsTask    = positionsStore.GetOpenPositionsAsync(ct);
+            var signalsTask      = signalStore.GetActiveSignalsAsync(ct);
+            var recsTask         = recommendationStore.GetRecentRecommendationsAsync(5, ct);
             var regimeTask       = analysisService.GetMarketRegimeAsync(ct);
             var settingsTask     = settingsRepo.GetAsync(ct);
 

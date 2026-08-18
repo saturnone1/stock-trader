@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Analysis;
+using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
@@ -17,7 +18,7 @@ public class StockAnalysisService : IStockAnalysisService
     private readonly IDataFeedServiceFactory _dataFeedFactory;
     private readonly IEnumerable<IPatternDetector> _detectors;
     private readonly IStatisticsService _statisticsService;
-    private readonly ITradeRepository _tradeRepo;
+    private readonly ITradeHistoryStore _tradeHistory;
     private readonly ISettingsRepository _settingsRepo;
     private readonly IOhlcvRepository _ohlcvRepo;
     private readonly StockIndicatorSnapshotFactory _indicatorSnapshots;
@@ -30,7 +31,7 @@ public class StockAnalysisService : IStockAnalysisService
         IDataFeedServiceFactory dataFeedFactory,
         IEnumerable<IPatternDetector> detectors,
         IStatisticsService statisticsService,
-        ITradeRepository tradeRepo,
+        ITradeHistoryStore tradeHistory,
         ISettingsRepository settingsRepo,
         IOhlcvRepository ohlcvRepo,
         StockIndicatorSnapshotFactory indicatorSnapshots,
@@ -42,7 +43,7 @@ public class StockAnalysisService : IStockAnalysisService
         _dataFeedFactory = dataFeedFactory;
         _detectors = detectors;
         _statisticsService = statisticsService;
-        _tradeRepo = tradeRepo;
+        _tradeHistory = tradeHistory;
         _settingsRepo = settingsRepo;
         _ohlcvRepo = ohlcvRepo;
         _indicatorSnapshots = indicatorSnapshots;
@@ -304,7 +305,7 @@ public class StockAnalysisService : IStockAnalysisService
         if (activePatterns.Count == 0) return 20;
 
         // 보유일 통계 계산을 위해 전체 거래 이력 필요
-        var trades       = await _tradeRepo.GetTradesAsync(take: int.MaxValue, ct: ct);
+        var trades       = await _tradeHistory.GetTradesAsync(take: int.MaxValue, ct: ct);
         var patternTypes = activePatterns.Select(p => p.PatternType).ToHashSet();
 
         var relevantTrades = trades

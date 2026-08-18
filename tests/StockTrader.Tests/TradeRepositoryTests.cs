@@ -13,7 +13,7 @@ using StockTrader.Services.Order;
 
 namespace StockTrader.Tests;
 
-public class TradeRepositoryTests
+public class TradingDataStoreTests
 {
     [Fact]
     public async Task TryApplyPositionExecutionFillAsync_PersistsFullExitAndTradeExactlyOnce()
@@ -24,9 +24,9 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new OpenPositionStore(new TestDbContextFactory(options));
         var executionStore = new LivePositionExecutionStore(
-            new TestDbContextFactory(options), cache);
+            new TestDbContextFactory(options));
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -62,9 +62,9 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new OpenPositionStore(new TestDbContextFactory(options));
         var executionStore = new LivePositionExecutionStore(
-            new TestDbContextFactory(options), cache);
+            new TestDbContextFactory(options));
         var position = new Position { Symbol = "TQQQ", Quantity = 10, InitialQuantity = 10 };
         await repository.SavePositionAsync(position);
         var first = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc);
@@ -93,9 +93,9 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new OpenPositionStore(new TestDbContextFactory(options));
         var executionStore = new LivePositionExecutionStore(
-            new TestDbContextFactory(options), cache);
+            new TestDbContextFactory(options));
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -145,9 +145,9 @@ public class TradeRepositoryTests
         {
             await firstDb.Database.EnsureCreatedAsync();
             using var firstCache = new MemoryCache(new MemoryCacheOptions());
-            var firstRepository = new TradeRepository(firstDb, firstCache);
+            var firstRepository = new OpenPositionStore(new TestDbContextFactory(options));
             var firstExecutionStore = new LivePositionExecutionStore(
-                new TestDbContextFactory(options), firstCache);
+                new TestDbContextFactory(options));
             var position = new Position
             {
                 Symbol = "TQQQ",
@@ -168,9 +168,9 @@ public class TradeRepositoryTests
         await using (var restartedDb = new AppDbContext(options))
         {
             using var restartedCache = new MemoryCache(new MemoryCacheOptions());
-            var restartedRepository = new TradeRepository(restartedDb, restartedCache);
+            var restartedRepository = new OpenPositionStore(new TestDbContextFactory(options));
             var restartedExecutionStore = new LivePositionExecutionStore(
-                new TestDbContextFactory(options), restartedCache);
+                new TestDbContextFactory(options));
             var restored = (await restartedRepository.GetOpenPositionsAsync()).Single();
             var coordinator = new LivePositionExecutionCoordinator(
                 restartedExecutionStore,
@@ -213,9 +213,9 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new OpenPositionStore(new TestDbContextFactory(options));
         var executionStore = new LivePositionExecutionStore(
-            new TestDbContextFactory(options), cache);
+            new TestDbContextFactory(options));
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -254,9 +254,9 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new OpenPositionStore(new TestDbContextFactory(options));
         var executionStore = new LivePositionExecutionStore(
-            new TestDbContextFactory(options), cache);
+            new TestDbContextFactory(options));
         var position = new Position
         {
             Symbol = "TQQQ",
@@ -308,9 +308,9 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new OpenPositionStore(new TestDbContextFactory(options));
         var executionStore = new LivePositionExecutionStore(
-            new TestDbContextFactory(options), cache);
+            new TestDbContextFactory(options));
         var position = new Position { Symbol = "TQQQ", Quantity = 10, InitialQuantity = 10 };
         await repository.SavePositionAsync(position);
 
@@ -331,7 +331,7 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new PatternSignalStore(new TestDbContextFactory(options), cache);
         var barAt = new DateTime(2026, 8, 17, 0, 0, 0, DateTimeKind.Utc);
 
         var firstDuplicate = Signal("AAPL", PatternType.Breakout, null, barAt, barAt.AddHours(1));
@@ -358,18 +358,18 @@ public class TradeRepositoryTests
     }
 
     [Fact]
-    public async Task AddSignalAsync_RejectsMissingSignalBarIdentity()
+    public async Task AddSignalsBatchAsync_RejectsMissingSignalBarIdentity()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"signals-{Guid.NewGuid()}")
             .Options;
         await using var db = new AppDbContext(options);
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new PatternSignalStore(new TestDbContextFactory(options), cache);
         var signal = Signal("AAPL", PatternType.Breakout, null, DateTime.UtcNow, DateTime.UtcNow);
         signal.SignalBarAt = null;
 
-        var act = () => repository.AddSignalAsync(signal);
+        var act = () => repository.AddSignalsBatchAsync([signal]);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*signal bar timestamp*");
@@ -384,13 +384,14 @@ public class TradeRepositoryTests
         await using var db = new AppDbContext(options);
         await db.Database.EnsureCreatedAsync();
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var repository = new TradeRepository(db, cache);
+        var repository = new TradeRecommendationStore(new TestDbContextFactory(options), cache);
         var first = Recommendation(sourceSignalId: 81, entryPrice: 100m);
         await repository.AddRecommendationAsync(first);
-        first.EntryRequestedAt = new DateTime(2026, 8, 18, 15, 0, 0);
-        first.EntryAccountId = 7;
-        first.EntryOrderId = "entry-81";
-        await repository.UpdateRecommendationAsync(first);
+        var storedFirst = await db.TradeRecommendations.SingleAsync();
+        storedFirst.EntryRequestedAt = new DateTime(2026, 8, 18, 15, 0, 0);
+        storedFirst.EntryAccountId = 7;
+        storedFirst.EntryOrderId = "entry-81";
+        await db.SaveChangesAsync();
         var duplicate = Recommendation(sourceSignalId: 81, entryPrice: 999m);
 
         await repository.AddRecommendationAsync(duplicate);
@@ -398,7 +399,7 @@ public class TradeRepositoryTests
         (await db.TradeRecommendations.CountAsync()).Should().Be(1);
         duplicate.Id.Should().Be(first.Id);
         duplicate.EntryPrice.Should().Be(100m);
-        duplicate.EntryRequestedAt.Should().Be(first.EntryRequestedAt);
+        duplicate.EntryRequestedAt.Should().Be(storedFirst.EntryRequestedAt);
         duplicate.EntryOrderId.Should().Be("entry-81");
     }
 

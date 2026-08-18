@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Strategies;
+using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -10,7 +11,6 @@ using StockTrader.Services.LiveParameter;
 using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Order;
-
 namespace StockTrader.BackgroundServices;
 
 /// <summary>
@@ -76,7 +76,7 @@ public class PositionExecutionManagerService : BackgroundService
     private async Task CheckPositionExecutionsAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
-        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+        var positions = scope.ServiceProvider.GetRequiredService<IOpenPositionStore>();
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var liveParamService = scope.ServiceProvider.GetRequiredService<ILiveParameterService>();
         var strategies = scope.ServiceProvider.GetRequiredService<ICompiledStrategyRepository>();
@@ -87,7 +87,7 @@ public class PositionExecutionManagerService : BackgroundService
 
         _liveExecutionOverrides = await liveParamService.GetLiveOverridesAsync(ct);
 
-        var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
+        var openPositions = await positions.GetOpenPositionsAsync(ct);
         var customPatterns = await strategies.GetByNamesAsync(
             openPositions.Select(position => position.CustomPatternName).OfType<string>(), ct);
 
@@ -178,7 +178,7 @@ public class PositionExecutionManagerService : BackgroundService
                                    || position.TrailingStopActivated != trailingBefore;
                     if (stateChanged)
                     {
-                        await tradeRepo.SavePositionAsync(position, ct);
+                        await positions.SavePositionAsync(position, ct);
                     }
                 }
             }

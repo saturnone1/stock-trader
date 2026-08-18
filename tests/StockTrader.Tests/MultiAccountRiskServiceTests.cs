@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using StockTrader.Application.Accounts;
+using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -16,14 +17,14 @@ namespace StockTrader.Tests;
 
 public class MultiAccountRiskServiceTests
 {
-    private readonly Mock<ITradeRepository> _tradeRepoMock;
+    private readonly Mock<IOpenPositionStore> _positionStoreMock;
     private readonly Mock<ISettingsRepository> _settingsRepoMock;
     private readonly Mock<IAccountManager> _accountManagerMock;
     private readonly TradingSettings _defaultSettings;
 
     public MultiAccountRiskServiceTests()
     {
-        _tradeRepoMock = new Mock<ITradeRepository>();
+        _positionStoreMock = new Mock<IOpenPositionStore>();
         _settingsRepoMock = new Mock<ISettingsRepository>();
         _accountManagerMock = new Mock<IAccountManager>();
 
@@ -58,8 +59,8 @@ public class MultiAccountRiskServiceTests
     {
         var serviceProviderMock = new Mock<IServiceProvider>();
         serviceProviderMock
-            .Setup(sp => sp.GetService(typeof(ITradeRepository)))
-            .Returns(_tradeRepoMock.Object);
+            .Setup(sp => sp.GetService(typeof(IOpenPositionStore)))
+            .Returns(_positionStoreMock.Object);
         serviceProviderMock
             .Setup(sp => sp.GetService(typeof(ISettingsRepository)))
             .Returns(_settingsRepoMock.Object);
@@ -132,7 +133,7 @@ public class MultiAccountRiskServiceTests
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(positions);
 
@@ -229,7 +230,7 @@ public class MultiAccountRiskServiceTests
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(lossPositions);
 
@@ -260,7 +261,7 @@ public class MultiAccountRiskServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Position>
             {
@@ -288,7 +289,7 @@ public class MultiAccountRiskServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Position>
             {
@@ -321,7 +322,7 @@ public class MultiAccountRiskServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Position>
             {
@@ -349,7 +350,7 @@ public class MultiAccountRiskServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Position>());
 
@@ -379,7 +380,7 @@ public class MultiAccountRiskServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveAccountAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(account);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Position>());
 
@@ -508,7 +509,7 @@ public class MultiAccountRiskServiceTests
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(positions);
 
@@ -554,7 +555,7 @@ public class MultiAccountRiskServiceTests
         _settingsRepoMock
             .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userSettings);
-        _tradeRepoMock
+        _positionStoreMock
             .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(positions);
 

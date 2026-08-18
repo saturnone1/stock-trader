@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Trading;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
@@ -93,7 +94,7 @@ public class MultiAccountRiskService : IRiskManagementService
         {
             entry.AbsoluteExpirationRelativeToNow = OpenPositionsCacheTtl;
             using var scope = _scopeFactory.CreateScope();
-            var repo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+            var repo = scope.ServiceProvider.GetRequiredService<IOpenPositionStore>();
             return await repo.GetOpenPositionsAsync(ct);
         }) ?? new List<Models.Position>();
 
@@ -132,10 +133,10 @@ public class MultiAccountRiskService : IRiskManagementService
     {
         using var scope = _scopeFactory.CreateScope();
         var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
-        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+        var positions = scope.ServiceProvider.GetRequiredService<IOpenPositionStore>();
 
         var settings = await settingsRepo.GetAsync(ct);
-        var allOpenPositions = await tradeRepo.GetOpenPositionsAsync(ct);
+        var allOpenPositions = await positions.GetOpenPositionsAsync(ct);
         var accounts = await _accountManager.GetAllAccountsAsync(ct);
 
         if (accounts.Count == 0)

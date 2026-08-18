@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using StockTrader.Application.Execution;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -7,9 +6,7 @@ using StockTrader.Models.Enums;
 namespace StockTrader.Data.Repositories;
 
 /// <summary>SQLite에서 포지션 실행의 비교 후 갱신과 체결 원장 기록을 원자적으로 수행합니다.</summary>
-public sealed class LivePositionExecutionStore(
-    IDbContextFactory<AppDbContext> dbFactory,
-    IMemoryCache cache)
+public sealed class LivePositionExecutionStore(IDbContextFactory<AppDbContext> dbFactory)
     : ILivePositionExecutionStore
 {
     public async Task<bool> TryClaimAsync(
@@ -33,7 +30,6 @@ public sealed class LivePositionExecutionStore(
                 .SetProperty(position => position.ExecutionRequestKind, claim.Kind)
                 .SetProperty(position => position.ExecutionRequestRuleIndex, claim.ScalingRuleIndex)
                 .SetProperty(position => position.ExecutionOrderId, (string?)null), ct);
-        cache.Remove(TradeReadCache.OpenPositions);
         return updated == 1;
     }
 
@@ -50,7 +46,6 @@ public sealed class LivePositionExecutionStore(
                 && position.ExecutionRequestedAt == requestedAt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(position => position.ExecutionOrderId, orderId), ct);
-        cache.Remove(TradeReadCache.OpenPositions);
         return updated == 1;
     }
 
@@ -72,7 +67,6 @@ public sealed class LivePositionExecutionStore(
                 .SetProperty(position => position.ExecutionRequestKind, (PositionExecutionKind?)null)
                 .SetProperty(position => position.ExecutionRequestRuleIndex, (int?)null)
                 .SetProperty(position => position.ExecutionOrderId, (string?)null), ct);
-        cache.Remove(TradeReadCache.OpenPositions);
         return updated == 1;
     }
 
@@ -116,7 +110,6 @@ public sealed class LivePositionExecutionStore(
                 db.TradeRecords.Add(ToEntity(trade));
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            cache.Remove(TradeReadCache.OpenPositions);
             return true;
         }
         catch

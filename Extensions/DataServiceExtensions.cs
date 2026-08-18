@@ -6,6 +6,7 @@ using StockTrader.Application.Signals;
 using StockTrader.Application.Research;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Data.Migrations;
 using StockTrader.Models.Enums;
@@ -23,7 +24,10 @@ public static class DataServiceExtensions
         // Repositories
         services.AddScoped<IOhlcvRepository, OhlcvRepository>();
         services.AddScoped<IPatternStatsRepository, PatternStatsRepository>();
-        services.AddScoped<ITradeRepository, TradeRepository>();
+        services.AddSingleton<ITradeHistoryStore, TradeHistoryStore>();
+        services.AddSingleton<IOpenPositionStore, OpenPositionStore>();
+        services.AddSingleton<ITradeRecommendationStore, TradeRecommendationStore>();
+        services.AddSingleton<IPatternSignalStore, PatternSignalStore>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<ISettingsManagementStore, SettingsManagementStore>();
         services.AddScoped<SettingsManagementService>();

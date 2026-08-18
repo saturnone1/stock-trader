@@ -1,4 +1,5 @@
 using StockTrader.Api.Contracts;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 
 namespace StockTrader.Api;
@@ -9,11 +10,11 @@ public static class PortfolioEndpoints
     {
         // GET /api/portfolio — 보유 포지션 상세
         group.MapGet("/portfolio", async (
-            ITradeRepository tradeRepo,
+            IOpenPositionStore positionsStore,
             TimeProvider timeProvider,
             CancellationToken ct) =>
         {
-            var positions = await tradeRepo.GetOpenPositionsAsync(ct);
+            var positions = await positionsStore.GetOpenPositionsAsync(ct);
 
             return Results.Ok(new
             {
@@ -26,11 +27,11 @@ public static class PortfolioEndpoints
 
         // GET /api/portfolio/performance — 성과 분석
         group.MapGet("/portfolio/performance", async (
-            ITradeRepository tradeRepo,
+            ITradeHistoryStore tradeHistory,
             IPatternStatsRepository statsRepo,
             CancellationToken ct) =>
         {
-            var tradesTask      = tradeRepo.GetTradesAsync(ct: ct);
+            var tradesTask      = tradeHistory.GetTradesAsync(ct: ct);
             var patternStatTask = statsRepo.GetAllAsync(ct);
 
             await Task.WhenAll(tradesTask, patternStatTask);

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using StockTrader.Application.Strategies;
+using StockTrader.Application.Trading;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
@@ -140,7 +141,7 @@ public class PatternScannerService : BackgroundService
         var patternDetection = scope.ServiceProvider.GetRequiredService<PatternDetectionService>();
         var signalService = scope.ServiceProvider.GetRequiredService<ISignalService>();
         var orderService = scope.ServiceProvider.GetRequiredService<IOrderService>();
-        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+        var signalStore = scope.ServiceProvider.GetRequiredService<IPatternSignalStore>();
 
         var bars = await ohlcvRepo.GetBarsAsync(symbol, TimeFrame.Daily,
             nowUtc.AddDays(-StrategyEvaluationPolicy.LiveDailySignalLookbackDays), nowUtc, ct);
@@ -188,7 +189,7 @@ public class PatternScannerService : BackgroundService
 
         // Batch insert: 단일 SaveChangesAsync로 모든 신호를 한 번에 저장
         // 기존: N회 AddSignalAsync (각각 SaveChangesAsync) → 개선: 1회 AddSignalsBatchAsync
-        await tradeRepo.AddSignalsBatchAsync(signals, ct);
+        await signalStore.AddSignalsBatchAsync(signals, ct);
 
         var recommendations = await signalService.EvaluateSignalsAsync(signals, ct);
 

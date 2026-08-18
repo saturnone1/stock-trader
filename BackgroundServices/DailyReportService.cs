@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Account;
 using StockTrader.Services.Notification;
@@ -143,7 +144,8 @@ public sealed class DailyReportService : BackgroundService
     private async Task SendDailyReportAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
-        var tradeRepo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+        var tradeHistory = scope.ServiceProvider.GetRequiredService<ITradeHistoryStore>();
+        var recommendations = scope.ServiceProvider.GetRequiredService<ITradeRecommendationStore>();
 
         var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTime);
         var today = DateOnly.FromDateTime(nowEt);
@@ -153,14 +155,14 @@ public sealed class DailyReportService : BackgroundService
         try
         {
             // 오늘 체결된 거래 조회
-            var todayTrades = await tradeRepo.GetTradesAsync(
+            var todayTrades = await tradeHistory.GetTradesAsync(
                 patternType: null,
                 from: todayStart,
                 to: todayEnd,
                 ct: ct);
 
             // 오늘 발생한 시그널/추천 조회 (최대 50개)
-            var recentRecs = await tradeRepo.GetRecentRecommendationsAsync(count: 50, ct: ct);
+            var recentRecs = await recommendations.GetRecentRecommendationsAsync(count: 50, ct: ct);
             var todayRecs = recentRecs
                 .Where(r => r.GeneratedAt >= todayStart && r.GeneratedAt < todayEnd)
                 .ToList();

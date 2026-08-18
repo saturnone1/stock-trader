@@ -1,4 +1,5 @@
 using StockTrader.Application.Execution;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -18,7 +19,7 @@ public sealed class ManualOrderWorkflow
     private static readonly TimeSpan MaxSignalAge = TimeSpan.FromHours(24);
 
     private readonly IAccountManager _accounts;
-    private readonly ITradeRepository _trades;
+    private readonly ITradeRecommendationStore _recommendations;
     private readonly INotificationService _notifications;
     private readonly IMarketCalendar _marketCalendar;
     private readonly ISignalService _signals;
@@ -29,7 +30,7 @@ public sealed class ManualOrderWorkflow
 
     public ManualOrderWorkflow(
         IAccountManager accounts,
-        ITradeRepository trades,
+        ITradeRecommendationStore recommendations,
         INotificationService notifications,
         IMarketCalendar marketCalendar,
         ISignalService signals,
@@ -39,7 +40,7 @@ public sealed class ManualOrderWorkflow
         ILogger<ManualOrderWorkflow> logger)
     {
         _accounts = accounts;
-        _trades = trades;
+        _recommendations = recommendations;
         _notifications = notifications;
         _marketCalendar = marketCalendar;
         _signals = signals;
@@ -73,7 +74,7 @@ public sealed class ManualOrderWorkflow
             return (false, "활성 브로커 계좌가 없습니다. 계좌 관리에서 계좌를 설정하세요.");
         }
 
-        await _trades.AddRecommendationAsync(recommendation, ct);
+        await _recommendations.AddRecommendationAsync(recommendation, ct);
         if (recommendation.WasExecuted)
             return (false, $"{signal.Symbol} 시그널은 이미 주문 체결이 반영됐습니다.");
         var execution = await _entryExecutions.ExecuteAsync(recommendation, account, ct);

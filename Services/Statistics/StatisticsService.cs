@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using StockTrader.Application.Trading;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
@@ -10,15 +11,15 @@ public class StatisticsService : IStatisticsService
     private const string AllStatsCacheKey = "PatternStats_All";
 
     private readonly IPatternStatsRepository _statsRepo;
-    private readonly ITradeRepository _tradeRepo;
+    private readonly ITradeHistoryStore _tradeHistory;
     private readonly IMemoryCache _cache;
     private readonly ILogger<StatisticsService> _logger;
 
     public StatisticsService(IPatternStatsRepository statsRepo,
-        ITradeRepository tradeRepo, IMemoryCache cache, ILogger<StatisticsService> logger)
+        ITradeHistoryStore tradeHistory, IMemoryCache cache, ILogger<StatisticsService> logger)
     {
         _statsRepo = statsRepo;
-        _tradeRepo = tradeRepo;
+        _tradeHistory = tradeHistory;
         _cache = cache;
         _logger = logger;
     }
@@ -85,7 +86,7 @@ public class StatisticsService : IStatisticsService
     {
         _logger.LogInformation("Refreshing all pattern stats...");
         // 전체 거래 이력이 필요: int.MaxValue로 기본 1000건 상한 우회
-        var allTrades = await _tradeRepo.GetTradesAsync(take: int.MaxValue, ct: ct);
+        var allTrades = await _tradeHistory.GetTradesAsync(take: int.MaxValue, ct: ct);
 
         // 거래 이력이 전혀 없으면 기존 통계를 보존하고 종료한다.
         // 이력이 없는 상태에서 계속 진행하면 activeKeys가 비어 있어 DeleteStaleAsync가
