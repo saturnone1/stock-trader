@@ -53,7 +53,8 @@ public class BreakoutDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.Breakout,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
             TargetPrice = target,

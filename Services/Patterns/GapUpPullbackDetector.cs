@@ -47,7 +47,8 @@ public class GapUpPullbackDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.GapUpPullback,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = curr.Low,
             TargetPrice = curr.Close + (curr.Close - curr.Low) * 2,

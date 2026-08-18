@@ -104,7 +104,8 @@ public class VolatilityBreakoutDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.VolatilityBreakout,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = Math.Round(entryPrice, 2),
             StopLossPrice = Math.Round(stopLoss, 2),
             TargetPrice = Math.Round(target, 2),

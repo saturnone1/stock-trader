@@ -110,10 +110,10 @@ public class RuleBasedDetectorTests
             ExitGroupsLogic = "OR"
         };
 
-        new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System).ShouldExit(bars).Should().BeTrue();
+        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeTrue();
 
         definition.ExitGroupsLogic = "AND";
-        new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System).ShouldExit(bars).Should().BeFalse();
+        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeFalse();
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public class RuleBasedDetectorTests
                 EntryRulesJson = JsonSerializer.Serialize(rules),
                 EntryLogic = "OR"
             };
-            return await new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System)
+            return await new RuleBasedDetector(new IndicatorService(), definition)
                 .DetectAsync("AAPL", bars, BullRegime);
         }
 
@@ -202,9 +202,8 @@ public class RuleBasedDetectorTests
     }
 
     [Fact]
-    public async Task DetectAsync_UsesTheExplicitClockForSignalObservationTime()
+    public async Task DetectAsync_UsesTheSignalBarTimeForDeterministicResearch()
     {
-        var observedAt = new DateTimeOffset(2025, 2, 3, 4, 5, 6, TimeSpan.Zero);
         var definition = new StrategyDocument
         {
             Name = "deterministic-clock",
@@ -215,18 +214,14 @@ public class RuleBasedDetectorTests
             AtrStopMultiplier = 2m,
             AtrTargetMultiplier = 3m
         };
-        var detector = new RuleBasedDetector(
-            new IndicatorService(),
-            definition,
-            new FixedTimeProvider(observedAt));
+        var detector = new RuleBasedDetector(new IndicatorService(), definition);
 
-        var result = await detector.DetectAsync(
-            "AAPL",
-            CreateBars(Enumerable.Repeat(100m, 60).ToArray()),
-            BullRegime);
+        var bars = CreateBars(Enumerable.Repeat(100m, 60).ToArray());
+        var result = await detector.DetectAsync("AAPL", bars, BullRegime);
 
         result.Should().NotBeNull();
-        result!.DetectedAt.Should().Be(observedAt.UtcDateTime);
+        result!.DetectedAt.Should().Be(bars[^1].Timestamp);
+        result.SignalBarAt.Should().Be(bars[^1].Timestamp);
     }
 
     private static RuleBasedDetector CreateSut(EntryRule rule)
@@ -241,7 +236,7 @@ public class RuleBasedDetectorTests
             DefaultAllocationPercent = 100m
         };
 
-        return new RuleBasedDetector(new IndicatorService(), definition, TimeProvider.System);
+        return new RuleBasedDetector(new IndicatorService(), definition);
     }
 
     private static OhlcvBar[] CreateBars(IReadOnlyList<decimal> closes)
@@ -258,8 +253,4 @@ public class RuleBasedDetectorTests
         }).ToArray();
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => utcNow;
-    }
 }

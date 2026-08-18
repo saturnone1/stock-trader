@@ -9,17 +9,15 @@ namespace StockTrader.Services.Patterns;
 public sealed class CustomStrategyDetectorFactory : ICustomStrategyDetectorFactory
 {
     private readonly IIndicatorService _indicators;
-    private readonly TimeProvider _timeProvider;
 
-    public CustomStrategyDetectorFactory(IIndicatorService indicators, TimeProvider timeProvider)
+    public CustomStrategyDetectorFactory(IIndicatorService indicators)
     {
         _indicators = indicators;
-        _timeProvider = timeProvider;
     }
 
     public ICustomStrategyDetector Create(StrategyDocument definition) =>
-        new RuleBasedDetector(_indicators, definition, _timeProvider);
+        new RuleBasedDetector(_indicators, definition);
 
     public ICustomStrategyDetector Create(CompiledStrategy strategy) =>
-        new RuleBasedDetector(_indicators, strategy, _timeProvider);
+        new RuleBasedDetector(_indicators, strategy);
 }

@@ -60,7 +60,8 @@ public class TrendPullbackDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.TrendPullback,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = curr.Close - atr[^1] * _config.AtrStopMultiplier,
             TargetPrice = currentSma + atr[^1] * _config.AtrTargetMultiplier,

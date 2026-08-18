@@ -376,18 +376,64 @@ public class TradeRepository : ITradeRepository
 
     public async Task AddSignalAsync(PatternSignal signal, CancellationToken ct = default)
     {
-        _db.PatternSignals.Add(signal);
-        await _db.SaveChangesAsync(ct);
-        _cache.Remove(ActiveSignalsCacheKey);
+        await AddSignalsBatchAsync([signal], ct);
     }
 
     public async Task AddSignalsBatchAsync(IEnumerable<PatternSignal> signals, CancellationToken ct = default)
     {
-        // AddRange stages all entities; single SaveChangesAsync writes them in one transaction
-        _db.PatternSignals.AddRange(signals);
+        var candidates = signals.ToList();
+        if (candidates.Count == 0)
+            return;
+        if (candidates.Any(signal => signal.SignalBarAt is null))
+            throw new InvalidOperationException("Persisted pattern signals require a signal bar timestamp.");
+
+        var patternTypes = candidates.Select(signal => signal.PatternType).Distinct().ToList();
+        var barTimes = candidates.Select(signal => signal.SignalBarAt).Distinct().ToList();
+        var existingSignals = await _db.PatternSignals
+            .AsNoTracking()
+            .Where(signal => patternTypes.Contains(signal.PatternType)
+                && barTimes.Contains(signal.SignalBarAt))
+            .Select(signal => new
+            {
+                signal.Symbol,
+                signal.PatternType,
+                signal.CustomPatternName,
+                signal.SignalBarAt
+            })
+            .ToListAsync(ct);
+        var identities = existingSignals
+            .Select(signal => SignalIdentity(
+                signal.Symbol,
+                signal.PatternType,
+                signal.CustomPatternName,
+                signal.SignalBarAt!.Value))
+            .ToHashSet(StringComparer.Ordinal);
+        var newSignals = candidates
+            .Where(signal => identities.Add(SignalIdentity(
+                signal.Symbol,
+                signal.PatternType,
+                signal.CustomPatternName,
+                signal.SignalBarAt!.Value)))
+            .ToList();
+        if (newSignals.Count == 0)
+            return;
+
+        // AddRange stages all new identities; single SaveChangesAsync writes them in one transaction.
+        _db.PatternSignals.AddRange(newSignals);
         await _db.SaveChangesAsync(ct);
         _cache.Remove(ActiveSignalsCacheKey);
     }
+
+    private static string SignalIdentity(
+        string symbol,
+        PatternType patternType,
+        string? customPatternName,
+        DateTime signalBarAt) => string.Join(
+            '\u001f',
+            symbol.Trim().ToUpperInvariant(),
+            (int)patternType,
+            customPatternName?.Trim().ToUpperInvariant() ?? string.Empty,
+            signalBarAt.Ticks);
 
     public async Task DeactivateSignalAsync(long signalId, CancellationToken ct = default)
     {

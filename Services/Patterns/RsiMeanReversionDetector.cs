@@ -45,7 +45,8 @@ public class RsiMeanReversionDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.RsiMeanReversion,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = curr.Close - atr[^1] * _config.AtrStopMultiplier,
             TargetPrice = curr.Close + atr[^1] * _config.AtrTargetMultiplier,

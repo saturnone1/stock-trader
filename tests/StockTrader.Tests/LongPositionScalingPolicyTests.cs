@@ -122,7 +122,7 @@ public class LongPositionScalingPolicyTests
         }).ToArray();
         var counts = new Dictionary<int, int>();
         ICompiledStrategyRuntime runtime = new RuleBasedDetector(
-            new IndicatorService(), strategy, TimeProvider.System);
+            new IndicatorService(), strategy);
 
         var match = runtime.EvaluateScaling(bars, 0m, counts);
         var fill = LongPositionScalingPolicy.Apply(

@@ -264,6 +264,40 @@ public class DatabaseSchemaMigratorTests
             .Should().Be(4);
     }
 
+    [Fact]
+    public async Task SignalBarIdentityMigrationPreservesLegacySignalsWithoutInventingBarTimes()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+        var previousMigration = db.Database.GetMigrations().Single(value =>
+            value.EndsWith("_AddDurablePositionExecutionState", StringComparison.Ordinal));
+        await db.GetService<IMigrator>().MigrateAsync(previousMigration);
+        await ExecuteAsync(connection, """
+            INSERT INTO PatternSignals (
+                Symbol, PatternType, CustomPatternName, DetectedAt,
+                EntryPrice, StopLossPrice, TargetPrice, Confidence, Details, IsActive)
+            VALUES
+                ('AAPL', 2, NULL, '2026-08-17T14:00:00Z', 100, 95, 110, 0.8, '', 1),
+                ('AAPL', 2, NULL, '2026-08-17T15:00:00Z', 100, 95, 110, 0.8, '', 1),
+                ('AAPL', 100, 'alpha', '2026-08-17T16:00:00Z', 100, 95, 110, 0.8, '', 1);
+            """);
+
+        await CreateMigrator(db).MigrateAsync();
+
+        (await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM PatternSignals"))
+            .Should().Be(3);
+        (await ScalarAsync<long>(connection,
+            "SELECT COUNT(*) FROM PatternSignals WHERE SignalBarAt IS NULL"))
+            .Should().Be(3);
+        (await ScalarAsync<long>(connection, """
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'index'
+              AND name IN (
+                'IX_PatternSignals_Symbol_PatternType_SignalBarAt',
+                'IX_PatternSignals_Symbol_PatternType_CustomPatternName_SignalBarAt')
+            """)).Should().Be(2);
+    }
+
     private static DatabaseSchemaMigrator CreateMigrator(AppDbContext db) =>
         new(db, NullLogger<DatabaseSchemaMigrator>.Instance);
 

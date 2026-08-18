@@ -79,7 +79,8 @@ public sealed class CumulativeRsi2Detector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.CumulativeRsi2,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = Math.Round(stopLoss, 2),
             TargetPrice = Math.Round(placeholderTarget, 2),

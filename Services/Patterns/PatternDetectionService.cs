@@ -21,6 +21,7 @@ public class PatternDetectionService
     private readonly IOhlcvRepository _ohlcvRepository;
     private readonly ICompiledStrategyRepository _strategies;
     private readonly AppDbContext _db;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<PatternDetectionService> _logger;
 
     public PatternDetectionService(
@@ -33,6 +34,7 @@ public class PatternDetectionService
         IOhlcvRepository ohlcvRepository,
         ICompiledStrategyRepository strategies,
         AppDbContext db,
+        TimeProvider timeProvider,
         ILogger<PatternDetectionService> logger)
     {
         _detectors = detectors;
@@ -44,6 +46,7 @@ public class PatternDetectionService
         _ohlcvRepository = ohlcvRepository;
         _strategies = strategies;
         _db = db;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -88,6 +91,7 @@ public class PatternDetectionService
                 var signal = await detector.DetectAsync(symbol, bars, effectiveRegime, ct);
                 if (signal != null)
                 {
+                    StampLiveTiming(signal, bars);
                     // ML 기반 신뢰도 보정
                     signal.Confidence = await EnhanceConfidenceAsync(signal, bars, effectiveRegime, ct);
 
@@ -118,6 +122,7 @@ public class PatternDetectionService
                 detector.SetReferenceData(referenceData, bars[^1].Timestamp);
                 var signal = await detector.DetectAsync(symbol, bars, effectiveRegime, ct);
                 if (signal == null) continue;
+                StampLiveTiming(signal, bars);
                 signal.Confidence = await EnhanceConfidenceAsync(signal, bars, effectiveRegime, ct);
                 signals.Add(signal);
                 _logger.LogInformation("Custom strategy {Strategy} detected for {Symbol}", strategy.Name, symbol);
@@ -129,6 +134,12 @@ public class PatternDetectionService
         }
 
         return signals;
+    }
+
+    private void StampLiveTiming(PatternSignal signal, OhlcvBar[] bars)
+    {
+        signal.SignalBarAt = bars[^1].Timestamp;
+        signal.DetectedAt = _timeProvider.GetUtcNow().UtcDateTime;
     }
 
     private async Task<Dictionary<string, OhlcvBar[]>> LoadReferenceDataAsync(

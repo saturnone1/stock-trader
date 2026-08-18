@@ -13,29 +13,28 @@ namespace StockTrader.Tests;
 public class CustomStrategyDetectorFactoryTests
 {
     [Fact]
-    public async Task Create_FromDefinitionCompilesTheSharedRuntimeAndUsesTheInjectedClock()
+    public async Task Create_FromDefinitionCompilesTheSharedRuntimeWithDeterministicBarTime()
     {
-        var observedAt = new DateTimeOffset(2025, 3, 4, 5, 6, 7, TimeSpan.Zero);
-        var factory = new CustomStrategyDetectorFactory(
-            new IndicatorService(),
-            new FixedTimeProvider(observedAt));
+        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
+        var bars = Bars();
 
         var detector = factory.Create(Definition("factory-clock"));
         var signal = await detector.DetectAsync(
             "AAPL",
-            Bars(),
+            bars,
             new MarketRegime { SpyAbove200Ma = true });
 
         detector.Strategy.Name.Should().Be("factory-clock");
         signal.Should().NotBeNull();
-        signal!.DetectedAt.Should().Be(observedAt.UtcDateTime);
+        signal!.DetectedAt.Should().Be(bars[^1].Timestamp);
+        signal.SignalBarAt.Should().Be(bars[^1].Timestamp);
     }
 
     [Fact]
     public void Create_FromCompiledStrategyPreservesTheExactCompiledAggregate()
     {
         var compiled = StrategyCompiler.Compile(Definition("compiled-once")).Strategy!;
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService(), TimeProvider.System);
+        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
 
         var detector = factory.Create(compiled);
 
@@ -46,7 +45,7 @@ public class CustomStrategyDetectorFactoryTests
     [Fact]
     public void Create_ReturnsAnIsolatedRuntimeForEveryExecutionScope()
     {
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService(), TimeProvider.System);
+        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
         var definition = Definition("isolated-runtime");
 
         var first = factory.Create(definition);
@@ -58,7 +57,7 @@ public class CustomStrategyDetectorFactoryTests
     [Fact]
     public void Create_InvalidDefinitionCannotBypassCentralCompilation()
     {
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService(), TimeProvider.System);
+        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
         var invalid = Definition("invalid");
         invalid.EntryGroupsJson = "{broken";
 
@@ -104,8 +103,4 @@ public class CustomStrategyDetectorFactoryTests
         Volume = 100_000
     }).ToArray();
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => utcNow;
-    }
 }

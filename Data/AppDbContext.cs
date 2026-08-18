@@ -43,7 +43,12 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<PatternSignal>(entity =>
         {
-            entity.HasIndex(s => new { s.Symbol, s.PatternType, s.DetectedAt }).IsUnique();
+            entity.HasIndex(s => new { s.Symbol, s.PatternType, s.SignalBarAt })
+                .IsUnique()
+                .HasFilter("\"CustomPatternName\" IS NULL AND \"SignalBarAt\" IS NOT NULL");
+            entity.HasIndex(s => new { s.Symbol, s.PatternType, s.CustomPatternName, s.SignalBarAt })
+                .IsUnique()
+                .HasFilter("\"CustomPatternName\" IS NOT NULL AND \"SignalBarAt\" IS NOT NULL");
         });
 
         modelBuilder.Entity<PatternStats>(entity =>

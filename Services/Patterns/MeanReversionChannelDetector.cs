@@ -70,7 +70,8 @@ public class MeanReversionChannelDetector : IPatternDetector
         {
             Symbol = symbol,
             PatternType = PatternType.MeanReversionChannel,
-            DetectedAt = DateTime.UtcNow,
+            DetectedAt = curr.Timestamp,
+            SignalBarAt = curr.Timestamp,
             EntryPrice = curr.Close,
             StopLossPrice = stopLoss,
             TargetPrice = target,

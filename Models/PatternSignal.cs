@@ -6,6 +6,15 @@ public class PatternSignal
     public string Symbol { get; set; } = string.Empty;
     public PatternType PatternType { get; set; }
     public string? CustomPatternName { get; set; }
+    /// <summary>
+    /// 전략 조건이 충족된 OHLCV 봉의 시각입니다. 과거 데이터로 다시 평가해도
+    /// 동일해야 하며, 동일 봉 신호의 영속 식별자로 사용합니다.
+    /// 기존 레코드는 값이 없을 수 있습니다.
+    /// </summary>
+    public DateTime? SignalBarAt { get; set; }
+    /// <summary>
+    /// 실행 시스템이 신호를 관측한 시각입니다. 실시간 신호 신선도 판단에 사용합니다.
+    /// </summary>
     public DateTime DetectedAt { get; set; }
     public decimal EntryPrice { get; set; }
     public decimal StopLossPrice { get; set; }
