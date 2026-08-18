@@ -10,7 +10,7 @@ using StockTrader.Services.Market;
 using StockTrader.Services.ML;
 using StockTrader.Services.Order;
 using StockTrader.Services.Risk;
-using StockTrader.Services.LiveParameter;
+using StockTrader.Application.Settings;
 using StockTrader.Services.Signal;
 using StockTrader.Services.Statistics;
 using StockTrader.Services.Financial;

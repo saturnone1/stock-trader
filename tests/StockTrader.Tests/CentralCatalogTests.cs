@@ -68,6 +68,12 @@ public class CentralCatalogTests
         PatternCatalog.All.Should().OnlyContain(item => !string.IsNullOrWhiteSpace(item.DisplayName));
         PatternCatalog.BuiltIn.Select(item => item.Value)
             .Should().BeEquivalentTo(Enum.GetValues<PatternType>().Where(item => item != PatternType.Custom));
+        PatternCatalog.OperationalBuiltIn.Should().OnlyContain(item => item.IsOperational);
+        PatternCatalog.OperationalBuiltIn.Select(item => item.Value).Should().NotContain([
+            PatternType.OpeningRangeBreakout,
+            PatternType.EarningsDrift]);
+        PatternCatalog.Get(PatternType.OpeningRangeBreakout).UnavailableReason.Should().Contain("1분봉");
+        PatternCatalog.Get(PatternType.EarningsDrift).UnavailableReason.Should().Contain("실적");
         PatternCatalog.DisplayName(PatternType.Custom, "  내 전략  ").Should().Be("내 전략");
     }
 
@@ -120,7 +126,7 @@ public class CentralCatalogTests
     {
         var contract = StrategyBuilderMetadataResponse.Create();
 
-        contract.SchemaVersion.Should().Be(5);
+        contract.SchemaVersion.Should().Be(6);
         contract.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
@@ -160,7 +166,7 @@ public class CentralCatalogTests
         var yahoo = root.GetProperty("dataProviders").EnumerateArray()
             .Single(item => item.GetProperty("value").GetString() == "Yahoo");
 
-        root.GetProperty("schemaVersion").GetInt32().Should().Be(5);
+        root.GetProperty("schemaVersion").GetInt32().Should().Be(6);
         root.GetProperty("timeFrames")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         yahoo.GetProperty("maximumLookbackDays").GetProperty("OneMinute").GetInt32().Should().Be(7);
         root.GetProperty("slippageModels")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);

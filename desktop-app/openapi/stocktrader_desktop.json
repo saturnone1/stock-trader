@@ -56,7 +56,24 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyLiveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2011,7 +2028,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyBuilderMetadataResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2086,41 +2110,42 @@
             ]
           },
           "enabledPatterns": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PatternType"
             }
           },
           "riskPerTradePercent": {
-            "type": [
-              "null",
-              "number"
-            ],
+            "type": "number",
             "format": "double"
           },
           "dailyLossLimitPercent": {
-            "type": [
-              "null",
-              "number"
-            ],
+            "type": "number",
             "format": "double"
           },
           "maxTotalPositions": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": "integer",
             "format": "int32"
           },
           "maxPositionsPerSector": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "ApplyLiveResponse": {
+        "required": [
+          "message",
+          "lastModified"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "lastModified": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -2915,6 +2940,40 @@
           }
         }
       },
+      "DataProviderMetadataResponse": {
+        "required": [
+          "value",
+          "displayName",
+          "market",
+          "supportedTimeFrames",
+          "maximumLookbackDays"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/DataSource"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "supportedTimeFrames": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeFrame"
+            }
+          },
+          "maximumLookbackDays": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        }
+      },
       "DataSource": {
         "enum": [
           "Alpaca",
@@ -2945,6 +3004,28 @@
           "signalId": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ExitMethodMetadataResponse": {
+        "required": [
+          "code",
+          "displayName",
+          "parameters"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndicatorParameterMetadataResponse"
+            }
           }
         }
       },
@@ -3519,6 +3600,77 @@
           }
         }
       },
+      "IndicatorMetadataResponse": {
+        "required": [
+          "code",
+          "displayName",
+          "category",
+          "defaultOperator",
+          "defaultThreshold",
+          "valueGuide",
+          "parameters"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "defaultOperator": {
+            "type": "string"
+          },
+          "defaultThreshold": {
+            "type": "number",
+            "format": "double"
+          },
+          "valueGuide": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndicatorParameterMetadataResponse"
+            }
+          }
+        }
+      },
+      "IndicatorParameterMetadataResponse": {
+        "required": [
+          "key",
+          "displayName",
+          "defaultValue",
+          "step",
+          "mustBePositive"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "defaultValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "step": {
+            "type": "number",
+            "format": "double"
+          },
+          "mustBePositive": {
+            "type": "boolean"
+          }
+        }
+      },
       "LiveOrderErrorResponse": {
         "required": [
           "error"
@@ -3585,6 +3737,35 @@
               "null",
               "boolean"
             ]
+          }
+        }
+      },
+      "LiveStrategyConstraintsMetadataResponse": {
+        "required": [
+          "supportedTimeFrames",
+          "supportedEntryModes",
+          "supportsPartialExit",
+          "supportsScaling"
+        ],
+        "type": "object",
+        "properties": {
+          "supportedTimeFrames": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeFrame"
+            }
+          },
+          "supportedEntryModes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supportsPartialExit": {
+            "type": "boolean"
+          },
+          "supportsScaling": {
+            "type": "boolean"
           }
         }
       },
@@ -3730,6 +3911,25 @@
             "items": {
               "$ref": "#/components/schemas/OpenPositionResponse"
             }
+          }
+        }
+      },
+      "OptimizationRankMetadataResponse": {
+        "required": [
+          "code",
+          "displayName",
+          "isDefault"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
           }
         }
       },
@@ -4069,6 +4269,40 @@
               "type": "number",
               "format": "double"
             }
+          }
+        }
+      },
+      "PatternMetadataResponse": {
+        "required": [
+          "value",
+          "code",
+          "displayName",
+          "isBuiltIn",
+          "isOperational",
+          "unavailableReason"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/PatternType"
+          },
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "isBuiltIn": {
+            "type": "boolean"
+          },
+          "isOperational": {
+            "type": "boolean"
+          },
+          "unavailableReason": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5375,6 +5609,31 @@
           }
         }
       },
+      "PreviewTimeFrameMetadataResponse": {
+        "required": [
+          "defaultLookbackDays",
+          "maximumRangeDays",
+          "suggestedRangeDays"
+        ],
+        "type": "object",
+        "properties": {
+          "defaultLookbackDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maximumRangeDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "suggestedRangeDays": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        }
+      },
       "ResearchFacetResponse": {
         "required": [
           "name",
@@ -5678,6 +5937,10 @@
               "null",
               "string"
             ]
+          },
+          "isAvailable": {
+            "type": "boolean",
+            "default": true
           }
         }
       },
@@ -6149,6 +6412,141 @@
           "Adaptive"
         ]
       },
+      "SlippageModelMetadataResponse": {
+        "required": [
+          "value",
+          "displayName",
+          "description",
+          "isDefault"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/SlippageModel"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StrategyBuilderMetadataResponse": {
+        "required": [
+          "schemaVersion",
+          "documentVersion",
+          "indicators",
+          "timeFrames",
+          "dataProviders",
+          "patterns",
+          "ruleOperators",
+          "entryModes",
+          "sizingModes",
+          "logicModes",
+          "scalingDirections",
+          "stopMethods",
+          "targetMethods",
+          "slippageModels",
+          "optimizationRankings",
+          "liveStrategyConstraints"
+        ],
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "documentVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "indicators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndicatorMetadataResponse"
+            }
+          },
+          "timeFrames": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeFrameMetadataResponse"
+            }
+          },
+          "dataProviders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataProviderMetadataResponse"
+            }
+          },
+          "patterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PatternMetadataResponse"
+            }
+          },
+          "ruleOperators": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "entryModes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StrategyOptionMetadataResponse"
+            }
+          },
+          "sizingModes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StrategyOptionMetadataResponse"
+            }
+          },
+          "logicModes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StrategyOptionMetadataResponse"
+            }
+          },
+          "scalingDirections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StrategyOptionMetadataResponse"
+            }
+          },
+          "stopMethods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExitMethodMetadataResponse"
+            }
+          },
+          "targetMethods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExitMethodMetadataResponse"
+            }
+          },
+          "slippageModels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SlippageModelMetadataResponse"
+            }
+          },
+          "optimizationRankings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptimizationRankMetadataResponse"
+            }
+          },
+          "liveStrategyConstraints": {
+            "$ref": "#/components/schemas/LiveStrategyConstraintsMetadataResponse"
+          }
+        }
+      },
       "StrategyDocument": {
         "type": "object",
         "properties": {
@@ -6261,6 +6659,21 @@
           },
           "enableLiveTrading": {
             "type": "boolean"
+          }
+        }
+      },
+      "StrategyOptionMetadataResponse": {
+        "required": [
+          "code",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
           }
         }
       },
@@ -6515,6 +6928,34 @@
           "Daily",
           "Weekly"
         ]
+      },
+      "TimeFrameMetadataResponse": {
+        "required": [
+          "value",
+          "displayName",
+          "isIntraday",
+          "annualizationPeriods",
+          "preview"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/TimeFrame"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "isIntraday": {
+            "type": "boolean"
+          },
+          "annualizationPeriods": {
+            "type": "number",
+            "format": "double"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/PreviewTimeFrameMetadataResponse"
+          }
+        }
       },
       "TradingAccountCreateRequest": {
         "type": "object",

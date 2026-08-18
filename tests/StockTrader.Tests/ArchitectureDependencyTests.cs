@@ -421,7 +421,7 @@ public class ArchitectureDependencyTests
         endpoints.Should().NotContain("SymbolProfiles.");
         endpoints.Should().NotContain("DateTime.UtcNow");
         contracts.Should().Contain("public sealed record SymbolProfileResponse(");
-        service.Should().Contain("PatternCatalog.IsBuiltIn");
+        service.Should().Contain("PatternCatalog.IsOperationalBuiltIn");
         service.Should().Contain("SymbolProfilePolicy.DefaultRiskPerTradePercent");
         service.Should().Contain("MarketSymbolPolicy.Normalize");
         service.Should().NotContain("StockTrader.Data");
@@ -760,6 +760,8 @@ public class ArchitectureDependencyTests
 
         catalog.Should().Contain("D<Tqqq200SmaDetector>(PatternType.Tqqq200Sma)");
         catalog.Should().Contain("IBuiltInPatternDetectorFactory");
+        catalog.Should().NotContain("D<OrbDetector>");
+        catalog.Should().NotContain("D<EarningsDriftDetector>");
         registrations.Should().Contain("foreach (var descriptor in BuiltInPatternDetectorCatalog.All)");
         registrations.Should().NotContain("AddScoped<IPatternDetector, GapUpPullbackDetector>");
         backtest.Should().Contain("_builtInDetectors.CreateAll(settings)");
@@ -768,6 +770,48 @@ public class ArchitectureDependencyTests
         File.ReadAllLines(Path.Combine(
                 repository, "Services/Patterns/BuiltInPatternDetectorCatalog.cs"))
             .Length.Should().BeLessThanOrEqualTo(100);
+    }
+
+    [Fact]
+    public void LivePatternConfigurationUsesOneDatabaseBackedApplicationBoundary()
+    {
+        var repository = FindRepositoryRoot();
+        var application = File.ReadAllText(Path.Combine(
+            repository, "Application/Settings/LiveParameterService.cs"));
+        var endpoint = File.ReadAllText(Path.Combine(repository, "Api/BacktestEndpoints.cs"));
+        var detection = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/PatternDetectionService.cs"));
+        var positionWorker = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/PositionExecutionManagerService.cs"));
+        var metadataEndpoint = File.ReadAllText(Path.Combine(
+            repository, "Api/MetadataEndpoints.cs"));
+        var desktopEndpoints = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/endpoints.ts"));
+
+        application.Should().Contain("ISettingsManagementStore store");
+        application.Should().Contain("PatternCatalog.IsOperationalBuiltIn");
+        application.Should().NotContain("IWebHostEnvironment");
+        application.Should().NotContain("File.WriteAllText");
+        application.Should().NotContain("appsettings.json");
+        endpoint.Should().Contain("ILiveParameterService liveParameters");
+        endpoint.Should().Contain("liveParameters.ApplyAsync(");
+        detection.Should().Contain("ILiveParameterService");
+        detection.Should().Contain("PatternOverrideMerger.Merge(");
+        detection.Should().Contain("_builtInDetectors.CreateAll(patternSettings)");
+        detection.Should().NotContain("ISettingsRepository");
+        positionWorker.Should().Contain("liveParamService.GetAsync(ct)");
+        metadataEndpoint.Should().Contain("Produces<StrategyBuilderMetadataResponse>()");
+        desktopEndpoints.Should().Contain(
+            "components['schemas']['StrategyBuilderMetadataResponse']");
+        desktopEndpoints.Should().NotContain(
+            "strategyBuilderMetadataPromise: Promise<any>");
+        File.Exists(Path.Combine(
+            repository, "Services/LiveParameter/LiveParameterService.cs")).Should().BeFalse();
+        File.Exists(Path.Combine(
+            repository, "Services/LiveParameter/ILiveParameterService.cs")).Should().BeFalse();
+        File.Exists(Path.Combine(
+            repository, "docs/architecture/adr/0042-centralize-live-pattern-configuration.md"))
+            .Should().BeTrue();
     }
 
     [Fact]

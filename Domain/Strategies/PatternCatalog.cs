@@ -4,7 +4,9 @@ public sealed record PatternDescriptor(
     PatternType Value,
     string Code,
     string DisplayName,
-    bool IsBuiltIn);
+    bool IsBuiltIn,
+    bool IsOperational,
+    string? UnavailableReason);
 
 /// <summary>
 /// 전략 식별 코드와 투자자용 표시 이름, 내장 실행 지원 범위의 단일 원천입니다.
@@ -19,9 +21,9 @@ public static class PatternCatalog
         P(PatternType.VwapReversion, "VWAP 회귀"),
         P(PatternType.RsiMeanReversion, "RSI 평균 회귀"),
         P(PatternType.TrendPullback, "추세 눌림목"),
-        P(PatternType.OpeningRangeBreakout, "장 초반 범위 돌파"),
+        U(PatternType.OpeningRangeBreakout, "장 초반 범위 돌파", "장중 세션과 1분봉 개장 범위 데이터 연동이 아직 구현되지 않았습니다."),
         P(PatternType.VolumeSpikeContinuation, "거래량 급증 추세 지속"),
-        P(PatternType.EarningsDrift, "실적 발표 후 추세"),
+        U(PatternType.EarningsDrift, "실적 발표 후 추세", "실적 발표일과 예상치 대비 실제 실적 데이터 연동이 아직 구현되지 않았습니다."),
         P(PatternType.IndexRegimeFilter, "시장 추세 필터"),
         P(PatternType.VolatilityExpansion, "변동성 확대"),
         P(PatternType.MomentumReversal, "모멘텀 반전"),
@@ -31,17 +33,32 @@ public static class PatternCatalog
         P(PatternType.VolatilityBreakout, "변동성 돌파"),
         P(PatternType.Tqqq200Sma, "TQQQ 200일 이동평균선"),
         P(PatternType.CumulativeRsi2, "누적 RSI(2)"),
-        new(PatternType.Custom, nameof(PatternType.Custom), "사용자 전략", false)
+        new(PatternType.Custom, nameof(PatternType.Custom), "사용자 전략", false, true, null)
     ];
 
     public static IReadOnlyList<PatternDescriptor> BuiltIn { get; } =
         All.Where(item => item.IsBuiltIn).ToArray();
 
+    public static IReadOnlyList<PatternDescriptor> OperationalBuiltIn { get; } =
+        BuiltIn.Where(item => item.IsOperational).ToArray();
+
+    public static bool TryGet(PatternType patternType, out PatternDescriptor descriptor)
+    {
+        descriptor = All.FirstOrDefault(item => item.Value == patternType)!;
+        return descriptor is not null;
+    }
+
     public static PatternDescriptor Get(PatternType patternType) =>
-        All.Single(item => item.Value == patternType);
+        TryGet(patternType, out var descriptor)
+            ? descriptor
+            : throw new ArgumentOutOfRangeException(
+                nameof(patternType), patternType, "알 수 없는 전략 코드입니다.");
 
     public static bool IsBuiltIn(PatternType patternType) =>
         BuiltIn.Any(item => item.Value == patternType);
+
+    public static bool IsOperationalBuiltIn(PatternType patternType) =>
+        OperationalBuiltIn.Any(item => item.Value == patternType);
 
     public static string DisplayName(PatternType patternType, string? customPatternName = null) =>
         patternType == PatternType.Custom && !string.IsNullOrWhiteSpace(customPatternName)
@@ -49,5 +66,11 @@ public static class PatternCatalog
             : Get(patternType).DisplayName;
 
     private static PatternDescriptor P(PatternType value, string displayName) =>
-        new(value, value.ToString(), displayName, true);
+        new(value, value.ToString(), displayName, true, true, null);
+
+    private static PatternDescriptor U(
+        PatternType value,
+        string displayName,
+        string unavailableReason) =>
+        new(value, value.ToString(), displayName, true, false, unavailableReason);
 }

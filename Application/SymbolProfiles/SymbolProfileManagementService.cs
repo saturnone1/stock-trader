@@ -85,7 +85,7 @@ public sealed class SymbolProfileManagementService(
         if (name.Length > SymbolProfilePolicy.MaximumNameLength)
             errors.Add($"프로파일 이름은 {SymbolProfilePolicy.MaximumNameLength}자 이하여야 합니다.");
 
-        if (command.EnabledPatterns?.Any(pattern => !PatternCatalog.IsBuiltIn(pattern)) == true)
+        if (command.EnabledPatterns?.Any(pattern => !PatternCatalog.IsOperationalBuiltIn(pattern)) == true)
             errors.Add("종목 프로파일에는 지원되는 내장 전략만 배정할 수 있습니다.");
         if (command.RiskPerTradePercent is <= 0 or > 1)
             errors.Add("거래당 손실 허용률은 0보다 크고 1 이하여야 합니다.");

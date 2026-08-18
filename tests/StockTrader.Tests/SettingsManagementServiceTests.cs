@@ -50,6 +50,21 @@ public sealed class SettingsManagementServiceTests
         result.Settings!.EnabledPatterns.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(PatternType.OpeningRangeBreakout)]
+    [InlineData(PatternType.EarningsDrift)]
+    public async Task UpdateRejectsBuiltInPatternsWithoutOperationalSemantics(PatternType patternType)
+    {
+        var store = new MemoryStore(Current());
+        var service = CreateService(store);
+
+        var result = await service.UpdateAsync(ValidCommand() with { EnabledPatterns = [patternType] });
+
+        result.Succeeded.Should().BeFalse();
+        result.Errors.Should().ContainSingle(error => error.Contains("지원되는 내장 전략"));
+        store.SaveCount.Should().Be(0);
+    }
+
     [Fact]
     public async Task InvalidTradingRiskAndCatalogValuesFailBeforePersistence()
     {

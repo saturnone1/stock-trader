@@ -12,7 +12,7 @@ function response() {
   return {
     orderMode: 'AlertOnly',
     preferredDataSource: 'Alpaca',
-    enabledPatterns: ['Breakout'],
+    enabledPatterns: ['Breakout', 'OpeningRangeBreakout'],
     watchlistSymbols: ['SPY', 'TQQQ'],
     soundAlerts: true,
     accountSize: 100000,
@@ -28,7 +28,13 @@ function response() {
     dataProviders: [{ code: 'Alpaca', displayName: 'Alpaca' }],
     patterns: [
       { code: 'Breakout', displayName: '가격 돌파' },
-      { code: 'Tqqq200Sma', displayName: 'TQQQ 200일 이동평균선' }
+      { code: 'Tqqq200Sma', displayName: 'TQQQ 200일 이동평균선' },
+      {
+        code: 'OpeningRangeBreakout',
+        displayName: '장 초반 범위 돌파',
+        description: '1분봉 개장 범위 데이터 연동이 필요합니다.',
+        isAvailable: false
+      }
     ]
   }
 }
@@ -39,7 +45,22 @@ test('settings form consumes the camel-case explicit API contract and server cat
   assert.equal(form.orderMode, 'AlertOnly')
   assert.equal(form.preferredDataSource, 'Alpaca')
   assert.equal(form.watchlistText, 'SPY, TQQQ')
-  assert.deepEqual(form.patterns.map((item) => item.label), ['가격 돌파', 'TQQQ 200일 이동평균선'])
+  assert.deepEqual(form.patterns.map((item) => item.label), [
+    '가격 돌파',
+    'TQQQ 200일 이동평균선',
+    '장 초반 범위 돌파'
+  ])
+  assert.deepEqual(form.enabledPatterns, ['Breakout'])
+})
+
+test('unavailable built-in patterns stay visible but cannot be enabled', () => {
+  const form = createSettingsForm(response())
+  const unavailable = form.patterns.find((item) => item.code === 'OpeningRangeBreakout')
+
+  assert.equal(unavailable.available, false)
+  assert.match(unavailable.description, /1분봉/)
+  assert.equal(setPatternEnabled(form, unavailable.code, true), form)
+  assert.deepEqual(buildSettingsRequest(form).enabledPatterns, ['Breakout'])
 })
 
 test('settings metadata fails closed instead of inventing unsupported defaults', () => {

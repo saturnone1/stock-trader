@@ -329,6 +329,11 @@ Exit gate: documentation is current and all characterization tests pass.
 
 Exit gate: no feature owns a second copy of shared metadata.
 
+Progress: pattern identity and operational availability now have one owner. Opening-range breakout
+and earnings drift retain stable identities but are explicitly unavailable until their required
+intraday-session and earnings-calendar data exist. Settings, profiles, live promotion, detector
+registration, and backtests all consume that same operational inventory.
+
 ## Phase 2 — Deterministic strategy engine
 
 - Split historical data preparation from simulation.
@@ -376,6 +381,13 @@ Dashboard composition now crosses `IDashboardQuery`, `IDashboardActivityStore`, 
 mode, maps an explicit API response, and consumes generated desktop types. The desktop no longer
 hardcodes exposure to zero or presents negative daily return as maximum drawdown; it displays only
 the actual daily PnL, return, unrealized PnL, trading halt, account, signal, and position state.
+
+Live research promotion now crosses the application-owned `ILiveParameterService` and
+`ISettingsManagementStore`. The database snapshot is the only runtime source for enabled built-ins,
+entry parameters, exit parameters, and risk limits; the former container `appsettings.json` rewrite
+is removed. Entry detection constructs its detector inventory from the same persisted overrides
+that live exit evaluation consumes. Unsupported built-ins and invalid risk limits fail before any
+settings mutation.
 
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 

@@ -5,6 +5,7 @@ import type { components } from './generated';
 type SignalListResponse = components['schemas']['SignalListResponse'];
 type PatternStatisticsListResponse = components['schemas']['PatternStatisticsListResponse'];
 type DashboardResponse = components['schemas']['DashboardResponse'];
+type StrategyBuilderMetadataResponse = components['schemas']['StrategyBuilderMetadataResponse'];
 
 const CUMULATIVE_RSI_PRESET_ID = -1001
 const CUMULATIVE_RSI_PRESET_NAME = '누적 RSI 절대수익'
@@ -242,12 +243,12 @@ export const patternApi = {
     api.post('/api/custom-patterns/preview', { symbol, pattern, ...options }),
 };
 
-let strategyBuilderMetadataPromise: Promise<any> | null = null;
+let strategyBuilderMetadataPromise: Promise<StrategyBuilderMetadataResponse> | null = null;
 
 export const metadataApi = {
   getStrategyBuilder: () => {
     if (!strategyBuilderMetadataPromise) {
-      strategyBuilderMetadataPromise = api.get('/api/metadata/strategy-builder')
+      strategyBuilderMetadataPromise = api.get<StrategyBuilderMetadataResponse>('/api/metadata/strategy-builder')
         .then(response => response.data)
         .catch(error => {
           strategyBuilderMetadataPromise = null;

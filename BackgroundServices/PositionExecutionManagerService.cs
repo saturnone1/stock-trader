@@ -7,7 +7,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
 using StockTrader.Services.Broker;
-using StockTrader.Services.LiveParameter;
+using StockTrader.Application.Settings;
 using StockTrader.Services.Market;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Order;
@@ -85,7 +85,7 @@ public class PositionExecutionManagerService : BackgroundService
         var tradingSettings = scope.ServiceProvider
             .GetRequiredService<IOptions<TradingSettings>>().Value;
 
-        _liveExecutionOverrides = await liveParamService.GetLiveOverridesAsync(ct);
+        _liveExecutionOverrides = (await liveParamService.GetAsync(ct)).Overrides;
 
         var openPositions = await positions.GetOpenPositionsAsync(ct);
         var customPatterns = await strategies.GetByNamesAsync(

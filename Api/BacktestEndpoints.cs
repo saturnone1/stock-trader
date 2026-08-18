@@ -1,25 +1,21 @@
 using StockTrader.Configuration;
+using StockTrader.Api.Contracts;
+using StockTrader.Application.Settings;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Backtest;
-using StockTrader.Services.LiveParameter;
 
 namespace StockTrader.Api;
-
-public sealed record ApplyLiveRequest(
-    PatternParameterOverrides? ParameterOverrides,
-    List<string>? EnabledPatterns,
-    decimal? RiskPerTradePercent,
-    decimal? DailyLossLimitPercent,
-    int? MaxTotalPositions,
-    int? MaxPositionsPerSector);
 
 public static class BacktestEndpoints
 {
     public static RouteGroupBuilder MapBacktestApi(this RouteGroupBuilder api)
     {
         api.MapPost("/backtest", RunAsync).RequireAuthorization();
-        api.MapPost("/backtest/apply-live", ApplyLiveAsync).RequireAuthorization();
+        api.MapPost("/backtest/apply-live", ApplyLiveAsync)
+            .Produces<ApplyLiveResponse>()
+            .Produces<SettingsErrorResponse>(StatusCodes.Status400BadRequest)
+            .RequireAuthorization();
         return api;
     }
 
@@ -114,15 +110,18 @@ public static class BacktestEndpoints
         ILiveParameterService liveParameters,
         CancellationToken ct)
     {
-        await liveParameters.ApplyToLiveAsync(
+        var outcome = await liveParameters.ApplyAsync(new LiveParameterApplyCommand(
             request.ParameterOverrides ?? new PatternParameterOverrides(),
-            request.EnabledPatterns?.Select(Enum.Parse<PatternType>).ToList() ?? [],
-            request.RiskPerTradePercent ?? 0.01m,
-            request.DailyLossLimitPercent ?? 0.03m,
-            request.MaxTotalPositions ?? 7,
-            request.MaxPositionsPerSector ?? 2,
-            ct);
-        return Results.Ok(new { message = "실거래 파라미터가 적용되었습니다." });
+            request.EnabledPatterns,
+            request.RiskPerTradePercent,
+            request.DailyLossLimitPercent,
+            request.MaxTotalPositions,
+            request.MaxPositionsPerSector), ct);
+        return outcome.Succeeded
+            ? Results.Ok(new ApplyLiveResponse(
+                "실거래 파라미터가 적용되었습니다.",
+                outcome.Settings!.LastModified))
+            : Results.BadRequest(new SettingsErrorResponse(outcome.Errors));
     }
 
     private static IReadOnlyList<EquityPoint> Downsample(IReadOnlyList<EquityPoint> points)
