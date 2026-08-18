@@ -2580,6 +2580,18 @@ export interface components {
             defaultEnvironment: string;
             requiresAccountCredentials: boolean;
             isImplemented: boolean;
+            capabilities: components["schemas"]["BrokerCapabilities"];
+        };
+        BrokerCapabilities: {
+            canReadAccount: boolean;
+            canReadPositions: boolean;
+            canReadOrderHistory: boolean;
+            canSubmitProtectedEntry: boolean;
+            canScaleIn: boolean;
+            canCloseFullPosition: boolean;
+            canClosePartialPosition: boolean;
+            canCancelOrder: boolean;
+            isImplemented?: boolean;
         };
         /** @enum {unknown} */
         BrokerType: "Alpaca" | "KoreaInvestment" | "Kiwoom" | "LsSecurities";

@@ -14,6 +14,7 @@ public enum LiveEntryExecutionStatus
     EvidenceMismatch,
     AmbiguousEvidence,
     ConcurrentChange,
+    Unsupported,
 }
 
 public sealed record LiveEntryExecutionResult(
@@ -22,7 +23,8 @@ public sealed record LiveEntryExecutionResult(
     Position? Position = null,
     string? Error = null)
 {
-    public bool ShouldPreventRetry => Status != LiveEntryExecutionStatus.Rejected;
+    public bool ShouldPreventRetry => Status is not (
+        LiveEntryExecutionStatus.Rejected or LiveEntryExecutionStatus.Unsupported);
     public bool IsTracked => Status == LiveEntryExecutionStatus.Completed;
 }
 

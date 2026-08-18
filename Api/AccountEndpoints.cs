@@ -127,6 +127,11 @@ public static class AccountEndpoints
                 return Results.BadRequest(new TradingAccountErrorResponse(
                     ["A disabled account cannot be activated."]));
             }
+            if (!BrokerCatalog.Get(existing.BrokerType).IsImplemented)
+            {
+                return Results.BadRequest(new TradingAccountErrorResponse(
+                    ["This broker integration is not available yet."]));
+            }
 
             await accountManager.SetActiveAccountAsync(id, ct);
             return Results.Ok(new TradingAccountMessageResponse(

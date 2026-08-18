@@ -29,6 +29,22 @@ public class LivePositionExecutionCoordinatorTests
     }
 
     [Fact]
+    public async Task UnsupportedBrokerDoesNotClaimOrSubmitPositionOrder()
+    {
+        var trades = new Mock<ITradeRepository>();
+        var broker = new Mock<IBrokerService>();
+        broker.SetupGet(item => item.BrokerType).Returns(BrokerType.KoreaInvestment);
+
+        var result = await Create(trades).SubmitFullExitAsync(Position(), "손절", broker.Object);
+
+        result.Status.Should().Be(LivePositionExecutionSubmissionStatus.Unsupported);
+        trades.Verify(item => item.TryClaimPositionExecutionAsync(
+            It.IsAny<PositionExecutionClaim>(), It.IsAny<CancellationToken>()), Times.Never);
+        broker.Verify(item => item.ClosePositionAsync(
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task SubmitFullExitAsync_PersistsTrackableBrokerOrder()
     {
         var trades = ClaimingRepository(PositionExecutionKind.FullExit, 10);

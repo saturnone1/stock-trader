@@ -12,6 +12,9 @@ namespace StockTrader.Services.Broker;
 /// </summary>
 public interface IBrokerService
 {
+    /// <summary>기능 지원 여부를 중앙 카탈로그에서 해석하기 위한 안정적인 브로커 식별자.</summary>
+    BrokerType BrokerType { get; }
+
     // ── 주문 실행 ──────────────────────────────────────────────────────────
 
     /// <summary>

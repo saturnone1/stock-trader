@@ -30,7 +30,6 @@ public static class ServiceCollectionExtensions
     {
         // Configuration binding
         services.Configure<AlpacaSettings>(configuration.GetSection("Alpaca"));
-        services.Configure<BrokerSettings>(configuration.GetSection("Broker"));
         services.Configure<YahooFinanceSettings>(configuration.GetSection("YahooFinance"));
         services.Configure<TradingSettings>(configuration.GetSection("Trading"));
         services.Configure<PatternSettings>(configuration.GetSection("Patterns"));

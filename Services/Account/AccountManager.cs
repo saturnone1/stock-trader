@@ -147,6 +147,8 @@ public sealed class AccountManager : IAccountManager
             ?? throw new InvalidOperationException($"Account {accountId} not found.");
         if (!account.IsEnabled)
             throw new InvalidOperationException("A disabled account cannot be activated.");
+        if (!BrokerCatalog.Get(account.BrokerType).IsImplemented)
+            throw new InvalidOperationException("This broker integration is not available yet.");
         if (!await _store.SetActiveAsync(accountId, UtcNow, ct))
             throw new InvalidOperationException($"Account {accountId} could not be activated.");
 
@@ -171,7 +173,8 @@ public sealed class AccountManager : IAccountManager
         var account = accountId.HasValue
             ? await _store.LoadByIdAsync(accountId.Value, ct)
             : await GetActiveAccountAsync(ct);
-        if (account is not { IsEnabled: true })
+        if (account is not { IsEnabled: true }
+            || !BrokerCatalog.Get(account.BrokerType).IsImplemented)
             return null;
 
         if (_brokerCache.TryGetValue(account.Id, out var cached))
@@ -208,6 +211,18 @@ public sealed class AccountManager : IAccountManager
         var checkedAt = UtcNow;
         try
         {
+            var account = await _store.LoadByIdAsync(accountId, ct);
+            if (account is null)
+                return FailedConnectionStatus(accountId, checkedAt, "계좌를 찾을 수 없습니다.");
+            var capabilities = BrokerCatalog.Get(account.BrokerType).Capabilities;
+            if (!capabilities.CanReadAccount || !capabilities.CanReadPositions)
+            {
+                return FailedConnectionStatus(
+                    accountId,
+                    checkedAt,
+                    "선택한 브로커는 계좌 및 보유 종목 조회를 아직 지원하지 않습니다.");
+            }
+
             var broker = await GetBrokerServiceForAccountAsync(accountId, ct);
             if (broker is null)
             {

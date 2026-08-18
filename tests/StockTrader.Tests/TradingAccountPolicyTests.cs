@@ -17,6 +17,26 @@ public sealed class TradingAccountPolicyTests
             .Should().BeEquivalentTo(Enum.GetValues<BrokerType>());
         BrokerCatalog.All.Should().OnlyContain(item =>
             item.Environments.Contains(item.DefaultEnvironment));
+        BrokerCatalog.Get(BrokerType.Alpaca).Capabilities.Should().Be(BrokerCapabilities.Full);
+        BrokerCatalog.Get(BrokerType.LsSecurities).Capabilities.Should().Be(BrokerCapabilities.LsSecurities);
+        BrokerCatalog.Get(BrokerType.LsSecurities).Capabilities.CanSubmitProtectedEntry.Should().BeFalse();
+        BrokerCatalog.Get(BrokerType.KoreaInvestment).Capabilities.Should().Be(BrokerCapabilities.None);
+        BrokerCatalog.Get(BrokerType.Kiwoom).Capabilities.Should().Be(BrokerCapabilities.None);
+    }
+
+    [Fact]
+    public void UnavailableBrokerCanOnlyBeStoredDisabled()
+    {
+        var unavailable = Account("", "") with
+        {
+            BrokerType = BrokerType.KoreaInvestment,
+            Environment = "Virtual",
+            IsEnabled = true,
+        };
+
+        TradingAccountPolicy.Validate(unavailable).Errors.Should().ContainSingle(error =>
+            error.Contains("not available"));
+        TradingAccountPolicy.Validate(unavailable with { IsEnabled = false }).Succeeded.Should().BeTrue();
     }
 
     [Fact]

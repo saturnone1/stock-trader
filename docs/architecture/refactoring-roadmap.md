@@ -290,15 +290,16 @@
   a live-only off-by-one defect that previously released a two-session cooldown after only one full
   trading day.
 
-Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
-remaining orchestration services and extending broker-order parity around the shared compiled
-strategy and execution policies. Current full-strategy goldens cover NextOpen preview/backtest/live
-fill and exit decisions, NextOpen entry-bar custom exits and scale-outs, fractional scale-out
-preview/backtest parity, and multi-symbol indicator cache isolation against per-symbol previews.
-Live scaling now flows through the durable position execution and reconciliation contract. Remaining
-The operator API and portfolio UI now expose one generic position-order status contract, including
-the order kind, instead of describing scale-ins as pending exits. Remaining Phase 2 work is broader
-broker-capability projection and further narrowing of orchestration boundaries.
+Remaining Phase 2 work is no longer contract or EF-entity separation. Current full-strategy goldens
+cover NextOpen preview/backtest/live fill and exit decisions, NextOpen entry-bar custom exits and
+scale-outs, fractional scale-out preview/backtest parity, and multi-symbol indicator cache isolation
+against per-symbol previews. Live scaling and new entries now flow through durable execution and
+reconciliation contracts. The operator API and portfolio UI expose one generic position-order status
+contract, including the order kind, instead of describing scale-ins as pending exits. Broker account,
+position, history, entry, scaling, exit, and cancellation capabilities now have one domain catalog;
+the API and desktop project it, and live coordinators reject unsupported operations before claiming
+durable state. The unused keyed-DI/default-broker construction path has been removed. Remaining Phase
+2 work is further narrowing orchestration boundaries around the shared strategy and execution policy.
 
 ## Phase 0 — Guardrails and governance
 

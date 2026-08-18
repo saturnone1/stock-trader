@@ -32,6 +32,9 @@ public static class TradingAccountPolicy
             {
                 errors.Add($"{broker.DisplayName} API Key and Secret are required.");
             }
+
+            if (account.IsEnabled && !broker.IsImplemented)
+                errors.Add($"{broker.DisplayName} live broker integration is not available yet.");
         }
 
         if (account.IsActive && !account.IsEnabled)

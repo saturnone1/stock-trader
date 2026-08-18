@@ -64,6 +64,14 @@ public sealed class EntryExecutionReconciliationService(
                     accountGroup.Key);
                 continue;
             }
+            if (!BrokerCatalog.Get(account.Account.BrokerType).Capabilities.CanReadOrderHistory)
+            {
+                logger.LogCritical(
+                    "Cannot reconcile {Count} pending entries: broker {BrokerType} does not support order history",
+                    accountGroup.Count(),
+                    account.Account.BrokerType);
+                continue;
+            }
 
             var requestedFrom = accountGroup
                 .Min(item => item.EntryRequestedAt!.Value)

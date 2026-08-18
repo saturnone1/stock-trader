@@ -2177,7 +2177,12 @@ public class ArchitectureDependencyTests
         factory.Should().Contain("BrokerType.Alpaca");
         factory.Should().Contain("BrokerType.LsSecurities");
         brokerCatalog.Should().Contain("public enum BrokerType");
+        brokerCatalog.Should().Contain("CanSubmitProtectedEntry");
+        brokerCatalog.Should().Contain("CanClosePartialPosition");
+        File.Exists(Path.Combine(
+            repository, "Services/Broker/BrokerServiceFactory.cs")).Should().BeFalse();
         accountPage.Should().Contain("accountApi.metadata()");
+        accountPage.Should().Contain("brokerCapabilityLabels");
         accountPage.Should().Contain("row.accountName");
         accountPage.Should().NotContain("row.AccountName");
     }

@@ -2166,7 +2166,8 @@
           "environments",
           "defaultEnvironment",
           "requiresAccountCredentials",
-          "isImplemented"
+          "isImplemented",
+          "capabilities"
         ],
         "type": "object",
         "properties": {
@@ -2192,6 +2193,51 @@
             "type": "string"
           },
           "requiresAccountCredentials": {
+            "type": "boolean"
+          },
+          "isImplemented": {
+            "type": "boolean"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/BrokerCapabilities"
+          }
+        }
+      },
+      "BrokerCapabilities": {
+        "required": [
+          "canReadAccount",
+          "canReadPositions",
+          "canReadOrderHistory",
+          "canSubmitProtectedEntry",
+          "canScaleIn",
+          "canCloseFullPosition",
+          "canClosePartialPosition",
+          "canCancelOrder"
+        ],
+        "type": "object",
+        "properties": {
+          "canReadAccount": {
+            "type": "boolean"
+          },
+          "canReadPositions": {
+            "type": "boolean"
+          },
+          "canReadOrderHistory": {
+            "type": "boolean"
+          },
+          "canSubmitProtectedEntry": {
+            "type": "boolean"
+          },
+          "canScaleIn": {
+            "type": "boolean"
+          },
+          "canCloseFullPosition": {
+            "type": "boolean"
+          },
+          "canClosePartialPosition": {
+            "type": "boolean"
+          },
+          "canCancelOrder": {
             "type": "boolean"
           },
           "isImplemented": {

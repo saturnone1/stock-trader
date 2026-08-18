@@ -115,6 +115,11 @@ public static class OrderEndpoints
                 message = $"{symbol} 청산 주문의 확정 상태를 기다리고 있습니다.",
                 requestedAt = submission.RequestedAt?.ToString("o")
             }),
+            LivePositionExecutionSubmissionStatus.Unsupported => Results.BadRequest(new
+            {
+                status = submission.Status.ToString(),
+                error = $"{broker.BrokerType} 계좌는 전량 청산 주문을 지원하지 않습니다."
+            }),
             _ => Results.BadRequest(new
             {
                 status = submission.Status.ToString(),
@@ -182,6 +187,8 @@ public static class OrderEndpoints
             LivePositionExecutionReconciliationStatus.ConcurrentChange => $"{symbol} 상태가 다른 작업에서 변경되어 최신 목록을 다시 불러옵니다.",
             LivePositionExecutionReconciliationStatus.BrokerFillMismatch =>
                 $"{symbol} 주문 요청 수량과 브로커 체결 수량이 달라 자동 반영을 중단했습니다. 브로커 주문 내역을 확인하세요.",
+            LivePositionExecutionReconciliationStatus.Unsupported =>
+                $"{broker.BrokerType} 계좌는 주문 내역 조회를 지원하지 않습니다.",
             _ => $"{symbol}에는 확인할 포지션 주문이 없습니다."
         };
         return Results.Ok(new
@@ -251,6 +258,7 @@ public static class OrderEndpoints
             LiveEntryExecutionStatus.EvidenceMismatch =>
                 "주문 정보가 추천과 달라 자동 반영을 중단했습니다. 브로커 내역을 확인하세요.",
             LiveEntryExecutionStatus.ConcurrentChange => "다른 작업이 상태를 변경했습니다. 목록을 새로고침하세요.",
+            LiveEntryExecutionStatus.Unsupported => result.Error ?? "선택한 브로커가 이 기능을 지원하지 않습니다.",
             _ => "진입 주문 상태를 확인했습니다."
         };
         return Results.Ok(new

@@ -72,6 +72,26 @@ public sealed class LiveEntryExecutionCoordinatorTests
     }
 
     [Fact]
+    public async Task UnsupportedBrokerIsRejectedBeforeDurableClaim()
+    {
+        var recommendation = Recommendation();
+        var broker = new Mock<IBrokerService>();
+        var store = new Mock<ILiveEntryExecutionStore>();
+
+        var result = await Create(store).ExecuteAsync(
+            recommendation,
+            Context(17, broker.Object, BrokerType.LsSecurities));
+
+        result.Status.Should().Be(LiveEntryExecutionStatus.Unsupported);
+        result.ShouldPreventRetry.Should().BeFalse();
+        store.Verify(item => item.TryClaimAsync(
+            It.IsAny<TradeRecommendation>(), It.IsAny<int>(), It.IsAny<DateTime>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        broker.Verify(item => item.SubmitEntryOrderAsync(
+            It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task SubmissionExceptionRetainsClaimAndDoesNotPermitRetry()
     {
         var recommendation = Recommendation();
@@ -212,13 +232,17 @@ public sealed class LiveEntryExecutionCoordinatorTests
             new FixedTimeProvider(new DateTimeOffset(Now)),
             NullLogger<LiveEntryExecutionCoordinator>.Instance);
 
-    private static AccountBrokerContext Context(int accountId, IBrokerService broker) => new(
+    private static AccountBrokerContext Context(
+        int accountId,
+        IBrokerService broker,
+        BrokerType brokerType = BrokerType.Alpaca) => new(
         new ManagedTradingAccount
         {
             Id = accountId,
             AccountName = "Paper",
             IsActive = true,
             IsEnabled = true,
+            BrokerType = brokerType,
         },
         broker);
 

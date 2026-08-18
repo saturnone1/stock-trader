@@ -10,7 +10,8 @@ public sealed record BrokerAccountOptionResponse(
     IReadOnlyList<string> Environments,
     string DefaultEnvironment,
     bool RequiresAccountCredentials,
-    bool IsImplemented)
+    bool IsImplemented,
+    BrokerCapabilities Capabilities)
 {
     public static BrokerAccountOptionResponse Create(BrokerDescriptor value) => new(
         value.Type,
@@ -20,7 +21,8 @@ public sealed record BrokerAccountOptionResponse(
         value.Environments,
         value.DefaultEnvironment,
         value.RequiresAccountCredentials,
-        value.IsImplemented);
+        value.IsImplemented,
+        value.Capabilities);
 }
 
 public sealed record TradingAccountMetadataResponse(

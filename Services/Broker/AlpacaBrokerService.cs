@@ -13,6 +13,8 @@ namespace StockTrader.Services.Broker;
 /// </summary>
 public class AlpacaBrokerService : IBrokerService
 {
+    public BrokerType BrokerType => BrokerType.Alpaca;
+
     private readonly IAlpacaTradingClient _tradingClient;
     private readonly ILogger<AlpacaBrokerService> _logger;
 

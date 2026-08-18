@@ -14,6 +14,8 @@ namespace StockTrader.Services.Broker;
 /// </summary>
 public class KiwoomBrokerService : IBrokerService
 {
+    public BrokerType BrokerType => BrokerType.Kiwoom;
+
     private readonly ILogger<KiwoomBrokerService> _logger;
 
     public KiwoomBrokerService(ILogger<KiwoomBrokerService> logger)
