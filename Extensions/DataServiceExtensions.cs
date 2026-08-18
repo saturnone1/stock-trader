@@ -43,6 +43,7 @@ public static class DataServiceExtensions
         services.AddSingleton<ITradingAccountStore, TradingAccountStore>();
         services.AddSingleton<IManualOrderSignalStore, ManualOrderSignalStore>();
         services.AddSingleton<ILiveEntryExecutionStore, LiveEntryExecutionStore>();
+        services.AddSingleton<ILivePositionExecutionStore, LivePositionExecutionStore>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();
 

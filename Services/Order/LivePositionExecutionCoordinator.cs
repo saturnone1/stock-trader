@@ -1,5 +1,4 @@
 using StockTrader.Application.Execution;
-using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Broker;
@@ -70,12 +69,14 @@ public interface ILivePositionExecutionCoordinator
 /// </summary>
 public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoordinator
 {
-    private readonly ITradeRepository _trades;
+    private readonly ILivePositionExecutionStore _store;
     private readonly TimeProvider _timeProvider;
 
-    public LivePositionExecutionCoordinator(ITradeRepository trades, TimeProvider timeProvider)
+    public LivePositionExecutionCoordinator(
+        ILivePositionExecutionStore store,
+        TimeProvider timeProvider)
     {
-        _trades = trades;
+        _store = store;
         _timeProvider = timeProvider;
     }
 
@@ -117,7 +118,7 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
             request.Kind,
             request.ScalingRuleIndex,
             request.MarksPartialProfit);
-        if (!await _trades.TryClaimPositionExecutionAsync(claim, ct))
+        if (!await _store.TryClaimAsync(claim, ct))
         {
             return new LivePositionExecutionSubmission(
                 LivePositionExecutionSubmissionStatus.AlreadyPending);
@@ -127,14 +128,14 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
         var order = await SubmitBrokerOrderAsync(position, request, broker, ct);
         if (order is null || !IsSubmittedOrderConsistent(position, request, order))
         {
-            await _trades.ReleasePositionExecutionClaimAsync(position.Id, requestedAt, ct);
+            await _store.ReleaseClaimAsync(position.Id, requestedAt, ct);
             ClearIntent(position);
             return new LivePositionExecutionSubmission(LivePositionExecutionSubmissionStatus.Failed);
         }
 
         position.ExecutionOrderId = string.IsNullOrWhiteSpace(order.OrderId) ? null : order.OrderId;
         var orderIdPersisted = position.ExecutionOrderId is not null
-            && await _trades.SetPositionExecutionOrderIdAsync(
+            && await _store.SetOrderEvidenceAsync(
                 position.Id, requestedAt, position.ExecutionOrderId, ct);
         if (position.ExecutionOrderId is not null && !orderIdPersisted)
             position.ExecutionOrderId = null;
@@ -184,7 +185,7 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
 
         if (resolution.Action == PositionOrderReconciliationAction.ReleaseForRetry)
         {
-            var released = await _trades.ReleasePositionExecutionClaimAsync(
+            var released = await _store.ReleaseClaimAsync(
                 position.Id, requestedAt, ct);
             if (!released)
             {
@@ -233,7 +234,7 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
         var trade = kind == PositionExecutionKind.ScaleIn
             ? null
             : CreateExitTrade(position, filledQuantity, fillPrice, fillTime);
-        var completed = await _trades.TryApplyPositionExecutionFillAsync(fill, trade, ct);
+        var completed = await _store.CommitFillAsync(fill, trade, ct);
         if (completed)
             ApplyFill(position, fill);
         return new LivePositionExecutionReconciliationResult(
@@ -292,24 +293,22 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
             : TradeDirection.Short)
         && order.Quantity == request.Quantity;
 
-    private static TradeRecord CreateExitTrade(
+    private static PositionExecutionTrade CreateExitTrade(
         Position position,
         int quantity,
         decimal exitPrice,
-        DateTime exitTime) => new()
-        {
-            Symbol = position.Symbol,
-            PatternType = position.PatternType,
-            CustomPatternName = position.CustomPatternName,
-            EntryPrice = position.EntryPrice,
-            ExitPrice = exitPrice,
-            Quantity = quantity,
-            EntryTime = position.OpenedAt,
-            ExitTime = exitTime,
-            PnL = (exitPrice - position.EntryPrice) * quantity,
-            PnLPercent = position.EntryPrice > 0 ? exitPrice / position.EntryPrice - 1 : 0,
-            ExitReason = position.ExecutionRequestReason ?? "실시간 포지션 실행",
-        };
+        DateTime exitTime) => new(
+            position.Symbol,
+            position.PatternType,
+            position.CustomPatternName,
+            position.EntryPrice,
+            exitPrice,
+            quantity,
+            position.OpenedAt,
+            exitTime,
+            (exitPrice - position.EntryPrice) * quantity,
+            position.EntryPrice > 0 ? exitPrice / position.EntryPrice - 1 : 0,
+            position.ExecutionRequestReason ?? "실시간 포지션 실행");
 
     private static void ApplyIntent(
         Position position,
