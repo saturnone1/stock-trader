@@ -6,32 +6,40 @@ public sealed record DataProviderDescriptor(
     string DisplayName,
     bool IsImplemented,
     string Market,
+    string RegimeBenchmarkSymbol,
     IReadOnlyList<TimeFrame> SupportedTimeFrames,
     IReadOnlyDictionary<TimeFrame, int> MaximumLookbackDays);
 
 public static class DataProviderCatalog
 {
+    public const string UnitedStatesRegimeBenchmark = "SPY";
+    public const string KoreaRegimeBenchmark = "069500";
+
     private static readonly TimeFrame[] AllTimeFrames = Enum.GetValues<TimeFrame>();
 
     private static readonly IReadOnlyDictionary<DataSource, DataProviderDescriptor> Descriptors =
         new Dictionary<DataSource, DataProviderDescriptor>
         {
-            [DataSource.Alpaca] = new(DataSource.Alpaca, "Alpaca", true, "미국", AllTimeFrames, new Dictionary<TimeFrame, int>()),
-            [DataSource.Yahoo] = new(DataSource.Yahoo, "Yahoo Finance", true, "미국", AllTimeFrames,
+            [DataSource.Alpaca] = new(DataSource.Alpaca, "Alpaca", true, "미국",
+                UnitedStatesRegimeBenchmark, AllTimeFrames, new Dictionary<TimeFrame, int>()),
+            [DataSource.Yahoo] = new(DataSource.Yahoo, "Yahoo Finance", true, "미국",
+                UnitedStatesRegimeBenchmark, AllTimeFrames,
                 new Dictionary<TimeFrame, int>
                 {
                     [TimeFrame.OneMinute] = 7,
                     [TimeFrame.FiveMinute] = 60,
                     [TimeFrame.FifteenMinute] = 60
                 }),
-            [DataSource.LsSecurities] = new(DataSource.LsSecurities, "LS증권", true, "한국", AllTimeFrames,
+            [DataSource.LsSecurities] = new(DataSource.LsSecurities, "LS증권", true, "한국",
+                KoreaRegimeBenchmark, AllTimeFrames,
                 new Dictionary<TimeFrame, int>
                 {
                     [TimeFrame.OneMinute] = 365,
                     [TimeFrame.FiveMinute] = 365,
                     [TimeFrame.FifteenMinute] = 365
                 }),
-            [DataSource.Polygon] = new(DataSource.Polygon, "Polygon", false, "미국", [], new Dictionary<TimeFrame, int>())
+            [DataSource.Polygon] = new(DataSource.Polygon, "Polygon", false, "미국",
+                UnitedStatesRegimeBenchmark, [], new Dictionary<TimeFrame, int>())
         };
 
     public static IReadOnlyCollection<DataProviderDescriptor> All { get; } = Descriptors.Values.ToArray();
@@ -45,4 +53,7 @@ public static class DataProviderCatalog
 
     public static int? MaximumLookbackDays(DataSource provider, TimeFrame timeFrame) =>
         Get(provider).MaximumLookbackDays.TryGetValue(timeFrame, out var days) ? days : null;
+
+    public static string RegimeBenchmarkSymbol(DataSource provider) =>
+        Get(provider).RegimeBenchmarkSymbol;
 }

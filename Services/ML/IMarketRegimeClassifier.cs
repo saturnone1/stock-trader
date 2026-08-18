@@ -5,15 +5,15 @@ namespace StockTrader.Services.ML;
 public interface IMarketRegimeClassifier
 {
     /// <summary>
-    /// 주어진 SPY 바 데이터로 현재 시장 레짐을 분류합니다.
+    /// 주어진 공급자 기준 종목 바 데이터로 현재 시장 레짐을 분류합니다.
     /// 모델이 없거나 데이터 부족 시 기존 MarketRegime을 그대로 반환합니다 (graceful degradation).
     /// </summary>
-    Task<MarketRegime> ClassifyAsync(OhlcvBar[] spyBars, CancellationToken ct = default);
+    Task<MarketRegime> ClassifyAsync(OhlcvBar[] benchmarkBars, CancellationToken ct = default);
 
     /// <summary>
-    /// SPY 히스토리 데이터로 K-Means 클러스터링 모델을 학습합니다.
+    /// 공급자 기준 종목 히스토리로 K-Means 클러스터링 모델을 학습합니다.
     /// </summary>
-    Task<bool> TrainAsync(OhlcvBar[] spyBars, CancellationToken ct = default);
+    Task<bool> TrainAsync(OhlcvBar[] benchmarkBars, CancellationToken ct = default);
 
     /// <summary>현재 모델이 로드되어 있는지 여부</summary>
     bool IsModelLoaded { get; }

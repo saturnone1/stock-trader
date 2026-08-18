@@ -25,7 +25,8 @@ public class PatternPreviewServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(bars.ToList());
         repository.Setup(repo => repo.GetBarsAsync(
-                "SPY", TimeFrame.Daily, It.IsAny<DateTime>(), It.IsAny<DateTime>(),
+                DataProviderCatalog.KoreaRegimeBenchmark,
+                TimeFrame.Daily, It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<OhlcvBar>());
         var feed = new Mock<IDataFeedService>();
@@ -34,8 +35,8 @@ public class PatternPreviewServiceTests
                 It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<OhlcvBar>());
         var feeds = new Mock<IDataFeedServiceFactory>();
-        feeds.Setup(factory => factory.GetServiceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(feed.Object);
+        feeds.Setup(factory => factory.SelectAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DataFeedSelection(DataSource.LsSecurities, feed.Object));
         var clock = new FixedTimeProvider(
             new DateTimeOffset(2026, 8, 18, 0, 0, 0, TimeSpan.Zero));
         var indicators = new IndicatorService();
@@ -75,8 +76,8 @@ public class PatternPreviewServiceTests
                 It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("provider unavailable"));
         var feeds = new Mock<IDataFeedServiceFactory>();
-        feeds.Setup(factory => factory.GetServiceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(feed.Object);
+        feeds.Setup(factory => factory.SelectAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DataFeedSelection(DataSource.Yahoo, feed.Object));
         var indicators = new IndicatorService();
         var clock = new FixedTimeProvider(
             new DateTimeOffset(2026, 8, 18, 0, 0, 0, TimeSpan.Zero));

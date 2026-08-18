@@ -67,7 +67,7 @@ public class BacktestService : IBacktestService
             string.Join(", ", request.Symbols), request.From, request.To, request.TimeFrame);
         var feedSelection = await _dataFeedFactory.SelectAsync(request.DataSource, ct);
         var dataFeed = feedSelection.Service;
-        var regimeSymbol = MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source);
+        var regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
         var regimes = await BuildRegimeMapAsync(
             dataFeed, request.From, request.To, regimeSymbol, ct);
         if (regimes is null) return new BacktestResult();
@@ -201,7 +201,7 @@ public class BacktestService : IBacktestService
         IDataFeedService dataFeed,
         DateTime from,
         DateTime to,
-        string regimeSymbol = MarketRegimeBenchmarkPolicy.UnitedStatesBenchmark,
+        string regimeSymbol = DataProviderCatalog.UnitedStatesRegimeBenchmark,
         CancellationToken ct = default) =>
         _regimeMapBuilder.BuildAsync(dataFeed, from, to, regimeSymbol, ct);
 

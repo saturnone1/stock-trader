@@ -24,7 +24,7 @@ implementation owns feed selection, benchmark regime preparation, reference-symb
 timeframe expansion, prepared market data, and configured optimization risk inputs.
 
 `IDataFeedServiceFactory.SelectAsync` returns both the resolved source identity and service. The
-central `MarketRegimeBenchmarkPolicy` maps LS Securities to `069500` and US providers to `SPY`.
+central `DataProviderCatalog` maps LS Securities to `069500` and US providers to `SPY`.
 Ordinary backtests and optimization use this same policy and the resolved source rather than the
 nullable request field.
 

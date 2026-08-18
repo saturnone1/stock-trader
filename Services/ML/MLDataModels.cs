@@ -12,19 +12,19 @@ namespace StockTrader.Services.ML;
 /// </summary>
 public class RegimeFeatureInput
 {
-    /// <summary>SPY 5일 수익률</summary>
+    /// <summary>공급자 기준 종목 5일 수익률</summary>
     [LoadColumn(0)]
     public float Return5Day { get; set; }
 
-    /// <summary>SPY 10일 수익률</summary>
+    /// <summary>공급자 기준 종목 10일 수익률</summary>
     [LoadColumn(1)]
     public float Return10Day { get; set; }
 
-    /// <summary>SPY 20일 수익률</summary>
+    /// <summary>공급자 기준 종목 20일 수익률</summary>
     [LoadColumn(2)]
     public float Return20Day { get; set; }
 
-    /// <summary>VIX 수준 (proxy: SPY 5일 변동성)</summary>
+    /// <summary>변동성 수준 (proxy: 기준 종목 5일 변동성)</summary>
     [LoadColumn(3)]
     public float VolatilityLevel { get; set; }
 

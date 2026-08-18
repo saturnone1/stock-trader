@@ -21,6 +21,8 @@ infrastructure.
 ## Sources of truth
 
 - Timeframe facts: one backend catalog.
+- Provider capabilities, markets, lookback limits, and regime benchmark symbols: one backend
+  provider catalog.
 - Backtest and preview range policy: dedicated policy catalogs.
 - Indicator definitions: one registry that supplies calculation, validation, units, parameters,
   warmup, and supported timeframes.

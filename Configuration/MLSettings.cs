@@ -17,7 +17,7 @@ public class MLSettings
     /// <summary>K-Means 클러스터 수 (시장 레짐 수)</summary>
     public int RegimeClusterCount { get; set; } = 4;
 
-    /// <summary>레짐 분류기 학습용 SPY 히스토리 일수</summary>
+    /// <summary>레짐 분류기 학습용 공급자 기준 종목 히스토리 일수</summary>
     public int RegimeTrainingDays { get; set; } = 365;
 
     /// <summary>ML 스코어를 기존 Confidence와 혼합할 가중치 (0=기존만, 1=ML만)</summary>

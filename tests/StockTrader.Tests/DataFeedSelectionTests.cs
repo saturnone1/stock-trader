@@ -3,9 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using StockTrader.Application.Backtesting;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -37,8 +37,8 @@ public class DataFeedSelectionTests
 
         selection.Source.Should().Be(DataSource.LsSecurities);
         selection.Service.Should().BeSameAs(lsFeed);
-        MarketRegimeBenchmarkPolicy.Resolve(selection.Source)
-            .Should().Be(MarketRegimeBenchmarkPolicy.KoreaBenchmark);
+        DataProviderCatalog.RegimeBenchmarkSymbol(selection.Source)
+            .Should().Be(DataProviderCatalog.KoreaRegimeBenchmark);
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class DataFeedSelectionTests
 
         selection.Source.Should().Be(DataSource.Yahoo);
         selection.Service.Should().BeSameAs(yahooFeed);
-        MarketRegimeBenchmarkPolicy.Resolve(selection.Source)
-            .Should().Be(MarketRegimeBenchmarkPolicy.UnitedStatesBenchmark);
+        DataProviderCatalog.RegimeBenchmarkSymbol(selection.Source)
+            .Should().Be(DataProviderCatalog.UnitedStatesRegimeBenchmark);
     }
 }

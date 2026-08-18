@@ -84,6 +84,8 @@ public sealed class PatternPreviewService : IPatternPreviewService
                 + $"{DisplayRange(timeFramePolicy.MaximumRange)}까지 한 번에 조회할 수 있습니다.");
         }
 
+        var feedSelection = await _dataFeeds.SelectAsync(null, ct);
+        var regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
         var queryFrom = dataFrom - timeFramePolicy.WarmupRange;
         var allBars = await LoadBarsAsync(
             symbol, query.TimeFrame, queryFrom, dataTo, ct);
@@ -96,8 +98,7 @@ public sealed class PatternPreviewService : IPatternPreviewService
         {
             try
             {
-                var dataFeed = await _dataFeeds.GetServiceAsync(ct);
-                var fetched = await dataFeed.GetHistoricalBarsAsync(
+                var fetched = await feedSelection.Service.GetHistoricalBarsAsync(
                     symbol, query.TimeFrame, queryFrom, dataTo, ct);
                 if (fetched.Count > 0) await _ohlcv.AddBarsAsync(fetched, ct);
             }
@@ -125,7 +126,7 @@ public sealed class PatternPreviewService : IPatternPreviewService
             allBars[^1].Timestamp,
             ct);
         var regimeBars = (await _ohlcv.GetBarsAsync(
-                "SPY",
+                regimeSymbol,
                 TimeFrame.Daily,
                 dataFrom.AddYears(-2),
                 allBars[^1].Timestamp.AddDays(1),
