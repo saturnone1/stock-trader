@@ -37,6 +37,7 @@ public static class DataServiceExtensions
         services.AddScoped<ICustomPatternStore, CustomPatternStore>();
         services.AddScoped<ILiveSignalEvaluationStore, LiveSignalEvaluationStore>();
         services.AddSingleton<IResearchUniverseStore, ResearchUniverseStore>();
+        services.AddSingleton<IFinancialCollectionStore, FinancialCollectionStore>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();
 

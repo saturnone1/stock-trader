@@ -1,5 +1,4 @@
 using StockTrader.Application.Research;
-using StockTrader.BackgroundServices;
 using StockTrader.Services.Financial;
 
 namespace StockTrader.Api.Contracts;
