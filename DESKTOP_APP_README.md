@@ -24,14 +24,14 @@ desktop-app/
 
 ### 1. 백엔드 API 시작 (기존 .NET)
 ```bash
-cd ~/projects/saturnone1/stock-trader
+cd ~/projects/stock-trader
 dotnet run 2>&1
 # http://localhost:3000
 ```
 
 ### 2. 데스크톱 앱 개발 서버 시작
 ```bash
-cd ~/projects/saturnone1/stock-trader/desktop-app
+cd ~/projects/stock-trader/desktop-app
 npm install
 npm run dev
 # http://localhost:5173

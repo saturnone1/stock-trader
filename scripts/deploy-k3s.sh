@@ -9,10 +9,16 @@ api_image="localhost/stock-trader/api:architecture-${release_tag}"
 desktop_image="localhost/stock-trader/desktop:architecture-${release_tag}"
 archive_dir="$(mktemp -d /tmp/stocktrader-deploy.XXXXXX)"
 data_dir="${STOCKTRADER_DATA_DIR:?Set STOCKTRADER_DATA_DIR to the absolute host data directory}"
+stocktrader_host="${STOCKTRADER_HOST:?Set STOCKTRADER_HOST to the public hostname}"
 migration_container="stocktrader-migrate-${release_tag}"
 
 if [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; then
   echo "STOCKTRADER_DATA_DIR must be a safe absolute path below the filesystem root." >&2
+  exit 1
+fi
+
+if [[ ! "$stocktrader_host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$stocktrader_host" != *.* ]]; then
+  echo "STOCKTRADER_HOST must be a valid DNS hostname." >&2
   exit 1
 fi
 
@@ -72,7 +78,8 @@ sudo k3s ctr images import "$archive_dir/desktop.tar"
 sed -e "s|localhost/stock-trader/api:latest|$api_image|" \
     -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|" k8s/deployment-api.yaml \
   | sudo k3s kubectl apply -f -
-sed "s|localhost/stock-trader/desktop:latest|$desktop_image|" k8s/deployment-desktop.yaml \
+sed -e "s|localhost/stock-trader/desktop:latest|$desktop_image|" \
+    -e "s|__STOCKTRADER_HOST__|$stocktrader_host|" k8s/deployment-desktop.yaml \
   | sudo k3s kubectl apply -f -
 
 sudo k3s kubectl -n stocktrader rollout status deployment/stocktrader-api --timeout=300s
