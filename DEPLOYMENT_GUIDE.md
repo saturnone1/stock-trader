@@ -31,12 +31,14 @@ sudo k3s kubectl apply -f k8s/secret.yaml
 From a verified source snapshot on the K3s host, deploy both images and manifests with:
 
 ```bash
+export STOCKTRADER_DATA_DIR=/absolute/path/to/stocktrader-data
 scripts/deploy-k3s.sh
 ```
 
 An explicit immutable release tag may be supplied as the first argument. The script builds OCI
 images, imports them into K3s, applies only the split API/Desktop manifests, waits for both
-rollouts, and removes its temporary archives.
+rollouts, and removes its temporary archives. `STOCKTRADER_DATA_DIR` is mandatory so a public
+manifest never embeds a specific operator account or server filesystem layout.
 
 The API deployment uses `Recreate` because one SQLite database must never be opened by old and new
 application Pods during a rollout. Verify the desktop URL, `/api/health`, Pod restart counts, and

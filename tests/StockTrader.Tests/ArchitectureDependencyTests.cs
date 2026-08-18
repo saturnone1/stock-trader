@@ -504,6 +504,7 @@ public class ArchitectureDependencyTests
     {
         var repository = FindRepositoryRoot();
         var deploy = File.ReadAllText(Path.Combine(repository, "scripts/deploy-k3s.sh"));
+        var apiManifest = File.ReadAllText(Path.Combine(repository, "k8s/deployment-api.yaml"));
 
         deploy.Should().Contain("scale deployment stocktrader-api --replicas=0");
         deploy.Should().Contain("sqlite3 \"$data_dir/stocktrader.db\" \".backup '$backup_path'\"");
@@ -511,6 +512,11 @@ public class ArchitectureDependencyTests
         deploy.Should().Contain("dotnet StockTrader.dll --migrate-database");
         deploy.IndexOf("--migrate-database", StringComparison.Ordinal).Should().BeLessThan(
             deploy.IndexOf("deployment-api.yaml", StringComparison.Ordinal));
+        deploy.Should().Contain("STOCKTRADER_DATA_DIR:?");
+        deploy.Should().Contain("__STOCKTRADER_DATA_DIR__");
+        deploy.Should().NotContain("/home/");
+        apiManifest.Should().Contain("path: __STOCKTRADER_DATA_DIR__");
+        apiManifest.Should().NotContain("/home/");
     }
 
     [Fact]
@@ -1479,6 +1485,27 @@ public class ArchitectureDependencyTests
         portfolio.Should().Contain("orderApi.closePosition(symbol)");
         desktopEndpoints.Should().Contain("api.post('/api/orders/close-position'");
         orders.Should().NotContain("broker.ClosePositionAsync(");
+    }
+
+    [Fact]
+    public void StockAnalysisDelegatesRecommendationMathAndUsesExplicitOperationsSettings()
+    {
+        var repository = FindRepositoryRoot();
+        var servicePath = Path.Combine(repository, "Services/Analysis/StockAnalysisService.cs");
+        var service = File.ReadAllText(servicePath);
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Analysis/StockRecommendationPolicy.cs"));
+
+        File.ReadAllLines(servicePath).Length.Should().BeLessThanOrEqualTo(450);
+        service.Should().Contain("StockRecommendationPolicy.Evaluate(");
+        service.Should().Contain("IOptions<StockAnalysisSettings>");
+        service.Should().Contain("_timeProvider.GetUtcNow()");
+        service.Should().NotContain("DateTime.UtcNow");
+        service.Should().NotContain("ComputeUpsideProbability(");
+        service.Should().NotContain("ComputeRecommendedStopLoss(");
+        service.Should().NotContain("ComputeRecommendedTarget(");
+        policy.Should().NotContain("StockTrader.Services");
+        policy.Should().NotContain("DateTime.UtcNow");
     }
 
     [Fact]

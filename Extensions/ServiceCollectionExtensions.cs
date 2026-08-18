@@ -35,6 +35,19 @@ public static class ServiceCollectionExtensions
         services.Configure<MLSettings>(configuration.GetSection("ML"));
         services.Configure<LsSecuritiesSettings>(configuration.GetSection("LsSecurities"));
         services.Configure<FinancialDataPipelineSettings>(configuration.GetSection("FinancialDataPipeline"));
+        services.AddOptions<StockAnalysisSettings>()
+            .Bind(configuration.GetSection("StockAnalysis"))
+            .Validate(settings => settings.MaxParallelAnalyses > 0, "MaxParallelAnalyses must be positive")
+            .Validate(settings => settings.AnalysisCacheSeconds > 0, "AnalysisCacheSeconds must be positive")
+            .Validate(settings => settings.RegimeCacheMinutes > 0, "RegimeCacheMinutes must be positive")
+            .Validate(settings => settings.StatisticsCacheMinutes > 0, "StatisticsCacheMinutes must be positive")
+            .Validate(settings => settings.HistoryLookbackDays > 0, "HistoryLookbackDays must be positive")
+            .Validate(settings => settings.MinimumHistoryBars > 0, "MinimumHistoryBars must be positive")
+            .Validate(settings => settings.RegimeLookbackDays > 0, "RegimeLookbackDays must be positive")
+            .Validate(
+                settings => settings.MinimumRegimeBars >= StockIndicatorSnapshotFactory.LongTrendPeriod,
+                $"MinimumRegimeBars must be at least {StockIndicatorSnapshotFactory.LongTrendPeriod}")
+            .ValidateOnStart();
 
         // Database
         services.AddDbContextFactory<AppDbContext>(options =>
@@ -54,6 +67,7 @@ public static class ServiceCollectionExtensions
 
         // Indicators (stateless - singleton)
         services.AddSingleton<IIndicatorService, IndicatorService>();
+        services.AddSingleton<StockIndicatorSnapshotFactory>();
 
         // ML Services
         services.AddSingleton<IMarketRegimeClassifier, MarketRegimeClassifier>();

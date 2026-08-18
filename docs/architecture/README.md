@@ -242,4 +242,6 @@ the same factory applies baseline or request-override settings without a second 
   adapter own its EF queries and transactions, then remove the catch-all repository.
 - `adr/0019-centralize-built-in-pattern-detectors.md`: use one detector inventory for live scanning,
   analysis, backtesting, walk-forward evaluation, and optimization.
+- `adr/0020-isolate-stock-recommendation-policy.md`: keep recommendation formulas deterministic,
+  move indicator snapshot composition behind a focused boundary, and configure analysis operations.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

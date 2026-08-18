@@ -1,14 +1,13 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Analysis;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
-using StockTrader.Services.Indicators;
 using StockTrader.Services.Patterns;
 using StockTrader.Services.Statistics;
-using static StockTrader.Services.Indicators.IndicatorService;
 
 namespace StockTrader.Services.Analysis;
 
@@ -16,43 +15,38 @@ public class StockAnalysisService : IStockAnalysisService
 {
     private readonly IDataFeedServiceFactory _dataFeedFactory;
     private readonly IEnumerable<IPatternDetector> _detectors;
-    private readonly IIndicatorService _indicators;
     private readonly IStatisticsService _statisticsService;
     private readonly ITradeRepository _tradeRepo;
     private readonly ISettingsRepository _settingsRepo;
     private readonly IOhlcvRepository _ohlcvRepo;
-    private readonly TradingSettings _tradingSettings;
+    private readonly StockIndicatorSnapshotFactory _indicatorSnapshots;
+    private readonly StockAnalysisSettings _settings;
+    private readonly TimeProvider _timeProvider;
     private readonly IMemoryCache _cache;
     private readonly ILogger<StockAnalysisService> _logger;
-
-    // 캐시 TTL 상수
-    private static readonly TimeSpan AnalysisCacheTtl = TimeSpan.FromSeconds(25);
-    private static readonly TimeSpan RegimeCacheTtl   = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan StatsCacheTtl    = TimeSpan.FromMinutes(10);
-
-    // 병렬 분석 최대 동시 종목 수 (Yahoo rate limit 고려)
-    private const int MaxParallelAnalyses = 3;
 
     public StockAnalysisService(
         IDataFeedServiceFactory dataFeedFactory,
         IEnumerable<IPatternDetector> detectors,
-        IIndicatorService indicators,
         IStatisticsService statisticsService,
         ITradeRepository tradeRepo,
         ISettingsRepository settingsRepo,
         IOhlcvRepository ohlcvRepo,
-        IOptions<TradingSettings> tradingSettings,
+        StockIndicatorSnapshotFactory indicatorSnapshots,
+        IOptions<StockAnalysisSettings> settings,
+        TimeProvider timeProvider,
         IMemoryCache cache,
         ILogger<StockAnalysisService> logger)
     {
         _dataFeedFactory = dataFeedFactory;
         _detectors = detectors;
-        _indicators = indicators;
         _statisticsService = statisticsService;
         _tradeRepo = tradeRepo;
         _settingsRepo = settingsRepo;
         _ohlcvRepo = ohlcvRepo;
-        _tradingSettings = tradingSettings.Value;
+        _indicatorSnapshots = indicatorSnapshots;
+        _settings = settings.Value;
+        _timeProvider = timeProvider;
         _cache = cache;
         _logger = logger;
     }
@@ -89,7 +83,7 @@ public class StockAnalysisService : IStockAnalysisService
         var (regime, allStats) = await FetchSharedDataAsync(dataFeed, ct);
 
         // 2. SemaphoreSlim으로 동시 분석 수 제한 (Yahoo rate limit 보호)
-        var sem     = new SemaphoreSlim(MaxParallelAnalyses, MaxParallelAnalyses);
+        var sem = new SemaphoreSlim(_settings.MaxParallelAnalyses, _settings.MaxParallelAnalyses);
         var results = new System.Collections.Concurrent.ConcurrentBag<StockAnalysis>();
 
         var tasks = symbols.Select(async symbol =>
@@ -109,7 +103,7 @@ public class StockAnalysisService : IStockAnalysisService
                 try
                 {
                     var analysis = await AnalyzeInternalAsync(symbol, dataFeed, regime, allStats, settings, ct);
-                    _cache.Set(cacheKey, analysis, AnalysisCacheTtl);
+                    _cache.Set(cacheKey, analysis, TimeSpan.FromSeconds(_settings.AnalysisCacheSeconds));
                     results.Add(analysis);
                     await onItemCompleted(analysis);
                 }
@@ -157,7 +151,7 @@ public class StockAnalysisService : IStockAnalysisService
         var settings = await _settingsRepo.GetAsync(ct);
 
         var analysis = await AnalyzeInternalAsync(symbol, dataFeed, regime, allStats, settings, ct);
-        _cache.Set(cacheKey, analysis, AnalysisCacheTtl);
+        _cache.Set(cacheKey, analysis, TimeSpan.FromSeconds(_settings.AnalysisCacheSeconds));
         return analysis;
     }
 
@@ -182,7 +176,7 @@ public class StockAnalysisService : IStockAnalysisService
             return cached;
 
         var regime = await ComputeRegimeAsync(dataFeed, ct);
-        _cache.Set(key, regime, RegimeCacheTtl);
+        _cache.Set(key, regime, TimeSpan.FromMinutes(_settings.RegimeCacheMinutes));
         return regime;
     }
 
@@ -193,7 +187,7 @@ public class StockAnalysisService : IStockAnalysisService
             return cached;
 
         var stats = await _statisticsService.GetAllStatsAsync(ct);
-        _cache.Set(key, stats, StatsCacheTtl);
+        _cache.Set(key, stats, TimeSpan.FromMinutes(_settings.StatisticsCacheMinutes));
         return stats;
     }
 
@@ -209,33 +203,29 @@ public class StockAnalysisService : IStockAnalysisService
         UserSettings settings,
         CancellationToken ct)
     {
-        // 1. 히스토리 데이터 가져오기 (1년)
+        var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
         var bars = await dataFeed.GetHistoricalBarsAsync(
             symbol, TimeFrame.Daily,
-            DateTime.UtcNow.AddYears(-1), DateTime.UtcNow, ct);
+            observedAt.AddDays(-_settings.HistoryLookbackDays), observedAt, ct);
 
-        if (bars.Count < 50)
+        if (bars.Count < _settings.MinimumHistoryBars)
         {
             return new StockAnalysis
             {
                 Symbol       = symbol,
                 CurrentPrice = bars.Count > 0 ? bars[^1].Close : 0,
-                AnalyzedAt   = DateTime.UtcNow,
+                AnalyzedAt   = observedAt,
                 Grade        = RecommendationGrade.Neutral
             };
         }
 
-        var barsArray    = bars.ToArray();
-        var closes       = ExtractCloses(barsArray);
-        var currentPrice = closes[^1];
-        var currentBar   = barsArray[^1];
+        var barsArray = bars.ToArray();
+        var currentPrice = barsArray[^1].Close;
 
         // 2. 기술지표 계산 (CPU-bound, 동기)
-        var indicatorSnapshot = ComputeIndicators(barsArray, closes, currentPrice);
-
-        // 3. ATR 계산
-        var atrValues = _indicators.ATR(barsArray, 14);
-        var atr       = atrValues[^1];
+        var marketSnapshot = _indicatorSnapshots.Create(barsArray);
+        var indicatorSnapshot = marketSnapshot.Indicators;
+        var atr = marketSnapshot.Atr;
 
         // 4. 패턴 감지 (활성화된 패턴만)
         var activePatterns = new List<PatternSignalInfo>();
@@ -262,33 +252,28 @@ public class StockAnalysisService : IStockAnalysisService
             }
         }
 
-        // 5. 거래량 비율 계산
-        var avgVolume20  = bars.TakeLast(20).Average(b => (decimal)b.Volume);
-        var volumeRatio  = avgVolume20 > 0 ? (decimal)currentBar.Volume / avgVolume20 : 1m;
-
-        // 6. 핵심 수치 계산
-        var upsideProbability = ComputeUpsideProbability(activePatterns, indicatorSnapshot, allStats);
-        var expectedReturn    = ComputeExpectedReturn(activePatterns, currentPrice, atr);
-        var holdingDays       = await ComputeExpectedHoldingDaysAsync(activePatterns, ct);
-        var downsideRisk      = ComputeDownsideRisk(activePatterns, allStats);
-        var stopLoss          = ComputeRecommendedStopLoss(currentPrice, atr, activePatterns, allStats);
-        var target            = ComputeRecommendedTarget(currentPrice, atr, activePatterns);
-        var confidence        = ComputeConfidenceScore(activePatterns, indicatorSnapshot, volumeRatio, allStats);
-        var grade             = DetermineGrade(upsideProbability, confidence);
+        var recommendation = StockRecommendationPolicy.Evaluate(new StockRecommendationInput(
+            currentPrice,
+            atr,
+            activePatterns,
+            indicatorSnapshot,
+            marketSnapshot.VolumeRatio,
+            allStats));
+        var holdingDays = await ComputeExpectedHoldingDaysAsync(activePatterns, ct);
 
         return new StockAnalysis
         {
             Symbol                = symbol,
             CurrentPrice          = currentPrice,
-            AnalyzedAt            = DateTime.UtcNow,
-            UpsideProbability     = upsideProbability,
-            ExpectedReturnPercent = expectedReturn,
+            AnalyzedAt            = observedAt,
+            UpsideProbability     = recommendation.UpsideProbability,
+            ExpectedReturnPercent = recommendation.ExpectedReturnPercent,
             ExpectedHoldingDays   = holdingDays,
-            DownsideRiskPercent   = downsideRisk,
-            RecommendedStopLoss   = stopLoss,
-            RecommendedTarget     = target,
-            ConfidenceScore       = confidence,
-            Grade                 = grade,
+            DownsideRiskPercent   = recommendation.DownsideRiskPercent,
+            RecommendedStopLoss   = recommendation.RecommendedStopLoss,
+            RecommendedTarget     = recommendation.RecommendedTarget,
+            ConfidenceScore       = recommendation.ConfidenceScore,
+            Grade                 = recommendation.Grade,
             ActivePatterns        = activePatterns,
             Indicators            = indicatorSnapshot,
             ATR                   = atr
@@ -296,90 +281,9 @@ public class StockAnalysisService : IStockAnalysisService
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // A. 상승 확률 - Naive Bayes Combination
     // ═══════════════════════════════════════════════════════════════
-    private decimal ComputeUpsideProbability(
-        List<PatternSignalInfo> activePatterns,
-        IndicatorSnapshot indicators,
-        List<PatternStats> allStats)
-    {
-        if (activePatterns.Count == 0)
-        {
-            var baseProb = 50m;
-            baseProb = ApplyIndicatorAdjustment(baseProb, indicators);
-            return Math.Clamp(baseProb, 5m, 95m);
-        }
-
-        // Naive Bayes: P(Up|patterns) = prod(P(Up|pi)) normalized
-        double likelihoodUp   = 1.0;
-        double likelihoodDown = 1.0;
-        const double prior    = 0.5;
-
-        foreach (var pattern in activePatterns)
-        {
-            var winRate = (double)Math.Clamp(pattern.HistoricalWinRate, 0.1m, 0.9m);
-            likelihoodUp   *= winRate;
-            likelihoodDown *= (1.0 - winRate);
-        }
-
-        var posterior = (likelihoodUp * prior) /
-                        (likelihoodUp * prior + likelihoodDown * (1.0 - prior));
-
-        var probability = (decimal)(posterior * 100.0);
-        probability = ApplyIndicatorAdjustment(probability, indicators);
-
-        return Math.Clamp(Math.Round(probability, 1), 5m, 95m);
-    }
-
-    private decimal ApplyIndicatorAdjustment(decimal probability, IndicatorSnapshot indicators)
-    {
-        if (indicators.RSI > 0 && indicators.RSI < 30)
-            probability *= 1.10m;
-        else if (indicators.RSI > 70)
-            probability *= 0.90m;
-
-        if (indicators.SMA200 > 0 && indicators.SMA20 > indicators.SMA200)
-            probability *= 1.05m;
-
-        if (indicators.MACD > indicators.MACDSignal)
-            probability *= 1.05m;
-
-        if (indicators.BollingerLower > 0 && indicators.SMA20 > 0)
-        {
-            var bbWidth = indicators.BollingerUpper - indicators.BollingerLower;
-            if (bbWidth > 0)
-            {
-                var bbPosition = (indicators.SMA20 - indicators.BollingerLower) / bbWidth;
-                if (bbPosition < 0.2m) probability *= 1.05m;
-                else if (bbPosition > 0.8m) probability *= 0.95m;
-            }
-        }
-
-        return probability;
-    }
-
     // ═══════════════════════════════════════════════════════════════
-    // B. 예상 수익률
     // ═══════════════════════════════════════════════════════════════
-    private decimal ComputeExpectedReturn(
-        List<PatternSignalInfo> activePatterns,
-        decimal currentPrice, decimal atr)
-    {
-        if (currentPrice == 0) return 0;
-
-        var atrTargetReturn = currentPrice > 0 ? (2.5m * atr) / currentPrice * 100m : 0;
-
-        if (activePatterns.Count == 0)
-            return Math.Round(atrTargetReturn * 0.5m, 2);
-
-        var totalWeight     = activePatterns.Sum(p => p.Confidence);
-        var patternAvgReturn = totalWeight > 0
-            ? activePatterns.Sum(p => p.HistoricalAvgReturn * p.Confidence) / totalWeight
-            : 0;
-
-        return Math.Round(patternAvgReturn * 0.6m + atrTargetReturn * 0.4m, 2);
-    }
-
     // ═══════════════════════════════════════════════════════════════
     // C. 예상 보유 기간
     // ═══════════════════════════════════════════════════════════════
@@ -403,230 +307,35 @@ public class StockAnalysisService : IStockAnalysisService
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // D. 손실 위험
     // ═══════════════════════════════════════════════════════════════
-    private decimal ComputeDownsideRisk(
-        List<PatternSignalInfo> activePatterns, List<PatternStats> allStats)
-    {
-        if (activePatterns.Count == 0) return 50m;
-
-        var totalWeight     = 0m;
-        var weightedLossRate = 0m;
-        var weightedAvgLoss  = 0m;
-
-        foreach (var pattern in activePatterns)
-        {
-            var stats = allStats.FirstOrDefault(s => s.PatternType == pattern.PatternType);
-            if (stats == null) continue;
-
-            var weight       = pattern.Confidence;
-            weightedLossRate += (1 - stats.WinRate) * weight;
-            weightedAvgLoss  += stats.AvgLossPercent * weight;
-            totalWeight      += weight;
-        }
-
-        if (totalWeight == 0) return 50m;
-
-        var lossRate = weightedLossRate / totalWeight;
-        var avgLoss  = weightedAvgLoss  / totalWeight;
-
-        return Math.Round(lossRate * avgLoss * 100m, 1);
-    }
-
     // ═══════════════════════════════════════════════════════════════
-    // E. 추천 손절선
     // ═══════════════════════════════════════════════════════════════
-    private decimal ComputeRecommendedStopLoss(
-        decimal currentPrice, decimal atr,
-        List<PatternSignalInfo> activePatterns, List<PatternStats> allStats)
-    {
-        var atrStop = currentPrice - 2.0m * atr;
-
-        if (activePatterns.Count > 0)
-        {
-            var avgDrawdown = activePatterns
-                .Select(p => allStats.FirstOrDefault(s => s.PatternType == p.PatternType))
-                .Where(s => s != null)
-                .Select(s => s!.MaxDrawdownPercent)
-                .DefaultIfEmpty(0.05m)
-                .Average();
-
-            var maeStop = currentPrice * (1 - avgDrawdown);
-            return Math.Round(Math.Max(atrStop, maeStop), 2);
-        }
-
-        return Math.Round(atrStop, 2);
-    }
-
     // ═══════════════════════════════════════════════════════════════
-    // F. 추천 목표가
     // ═══════════════════════════════════════════════════════════════
-    private decimal ComputeRecommendedTarget(
-        decimal currentPrice, decimal atr,
-        List<PatternSignalInfo> activePatterns)
-    {
-        var atrTarget = currentPrice + 2.5m * atr;
-
-        if (activePatterns.Count > 0)
-        {
-            var totalWeight = activePatterns.Sum(p => p.Confidence);
-            if (totalWeight > 0)
-            {
-                var avgReturn     = activePatterns.Sum(p => p.HistoricalAvgReturn * p.Confidence) / totalWeight;
-                var patternTarget = currentPrice * (1 + avgReturn / 100m);
-                return Math.Round(patternTarget * 0.6m + atrTarget * 0.4m, 2);
-            }
-        }
-
-        return Math.Round(atrTarget, 2);
-    }
-
     // ═══════════════════════════════════════════════════════════════
-    // G. 신뢰도 점수
     // ═══════════════════════════════════════════════════════════════
-    private decimal ComputeConfidenceScore(
-        List<PatternSignalInfo> activePatterns,
-        IndicatorSnapshot indicators,
-        decimal volumeRatio,
-        List<PatternStats> allStats)
-    {
-        var patternScore = activePatterns.Count > 0
-            ? activePatterns.Average(p => p.HistoricalWinRate)
-            : 0m;
-
-        var confluenceScore = indicators.TotalIndicatorCount > 0
-            ? (decimal)indicators.BullishIndicatorCount / indicators.TotalIndicatorCount
-            : 0.5m;
-
-        var volumeScore = Math.Min(1m, volumeRatio / 1.5m);
-
-        var totalSamples = activePatterns
-            .Select(p => allStats.FirstOrDefault(s => s.PatternType == p.PatternType))
-            .Where(s => s != null)
-            .Sum(s => s!.SampleSize);
-        var sampleScore = Math.Min(1m, totalSamples / 50m);
-
-        var total = patternScore    * 0.40m
-                  + confluenceScore * 0.30m
-                  + volumeScore     * 0.15m
-                  + sampleScore     * 0.15m;
-
-        return Math.Round(total * 100m, 0);
-    }
-
     // ═══════════════════════════════════════════════════════════════
-    // H. 추천 등급
     // ═══════════════════════════════════════════════════════════════
-    private static RecommendationGrade DetermineGrade(decimal probability, decimal confidence)
-    {
-        if (probability >= 70 && confidence >= 60) return RecommendationGrade.StrongBuy;
-        if (probability >= 60 && confidence >= 45) return RecommendationGrade.Buy;
-        if (probability >= 40) return RecommendationGrade.Neutral;
-        if (probability >= 25) return RecommendationGrade.Sell;
-        return RecommendationGrade.StrongSell;
-    }
-
     // ═══════════════════════════════════════════════════════════════
-    // 기술지표 스냅샷 계산 (CPU-bound, 동기)
     // ═══════════════════════════════════════════════════════════════
-    private IndicatorSnapshot ComputeIndicators(OhlcvBar[] bars, decimal[] closes, decimal currentPrice)
-    {
-        var snapshot     = new IndicatorSnapshot();
-        var bullishCount = 0;
-        var totalCount   = 0;
-
-        // RSI
-        var rsi = _indicators.RSI(closes, 14);
-        snapshot.RSI = rsi.Length > 0 ? rsi[^1] : 50;
-        totalCount++;
-        if (snapshot.RSI > 30 && snapshot.RSI < 70) bullishCount++;
-
-        // SMA 20
-        if (closes.Length >= 20)
-        {
-            var sma20 = _indicators.SMA(closes, 20);
-            snapshot.SMA20 = sma20[^1];
-            totalCount++;
-            if (currentPrice > snapshot.SMA20) bullishCount++;
-        }
-
-        // SMA 50
-        if (closes.Length >= 50)
-        {
-            var sma50 = _indicators.SMA(closes, 50);
-            snapshot.SMA50 = sma50[^1];
-            totalCount++;
-            if (currentPrice > snapshot.SMA50) bullishCount++;
-        }
-
-        // SMA 200
-        if (closes.Length >= 200)
-        {
-            var sma200 = _indicators.SMA(closes, 200);
-            snapshot.SMA200 = sma200[^1];
-            totalCount++;
-            if (currentPrice > snapshot.SMA200) bullishCount++;
-        }
-
-        // MACD (EMA12 - EMA26, Signal = EMA9 of MACD)
-        if (closes.Length >= 26)
-        {
-            var ema12    = _indicators.EMA(closes, 12);
-            var ema26    = _indicators.EMA(closes, 26);
-            var macdLine = new decimal[closes.Length];
-            for (var i = 0; i < closes.Length; i++)
-                macdLine[i] = ema12[i] - ema26[i];
-
-            var signal       = _indicators.EMA(macdLine, 9);
-            snapshot.MACD       = macdLine[^1];
-            snapshot.MACDSignal = signal[^1];
-            totalCount++;
-            if (snapshot.MACD > snapshot.MACDSignal) bullishCount++;
-        }
-
-        // Bollinger Bands
-        if (closes.Length >= 20)
-        {
-            var bb = _indicators.BollingerBands(closes, 20, 2.0m);
-            snapshot.BollingerUpper  = bb.Upper[^1];
-            snapshot.BollingerMiddle = bb.Middle[^1];
-            snapshot.BollingerLower  = bb.Lower[^1];
-            totalCount++;
-            if (currentPrice > snapshot.BollingerMiddle) bullishCount++;
-        }
-
-        // VWAP
-        if (bars.Length > 0)
-        {
-            var vwap    = _indicators.VWAP(bars);
-            snapshot.VWAP = vwap[^1];
-            totalCount++;
-            if (currentPrice > snapshot.VWAP) bullishCount++;
-        }
-
-        snapshot.BullishIndicatorCount = bullishCount;
-        snapshot.TotalIndicatorCount   = totalCount;
-
-        return snapshot;
-    }
-
     // ═══════════════════════════════════════════════════════════════
     // 마켓 레짐 계산 (SPY 기반) — DB 우선 조회로 외부 API 호출 최소화
     // ═══════════════════════════════════════════════════════════════
     private async Task<MarketRegime> ComputeRegimeAsync(IDataFeedService dataFeed, CancellationToken ct)
     {
-        var regime = new MarketRegime { AsOf = DateTime.UtcNow };
+        var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
+        var regime = new MarketRegime { AsOf = observedAt };
 
         try
         {
             List<OhlcvBar> spyBars;
 
-            // DB에서 SPY 일봉 데이터 우선 조회 (최근 300일)
+            // DB에서 SPY 일봉 데이터를 설정된 레짐 lookback 범위로 우선 조회한다.
             var dbBars = await _ohlcvRepo.GetBarsAsync(
                 "SPY", TimeFrame.Daily,
-                DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+                observedAt.AddDays(-_settings.RegimeLookbackDays), observedAt, ct);
 
-            if (dbBars.Count >= 200)
+            if (dbBars.Count >= _settings.MinimumRegimeBars)
             {
                 // DB에 충분한 데이터가 있으면 외부 API 호출 생략
                 spyBars = dbBars;
@@ -638,16 +347,15 @@ public class StockAnalysisService : IStockAnalysisService
                 _logger.LogDebug("[Analysis] SPY 레짐: DB 데이터 부족({Count}개) — 외부 API 호출", dbBars.Count);
                 spyBars = await dataFeed.GetHistoricalBarsAsync(
                     "SPY", TimeFrame.Daily,
-                    DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+                    observedAt.AddDays(-_settings.RegimeLookbackDays), observedAt, ct);
             }
 
-            if (spyBars.Count >= 200)
+            if (spyBars.Count >= _settings.MinimumRegimeBars)
             {
-                var spyCloses        = ExtractCloses(spyBars.ToArray());
-                var sma200           = _indicators.SMA(spyCloses, 200);
-                regime.SpyPrice      = spyCloses[^1];
-                regime.Spy200Ma      = sma200[^1];
-                regime.SpyAbove200Ma = regime.SpyPrice > regime.Spy200Ma;
+                var trend = _indicatorSnapshots.CreateLongTrend(spyBars);
+                regime.SpyPrice      = trend.Price;
+                regime.Spy200Ma      = trend.MovingAverage;
+                regime.SpyAbove200Ma = trend.IsAboveMovingAverage;
                 regime.RegimeLabel   = regime.SpyAbove200Ma ? "강세" : "약세";
             }
         }

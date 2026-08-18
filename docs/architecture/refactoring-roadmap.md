@@ -210,6 +210,11 @@
 - Built-in detector registration and backtest override construction now iterate one
   `BuiltInPatternDetectorCatalog`. Enum-coverage and construction tests prevent missing strategies;
   this exposed and fixed the omitted TQQQ 200-SMA detector in live and research execution.
+- Stock recommendation probability, expected return, downside risk, stop, target, confidence, and
+  grade calculations now live in the deterministic `StockRecommendationPolicy`. Indicator snapshot
+  composition has a focused factory, operational cache/lookback/concurrency values use validated
+  options, and the coordinating analysis service uses the injected clock and is below 450 lines.
+  Characterization fixtures preserve the prior neutral and weighted-pattern outputs.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

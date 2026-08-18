@@ -8,8 +8,13 @@ release_tag="${1:-$(git rev-parse --short=12 HEAD)}"
 api_image="localhost/stock-trader/api:architecture-${release_tag}"
 desktop_image="localhost/stock-trader/desktop:architecture-${release_tag}"
 archive_dir="$(mktemp -d /tmp/stocktrader-deploy.XXXXXX)"
-data_dir="${STOCKTRADER_DATA_DIR:-/home/stocktrader/k3s-data/stocktrader}"
+data_dir="${STOCKTRADER_DATA_DIR:?Set STOCKTRADER_DATA_DIR to the absolute host data directory}"
 migration_container="stocktrader-migrate-${release_tag}"
+
+if [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; then
+  echo "STOCKTRADER_DATA_DIR must be a safe absolute path below the filesystem root." >&2
+  exit 1
+fi
 
 cleanup() {
   sudo buildah rm "$migration_container" >/dev/null 2>&1 || true
@@ -61,7 +66,8 @@ sudo buildah from --name "$migration_container" \
 sudo buildah run "$migration_container" -- dotnet StockTrader.dll --migrate-database
 sudo buildah rm "$migration_container" >/dev/null
 
-sed "s|localhost/stock-trader/api:latest|$api_image|" k8s/deployment-api.yaml \
+sed -e "s|localhost/stock-trader/api:latest|$api_image|" \
+    -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|" k8s/deployment-api.yaml \
   | sudo k3s kubectl apply -f -
 sed "s|localhost/stock-trader/desktop:latest|$desktop_image|" k8s/deployment-desktop.yaml \
   | sudo k3s kubectl apply -f -

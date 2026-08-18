@@ -73,7 +73,7 @@ spec:
       volumes:
       - name: stocktrader-data
         hostPath:
-          path: /home/stocktrader/k3s-data/stocktrader
+          path: __STOCKTRADER_DATA_DIR__
           type: DirectoryOrCreate
 
 ---
