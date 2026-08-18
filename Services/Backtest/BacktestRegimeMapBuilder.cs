@@ -25,7 +25,7 @@ public sealed class BacktestRegimeMapBuilder
         IDataFeedService dataFeed,
         DateTime from,
         DateTime to,
-        string regimeSymbol = MarketRegimeBenchmarkPolicy.UnitedStatesBenchmark,
+        string regimeSymbol = DataProviderCatalog.UnitedStatesRegimeBenchmark,
         CancellationToken ct = default)
     {
         var lookbackFrom = from.AddDays(

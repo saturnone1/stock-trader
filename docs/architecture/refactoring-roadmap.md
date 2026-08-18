@@ -231,6 +231,11 @@
 - `TimeFrame` and `DataSource` now live beside their central catalogs in `Domain.MarketData` instead
   of the broad legacy model namespace. Their declaration order and JSON names are unchanged, and an
   architecture test prevents Domain from regaining a dependency on `StockTrader.Models`.
+- `DataProviderCatalog` now also owns each provider's market-regime benchmark. Backtest,
+  optimization, preview, scanning, analysis, daily synchronization, and ML training resolve the
+  same benchmark from the effective provider instead of embedding `SPY` or `069500`. The daily sync
+  policy continuously includes that benchmark even when it is absent from the watchlist, and both
+  daily sync and ML training use the injected application clock.
 - Rule-indicator execution now uses `RuleIndicatorCalculatorRegistry`, which fails fast unless its
   implementations exactly cover the central `IndicatorCatalog`. Per-symbol caching, category
   calculators, and hand-written math have separate bounded components; the former 649-line

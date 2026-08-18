@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Options;
-using StockTrader.Configuration;
+using StockTrader.Application.MarketData;
+using StockTrader.Application.Strategies;
 using StockTrader.Data.Repositories;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -14,8 +14,8 @@ public class DailyDataSyncService : BackgroundService
     private static readonly TimeSpan CooldownPeriod = TimeSpan.FromMinutes(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly TradingSettings _settings;
     private readonly IMarketCalendar _marketCalendar;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<DailyDataSyncService> _logger;
 
     private int _consecutiveFailures = 0;
@@ -27,13 +27,13 @@ public class DailyDataSyncService : BackgroundService
 
     public DailyDataSyncService(
         IServiceScopeFactory scopeFactory,
-        IOptions<TradingSettings> settings,
         IMarketCalendar marketCalendar,
+        TimeProvider timeProvider,
         ILogger<DailyDataSyncService> logger)
     {
         _scopeFactory = scopeFactory;
-        _settings = settings.Value;
         _marketCalendar = marketCalendar;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -51,7 +51,7 @@ public class DailyDataSyncService : BackgroundService
             // BUG-W04: 오늘 이미 싱크 완료했으면 스킵.
             // 장 마감 조건(usReady/krxReady)이 30분 tick마다 계속 true가 되어
             // 동일 날짜 데이터를 하루에 수십 번 재싱크하는 문제를 방지한다.
-            if (DateOnly.FromDateTime(DateTime.UtcNow) == _lastSyncDate)
+            if (DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime) == _lastSyncDate)
                 continue;
 
             // US 또는 KRX 장 마감 후 1시간이 지나야 동기화 시작
@@ -94,7 +94,8 @@ public class DailyDataSyncService : BackgroundService
                 // BUG-W04: 모든 심볼이 성공했을 때만 오늘 날짜를 기록한다.
                 // 부분 실패(일부 심볼 오류) 시에는 날짜를 기록하지 않아 다음 tick에서 재시도한다.
                 if (errors == 0)
-                    _lastSyncDate = DateOnly.FromDateTime(DateTime.UtcNow);
+                    _lastSyncDate = DateOnly.FromDateTime(
+                        _timeProvider.GetUtcNow().UtcDateTime);
                 else
                     _logger.LogWarning("Partial sync: {Errors} symbols failed, will retry next cycle", errors);
 
@@ -116,7 +117,7 @@ public class DailyDataSyncService : BackgroundService
 
     /// <summary>
     /// 앱 시작 시 daily bars가 부족한 심볼이 있으면 즉시 동기화.
-    /// PatternScanner가 bars.Count &lt; 20으로 스킵하는 문제를 방지한다.
+    /// PatternScanner의 중앙 최소 봉 수보다 데이터가 적어 스킵하는 문제를 방지한다.
     /// DailyDataSync는 장 마감 후에만 동작하므로, 장중 시작 시 데이터가 없을 수 있다.
     /// </summary>
     private async Task RunInitialSyncIfNeededAsync(CancellationToken ct)
@@ -126,43 +127,41 @@ public class DailyDataSyncService : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
             var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
+            var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
 
             var settings = await settingsRepo.GetAsync(ct);
+            var feedSelection = await dataFeedFactory.SelectAsync(null, ct);
+            var dataFeed = feedSelection.Service;
+            var symbols = DailyMarketDataSyncPolicy.ResolveRequiredSymbols(
+                settings.WatchlistSymbols,
+                feedSelection.Source);
             var symbolsNeedingSync = new List<string>();
+            var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
 
-            // SPY는 레짐 계산(SMA200)에 최소 200개 daily bars 필요 → 별도 임계값 적용
-            foreach (var symbol in settings.WatchlistSymbols)
+            foreach (var symbol in symbols)
             {
-                var minBars = symbol.Equals("SPY", StringComparison.OrdinalIgnoreCase) ? 200 : 20;
+                var minBars = DailyMarketDataSyncPolicy.MinimumRequiredBars(
+                    symbol,
+                    feedSelection.Source);
                 var bars = await ohlcvRepo.GetBarsAsync(symbol, TimeFrame.Daily,
-                    DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+                    observedAt.AddDays(-StrategyEvaluationPolicy.RegimeLookbackCalendarDays),
+                    observedAt,
+                    ct);
                 if (bars.Count < minBars)
                     symbolsNeedingSync.Add(symbol);
-            }
-
-            // SPY가 워치리스트에 없어도 레짐 계산에 필요하므로 확인
-            if (!settings.WatchlistSymbols.Any(s => s.Equals("SPY", StringComparison.OrdinalIgnoreCase)))
-            {
-                var spyBars = await ohlcvRepo.GetBarsAsync("SPY", TimeFrame.Daily,
-                    DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
-                if (spyBars.Count < 200)
-                    symbolsNeedingSync.Add("SPY");
             }
 
             if (symbolsNeedingSync.Count == 0)
             {
                 _logger.LogInformation("Initial sync: all {Count} symbols have sufficient daily bars",
-                    settings.WatchlistSymbols.Count);
+                    symbols.Count);
                 return;
             }
 
             _logger.LogInformation(
                 "Initial sync: {NeedSync}/{Total} symbols need daily bars — syncing now: {Symbols}",
-                symbolsNeedingSync.Count, settings.WatchlistSymbols.Count,
+                symbolsNeedingSync.Count, symbols.Count,
                 string.Join(", ", symbolsNeedingSync));
-
-            var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
-            var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
             var synced = 0;
 
             foreach (var symbol in symbolsNeedingSync)
@@ -171,7 +170,9 @@ public class DailyDataSyncService : BackgroundService
                 {
                     var bars = await dataFeed.GetHistoricalBarsAsync(
                         symbol, TimeFrame.Daily,
-                        DateTime.UtcNow.AddDays(-400), DateTime.UtcNow, ct);
+                        observedAt.AddDays(-StrategyEvaluationPolicy.RegimeLookbackCalendarDays),
+                        observedAt,
+                        ct);
 
                     if (bars.Count > 0)
                     {
@@ -179,6 +180,10 @@ public class DailyDataSyncService : BackgroundService
                         synced++;
                         _logger.LogDebug("Initial sync: {Count} daily bars for {Symbol}", bars.Count, symbol);
                     }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -188,6 +193,10 @@ public class DailyDataSyncService : BackgroundService
 
             _logger.LogInformation("Initial sync complete: {Synced}/{NeedSync} symbols synced",
                 synced, symbolsNeedingSync.Count);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -203,25 +212,30 @@ public class DailyDataSyncService : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
-        var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
+        var feedSelection = await dataFeedFactory.SelectAsync(null, ct);
+        var dataFeed = feedSelection.Service;
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
         var statsService = scope.ServiceProvider.GetRequiredService<IStatisticsService>();
 
         var settings = await settingsRepo.GetAsync(ct);
+        var symbols = DailyMarketDataSyncPolicy.ResolveRequiredSymbols(
+            settings.WatchlistSymbols,
+            feedSelection.Source);
+        var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
         var synced = 0;
         var totalBars = 0;
         var errors = 0;
 
-        foreach (var symbol in settings.WatchlistSymbols)
+        foreach (var symbol in symbols)
         {
             try
             {
                 var lastDate = await ohlcvRepo.GetLastTimestampAsync(symbol, TimeFrame.Daily, ct);
-                var from = lastDate?.AddDays(1) ?? DateTime.UtcNow.AddYears(-5);
+                var from = lastDate?.AddDays(1) ?? observedAt.AddYears(-5);
 
                 var bars = await dataFeed.GetHistoricalBarsAsync(
-                    symbol, TimeFrame.Daily, from, DateTime.UtcNow, ct);
+                    symbol, TimeFrame.Daily, from, observedAt, ct);
 
                 if (bars.Count > 0)
                 {
@@ -230,6 +244,10 @@ public class DailyDataSyncService : BackgroundService
                     totalBars += bars.Count;
                     _logger.LogDebug("Synced {Count} daily bars for {Symbol}", bars.Count, symbol);
                 }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -249,7 +267,7 @@ public class DailyDataSyncService : BackgroundService
 
         _logger.LogInformation(
             "Daily sync complete: {Synced}/{Total} symbols, {Bars} bars synced, {Errors} errors",
-            synced, settings.WatchlistSymbols.Count, totalBars, errors);
+            synced, symbols.Count, totalBars, errors);
 
         return errors;
     }

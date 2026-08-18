@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -11,7 +12,7 @@ namespace StockTrader.Services.ML;
 public interface IMLModelTrainingService
 {
     /// <summary>
-    /// 백테스트 거래 내역 + SPY 데이터로 두 ML 모델을 학습합니다.
+    /// 백테스트 거래 내역 + 공급자 기준 종목 데이터로 두 ML 모델을 학습합니다.
     /// UI의 "모델 학습" 버튼에서 직접 호출됩니다.
     /// </summary>
     Task<MlTrainingResult> TrainAllAsync(CancellationToken ct = default);
@@ -30,6 +31,7 @@ public class MLModelTrainingService : IMLModelTrainingService
     private readonly ISignalScorer _signalScorer;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly MLSettings _mlSettings;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<MLModelTrainingService> _logger;
 
     // 학습 진행 상태 (UI에 표시, Interlocked으로 동시 학습 방지)
@@ -41,12 +43,14 @@ public class MLModelTrainingService : IMLModelTrainingService
         ISignalScorer signalScorer,
         IServiceScopeFactory scopeFactory,
         IOptions<MLSettings> mlSettings,
+        TimeProvider timeProvider,
         ILogger<MLModelTrainingService> logger)
     {
         _regimeClassifier = regimeClassifier;
         _signalScorer = signalScorer;
         _scopeFactory = scopeFactory;
         _mlSettings = mlSettings.Value;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -60,42 +64,59 @@ public class MLModelTrainingService : IMLModelTrainingService
                 Message = "이미 학습이 진행 중입니다. 잠시 후 다시 시도하세요."
             };
         }
-        var startTime = DateTime.UtcNow;
+        var startTime = _timeProvider.GetUtcNow().UtcDateTime;
 
         try
         {
             // ── Phase 1: 레짐 분류기 학습 ─────────────────────────────────
-            _trainingStatus = "SPY 데이터 수집 중...";
             _logger.LogInformation("ML 학습 시작: 레짐 분류기");
 
-            OhlcvBar[] spyBars = Array.Empty<OhlcvBar>();
+            var regimeSymbol = DataProviderCatalog.UnitedStatesRegimeBenchmark;
+            OhlcvBar[] regimeBars = [];
             try
             {
                 using var dataScope = _scopeFactory.CreateScope();
                 var dataFeedFactory = dataScope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
-                var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
-                var spyFrom = DateTime.UtcNow.AddDays(-_mlSettings.RegimeTrainingDays);
-                var spyList = await dataFeed.GetHistoricalBarsAsync("SPY", TimeFrame.Daily, spyFrom, DateTime.UtcNow, ct);
-                spyBars = spyList.ToArray();
-                _logger.LogInformation("SPY 데이터 수집 완료: {Count}개 바", spyBars.Length);
+                var feedSelection = await dataFeedFactory.SelectAsync(null, ct);
+                regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
+                _trainingStatus = $"{regimeSymbol} 데이터 수집 중...";
+                var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
+                var regimeFrom = observedAt.AddDays(-_mlSettings.RegimeTrainingDays);
+                var regimeList = await feedSelection.Service.GetHistoricalBarsAsync(
+                    regimeSymbol, TimeFrame.Daily, regimeFrom, observedAt, ct);
+                regimeBars = regimeList.ToArray();
+                _logger.LogInformation(
+                    "{Symbol} 데이터 수집 완료: {Count}개 바",
+                    regimeSymbol,
+                    regimeBars.Length);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "SPY 데이터 수집 실패 — 레짐 분류기 학습 건너뜀");
+                _logger.LogWarning(
+                    ex,
+                    "{Symbol} 데이터 수집 실패 — 레짐 분류기 학습 건너뜀",
+                    regimeSymbol);
             }
 
             bool regimeTrained = false;
             int regimeSamples = 0;
 
-            if (spyBars.Length >= _mlSettings.MinTrainingSamples)
+            if (regimeBars.Length >= _mlSettings.MinTrainingSamples)
             {
                 _trainingStatus = "시장 레짐 분류기 학습 중...";
-                regimeTrained = await _regimeClassifier.TrainAsync(spyBars, ct);
-                regimeSamples = spyBars.Length;
+                regimeTrained = await _regimeClassifier.TrainAsync(regimeBars, ct);
+                regimeSamples = regimeBars.Length;
             }
             else
             {
-                _logger.LogWarning("SPY 데이터 부족으로 레짐 분류기 학습 건너뜀 ({Count}개)", spyBars.Length);
+                _logger.LogWarning(
+                    "{Symbol} 데이터 부족으로 레짐 분류기 학습 건너뜀 ({Count}개)",
+                    regimeSymbol,
+                    regimeBars.Length);
             }
 
             // ── Phase 2: 시그널 스코어러 학습 ────────────────────────────
@@ -126,12 +147,18 @@ public class MLModelTrainingService : IMLModelTrainingService
                 _logger.LogWarning("거래 내역 부족으로 시그널 스코어러 학습 건너뜀 ({Count}개)", trades.Count);
             }
 
-            var duration = DateTime.UtcNow - startTime;
+            var duration = _timeProvider.GetUtcNow().UtcDateTime - startTime;
             _trainingStatus = "완료";
 
             var anySuccess = regimeTrained || scorerTrained;
 
-            var message = BuildResultMessage(regimeTrained, scorerTrained, spyBars.Length, trades.Count);
+            var message = BuildResultMessage(
+                regimeTrained,
+                scorerTrained,
+                regimeSymbol,
+                regimeBars.Length,
+                trades.Count,
+                _mlSettings.MinTrainingSamples);
 
             _logger.LogInformation("ML 학습 완료: {Duration:F1}초, 레짐={Regime}, 스코어러={Scorer}",
                 duration.TotalSeconds, regimeTrained, scorerTrained);
@@ -182,19 +209,25 @@ public class MLModelTrainingService : IMLModelTrainingService
         TrainingStatus = _trainingStatus
     };
 
-    private static string BuildResultMessage(bool regimeTrained, bool scorerTrained, int spySamples, int tradeSamples)
+    private static string BuildResultMessage(
+        bool regimeTrained,
+        bool scorerTrained,
+        string regimeSymbol,
+        int regimeSamples,
+        int tradeSamples,
+        int minimumTrainingSamples)
     {
         var parts = new List<string>();
 
         if (regimeTrained)
-            parts.Add($"레짐 분류기 학습 완료 ({spySamples}개 SPY 바)");
+            parts.Add($"레짐 분류기 학습 완료 ({regimeSamples}개 {regimeSymbol} 바)");
         else
             parts.Add("레짐 분류기 건너뜀 (데이터 부족)");
 
         if (scorerTrained)
             parts.Add($"시그널 스코어러 학습 완료 ({tradeSamples}개 거래)");
         else
-            parts.Add($"시그널 스코어러 건너뜀 (최소 {50}개 거래 필요, 현재 {tradeSamples}개)");
+            parts.Add($"시그널 스코어러 건너뜀 (최소 {minimumTrainingSamples}개 거래 필요, 현재 {tradeSamples}개)");
 
         return string.Join(" | ", parts);
     }

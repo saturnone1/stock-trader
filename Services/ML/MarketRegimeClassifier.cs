@@ -18,6 +18,7 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
     private readonly MLContext _mlContext;
     private readonly MLSettings _settings;
     private readonly IIndicatorService _indicators;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<MarketRegimeClassifier> _logger;
 
     private ITransformer? _model;
@@ -38,10 +39,12 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
     public MarketRegimeClassifier(
         IOptions<MLSettings> settings,
         IIndicatorService indicators,
+        TimeProvider timeProvider,
         ILogger<MarketRegimeClassifier> logger)
     {
         _settings = settings.Value;
         _indicators = indicators;
+        _timeProvider = timeProvider;
         _logger = logger;
         _mlContext = new MLContext(seed: 42);
 
@@ -52,21 +55,25 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
     // Public API
     // ──────────────────────────────────────────────────────────────────────
 
-    public async Task<MarketRegime> ClassifyAsync(OhlcvBar[] spyBars, CancellationToken ct = default)
+    public async Task<MarketRegime> ClassifyAsync(
+        OhlcvBar[] benchmarkBars,
+        CancellationToken ct = default)
     {
         // 기본 레짐 계산 (기존 로직 — 항상 수행)
-        var baseRegime = ComputeBaseRegime(spyBars);
+        var baseRegime = ComputeBaseRegime(
+            benchmarkBars,
+            _timeProvider.GetUtcNow().UtcDateTime);
 
-        if (!IsModelLoaded || spyBars.Length < 30)
+        if (!IsModelLoaded || benchmarkBars.Length < 30)
         {
             _logger.LogDebug("ML 레짐 분류기 미사용 (모델 로드: {Loaded}, 데이터: {Count}개)",
-                IsModelLoaded, spyBars.Length);
+                IsModelLoaded, benchmarkBars.Length);
             return baseRegime;
         }
 
         try
         {
-            var features = await Task.Run(() => ExtractFeatures(spyBars), ct);
+            var features = await Task.Run(() => ExtractFeatures(benchmarkBars), ct);
             if (features == null) return baseRegime;
 
             RegimeClusterOutput prediction;
@@ -93,6 +100,10 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
                 MlRegimeLabel = label
             };
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "ML 레짐 분류 실패 — 기본 레짐 사용");
@@ -100,29 +111,31 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
         }
     }
 
-    public async Task<bool> TrainAsync(OhlcvBar[] spyBars, CancellationToken ct = default)
+    public async Task<bool> TrainAsync(
+        OhlcvBar[] benchmarkBars,
+        CancellationToken ct = default)
     {
-        if (spyBars.Length < _settings.MinTrainingSamples)
+        if (benchmarkBars.Length < _settings.MinTrainingSamples)
         {
             _logger.LogWarning("레짐 모델 학습 데이터 부족: {Count}개 (최소 {Min}개)",
-                spyBars.Length, _settings.MinTrainingSamples);
+                benchmarkBars.Length, _settings.MinTrainingSamples);
             return false;
         }
 
-        _logger.LogInformation("시장 레짐 분류기 학습 시작: {Count}개 샘플", spyBars.Length);
+        _logger.LogInformation("시장 레짐 분류기 학습 시작: {Count}개 샘플", benchmarkBars.Length);
 
         try
         {
-            var trainingData = await Task.Run(() => BuildTrainingData(spyBars), ct);
+            var trainingData = await Task.Run(() => BuildTrainingData(benchmarkBars), ct);
             if (trainingData.Count < _settings.MinTrainingSamples)
             {
                 _logger.LogWarning("피처 추출 후 샘플 부족: {Count}개", trainingData.Count);
                 return false;
             }
 
-            await Task.Run(() => FitModel(trainingData, spyBars), ct);
+            await Task.Run(() => FitModel(trainingData, benchmarkBars), ct);
 
-            TrainedAt = DateTime.UtcNow;
+            TrainedAt = _timeProvider.GetUtcNow().UtcDateTime;
             TrainingSamples = trainingData.Count;
 
             SaveModel();
@@ -131,6 +144,10 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
                 trainingData.Count, _clusterLabels);
 
             return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -445,17 +462,19 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
     // Private: Base Regime (기존 로직 — ML 불가 시 폴백)
     // ──────────────────────────────────────────────────────────────────────
 
-    private static MarketRegime ComputeBaseRegime(OhlcvBar[] spyBars)
+    private static MarketRegime ComputeBaseRegime(
+        OhlcvBar[] benchmarkBars,
+        DateTime observedAt)
     {
-        if (spyBars.Length == 0)
-            return new MarketRegime { RegimeLabel = "알 수 없음", AsOf = DateTime.UtcNow };
+        if (benchmarkBars.Length == 0)
+            return new MarketRegime { RegimeLabel = "알 수 없음", AsOf = observedAt };
 
-        var last = spyBars[^1];
+        var last = benchmarkBars[^1];
         decimal ma200 = 0;
 
-        if (spyBars.Length >= 200)
+        if (benchmarkBars.Length >= 200)
         {
-            ma200 = spyBars.TakeLast(200).Average(b => b.Close);
+            ma200 = benchmarkBars.TakeLast(200).Average(b => b.Close);
         }
 
         var aboveMa = ma200 > 0 && last.Close > ma200;

@@ -15,6 +15,7 @@ public class SignalScorer : ISignalScorer
 {
     private readonly MLContext _mlContext;
     private readonly MLSettings _settings;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<SignalScorer> _logger;
 
     private ITransformer? _model;
@@ -37,9 +38,11 @@ public class SignalScorer : ISignalScorer
 
     public SignalScorer(
         IOptions<MLSettings> settings,
+        TimeProvider timeProvider,
         ILogger<SignalScorer> logger)
     {
         _settings = settings.Value;
+        _timeProvider = timeProvider;
         _logger = logger;
         _mlContext = new MLContext(seed: 42);
 
@@ -81,6 +84,10 @@ public class SignalScorer : ISignalScorer
 
             return Math.Clamp(blended, 0m, 1m);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "시그널 스코어링 실패 — 원래 Confidence 사용");
@@ -104,7 +111,7 @@ public class SignalScorer : ISignalScorer
             var trainingData = trades.Select(BuildTrainingInput).ToList();
             var (accuracy, auc) = await Task.Run(() => FitModel(trainingData), ct);
 
-            TrainedAt = DateTime.UtcNow;
+            TrainedAt = _timeProvider.GetUtcNow().UtcDateTime;
             TrainingSamples = trainingData.Count;
             LastAccuracy = accuracy;
             LastAuc = auc;
@@ -115,6 +122,10 @@ public class SignalScorer : ISignalScorer
                 accuracy, auc);
 
             return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

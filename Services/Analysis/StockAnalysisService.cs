@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Application.Analysis;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -52,7 +53,7 @@ public class StockAnalysisService : IStockAnalysisService
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // 관심종목 전체 분석 (병렬, 캐싱, SPY 레짐 공유)
+    // 관심종목 전체 분석 (병렬, 캐싱, 공급자 기준 레짐 공유)
     // ═══════════════════════════════════════════════════════════════
 
     public async Task<List<StockAnalysis>> AnalyzeWatchlistAsync(CancellationToken ct = default)
@@ -77,10 +78,12 @@ public class StockAnalysisService : IStockAnalysisService
         var symbols  = settings.WatchlistSymbols;
         if (symbols.Count == 0) return [];
 
-        var dataFeed = await _dataFeedFactory.GetServiceAsync(ct);
+        var feedSelection = await _dataFeedFactory.SelectAsync(null, ct);
+        var dataFeed = feedSelection.Service;
+        var regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
 
-        // 1. SPY 레짐과 패턴 통계를 한 번만 가져옴 (모든 종목이 공유)
-        var (regime, allStats) = await FetchSharedDataAsync(dataFeed, ct);
+        // 1. 기준 종목 레짐과 패턴 통계를 한 번만 가져옴 (모든 종목이 공유)
+        var (regime, allStats) = await FetchSharedDataAsync(dataFeed, regimeSymbol, ct);
 
         // 2. SemaphoreSlim으로 동시 분석 수 제한 (Yahoo rate limit 보호)
         var sem = new SemaphoreSlim(_settings.MaxParallelAnalyses, _settings.MaxParallelAnalyses);
@@ -129,8 +132,9 @@ public class StockAnalysisService : IStockAnalysisService
 
     public async Task<MarketRegime> GetMarketRegimeAsync(CancellationToken ct = default)
     {
-        var dataFeed = await _dataFeedFactory.GetServiceAsync(ct);
-        return await GetCachedRegimeAsync(dataFeed, ct);
+        var feedSelection = await _dataFeedFactory.SelectAsync(null, ct);
+        var regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
+        return await GetCachedRegimeAsync(feedSelection.Service, regimeSymbol, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -146,8 +150,10 @@ public class StockAnalysisService : IStockAnalysisService
             return cached;
         }
 
-        var dataFeed = await _dataFeedFactory.GetServiceAsync(ct);
-        var (regime, allStats) = await FetchSharedDataAsync(dataFeed, ct);
+        var feedSelection = await _dataFeedFactory.SelectAsync(null, ct);
+        var dataFeed = feedSelection.Service;
+        var regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
+        var (regime, allStats) = await FetchSharedDataAsync(dataFeed, regimeSymbol, ct);
         var settings = await _settingsRepo.GetAsync(ct);
 
         var analysis = await AnalyzeInternalAsync(symbol, dataFeed, regime, allStats, settings, ct);
@@ -160,22 +166,27 @@ public class StockAnalysisService : IStockAnalysisService
     // ═══════════════════════════════════════════════════════════════
 
     private async Task<(MarketRegime regime, List<PatternStats> allStats)> FetchSharedDataAsync(
-        IDataFeedService dataFeed, CancellationToken ct)
+        IDataFeedService dataFeed,
+        string regimeSymbol,
+        CancellationToken ct)
     {
         // 레짐과 통계를 동시에 가져옴
-        var regimeTask = GetCachedRegimeAsync(dataFeed, ct);
+        var regimeTask = GetCachedRegimeAsync(dataFeed, regimeSymbol, ct);
         var statsTask  = GetCachedStatsAsync(ct);
         await Task.WhenAll(regimeTask, statsTask);
         return (await regimeTask, await statsTask);
     }
 
-    private async Task<MarketRegime> GetCachedRegimeAsync(IDataFeedService dataFeed, CancellationToken ct)
+    private async Task<MarketRegime> GetCachedRegimeAsync(
+        IDataFeedService dataFeed,
+        string regimeSymbol,
+        CancellationToken ct)
     {
-        const string key = "market:regime";
+        var key = $"market:regime:{regimeSymbol.ToUpperInvariant()}";
         if (_cache.TryGetValue(key, out MarketRegime? cached) && cached != null)
             return cached;
 
-        var regime = await ComputeRegimeAsync(dataFeed, ct);
+        var regime = await ComputeRegimeAsync(dataFeed, regimeSymbol, ct);
         _cache.Set(key, regime, TimeSpan.FromMinutes(_settings.RegimeCacheMinutes));
         return regime;
     }
@@ -319,40 +330,49 @@ public class StockAnalysisService : IStockAnalysisService
     // ═══════════════════════════════════════════════════════════════
     // ═══════════════════════════════════════════════════════════════
     // ═══════════════════════════════════════════════════════════════
-    // 마켓 레짐 계산 (SPY 기반) — DB 우선 조회로 외부 API 호출 최소화
+    // 마켓 레짐 계산 — 공급자 기준 종목의 DB 데이터를 우선 사용해 외부 API 호출 최소화
     // ═══════════════════════════════════════════════════════════════
-    private async Task<MarketRegime> ComputeRegimeAsync(IDataFeedService dataFeed, CancellationToken ct)
+    private async Task<MarketRegime> ComputeRegimeAsync(
+        IDataFeedService dataFeed,
+        string regimeSymbol,
+        CancellationToken ct)
     {
         var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
         var regime = new MarketRegime { AsOf = observedAt };
 
         try
         {
-            List<OhlcvBar> spyBars;
+            List<OhlcvBar> regimeBars;
 
-            // DB에서 SPY 일봉 데이터를 설정된 레짐 lookback 범위로 우선 조회한다.
+            // DB에서 기준 종목 일봉 데이터를 설정된 레짐 lookback 범위로 우선 조회한다.
             var dbBars = await _ohlcvRepo.GetBarsAsync(
-                "SPY", TimeFrame.Daily,
+                regimeSymbol, TimeFrame.Daily,
                 observedAt.AddDays(-_settings.RegimeLookbackDays), observedAt, ct);
 
             if (dbBars.Count >= _settings.MinimumRegimeBars)
             {
                 // DB에 충분한 데이터가 있으면 외부 API 호출 생략
-                spyBars = dbBars;
-                _logger.LogDebug("[Analysis] SPY 레짐: DB에서 {Count}개 바 사용 (API 호출 생략)", dbBars.Count);
+                regimeBars = dbBars;
+                _logger.LogDebug(
+                    "[Analysis] {Symbol} 레짐: DB에서 {Count}개 바 사용 (API 호출 생략)",
+                    regimeSymbol,
+                    dbBars.Count);
             }
             else
             {
                 // DB 데이터 부족 시 외부 API에서 fetch
-                _logger.LogDebug("[Analysis] SPY 레짐: DB 데이터 부족({Count}개) — 외부 API 호출", dbBars.Count);
-                spyBars = await dataFeed.GetHistoricalBarsAsync(
-                    "SPY", TimeFrame.Daily,
+                _logger.LogDebug(
+                    "[Analysis] {Symbol} 레짐: DB 데이터 부족({Count}개) — 외부 API 호출",
+                    regimeSymbol,
+                    dbBars.Count);
+                regimeBars = await dataFeed.GetHistoricalBarsAsync(
+                    regimeSymbol, TimeFrame.Daily,
                     observedAt.AddDays(-_settings.RegimeLookbackDays), observedAt, ct);
             }
 
-            if (spyBars.Count >= _settings.MinimumRegimeBars)
+            if (regimeBars.Count >= _settings.MinimumRegimeBars)
             {
-                var trend = _indicatorSnapshots.CreateLongTrend(spyBars);
+                var trend = _indicatorSnapshots.CreateLongTrend(regimeBars);
                 regime.SpyPrice      = trend.Price;
                 regime.Spy200Ma      = trend.MovingAverage;
                 regime.SpyAbove200Ma = trend.IsAboveMovingAverage;
@@ -361,7 +381,7 @@ public class StockAnalysisService : IStockAnalysisService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Analysis] SPY 레짐 계산 실패");
+            _logger.LogWarning(ex, "[Analysis] {Symbol} 레짐 계산 실패", regimeSymbol);
             regime.RegimeLabel = "알 수 없음";
         }
 

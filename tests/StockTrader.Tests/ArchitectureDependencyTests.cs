@@ -1201,8 +1201,8 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/IOptimizationEvaluationContextPreparer.cs"));
         var preparer = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/OptimizationEvaluationContextPreparer.cs"));
-        var benchmarkPolicy = File.ReadAllText(Path.Combine(
-            repository, "Application/Backtesting/MarketRegimeBenchmarkPolicy.cs"));
+        var providerCatalog = File.ReadAllText(Path.Combine(
+            repository, "Domain/MarketData/DataProviderCatalog.cs"));
         var backtest = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestService.cs"));
         var executionStorePort = File.ReadAllText(Path.Combine(
@@ -1253,11 +1253,11 @@ public class ArchitectureDependencyTests
         preparer.Should().Contain("BacktestDataPreparer");
         preparer.Should().Contain("BacktestRegimeMapBuilder");
         preparer.Should().Contain("_dataFeeds.SelectAsync(request.DataSource, ct)");
-        preparer.Should().Contain("MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source)");
-        benchmarkPolicy.Should().Contain("UnitedStatesBenchmark = \"SPY\"");
-        benchmarkPolicy.Should().Contain("KoreaBenchmark = \"069500\"");
+        preparer.Should().Contain("DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source)");
+        providerCatalog.Should().Contain("UnitedStatesRegimeBenchmark = \"SPY\"");
+        providerCatalog.Should().Contain("KoreaRegimeBenchmark = \"069500\"");
         backtest.Should().Contain("_dataFeedFactory.SelectAsync(request.DataSource, ct)");
-        backtest.Should().Contain("MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source)");
+        backtest.Should().Contain("DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source)");
         backtest.Should().NotContain("request.DataSource == DataSource.LsSecurities");
         executionStorePort.Should().Contain("SaveChunkAsync(");
         executionStorePort.Should().Contain("SaveOutOfSampleAsync(");
@@ -1469,6 +1469,49 @@ public class ArchitectureDependencyTests
         scanner.Should().NotContain("DateTime.UtcNow");
         scanner.Should().NotContain("AddDays(-400)");
         scanner.Should().NotContain("SMA(closes, 200)");
+    }
+
+    [Fact]
+    public void MarketDataConsumersUseTheProviderOwnedRegimeBenchmark()
+    {
+        var repository = FindRepositoryRoot();
+        var directConsumers = new[]
+        {
+            "BackgroundServices/PatternScannerService.cs",
+            "Services/Analysis/StockAnalysisService.cs",
+            "Services/StrategyPreview/PatternPreviewService.cs",
+            "Services/ML/MLModelTrainingService.cs",
+            "Services/Backtest/BacktestService.cs",
+            "Services/Backtest/BacktestRegimeMapBuilder.cs",
+            "Services/Backtest/OptimizationEvaluationContextPreparer.cs"
+        };
+
+        foreach (var path in directConsumers)
+        {
+            var source = File.ReadAllText(Path.Combine(repository, path));
+            source.Should().Contain("DataProviderCatalog");
+            source.Should().NotContain("\"SPY\"");
+            source.Should().NotContain("\"069500\"");
+        }
+
+        var sync = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/DailyDataSyncService.cs"));
+        var ml = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/MLModelTrainingService.cs"));
+        var regimeClassifier = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/MarketRegimeClassifier.cs"));
+        var signalScorer = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/SignalScorer.cs"));
+        sync.Should().Contain("DailyMarketDataSyncPolicy.ResolveRequiredSymbols(");
+        sync.Should().Contain("_timeProvider.GetUtcNow()");
+        sync.Should().NotContain("DateTime.UtcNow");
+        ml.Should().Contain("_mlSettings.MinTrainingSamples");
+        ml.Should().Contain("_timeProvider.GetUtcNow()");
+        ml.Should().NotContain("DateTime.UtcNow");
+        regimeClassifier.Should().Contain("_timeProvider.GetUtcNow()");
+        regimeClassifier.Should().NotContain("DateTime.UtcNow");
+        signalScorer.Should().Contain("_timeProvider.GetUtcNow()");
+        signalScorer.Should().NotContain("DateTime.UtcNow");
     }
 
     [Fact]

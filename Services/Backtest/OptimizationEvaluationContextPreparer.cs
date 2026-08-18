@@ -40,7 +40,7 @@ public sealed class OptimizationEvaluationContextPreparer
         CancellationToken ct)
     {
         var feedSelection = await _dataFeeds.SelectAsync(request.DataSource, ct);
-        var regimeSymbol = MarketRegimeBenchmarkPolicy.Resolve(feedSelection.Source);
+        var regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
         var regimes = await _regimes.BuildAsync(
             feedSelection.Service,
             request.From,

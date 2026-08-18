@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
@@ -38,12 +39,13 @@ public class PatternScannerService : BackgroundService
     private readonly ConcurrentDictionary<string, DateOnly> _lastScanDate = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// SPY 레짐 캐시: 하루에 한 번만 DB 쿼리.
-    /// 채널 기반 구조에서 심볼마다 ComputeRegimeAsync를 호출하면 심볼 수만큼 SPY DB 쿼리가 발생한다.
+    /// 기준 종목 레짐 캐시: 공급자·날짜별로 한 번만 DB 쿼리.
+    /// 채널 기반 구조에서 심볼마다 레짐을 계산하는 N+1 쿼리를 방지한다.
     /// DateOnly 키로 당일 캐시를 보장하고, 다음날 자동 갱신된다.
     /// </summary>
     private MarketRegime? _cachedRegime;
     private DateOnly _regimeCacheDate = DateOnly.MinValue;
+    private string? _regimeCacheSymbol;
 
     public PatternScannerService(
         IServiceScopeFactory scopeFactory,
@@ -133,7 +135,8 @@ public class PatternScannerService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var dataFeedFactory = scope.ServiceProvider.GetRequiredService<IDataFeedServiceFactory>();
-        var dataFeed = await dataFeedFactory.GetServiceAsync(ct);
+        var feedSelection = await dataFeedFactory.SelectAsync(null, ct);
+        var regimeSymbol = DataProviderCatalog.RegimeBenchmarkSymbol(feedSelection.Source);
         var patternDetection = scope.ServiceProvider.GetRequiredService<PatternDetectionService>();
         var signalService = scope.ServiceProvider.GetRequiredService<ISignalService>();
         var orderService = scope.ServiceProvider.GetRequiredService<IOrderService>();
@@ -142,21 +145,27 @@ public class PatternScannerService : BackgroundService
         var bars = await ohlcvRepo.GetBarsAsync(symbol, TimeFrame.Daily,
             nowUtc.AddDays(-StrategyEvaluationPolicy.LiveDailySignalLookbackDays), nowUtc, ct);
 
-        if (bars.Count < 20)
+        if (bars.Count < StrategyEvaluationPolicy.LiveScannerMinimumBars)
         {
-            _logger.LogDebug("Skipping {Symbol}: only {Count} daily bars (need >= 20)", symbol, bars.Count);
+            _logger.LogDebug(
+                "Skipping {Symbol}: only {Count} daily bars (need >= {Minimum})",
+                symbol,
+                bars.Count,
+                StrategyEvaluationPolicy.LiveScannerMinimumBars);
             return;
         }
 
         // 스캔 완료 기록 (데이터 로드 후, 결과와 무관하게)
         _lastScanDate[symbol] = todayEt;
 
-        // SPY 레짐 캐시: 당일 첫 심볼 스캔 시에만 DB 쿼리, 이후 심볼은 캐시 재사용.
-        // 채널에서 심볼을 개별 수신하는 구조에서 심볼마다 SPY 쿼리가 발생하는 N+1 문제를 방지한다.
-        if (_cachedRegime is null || _regimeCacheDate != todayEt)
+        // 공급자 또는 날짜가 달라지면 기준 종목 레짐을 다시 계산한다.
+        if (_cachedRegime is null
+            || _regimeCacheDate != todayEt
+            || !string.Equals(_regimeCacheSymbol, regimeSymbol, StringComparison.OrdinalIgnoreCase))
         {
-            _cachedRegime = await ComputeRegimeAsync(ohlcvRepo, ct);
+            _cachedRegime = await ComputeRegimeAsync(ohlcvRepo, regimeSymbol, ct);
             _regimeCacheDate = todayEt;
+            _regimeCacheSymbol = regimeSymbol;
         }
         var regime = _cachedRegime;
         if (regime is null)
@@ -187,21 +196,26 @@ public class PatternScannerService : BackgroundService
             await orderService.PlaceOrderAsync(rec, ct);
     }
 
-    private async Task<MarketRegime> ComputeRegimeAsync(IOhlcvRepository ohlcvRepo,
+    private async Task<MarketRegime> ComputeRegimeAsync(
+        IOhlcvRepository ohlcvRepo,
+        string regimeSymbol,
         CancellationToken ct)
     {
         var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
         // SMA200에는 최소 200개 daily bars 필요 — 영업일 기준 ~280일(공휴일 감안)이므로 400일치 조회
-        var spyBars = await ohlcvRepo.GetBarsAsync("SPY", TimeFrame.Daily,
+        var regimeBars = await ohlcvRepo.GetBarsAsync(regimeSymbol, TimeFrame.Daily,
             nowUtc.AddDays(-StrategyEvaluationPolicy.RegimeLookbackCalendarDays), nowUtc, ct);
 
         var regime = new MarketRegime { AsOf = nowUtc };
 
-        _logger.LogDebug("ComputeRegime: SPY daily bars count = {Count}", spyBars.Count);
+        _logger.LogDebug(
+            "ComputeRegime: {Symbol} daily bars count = {Count}",
+            regimeSymbol,
+            regimeBars.Count);
 
-        if (spyBars.Count >= StrategyEvaluationPolicy.RegimeTrendBars)
+        if (regimeBars.Count >= StrategyEvaluationPolicy.RegimeTrendBars)
         {
-            var closes = ExtractCloses(spyBars.ToArray());
+            var closes = ExtractCloses(regimeBars.ToArray());
             var sma200 = _indicatorService.SMA(
                 closes, StrategyEvaluationPolicy.RegimeTrendBars);
             regime.SpyPrice = closes[^1];

@@ -6,6 +6,9 @@ public static class StrategyEvaluationPolicy
     /// <summary>지표 워밍업과 첫 신호 평가 전에 확보해야 하는 최소 봉 수입니다.</summary>
     public const int MinimumWarmupBars = 50;
 
+    /// <summary>일봉 기본 패턴 스캐너가 평가를 시작할 최소 봉 수입니다.</summary>
+    public const int LiveScannerMinimumBars = 20;
+
     /// <summary>시장 장기 추세 레짐을 판정하는 이동평균 기간입니다.</summary>
     public const int RegimeTrendBars = 200;
 

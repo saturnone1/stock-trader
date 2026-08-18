@@ -62,6 +62,18 @@ public class CentralCatalogTests
         DataProviderCatalog.Implemented.Select(item => item.Value)
             .Should().BeEquivalentTo([DataSource.Alpaca, DataSource.Yahoo, DataSource.LsSecurities]);
         DataProviderCatalog.Get(DataSource.Polygon).IsImplemented.Should().BeFalse();
+        DataProviderCatalog.All.Should().OnlyContain(item =>
+            !string.IsNullOrWhiteSpace(item.RegimeBenchmarkSymbol));
+    }
+
+    [Theory]
+    [InlineData(DataSource.Alpaca, DataProviderCatalog.UnitedStatesRegimeBenchmark)]
+    [InlineData(DataSource.Yahoo, DataProviderCatalog.UnitedStatesRegimeBenchmark)]
+    [InlineData(DataSource.Polygon, DataProviderCatalog.UnitedStatesRegimeBenchmark)]
+    [InlineData(DataSource.LsSecurities, DataProviderCatalog.KoreaRegimeBenchmark)]
+    public void ProviderRegimeBenchmarksAreCentralized(DataSource source, string expectedSymbol)
+    {
+        DataProviderCatalog.RegimeBenchmarkSymbol(source).Should().Be(expectedSymbol);
     }
 
     [Theory]
