@@ -59,7 +59,7 @@ internal static class PerformanceCalculator
 
     /// <summary>
     /// 레짐별 (Bull/Bear) + 연도별 성과 분해.
-    /// spyAbove200Ma: 날짜 → SPY가 200MA 위에 있는지. null이면 Bull로 처리.
+    /// spyAbove200Ma: 날짜 → SPY가 200MA 위에 있는지. 과거 기준값이 없으면 레짐을 추측하지 않습니다.
     /// </summary>
     public static Dictionary<string, RegimePerformance> ComputeRegimeStats(
         List<TradeRecord> trades, Dictionary<DateTime, bool>? spyAbove200Ma)
@@ -72,29 +72,28 @@ internal static class PerformanceCalculator
 
         foreach (var trade in trades)
         {
-            // Bull/Bear 레짐
-            bool isBull = true;
-            if (spyAbove200Ma != null)
+            // Bull/Bear 레짐. 관측 이전 구간이나 레짐 데이터가 없으면 임의로 Bull에 넣지 않는다.
+            if (spyAbove200Ma is { Count: > 0 })
             {
                 var entryDate = trade.EntryTime.Date;
-                // 정확한 날짜 없으면 가장 가까운 이전 날짜로 fallback
-                if (!spyAbove200Ma.TryGetValue(entryDate, out isBull))
-                {
-                    var closestKey = spyAbove200Ma.Keys
-                        .Where(d => d <= entryDate)
-                        .OrderByDescending(d => d)
+                bool? isBull = spyAbove200Ma.TryGetValue(entryDate, out var exactRegime)
+                    ? exactRegime
+                    : spyAbove200Ma
+                        .Where(pair => pair.Key <= entryDate)
+                        .OrderByDescending(pair => pair.Key)
+                        .Select(pair => (bool?)pair.Value)
                         .FirstOrDefault();
-                    isBull = closestKey != default ? spyAbove200Ma[closestKey] : true;
+                if (isBull.HasValue)
+                {
+                    var regimeKey = isBull.Value ? "Bull" : "Bear";
+                    if (!groups.ContainsKey(regimeKey)) groups[regimeKey] = [];
+                    groups[regimeKey].Add(trade);
                 }
             }
 
-            var regimeKey = isBull ? "Bull" : "Bear";
-            if (!groups.ContainsKey(regimeKey)) groups[regimeKey] = new List<TradeRecord>();
-            groups[regimeKey].Add(trade);
-
             // 연도별
             var yearKey = trade.EntryTime.Year.ToString();
-            if (!groups.ContainsKey(yearKey)) groups[yearKey] = new List<TradeRecord>();
+            if (!groups.ContainsKey(yearKey)) groups[yearKey] = [];
             groups[yearKey].Add(trade);
         }
 
@@ -104,33 +103,16 @@ internal static class PerformanceCalculator
 
             var winCount = groupTrades.Count(t => t.IsWin);
             var winRate = (decimal)winCount / groupTrades.Count;
-            var totalReturn = groupTrades.Sum(t => t.PnLPercent);
-            var avgReturn = totalReturn / groupTrades.Count;
-            var maxDd = ComputeGroupDrawdown(groupTrades);
-
-            // 그룹 내 샤프 (간소화: 단일 패스)
-            decimal sharpe = 0;
-            if (groupTrades.Count >= 2)
-            {
-                int n = groupTrades.Count;
-                decimal sum = 0;
-                for (int i = 0; i < n; i++) sum += groupTrades[i].PnLPercent;
-                var avg = sum / n;
-                decimal sqDiff = 0;
-                for (int i = 0; i < n; i++) { var d = groupTrades[i].PnLPercent - avg; sqDiff += d * d; }
-                var stdDev = (decimal)Math.Sqrt((double)(sqDiff / (n - 1)));
-                if (stdDev > 0) sharpe = avg / stdDev
-                    * (decimal)Math.Sqrt(EstimateTradesPerYear(groupTrades));
-            }
+            var totalPnl = groupTrades.Sum(trade => trade.PnL);
+            var averageTradeReturn = groupTrades.Average(trade => trade.PnLPercent);
 
             result[key] = new RegimePerformance
             {
-                TradeCount       = groupTrades.Count,
-                WinRate          = winRate,
-                TotalReturn      = totalReturn,
-                AvgReturnPercent = avgReturn,
-                SharpeRatio      = sharpe,
-                MaxDrawdown      = maxDd
+                TradeCount = groupTrades.Count,
+                WinRate = winRate,
+                TotalPnL = totalPnl,
+                AverageTradeReturn = averageTradeReturn,
+                ProfitFactor = ComputeProfitFactor(groupTrades)
             };
         }
 
@@ -301,11 +283,4 @@ internal static class PerformanceCalculator
             .ToList();
     }
 
-    private static double EstimateTradesPerYear(List<TradeRecord> trades)
-    {
-        var firstEntry = trades.Min(trade => trade.EntryTime);
-        var lastExit = trades.Max(trade => trade.ExitTime != default ? trade.ExitTime : trade.EntryTime);
-        var calendarDays = Math.Max(1.0, (lastExit - firstEntry).TotalDays);
-        return Math.Max(1.0, trades.Count / calendarDays * 365.25);
-    }
 }

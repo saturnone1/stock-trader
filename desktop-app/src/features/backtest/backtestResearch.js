@@ -53,6 +53,29 @@ export function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('ko-KR')
 }
 
+export function formatBacktestTimestamp(dateStr, timeframe) {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return '-'
+  if (['OneMinute', 'FiveMinute', 'FifteenMinute'].includes(timeframe)) {
+    return date.toLocaleString('ko-KR', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    })
+  }
+  return date.toLocaleDateString('ko-KR')
+}
+
+export function formatPercentagePoints(value, digits = 2) {
+  return `${Number(value ?? 0).toFixed(digits)}%`
+}
+
+export function regimeDisplayName(value) {
+  if (value === 'Bull') return '상승장'
+  if (value === 'Bear') return '하락장'
+  return value
+}
+
 export function formatDecimal(value, digits = 2) {
   if (value == null || Number.isNaN(Number(value))) return '-'
   return Number(value).toFixed(digits)

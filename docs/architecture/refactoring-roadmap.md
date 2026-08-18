@@ -108,6 +108,11 @@
   fraction-valued inputs. It uses the explicit requested evaluation range, so a strategy cannot
   improve its annualized result merely by delaying its first trade or exiting before the evaluation
   ends.
+- `BacktestResponse` replaces the anonymous backtest HTTP shape and is the generated desktop source
+  for headline, strategy, symbol, regime, validation, equity, and trade results. Trade history uses
+  the settled cost-adjusted return and preserves intraday timestamps. Regime summaries expose
+  additive net PnL and average completed-trade return instead of presenting summed trade returns or
+  discontinuous grouped drawdown as portfolio performance.
 - `BacktestSignalEntryProcessor` owns the complete ordered new-entry pipeline: shared eligibility,
   regime allocation, correlation blocking, past-only Kelly samples, sizing, and immediate or
   next-open registration. The simulation engine is reduced to daily sequencing and no longer

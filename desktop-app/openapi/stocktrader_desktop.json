@@ -34,7 +34,24 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2252,6 +2269,122 @@
           }
         }
       },
+      "BacktestEquityPointResponse": {
+        "required": [
+          "timestamp",
+          "equity"
+        ],
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string"
+          },
+          "equity": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "BacktestErrorResponse": {
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "BacktestMonteCarloResponse": {
+        "required": [
+          "simulations",
+          "medianFinalEquity",
+          "meanFinalEquity",
+          "percentile5Equity",
+          "percentile25Equity",
+          "percentile75Equity",
+          "percentile95Equity",
+          "medianMaxDrawdown",
+          "worstCaseMaxDrawdown",
+          "probabilityOfLoss"
+        ],
+        "type": "object",
+        "properties": {
+          "simulations": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "medianFinalEquity": {
+            "type": "number",
+            "format": "double"
+          },
+          "meanFinalEquity": {
+            "type": "number",
+            "format": "double"
+          },
+          "percentile5Equity": {
+            "type": "number",
+            "format": "double"
+          },
+          "percentile25Equity": {
+            "type": "number",
+            "format": "double"
+          },
+          "percentile75Equity": {
+            "type": "number",
+            "format": "double"
+          },
+          "percentile95Equity": {
+            "type": "number",
+            "format": "double"
+          },
+          "medianMaxDrawdown": {
+            "type": "number",
+            "format": "double"
+          },
+          "worstCaseMaxDrawdown": {
+            "type": "number",
+            "format": "double"
+          },
+          "probabilityOfLoss": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "BacktestRegimePerformanceResponse": {
+        "required": [
+          "tradeCount",
+          "winRate",
+          "totalPnL",
+          "averageTradeReturn",
+          "profitFactor"
+        ],
+        "type": "object",
+        "properties": {
+          "tradeCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "winRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "averageTradeReturn": {
+            "type": "number",
+            "format": "double"
+          },
+          "profitFactor": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "BacktestRequest": {
         "type": "object",
         "properties": {
@@ -2380,6 +2513,427 @@
             "items": {
               "$ref": "#/components/schemas/StrategyDocument"
             }
+          }
+        }
+      },
+      "BacktestResponse": {
+        "required": [
+          "totalTrades",
+          "totalReturn",
+          "maxDrawdown",
+          "sharpeRatio",
+          "sortinoRatio",
+          "calmarRatio",
+          "profitFactor",
+          "annualizedReturn",
+          "overallWinRate",
+          "kellyFraction",
+          "halfKellyFraction",
+          "avgMaePercent",
+          "avgMfePercent",
+          "medianMaePercent",
+          "medianMfePercent",
+          "totalSlippageCost",
+          "totalCommissionCost",
+          "errorMessage",
+          "warnings",
+          "survivorshipBiasWarning",
+          "weightStrategyApplied",
+          "weightReducedTrades",
+          "usedTimeFrame",
+          "actualDataFrom",
+          "perPattern",
+          "perStrategy",
+          "perSymbol",
+          "perRegimeStats",
+          "equityCurve",
+          "trades",
+          "walkForward",
+          "monteCarlo"
+        ],
+        "type": "object",
+        "properties": {
+          "totalTrades": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalReturn": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxDrawdown": {
+            "type": "number",
+            "format": "double"
+          },
+          "sharpeRatio": {
+            "type": "number",
+            "format": "double"
+          },
+          "sortinoRatio": {
+            "type": "number",
+            "format": "double"
+          },
+          "calmarRatio": {
+            "type": "number",
+            "format": "double"
+          },
+          "profitFactor": {
+            "type": "number",
+            "format": "double"
+          },
+          "annualizedReturn": {
+            "type": "number",
+            "format": "double"
+          },
+          "overallWinRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "kellyFraction": {
+            "type": "number",
+            "format": "double"
+          },
+          "halfKellyFraction": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgMaePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgMfePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "medianMaePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "medianMfePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalSlippageCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalCommissionCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "errorMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "survivorshipBiasWarning": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "weightStrategyApplied": {
+            "type": "boolean"
+          },
+          "weightReducedTrades": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "usedTimeFrame": {
+            "type": "string"
+          },
+          "actualDataFrom": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "perPattern": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BacktestStrategyPerformanceResponse"
+            }
+          },
+          "perStrategy": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BacktestStrategyPerformanceResponse"
+            }
+          },
+          "perSymbol": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BacktestSymbolPerformanceResponse"
+            }
+          },
+          "perRegimeStats": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BacktestRegimePerformanceResponse"
+            }
+          },
+          "equityCurve": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BacktestEquityPointResponse"
+            }
+          },
+          "trades": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BacktestTradeResponse"
+            }
+          },
+          "walkForward": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BacktestWalkForwardResponse"
+              }
+            ]
+          },
+          "monteCarlo": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BacktestMonteCarloResponse"
+              }
+            ]
+          }
+        }
+      },
+      "BacktestStrategyPerformanceResponse": {
+        "required": [
+          "sampleSize",
+          "winRate",
+          "avgWinPercent",
+          "avgLossPercent",
+          "expectancy",
+          "profitFactor"
+        ],
+        "type": "object",
+        "properties": {
+          "sampleSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "winRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgWinPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgLossPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "profitFactor": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "BacktestSymbolPerformanceResponse": {
+        "required": [
+          "symbol",
+          "tradeCount",
+          "winRate",
+          "totalPnL",
+          "avgPnLPercent"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "tradeCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "winRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "avgPnLPercent": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "BacktestTradeResponse": {
+        "required": [
+          "symbol",
+          "pattern",
+          "customPatternName",
+          "entryTime",
+          "exitTime",
+          "entryPrice",
+          "exitPrice",
+          "quantity",
+          "netPnL",
+          "returnPct",
+          "exitReason"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "customPatternName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "entryTime": {
+            "type": "string"
+          },
+          "exitTime": {
+            "type": "string"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "netPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "returnPct": {
+            "type": "number",
+            "format": "double"
+          },
+          "exitReason": {
+            "type": "string"
+          }
+        }
+      },
+      "BacktestWalkForwardResponse": {
+        "required": [
+          "aggregateOosReturnPercent",
+          "aggregateOosMaxDrawdown",
+          "aggregateOosWinRate",
+          "aggregateOosSharpe",
+          "walkForwardEfficiency",
+          "windows"
+        ],
+        "type": "object",
+        "properties": {
+          "aggregateOosReturnPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "aggregateOosMaxDrawdown": {
+            "type": "number",
+            "format": "double"
+          },
+          "aggregateOosWinRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "aggregateOosSharpe": {
+            "type": "number",
+            "format": "double"
+          },
+          "walkForwardEfficiency": {
+            "type": "number",
+            "format": "double"
+          },
+          "windows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BacktestWalkForwardWindowResponse"
+            }
+          }
+        }
+      },
+      "BacktestWalkForwardWindowResponse": {
+        "required": [
+          "isFrom",
+          "isTo",
+          "oosFrom",
+          "oosTo",
+          "inSampleTrades",
+          "inSampleReturnPercent",
+          "outOfSampleTrades",
+          "outOfSampleReturnPercent",
+          "outOfSampleMaxDrawdown",
+          "outOfSampleSharpe",
+          "efficiency"
+        ],
+        "type": "object",
+        "properties": {
+          "isFrom": {
+            "type": "string"
+          },
+          "isTo": {
+            "type": "string"
+          },
+          "oosFrom": {
+            "type": "string"
+          },
+          "oosTo": {
+            "type": "string"
+          },
+          "inSampleTrades": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inSampleReturnPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "outOfSampleTrades": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outOfSampleReturnPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "outOfSampleMaxDrawdown": {
+            "type": "number",
+            "format": "double"
+          },
+          "outOfSampleSharpe": {
+            "type": "number",
+            "format": "double"
+          },
+          "efficiency": {
+            "type": "number",
+            "format": "double"
           }
         }
       },

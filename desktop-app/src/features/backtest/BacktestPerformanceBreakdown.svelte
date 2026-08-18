@@ -1,5 +1,5 @@
 <script>
-  import { formatMoney, formatPercent } from './backtestResearch'
+  import { formatMoney, formatPercent, regimeDisplayName } from './backtestResearch'
 
   export let result
 </script>
@@ -78,14 +78,13 @@
       <div class="space-y-3">
         {#each Object.entries(result.perRegimeStats) as [regime, stats]}
           <div class="rounded-lg border border-gray-800 bg-gray-900 p-4 text-sm">
-            <div class="mb-2 font-medium text-white">{regime}</div>
+            <div class="mb-2 font-medium text-white">{regimeDisplayName(regime)}</div>
             <div class="grid grid-cols-2 gap-2 text-gray-300">
               <div>거래 수 {stats.tradeCount}</div>
               <div>승률 {formatPercent(stats.winRate, 1)}</div>
-              <div>총 수익률 {formatPercent(stats.totalReturn)}</div>
-              <div>샤프 {Number(stats.sharpeRatio ?? 0).toFixed(2)}</div>
-              <div>평균 수익률 {formatPercent(stats.avgReturnPercent)}</div>
-              <div>최대 낙폭 {formatPercent(stats.maxDrawdown)}</div>
+              <div>비용 반영 총손익 ${formatMoney(stats.totalPnL)}</div>
+              <div>거래당 평균 {formatPercent(stats.averageTradeReturn)}</div>
+              <div>총이익 ÷ 총손실 {Number(stats.profitFactor ?? 0).toFixed(2)}</div>
             </div>
           </div>
         {/each}

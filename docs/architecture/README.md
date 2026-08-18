@@ -74,6 +74,8 @@ infrastructure.
 - Live built-in configuration: one database-backed application service; entry detection and exit
   evaluation resolve the same persisted override snapshot and never rewrite application files.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
+- Backtest result presentation: one explicit API response owns unit-preserving projections,
+  cost-adjusted trade returns, intraday timestamps, and investor-facing performance breakdowns.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
 - Desktop page ownership: every retained page is reachable from the single navigation flow; legacy

@@ -1,5 +1,5 @@
 <script>
-  import { formatMoney, formatPercent, formatSignedPercent } from './backtestResearch'
+  import { formatBacktestTimestamp, formatMoney, formatPercentagePoints, formatPercent, formatSignedPercent } from './backtestResearch'
 
   export let result
   export let timingReport = null
@@ -8,6 +8,13 @@
 {#if result.errorMessage}
   <div class="rounded-lg border border-red-700 bg-red-900/20 p-4 text-red-300">
     <strong>백테스트 실패:</strong> {result.errorMessage}
+  </div>
+{/if}
+
+{#if result.survivorshipBiasWarning}
+  <div class="rounded-2xl border border-orange-700 bg-orange-950/20 p-4 text-sm text-orange-200">
+    <div class="font-semibold">종목 선택 편향 주의</div>
+    <div class="mt-1">{result.survivorshipBiasWarning}</div>
   </div>
 {/if}
 
@@ -33,7 +40,7 @@
   <span>종목: {result.request.symbols.join(', ')}</span>
   <span>패턴: {result.request.patternNames.join(', ')}</span>
   {#if result.actualDataFrom}
-    <span>실제 데이터 시작: {result.actualDataFrom}</span>
+    <span>실제 데이터 시작: {formatBacktestTimestamp(result.actualDataFrom, result.usedTimeFrame)}</span>
   {/if}
 </div>
 
@@ -61,6 +68,50 @@
   <div class="rounded-xl border border-gray-800 bg-gray-950 p-4 text-center">
     <div class="text-xs text-gray-500">비용 합계</div>
     <div class="mt-2 text-lg font-bold">${formatMoney((result.totalSlippageCost ?? 0) + (result.totalCommissionCost ?? 0))}</div>
+  </div>
+</div>
+
+<div class="rounded-2xl border border-gray-800 bg-gray-950 p-5">
+  <div class="mb-4">
+    <div class="text-sm font-semibold">위험을 감안한 성과</div>
+    <div class="mt-1 text-xs text-gray-500">같은 수익률이라도 손실 변동과 낙폭이 작을수록 더 안정적인 전략입니다.</div>
+  </div>
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+    <div class="rounded border border-gray-800 bg-gray-900 p-3">
+      <div class="text-xs text-gray-500">연환산 수익률</div>
+      <div class="mt-1 text-lg font-semibold">{formatPercentagePoints(result.annualizedReturn)}</div>
+      <div class="text-xs text-gray-500">전체 검증기간 CAGR</div>
+    </div>
+    <div class="rounded border border-gray-800 bg-gray-900 p-3">
+      <div class="text-xs text-gray-500">하방 위험 대비 수익</div>
+      <div class="mt-1 text-lg font-semibold">{Number(result.sortinoRatio ?? 0).toFixed(2)}</div>
+      <div class="text-xs text-gray-500">Sortino</div>
+    </div>
+    <div class="rounded border border-gray-800 bg-gray-900 p-3">
+      <div class="text-xs text-gray-500">낙폭 대비 수익</div>
+      <div class="mt-1 text-lg font-semibold">{Number(result.calmarRatio ?? 0).toFixed(2)}</div>
+      <div class="text-xs text-gray-500">Calmar</div>
+    </div>
+    <div class="rounded border border-gray-800 bg-gray-900 p-3">
+      <div class="text-xs text-gray-500">총이익 ÷ 총손실</div>
+      <div class="mt-1 text-lg font-semibold">{Number(result.profitFactor ?? 0).toFixed(2)}</div>
+      <div class="text-xs text-gray-500">Profit Factor</div>
+    </div>
+    <div class="rounded border border-gray-800 bg-gray-900 p-3">
+      <div class="text-xs text-gray-500">권장 최대 비중</div>
+      <div class="mt-1 text-lg font-semibold">{formatPercent(result.halfKellyFraction, 1)}</div>
+      <div class="text-xs text-gray-500">보수적 Half-Kelly</div>
+    </div>
+    <div class="rounded border border-gray-800 bg-gray-900 p-3">
+      <div class="text-xs text-gray-500">평균 최대 역행</div>
+      <div class="mt-1 text-lg font-semibold text-red-300">{formatPercent(Math.abs(Number(result.avgMaePercent ?? 0)))}</div>
+      <div class="text-xs text-gray-500">진입 후 불리한 폭</div>
+    </div>
+    <div class="rounded border border-gray-800 bg-gray-900 p-3">
+      <div class="text-xs text-gray-500">평균 최대 순행</div>
+      <div class="mt-1 text-lg font-semibold text-green-300">{formatPercent(result.avgMfePercent)}</div>
+      <div class="text-xs text-gray-500">진입 후 유리한 폭</div>
+    </div>
   </div>
 </div>
 
