@@ -570,8 +570,11 @@ public class ArchitectureDependencyTests
         deploy.Should().Contain("sqlite3 \"$data_dir/stocktrader.db\" \".backup '$backup_path'\"");
         deploy.Should().Contain("PRAGMA quick_check;");
         deploy.Should().Contain("dotnet StockTrader.dll --migrate-database");
-        deploy.IndexOf("--migrate-database", StringComparison.Ordinal).Should().BeLessThan(
-            deploy.IndexOf("deployment-api.yaml", StringComparison.Ordinal));
+        var migrationIndex = deploy.IndexOf("--migrate-database", StringComparison.Ordinal);
+        var imageImportIndex = deploy.IndexOf("ctr images import", StringComparison.Ordinal);
+        var rolloutIndex = deploy.IndexOf("deployment-api.yaml", StringComparison.Ordinal);
+        migrationIndex.Should().BeLessThan(imageImportIndex);
+        imageImportIndex.Should().BeLessThan(rolloutIndex);
         deploy.Should().Contain("STOCKTRADER_DATA_DIR:?");
         deploy.Should().Contain("__STOCKTRADER_DATA_DIR__");
         deploy.Should().NotContain("/home/");

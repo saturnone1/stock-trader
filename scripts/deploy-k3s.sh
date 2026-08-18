@@ -35,8 +35,6 @@ sudo buildah bud --layers -f Dockerfile.desktop -t "$desktop_image" .
 
 sudo buildah push "$api_image" "oci-archive:$archive_dir/api.tar:$api_image"
 sudo buildah push "$desktop_image" "oci-archive:$archive_dir/desktop.tar:$desktop_image"
-sudo k3s ctr images import "$archive_dir/api.tar"
-sudo k3s ctr images import "$archive_dir/desktop.tar"
 
 if sudo k3s kubectl -n stocktrader get deployment stocktrader-api >/dev/null 2>&1; then
   # A RollingUpdate deployment contains a server-defaulted rollingUpdate field.
@@ -65,6 +63,11 @@ sudo buildah from --name "$migration_container" \
   --volume "$data_dir:/data:rw" "$api_image" >/dev/null
 sudo buildah run "$migration_container" -- dotnet StockTrader.dll --migrate-database
 sudo buildah rm "$migration_container" >/dev/null
+
+# Import immediately before the manifests reference these tags. Otherwise K3s image
+# garbage collection can remove the still-unreferenced images during backup/migration.
+sudo k3s ctr images import "$archive_dir/api.tar"
+sudo k3s ctr images import "$archive_dir/desktop.tar"
 
 sed -e "s|localhost/stock-trader/api:latest|$api_image|" \
     -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|" k8s/deployment-api.yaml \
