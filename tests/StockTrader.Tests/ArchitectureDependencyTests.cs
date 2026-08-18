@@ -271,6 +271,26 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void DomainOwnsMarketDataIdentityWithoutLegacyModelDependencies()
+    {
+        var repository = FindRepositoryRoot();
+        var domain = Path.Combine(repository, "Domain");
+        var legacyEnums = Path.Combine(repository, "Models", "Enums");
+        var violations = Directory.GetFiles(domain, "*.cs", SearchOption.AllDirectories)
+            .Where(file => File.ReadAllText(file).Contains(
+                "StockTrader.Models",
+                StringComparison.Ordinal))
+            .Select(file => Path.GetRelativePath(repository, file))
+            .ToArray();
+
+        violations.Should().BeEmpty("Domain은 외부 모델 계층에 의존하면 안 됩니다");
+        File.Exists(Path.Combine(domain, "MarketData", "TimeFrame.cs")).Should().BeTrue();
+        File.Exists(Path.Combine(domain, "MarketData", "DataSource.cs")).Should().BeTrue();
+        File.Exists(Path.Combine(legacyEnums, "TimeFrame.cs")).Should().BeFalse();
+        File.Exists(Path.Combine(legacyEnums, "DataSource.cs")).Should().BeFalse();
+    }
+
+    [Fact]
     public void RuleBasedDetectorDelegatesIndicatorMathAndEvaluationCache()
     {
         var repository = FindRepositoryRoot();

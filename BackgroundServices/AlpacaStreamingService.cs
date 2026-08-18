@@ -6,7 +6,7 @@ using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Streaming;
-using TimeFrame = StockTrader.Models.Enums.TimeFrame;
+using TimeFrame = StockTrader.Domain.MarketData.TimeFrame;
 
 namespace StockTrader.BackgroundServices;
 

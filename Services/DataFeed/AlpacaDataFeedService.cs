@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using TimeZoneConverter;
-using TimeFrame = StockTrader.Models.Enums.TimeFrame;
+using TimeFrame = StockTrader.Domain.MarketData.TimeFrame;
 
 namespace StockTrader.Services.DataFeed;
 

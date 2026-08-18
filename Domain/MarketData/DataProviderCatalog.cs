@@ -1,5 +1,3 @@
-using StockTrader.Models.Enums;
-
 namespace StockTrader.Domain.MarketData;
 
 /// <summary>시세 공급자 어댑터가 실제로 보장하는 기능과 조회 제한의 단일 원천.</summary>

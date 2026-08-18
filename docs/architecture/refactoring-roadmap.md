@@ -215,6 +215,9 @@
   composition has a focused factory, operational cache/lookback/concurrency values use validated
   options, and the coordinating analysis service uses the injected clock and is below 450 lines.
   Characterization fixtures preserve the prior neutral and weighted-pattern outputs.
+- `TimeFrame` and `DataSource` now live beside their central catalogs in `Domain.MarketData` instead
+  of the broad legacy model namespace. Their declaration order and JSON names are unchanged, and an
+  architecture test prevents Domain from regaining a dependency on `StockTrader.Models`.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

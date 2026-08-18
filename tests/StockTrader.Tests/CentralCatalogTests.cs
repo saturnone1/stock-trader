@@ -11,6 +11,22 @@ namespace StockTrader.Tests;
 public class CentralCatalogTests
 {
     [Fact]
+    public void MarketDataIdentityPreservesPersistedEnumValues()
+    {
+        Enum.GetValues<TimeFrame>().Select(value => (value, (int)value)).Should().Equal(
+            (TimeFrame.OneMinute, 0),
+            (TimeFrame.FiveMinute, 1),
+            (TimeFrame.FifteenMinute, 2),
+            (TimeFrame.Daily, 3),
+            (TimeFrame.Weekly, 4));
+        Enum.GetValues<DataSource>().Select(value => (value, (int)value)).Should().Equal(
+            (DataSource.Alpaca, 0),
+            (DataSource.Polygon, 1),
+            (DataSource.Yahoo, 2),
+            (DataSource.LsSecurities, 3));
+    }
+
+    [Fact]
     public void IndicatorCatalogHasUniqueCodesAndCompleteUiMetadata()
     {
         IndicatorCatalog.All.Should().HaveCount(34);

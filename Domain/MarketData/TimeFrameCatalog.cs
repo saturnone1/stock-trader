@@ -1,5 +1,3 @@
-using StockTrader.Models.Enums;
-
 namespace StockTrader.Domain.MarketData;
 
 /// <summary>

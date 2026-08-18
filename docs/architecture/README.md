@@ -244,4 +244,6 @@ the same factory applies baseline or request-override settings without a second 
   analysis, backtesting, walk-forward evaluation, and optimization.
 - `adr/0020-isolate-stock-recommendation-policy.md`: keep recommendation formulas deterministic,
   move indicator snapshot composition behind a focused boundary, and configure analysis operations.
+- `adr/0021-own-market-data-identity-in-domain.md`: make Domain the sole owner of timeframe and data
+  provider identity while preserving persisted integer and JSON enum compatibility.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
