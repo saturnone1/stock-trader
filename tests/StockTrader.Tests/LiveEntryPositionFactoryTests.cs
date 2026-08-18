@@ -10,24 +10,19 @@ public class LiveEntryPositionFactoryTests
         2026, 8, 18, 14, 30, 0, DateTimeKind.Utc);
 
     [Fact]
-    public void Create_UsesBrokerFillAndReanchorsRiskGeometry()
+    public void CreateFromFill_UsesBrokerEvidenceAndReanchorsRiskGeometry()
     {
-        var position = LiveEntryPositionFactory.Create(
+        var position = LiveEntryPositionFactory.CreateFromFill(
             Recommendation(),
-            new Position
-            {
-                Symbol = "TQQQ",
-                Quantity = 7,
-                EntryPrice = 108m,
-                CurrentPrice = 109m,
-            },
             accountId: 42,
+            filledQuantity: 7,
+            averageFillPrice: 108m,
             OpenedAt);
 
         position.AccountId.Should().Be(42);
         position.Quantity.Should().Be(7);
         position.EntryPrice.Should().Be(108m);
-        position.CurrentPrice.Should().Be(109m);
+        position.CurrentPrice.Should().Be(108m);
         position.StopLossPrice.Should().Be(103m);
         position.TargetPrice.Should().Be(118m);
         position.InitialRiskDistance.Should().Be(5m);
@@ -36,30 +31,18 @@ public class LiveEntryPositionFactoryTests
     }
 
     [Fact]
-    public void Create_FallsBackToRecommendationWhenBrokerFillIsUnavailable()
-    {
-        var recommendation = Recommendation();
-
-        var position = LiveEntryPositionFactory.Create(
-            recommendation, brokerPosition: null, accountId: 0, OpenedAt);
-
-        position.Quantity.Should().Be(recommendation.ShareQuantity);
-        position.EntryPrice.Should().Be(recommendation.EntryPrice);
-        position.CurrentPrice.Should().Be(recommendation.EntryPrice);
-        position.StopLossPrice.Should().Be(recommendation.StopLossPrice);
-        position.TargetPrice.Should().Be(recommendation.TargetPrice);
-        position.InitialRiskDistance.Should().Be(5m);
-    }
-
-    [Fact]
-    public void Create_PreservesStrategyIdentityAcrossOrderEntryPaths()
+    public void CreateFromFill_PreservesStrategyIdentityAcrossOrderEntryPaths()
     {
         var recommendation = Recommendation();
         recommendation.PatternType = PatternType.Custom;
         recommendation.CustomPatternName = "공통 체결 전략";
 
-        var position = LiveEntryPositionFactory.Create(
-            recommendation, brokerPosition: null, accountId: 3, OpenedAt);
+        var position = LiveEntryPositionFactory.CreateFromFill(
+            recommendation,
+            accountId: 3,
+            filledQuantity: 10,
+            averageFillPrice: 100m,
+            OpenedAt);
 
         position.PatternType.Should().Be(PatternType.Custom);
         position.CustomPatternName.Should().Be("공통 체결 전략");

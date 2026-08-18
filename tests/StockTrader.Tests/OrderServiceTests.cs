@@ -103,7 +103,6 @@ public class OrderServiceTests
         return new OrderService(
             _accountManagerMock.Object,
             _recommendationStoreMock.Object,
-            _positionStoreMock.Object,
             _settingsRepoMock.Object,
             _notificationServiceMock.Object,
             _marketCalendarMock.Object,
@@ -477,15 +476,6 @@ public class OrderServiceTests
             .Setup(broker => broker.SubmitEntryOrderAsync(
                 recommendation, It.IsAny<CancellationToken>()))
             .ReturnsAsync(filledOrder);
-        _brokerServiceMock
-            .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new Position
-            {
-                Symbol = "TSLA",
-                Quantity = 5,
-                EntryPrice = 208m,
-                CurrentPrice = 208m
-            }]);
         Position? savedPosition = null;
         _positionStoreMock
             .Setup(repository => repository.SavePositionAsync(
@@ -567,15 +557,6 @@ public class OrderServiceTests
             .Setup(broker => broker.SubmitEntryOrderAsync(
                 recommendation, It.IsAny<CancellationToken>()))
             .ReturnsAsync(manualFill);
-        _brokerServiceMock
-            .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new Position
-            {
-                Symbol = "TQQQ",
-                Quantity = 7,
-                EntryPrice = 108m,
-                CurrentPrice = 109m,
-            }]);
         Position? savedPosition = null;
         _positionStoreMock
             .Setup(repository => repository.SavePositionAsync(
@@ -987,112 +968,6 @@ public class OrderServiceTests
 
         // Assert
         result.Should().BeFalse();
-    }
-
-    // ── GetOpenPositionsAsync ──────────────────────────────────────────────
-
-    /// <summary>
-    /// 브로커가 포지션을 반환하면 해당 포지션 목록을 우선적으로 반환해야 한다.
-    /// DB 폴백이 발생해서는 안 된다.
-    /// </summary>
-    [Fact]
-    public async Task GetOpenPositions_BrokerHasPositions_ReturnsBrokerPositions()
-    {
-        // Arrange
-        var brokerPositions = new List<Position>
-        {
-            new() { Symbol = "AAPL", Quantity = 10, EntryPrice = 150m, CurrentPrice = 155m },
-            new() { Symbol = "MSFT", Quantity = 5, EntryPrice = 300m, CurrentPrice = 310m }
-        };
-
-        _accountManagerMock
-            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(brokerPositions);
-
-        var sut = CreateSut();
-
-        // Act
-        var result = await sut.GetOpenPositionsAsync();
-
-        // Assert
-        result.Should().HaveCount(2);
-        result.Should().BeEquivalentTo(brokerPositions);
-
-        // DB 폴백 미호출 확인
-        _positionStoreMock.Verify(
-            r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()),
-            Times.Never);
-    }
-
-    /// <summary>
-    /// 브로커 포지션이 비어 있으면 DB 폴백을 사용해야 한다.
-    /// </summary>
-    [Fact]
-    public async Task GetOpenPositions_BrokerEmpty_FallsBackToDb()
-    {
-        // Arrange
-        var dbPositions = new List<Position>
-        {
-            new() { Symbol = "NVDA", Quantity = 3, EntryPrice = 500m, CurrentPrice = 510m }
-        };
-
-        _accountManagerMock
-            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.GetPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Position>()); // 브로커 빈 목록 반환
-
-        _positionStoreMock
-            .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(dbPositions);
-
-        var sut = CreateSut();
-
-        // Act
-        var result = await sut.GetOpenPositionsAsync();
-
-        // Assert
-        result.Should().HaveCount(1);
-        result[0].Symbol.Should().Be("NVDA");
-
-        // DB 폴백 호출 확인
-        _positionStoreMock.Verify(
-            r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    /// <summary>
-    /// 브로커 서비스가 없으면 DB에서 포지션을 가져와야 한다.
-    /// </summary>
-    [Fact]
-    public async Task GetOpenPositions_NoBroker_FallsBackToDb()
-    {
-        // Arrange
-        var dbPositions = new List<Position>
-        {
-            new() { Symbol = "GOOG", Quantity = 2, EntryPrice = 140m, CurrentPrice = 145m }
-        };
-
-        _accountManagerMock
-            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IBrokerService?)null);
-
-        _positionStoreMock
-            .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(dbPositions);
-
-        var sut = CreateSut();
-
-        // Act
-        var result = await sut.GetOpenPositionsAsync();
-
-        // Assert
-        result.Should().HaveCount(1);
-        result[0].Symbol.Should().Be("GOOG");
     }
 
     private sealed class DbManualOrderSignalStore(AppDbContext db)

@@ -15,7 +15,6 @@ public interface IOrderService
         CancellationToken ct = default);
 
     Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default);
-    Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default);
 
     /// <summary>
     /// 시그널 ID로 수동 주문을 실행한다.

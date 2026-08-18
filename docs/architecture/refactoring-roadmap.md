@@ -14,6 +14,18 @@
 - ML retraining eligibility and delay calculation now live in a deterministic ET schedule policy.
   The worker uses `TimeProvider` for observation and delays, re-anchors recurring execution after
   weekends and DST, and obtains interval/window/retry/cooldown values from validated typed options.
+- Broker balance reads now cross `BrokerPositionSnapshot` instead of returning the persisted
+  `Position` entity and inventing `OpenedAt` from the query clock. Durable positions are constructed
+  only from confirmed fill evidence. The duplicate unused Alpaca adapter and dead broker-first
+  order-service read are removed, while account/order observation timestamps use `TimeProvider`.
+  LS order-history reconciliation converts actual `OrdDt`/`OrdTime` KST evidence to UTC and rejects
+  timestamp-less rows instead of making them appear newly submitted.
+- Streaming health owns its observation clock, and reconnect, staleness, flush, watchlist-sync, and
+  buffer values come from one startup-validated settings section. Unused Alpaca endpoint and
+  stream-type settings that never affected the SDK were removed.
+- LS authentication and data loading now share `TimeProvider`; a deterministic policy owns the KST
+  token-expiry boundary and chart-request pacing. Documented expiry/rate limits are named protocol
+  constants, while the renewal safety margin is startup-validated.
 - Trading-account state now crosses an application persistence port, active-account changes are
   transactional, broker clients are constructed behind a focused factory, and explicit API contracts
   keep secrets write-only. The desktop derives broker environments from the central broker catalog.

@@ -1,3 +1,4 @@
+using StockTrader.Application.Accounts;
 using StockTrader.Models;
 
 namespace StockTrader.Services.Broker;
@@ -56,11 +57,13 @@ public interface IBrokerService
     // ── 포지션 조회 ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 현재 보유 중인 오픈 포지션 목록을 반환한다.
+    /// 현재 보유 중인 종목의 브로커 스냅샷을 반환한다. 실제 개설 시각과 전략
+    /// 실행 상태는 브로커 잔고 응답에서 추측하지 않는다.
     /// </summary>
     /// <param name="ct">취소 토큰</param>
     /// <returns>포지션 목록. 오류 시 빈 컬렉션 반환</returns>
-    Task<List<Position>> GetPositionsAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<BrokerPositionSnapshot>> GetPositionsAsync(
+        CancellationToken ct = default);
 
     // ── 계좌 정보 ──────────────────────────────────────────────────────────
 

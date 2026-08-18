@@ -14,14 +14,16 @@ namespace StockTrader.Services.LsSecurities;
 public class LsAuthService
 {
     private readonly LsSecuritiesSettings _settings;
+    private readonly TimeProvider _timeProvider;
+    private readonly TimeSpan _tokenExpirySafetyMargin;
     private readonly ILogger<LsAuthService> _logger;
 
     private string? _accessToken;
-    private DateTime _tokenExpiry = DateTime.MinValue;
+    private DateTimeOffset _tokenExpiryUtc = DateTimeOffset.MinValue;
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
     // LS증권 차트 TR rate limit: 초당 1건 이내
-    private DateTime _lastChartRequest = DateTime.MinValue;
+    private long? _lastChartRequestTimestamp;
     private readonly SemaphoreSlim _chartRateLock = new(1, 1);
 
     public static readonly TimeZoneInfo KstZone = GetKstZone();
@@ -30,9 +32,13 @@ public class LsAuthService
 
     public LsAuthService(
         IOptions<LsSecuritiesSettings> settings,
+        TimeProvider timeProvider,
         ILogger<LsAuthService> logger)
     {
         _settings = settings.Value;
+        _timeProvider = timeProvider;
+        _tokenExpirySafetyMargin = TimeSpan.FromMinutes(
+            _settings.TokenExpirySafetyMinutes);
         _logger = logger;
     }
 
@@ -48,13 +54,13 @@ public class LsAuthService
     /// </summary>
     public async Task EnsureTokenAsync(HttpClient http, CancellationToken ct)
     {
-        if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
+        if (_accessToken != null && _timeProvider.GetUtcNow() < _tokenExpiryUtc)
             return;
 
         await _tokenLock.WaitAsync(ct);
         try
         {
-            if (_accessToken != null && DateTime.UtcNow < _tokenExpiry)
+            if (_accessToken != null && _timeProvider.GetUtcNow() < _tokenExpiryUtc)
                 return;
 
             var content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -83,15 +89,15 @@ public class LsAuthService
             }
             _accessToken = token;
 
-            // 토큰 만료: 익일 07:00 KST (5분 여유)
-            var kstNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, KstZone);
-            var nextExpiry = kstNow.Hour < 7
-                ? kstNow.Date.AddHours(7)
-                : kstNow.Date.AddDays(1).AddHours(7);
-            _tokenExpiry = TimeZoneInfo.ConvertTimeToUtc(nextExpiry, KstZone)
-                .AddMinutes(-5);
+            _tokenExpiryUtc = LsOperationalTimingPolicy.CalculateTokenExpiryUtc(
+                _timeProvider.GetUtcNow(),
+                KstZone,
+                LsOperationalTimingPolicy.DailyTokenExpiryKst,
+                _tokenExpirySafetyMargin);
 
-            _logger.LogInformation("[LS Auth] 토큰 발급 성공, 만료: {Expiry:g} KST", nextExpiry);
+            _logger.LogInformation(
+                "[LS Auth] 토큰 발급 성공, 안전 갱신 시각: {Expiry:u}",
+                _tokenExpiryUtc);
         }
         finally
         {
@@ -141,10 +147,18 @@ public class LsAuthService
         await _chartRateLock.WaitAsync(ct);
         try
         {
-            var elapsed = DateTime.UtcNow - _lastChartRequest;
-            if (elapsed.TotalMilliseconds < 1000)
-                await Task.Delay(1000 - (int)elapsed.TotalMilliseconds, ct);
-            _lastChartRequest = DateTime.UtcNow;
+            var currentTimestamp = _timeProvider.GetTimestamp();
+            var elapsed = _lastChartRequestTimestamp.HasValue
+                ? _timeProvider.GetElapsedTime(
+                    _lastChartRequestTimestamp.Value,
+                    currentTimestamp)
+                : (TimeSpan?)null;
+            var delay = LsOperationalTimingPolicy.CalculateRateLimitDelay(
+                elapsed,
+                LsOperationalTimingPolicy.MinimumChartRequestInterval);
+            if (delay > TimeSpan.Zero)
+                await Task.Delay(delay, _timeProvider, ct);
+            _lastChartRequestTimestamp = _timeProvider.GetTimestamp();
         }
         finally { _chartRateLock.Release(); }
     }

@@ -15,19 +15,15 @@ public class AlpacaStreamingService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Channel<string> _symbolChannel;
     private readonly AlpacaSettings _settings;
+    private readonly StreamingSettings _streamingSettings;
+    private readonly TimeProvider _timeProvider;
     private readonly IStreamingStatusService _streamingStatus;
     private readonly INotificationService _notificationService;
     private readonly ILogger<AlpacaStreamingService> _logger;
 
-    // Bar batching buffer: bars are written here and flushed to DB every 5 seconds.
+    // Bar batching buffer: bars are flushed on the configured operational interval.
     // Bounded with DropOldest to prevent unbounded memory growth under backpressure.
-    private readonly Channel<OhlcvBar> _barBuffer = Channel.CreateBounded<OhlcvBar>(
-        new BoundedChannelOptions(10000)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-            AllowSynchronousContinuations = false
-        });
+    private readonly Channel<OhlcvBar> _barBuffer;
 
     private readonly HashSet<string> _subscribedSymbols = new(StringComparer.OrdinalIgnoreCase);
     // BUG-C05 fix: store subscription objects keyed by symbol so unsubscribe reuses the same instance
@@ -41,6 +37,8 @@ public class AlpacaStreamingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         Channel<string> symbolChannel,
         IOptions<AlpacaSettings> settings,
+        IOptions<StreamingSettings> streamingSettings,
+        TimeProvider timeProvider,
         IStreamingStatusService streamingStatus,
         INotificationService notificationService,
         ILogger<AlpacaStreamingService> logger)
@@ -48,9 +46,18 @@ public class AlpacaStreamingService : BackgroundService
         _scopeFactory = scopeFactory;
         _symbolChannel = symbolChannel;
         _settings = settings.Value;
+        _streamingSettings = streamingSettings.Value;
+        _timeProvider = timeProvider;
         _streamingStatus = streamingStatus;
         _notificationService = notificationService;
         _logger = logger;
+        _barBuffer = Channel.CreateBounded<OhlcvBar>(
+            new BoundedChannelOptions(_streamingSettings.BufferCapacity)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                AllowSynchronousContinuations = false
+            });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -91,20 +98,20 @@ public class AlpacaStreamingService : BackgroundService
                 _streamingStatus.MarkInactive();
                 _notificationService.PublishStreamingStatus(false);
 
-                if (attempt > _settings.MaxReconnectAttempts)
+                if (attempt > _streamingSettings.MaxReconnectAttempts)
                 {
                     _logger.LogWarning(
                         "Max reconnect attempts ({Max}) exceeded. Falling back to polling",
-                        _settings.MaxReconnectAttempts);
+                        _streamingSettings.MaxReconnectAttempts);
                     break;
                 }
 
                 var delay = CalculateBackoffDelay(attempt);
                 _logger.LogWarning(ex,
                     "Streaming connection lost (attempt {Attempt}/{Max}). Reconnecting in {Delay}s",
-                    attempt, _settings.MaxReconnectAttempts, delay.TotalSeconds);
+                    attempt, _streamingSettings.MaxReconnectAttempts, delay.TotalSeconds);
 
-                await Task.Delay(delay, stoppingToken);
+                await Task.Delay(delay, _timeProvider, stoppingToken);
             }
         }
 
@@ -119,7 +126,9 @@ public class AlpacaStreamingService : BackgroundService
     /// </summary>
     private async Task BarFlushLoopAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_streamingSettings.BarFlushIntervalSeconds),
+            _timeProvider);
 
         // Keep flushing until the timer is cancelled AND the channel is drained
         while (true)
@@ -233,7 +242,9 @@ public class AlpacaStreamingService : BackgroundService
 
     private async Task WatchlistSyncLoopAsync(IAlpacaDataStreamingClient client, CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_streamingSettings.WatchlistSyncIntervalSeconds),
+            _timeProvider);
 
         while (await timer.WaitForNextTickAsync(ct))
         {
@@ -350,7 +361,7 @@ public class AlpacaStreamingService : BackgroundService
     {
         try
         {
-            _streamingStatus.MarkActive(DateTime.UtcNow);
+            _streamingStatus.MarkActive();
 
             // Buffer bar for batch DB persist — BarFlushLoopAsync drains every 5 seconds
             var ohlcvBar = new OhlcvBar
@@ -401,8 +412,9 @@ public class AlpacaStreamingService : BackgroundService
 
     private TimeSpan CalculateBackoffDelay(int attempt)
     {
-        var baseDelay = _settings.InitialReconnectDelaySeconds * Math.Pow(2, attempt - 1);
-        var capped = Math.Min(baseDelay, _settings.MaxReconnectDelaySeconds);
+        var baseDelay = _streamingSettings.InitialReconnectDelaySeconds
+            * Math.Pow(2, attempt - 1);
+        var capped = Math.Min(baseDelay, _streamingSettings.MaxReconnectDelaySeconds);
 
         // Add 25% jitter
         var jitter = capped * 0.25 * Random.Shared.NextDouble();

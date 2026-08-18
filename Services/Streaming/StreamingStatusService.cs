@@ -1,8 +1,14 @@
+using Microsoft.Extensions.Options;
+using StockTrader.Configuration;
+
 namespace StockTrader.Services.Streaming;
 
-public class StreamingStatusService : IStreamingStatusService
+public sealed class StreamingStatusService(
+    TimeProvider timeProvider,
+    IOptions<StreamingSettings> settings) : IStreamingStatusService
 {
-    private static readonly TimeSpan StalenessWindow = TimeSpan.FromMinutes(3);
+    private readonly TimeSpan _stalenessWindow =
+        TimeSpan.FromSeconds(settings.Value.StatusStalenessSeconds);
 
     private volatile bool _isActive;
     private volatile bool _isReconnecting;
@@ -18,7 +24,8 @@ public class StreamingStatusService : IStreamingStatusService
             lock (_lock)
             {
                 if (_lastBarReceivedUtc is null) return false;
-                if (DateTime.UtcNow - _lastBarReceivedUtc.Value > StalenessWindow)
+                if (timeProvider.GetUtcNow().UtcDateTime - _lastBarReceivedUtc.Value
+                    > _stalenessWindow)
                 {
                     _isActive = false;
                     return false;
@@ -35,11 +42,11 @@ public class StreamingStatusService : IStreamingStatusService
         get { lock (_lock) { return _lastBarReceivedUtc; } }
     }
 
-    public void MarkActive(DateTime receivedUtc)
+    public void MarkActive()
     {
         lock (_lock)
         {
-            _lastBarReceivedUtc = receivedUtc;
+            _lastBarReceivedUtc = timeProvider.GetUtcNow().UtcDateTime;
             _isActive = true;
             _isReconnecting = false;
         }

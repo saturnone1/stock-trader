@@ -16,15 +16,18 @@ public class LsSecuritiesDataFeedService : IDataFeedService
 {
     private readonly HttpClient _http;
     private readonly LsAuthService _auth;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<LsSecuritiesDataFeedService> _logger;
 
     public LsSecuritiesDataFeedService(
         HttpClient http,
         LsAuthService auth,
+        TimeProvider timeProvider,
         ILogger<LsSecuritiesDataFeedService> logger)
     {
         _http = http;
         _auth = auth;
+        _timeProvider = timeProvider;
         _logger = logger;
         // LS증권: 분봉(t8412)·일봉(t8410)·현재가(t1102) 모두 운영서버 사용
         _http.BaseAddress = new Uri(_auth.Settings.BaseUrl);
@@ -48,7 +51,9 @@ public class LsSecuritiesDataFeedService : IDataFeedService
     public async Task<OhlcvBar?> GetLatestBarAsync(string symbol, TimeFrame timeFrame,
         CancellationToken ct = default)
     {
-        var to = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, LsAuthService.KstZone);
+        var to = TimeZoneInfo.ConvertTime(
+            _timeProvider.GetUtcNow(),
+            LsAuthService.KstZone).DateTime;
         var from = timeFrame == TimeFrame.Daily ? to.AddDays(-5) : to.AddHours(-2);
         var bars = await GetHistoricalBarsAsync(symbol, timeFrame, from, to, ct);
         return bars.Count > 0 ? bars[^1] : null;
