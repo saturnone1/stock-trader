@@ -1,36 +1,36 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using StockTrader.Configuration;
 using StockTrader.Application.Research;
-using StockTrader.Data;
-using StockTrader.Models;
+using StockTrader.Configuration;
 using StockTrader.Services.Financial;
 
 namespace StockTrader.BackgroundServices;
 
 public class FinancialSnapshotIngestionService : BackgroundService
 {
-    private readonly IDbContextFactory<AppDbContext> _dbFactory;
+    private readonly IFinancialCollectionStore _collectionStore;
     private readonly FinancialSnapshotFileParser _parser;
     private readonly FinancialSnapshotImportService _importService;
     private readonly SecFinancialSnapshotSyncService _vendorSyncService;
     private readonly FinancialDataPipelineSettings _settings;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<FinancialSnapshotIngestionService> _logger;
     private readonly SemaphoreSlim _scanLock = new(1, 1);
 
     public FinancialSnapshotIngestionService(
-        IDbContextFactory<AppDbContext> dbFactory,
+        IFinancialCollectionStore collectionStore,
         FinancialSnapshotFileParser parser,
         FinancialSnapshotImportService importService,
         SecFinancialSnapshotSyncService vendorSyncService,
         IOptions<FinancialDataPipelineSettings> settings,
+        TimeProvider timeProvider,
         ILogger<FinancialSnapshotIngestionService> logger)
     {
-        _dbFactory = dbFactory;
+        _collectionStore = collectionStore;
         _parser = parser;
         _importService = importService;
         _vendorSyncService = vendorSyncService;
         _settings = settings.Value;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -100,53 +100,33 @@ public class FinancialSnapshotIngestionService : BackgroundService
                 var fileInfo = new FileInfo(file);
                 var fingerprint = $"{fileInfo.FullName}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}";
 
-                await using var db = await _dbFactory.CreateDbContextAsync(ct);
-                var alreadyProcessed = await db.FinancialImportRuns
-                    .AnyAsync(run => run.FilePath == fileInfo.FullName && run.Fingerprint == fingerprint && run.Status == "Completed", ct);
-
-                if (alreadyProcessed)
+                if (await _collectionStore.HasCompletedRunAsync(
+                        fileInfo.FullName,
+                        fingerprint,
+                        ct))
                 {
                     skipped++;
                     continue;
                 }
 
-                var run = await db.FinancialImportRuns
-                    .FirstOrDefaultAsync(item => item.FilePath == fileInfo.FullName && item.Fingerprint == fingerprint, ct);
-
-                if (run == null)
-                {
-                    run = new FinancialImportRun
-                    {
-                        SourceType = Path.GetExtension(fileInfo.Name).TrimStart('.').ToUpperInvariant(),
-                        FilePath = fileInfo.FullName,
-                        Fingerprint = fingerprint,
-                        Status = "Running",
-                        StartedAt = DateTime.UtcNow
-                    };
-                    db.FinancialImportRuns.Add(run);
-                }
-                else
-                {
-                    run.SourceType = Path.GetExtension(fileInfo.Name).TrimStart('.').ToUpperInvariant();
-                    run.Status = "Running";
-                    run.ErrorMessage = null;
-                    run.ImportedCount = 0;
-                    run.SkippedCount = 0;
-                    run.StartedAt = DateTime.UtcNow;
-                    run.CompletedAt = null;
-                }
-
-                await db.SaveChangesAsync(ct);
+                var runId = await _collectionStore.StartOrRestartRunAsync(
+                    Path.GetExtension(fileInfo.Name).TrimStart('.').ToUpperInvariant(),
+                    fileInfo.FullName,
+                    fingerprint,
+                    UtcNow,
+                    ct);
 
                 try
                 {
                     var parsed = await _parser.ParseFileAsync(fileInfo.FullName, ct);
                     var summary = await _importService.UpsertAsync(parsed, ct);
-                    run.Status = "Completed";
-                    run.ImportedCount = summary.ImportedCount;
-                    run.SkippedCount = summary.SkippedCount;
-                    run.CompletedAt = DateTime.UtcNow;
-                    await db.SaveChangesAsync(ct);
+                    await _collectionStore.CompleteRunAsync(
+                        runId,
+                        summary.ImportedCount,
+                        summary.SkippedCount,
+                        warning: null,
+                        UtcNow,
+                        ct);
 
                     imported += summary.ImportedCount;
                     skipped += summary.SkippedCount;
@@ -154,10 +134,7 @@ public class FinancialSnapshotIngestionService : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    run.Status = "Failed";
-                    run.ErrorMessage = ex.Message;
-                    run.CompletedAt = DateTime.UtcNow;
-                    await db.SaveChangesAsync(ct);
+                    await _collectionStore.FailRunAsync(runId, ex.Message, UtcNow, ct);
                     _logger.LogError(ex, "Financial snapshot import failed for {File}", fileInfo.FullName);
                 }
             }
@@ -189,13 +166,6 @@ public class FinancialSnapshotIngestionService : BackgroundService
             _scanLock.Release();
         }
     }
-}
 
-public class FinancialPipelineRunSummary
-{
-    public string Status { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public int ImportedCount { get; set; }
-    public int SkippedCount { get; set; }
-    public int ProcessedFiles { get; set; }
+    private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;
 }

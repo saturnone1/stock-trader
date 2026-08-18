@@ -81,3 +81,12 @@ public sealed record ManagedFinancialSnapshot(
 public sealed record FinancialImportSummary(
     int ImportedCount = 0,
     int SkippedCount = 0);
+
+public sealed record FinancialPipelineRunSummary
+{
+    public string Status { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public int ImportedCount { get; init; }
+    public int SkippedCount { get; init; }
+    public int ProcessedFiles { get; init; }
+}

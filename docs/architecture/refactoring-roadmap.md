@@ -360,6 +360,13 @@ to application services over `IResearchUniverseStore`. Explicit HTTP contracts r
 responses, while manual, file, and SEC imports share the application import model, central symbol
 normalization, and injected time instead of depending on API DTOs or endpoint-owned EF contexts.
 
+Financial file and SEC collection now cross `IFinancialCollectionStore`; only its SQLite adapter
+owns import-run entities and ticker queries. Both coordinators use the injected clock. SEC symbol
+selection, automatic-run timing, compatible run identity, XBRL annual-fact selection, amended
+filing precedence, price-based market-cap enrichment, and financial ratios are isolated policies
+with regression tests. This reduces the SEC coordinator from 584 to 316 lines while preserving the
+distinct interval-skip and displayed-success meanings.
+
 Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate automatically.
 
 ## Phase 5 — Desktop decomposition

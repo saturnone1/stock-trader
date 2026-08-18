@@ -29,6 +29,8 @@ infrastructure.
 - Strategy definitions: one typed aggregate compiled for preview, backtest, and live execution.
 - Pattern identity, stable codes, investor-facing names, and built-in support: one domain catalog.
 - Market symbol normalization and validation: one domain policy shared by research and live paths.
+- Financial collection state: one application port; SEC symbol, interval, parsing, and ratio rules
+  are deterministic policies outside workers and persistence adapters.
 - Order execution modes and their operator-facing meaning: one domain catalog.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
@@ -307,4 +309,6 @@ defaults, active-profile selection, and modification time have one application o
   daily executions, and sector data through one persistence-independent application snapshot.
 - `adr/0028-isolate-research-universe-queries.md`: move universe ranking, financial-factor math,
   import normalization, and explicit response contracts behind one research application boundary.
+- `adr/0029-isolate-financial-collection-boundary.md`: move import-run state and ticker projections
+  behind an application port and make SEC interpretation and financial arithmetic deterministic.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

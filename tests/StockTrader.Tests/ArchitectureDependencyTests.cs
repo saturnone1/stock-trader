@@ -454,6 +454,12 @@ public class ArchitectureDependencyTests
             repository, "Data/Repositories/ResearchUniverseStore.cs"));
         var parser = File.ReadAllText(Path.Combine(
             repository, "Services/Financial/FinancialSnapshotFileParser.cs"));
+        var collectionWorker = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/FinancialSnapshotIngestionService.cs"));
+        var secSync = File.ReadAllText(Path.Combine(
+            repository, "Services/Financial/SecFinancialSnapshotSyncService.cs"));
+        var collectionStore = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/FinancialCollectionStore.cs"));
         var registrations = File.ReadAllText(Path.Combine(
             repository, "Extensions/DataServiceExtensions.cs"));
 
@@ -478,8 +484,22 @@ public class ArchitectureDependencyTests
         store.Should().Contain("IDbContextFactory<AppDbContext>");
         parser.Should().Contain("FinancialSnapshotImportItem");
         parser.Should().NotContain("StockTrader.Api");
+        collectionWorker.Should().Contain("IFinancialCollectionStore");
+        collectionWorker.Should().Contain("TimeProvider");
+        collectionWorker.Should().NotContain("AppDbContext");
+        collectionWorker.Should().NotContain("DateTime.UtcNow");
+        secSync.Should().Contain("SecFinancialDocumentParser.Parse");
+        secSync.Should().Contain("SecFinancialSnapshotFactory.Create");
+        secSync.Should().Contain("IFinancialCollectionStore");
+        secSync.Should().Contain("TimeProvider");
+        secSync.Should().NotContain("AppDbContext");
+        secSync.Should().NotContain("Microsoft.EntityFrameworkCore");
+        secSync.Should().NotContain("DateTime.UtcNow");
+        collectionStore.Should().Contain("IDbContextFactory<AppDbContext>");
         registrations.Should().Contain(
             "AddSingleton<IResearchUniverseStore, ResearchUniverseStore>()");
+        registrations.Should().Contain(
+            "AddSingleton<IFinancialCollectionStore, FinancialCollectionStore>()");
 
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(
             repository, "desktop-app/openapi/stocktrader_desktop.json")));
