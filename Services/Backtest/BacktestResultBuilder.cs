@@ -34,8 +34,12 @@ internal static class BacktestResultBuilder
             annualizedReturn, input.MaxDrawdown * 100);
         var profitFactor = PerformanceCalculator.ComputeProfitFactor(tradeCycles);
 
-        var perPatternStats = PerformanceCalculator.ComputePerPatternStats(tradeCycles);
-        var perStrategyStats = PerformanceCalculator.ComputePerStrategyStats(tradeCycles);
+        var perPatternStats = PerformanceCalculator.ComputePerPatternStats(
+            tradeCycles,
+            input.To);
+        var perStrategyStats = PerformanceCalculator.ComputePerStrategyStats(
+            tradeCycles,
+            input.To);
         var (kellyFraction, halfKellyFraction) = ComputeKelly(tradeCycles, winRate);
         var (avgMae, avgMfe, medianMae, medianMfe) =
             PerformanceCalculator.ComputeMaeMfe(tradeCycles);

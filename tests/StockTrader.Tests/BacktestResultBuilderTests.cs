@@ -41,6 +41,10 @@ public class BacktestResultBuilderTests
         result.TotalCommissionCost.Should().Be(2m);
         result.WeightStrategyApplied.Should().BeTrue();
         result.WeightReducedTrades.Should().Be(1);
+        result.PerPatternStats.Values.Should().OnlyContain(stats =>
+            stats.LastUpdated == new DateTime(2025, 1, 31));
+        result.PerStrategyStats.Values.Should().OnlyContain(stats =>
+            stats.LastUpdated == new DateTime(2025, 1, 31));
     }
 
     [Fact]

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using StockTrader.Application.Trading;
+using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
@@ -7,20 +9,27 @@ namespace StockTrader.Services.Statistics;
 
 public class StatisticsService : IStatisticsService
 {
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
     private const string AllStatsCacheKey = "PatternStats_All";
 
     private readonly IPatternStatsRepository _statsRepo;
     private readonly ITradeHistoryStore _tradeHistory;
     private readonly IMemoryCache _cache;
+    private readonly TimeProvider _timeProvider;
+    private readonly TimeSpan _cacheDuration;
     private readonly ILogger<StatisticsService> _logger;
 
     public StatisticsService(IPatternStatsRepository statsRepo,
-        ITradeHistoryStore tradeHistory, IMemoryCache cache, ILogger<StatisticsService> logger)
+        ITradeHistoryStore tradeHistory,
+        IMemoryCache cache,
+        TimeProvider timeProvider,
+        IOptions<PatternStatisticsSettings> settings,
+        ILogger<StatisticsService> logger)
     {
         _statsRepo = statsRepo;
         _tradeHistory = tradeHistory;
         _cache = cache;
+        _timeProvider = timeProvider;
+        _cacheDuration = TimeSpan.FromMinutes(settings.Value.CacheMinutes);
         _logger = logger;
     }
 
@@ -33,7 +42,7 @@ public class StatisticsService : IStatisticsService
 
         var stats = await _statsRepo.GetAsync(pattern, symbol, ct);
         if (stats != null)
-            _cache.Set(cacheKey, stats, CacheDuration);
+            _cache.Set(cacheKey, stats, _cacheDuration);
         return stats;
     }
 
@@ -43,23 +52,32 @@ public class StatisticsService : IStatisticsService
             return cached!;
 
         var stats = await _statsRepo.GetAllAsync(ct);
-        _cache.Set(AllStatsCacheKey, stats, CacheDuration);
+        _cache.Set(AllStatsCacheKey, stats, _cacheDuration);
         return stats;
     }
 
     public Task<PatternStats> ComputeStatsAsync(PatternType pattern, List<TradeRecord> trades,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        Task.FromResult(ComputeStats(
+            pattern,
+            trades,
+            _timeProvider.GetUtcNow().UtcDateTime));
+
+    private static PatternStats ComputeStats(
+        PatternType pattern,
+        List<TradeRecord> trades,
+        DateTime observedAt)
     {
         var patternTrades = trades.Where(t => t.PatternType == pattern).ToList();
         var stats = new PatternStats
         {
             PatternType = pattern,
             SampleSize = patternTrades.Count,
-            LastUpdated = DateTime.UtcNow
+            LastUpdated = observedAt
         };
 
         if (patternTrades.Count == 0)
-            return Task.FromResult(stats);
+            return stats;
 
         var wins = patternTrades.Where(t => t.IsWin).ToList();
         var losses = patternTrades.Where(t => !t.IsWin).ToList();
@@ -79,7 +97,7 @@ public class StatisticsService : IStatisticsService
         }
         stats.MaxDrawdownPercent = maxDd;
 
-        return Task.FromResult(stats);
+        return stats;
     }
 
     public async Task RefreshAllStatsAsync(CancellationToken ct = default)
@@ -106,10 +124,11 @@ public class StatisticsService : IStatisticsService
         // 이번 계산에서 실제로 통계가 존재하는 (PatternType, Symbol) 조합을 추적
         var activeKeys = new HashSet<(PatternType, string?)>();
         var allStats = new List<PatternStats>();
+        var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
 
         foreach (PatternType pattern in Enum.GetValues<PatternType>())
         {
-            var stats = await ComputeStatsAsync(pattern, allTrades, ct);
+            var stats = ComputeStats(pattern, allTrades, observedAt);
             allStats.Add(stats);
             // SampleSize > 0인 경우만 활성 키로 기록 (거래가 없는 패턴은 stale 대상)
             if (stats.SampleSize > 0)

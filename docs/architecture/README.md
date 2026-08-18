@@ -53,6 +53,10 @@ infrastructure.
   browsing, dashboard counts, and manual entry.
 - Authentication state: one clocked application use case, a purpose-specific user store, and a
   best-effort audit sink backed by a separate append-only persistence port.
+- Derived statistics timestamps: backtest statistics use the explicit result boundary, while live
+  pattern-statistics refreshes sample one injected observation instant that persistence preserves.
+- ML retraining schedule: one deterministic ET window policy owns weekday and DST behavior;
+  interval, window, retry, failure, and cooldown values come from validated configuration.
 - Stock-analysis responses: one explicit generated contract with central pattern names and
   unit-correct percentage presentation in the desktop.
 - Live built-in configuration: one database-backed application service; entry detection and exit
@@ -378,4 +382,8 @@ defaults, active-profile selection, and modification time have one application o
   excluding deterministic same-day duplicates from operational reads.
 - `adr/0046-centralize-signal-actionability.md`: use one configured observation-time window for
   signal browsing, dashboard counts, and manual execution.
+- `adr/0047-isolate-authentication-and-audit.md`: isolate authentication state, atomic lockout
+  transitions, observation time, and best-effort security audit persistence.
+- `adr/0048-make-statistics-and-ml-scheduling-deterministic.md`: make derived statistics timestamps
+  explicit and re-anchor configured ML retraining windows across weekends and DST.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -8,6 +8,12 @@
   password changes no longer depend on EF entities or the system clock. Security audit capture is a
   best-effort adapter over its own append-only store, so HTTP client-IP lookup and SQLite mapping do
   not leak into the use case.
+- Backtest-derived pattern statistics now use the requested result boundary instead of wall-clock
+  time, and operational pattern-statistics refreshes sample one injected observation instant for the
+  complete batch. SQLite preserves that application-owned timestamp instead of replacing it.
+- ML retraining eligibility and delay calculation now live in a deterministic ET schedule policy.
+  The worker uses `TimeProvider` for observation and delays, re-anchors recurring execution after
+  weekends and DST, and obtains interval/window/retry/cooldown values from validated typed options.
 - Trading-account state now crosses an application persistence port, active-account changes are
   transactional, broker clients are constructed behind a focused factory, and explicit API contracts
   keep secrets write-only. The desktop derives broker environments from the central broker catalog.
