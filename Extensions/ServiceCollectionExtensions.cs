@@ -71,7 +71,14 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.MaxPositionsPerSector > 0, "MaxPositionsPerSector must be positive")
             .Validate(settings => settings.MaxTotalPositions > 0, "MaxTotalPositions must be positive")
             .Validate(settings => settings.MinConfidence is >= 0 and <= 1, "MinConfidence must be in [0, 1]")
-            .Validate(settings => settings.DataFetchIntervalSeconds > 0, "DataFetchIntervalSeconds must be positive")
+            .Validate(settings => settings.DataFetchIntervalSeconds > 0,
+                "DataFetchIntervalSeconds must be positive")
+            .Validate(settings => settings.IntradayDataMaxRetries > 0,
+                "IntradayDataMaxRetries must be positive")
+            .Validate(settings => settings.IntradayDataMaxConsecutiveFailures > 0,
+                "IntradayDataMaxConsecutiveFailures must be positive")
+            .Validate(settings => settings.IntradayDataCooldownSeconds > 0,
+                "IntradayDataCooldownSeconds must be positive")
             .Validate(settings => settings.RiskCheckIntervalSeconds > 0, "RiskCheckIntervalSeconds must be positive")
             .Validate(settings => settings.RiskMonitorMaxConsecutiveFailures > 0, "RiskMonitorMaxConsecutiveFailures must be positive")
             .Validate(settings => settings.RiskMonitorCooldownSeconds > 0, "RiskMonitorCooldownSeconds must be positive")

@@ -1,19 +1,19 @@
-using System.Threading.Channels;
 using Alpaca.Markets;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
-using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Streaming;
 using TimeFrame = StockTrader.Domain.MarketData.TimeFrame;
+using DataSource = StockTrader.Domain.MarketData.DataSource;
 
 namespace StockTrader.BackgroundServices;
 
 public class AlpacaStreamingService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly Channel<string> _symbolChannel;
+    private readonly IRealtimeBarIngestionBuffer _barIngestion;
     private readonly AlpacaSettings _settings;
     private readonly StreamingSettings _streamingSettings;
     private readonly TimeProvider _timeProvider;
@@ -21,21 +21,16 @@ public class AlpacaStreamingService : BackgroundService
     private readonly INotificationService _notificationService;
     private readonly ILogger<AlpacaStreamingService> _logger;
 
-    // Bar batching buffer: bars are flushed on the configured operational interval.
-    // Bounded with DropOldest to prevent unbounded memory growth under backpressure.
-    private readonly Channel<OhlcvBar> _barBuffer;
-
     private readonly HashSet<string> _subscribedSymbols = new(StringComparer.OrdinalIgnoreCase);
     // BUG-C05 fix: store subscription objects keyed by symbol so unsubscribe reuses the same instance
     private readonly Dictionary<string, IAlpacaDataSubscription<IBar>> _subscriptions = new(StringComparer.OrdinalIgnoreCase);
     // BUG-C05 fix: store named handlers so -= removes the exact same delegate reference
     private readonly Dictionary<string, Action<IBar>> _barHandlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _symbolsLock = new();
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, decimal> _previousClose = new(StringComparer.OrdinalIgnoreCase);
 
     public AlpacaStreamingService(
         IServiceScopeFactory scopeFactory,
-        Channel<string> symbolChannel,
+        IRealtimeBarIngestionBuffer barIngestion,
         IOptions<AlpacaSettings> settings,
         IOptions<StreamingSettings> streamingSettings,
         TimeProvider timeProvider,
@@ -44,20 +39,13 @@ public class AlpacaStreamingService : BackgroundService
         ILogger<AlpacaStreamingService> logger)
     {
         _scopeFactory = scopeFactory;
-        _symbolChannel = symbolChannel;
+        _barIngestion = barIngestion;
         _settings = settings.Value;
         _streamingSettings = streamingSettings.Value;
         _timeProvider = timeProvider;
         _streamingStatus = streamingStatus;
         _notificationService = notificationService;
         _logger = logger;
-        _barBuffer = Channel.CreateBounded<OhlcvBar>(
-            new BoundedChannelOptions(_streamingSettings.BufferCapacity)
-            {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
-                AllowSynchronousContinuations = false
-            });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -77,7 +65,9 @@ public class AlpacaStreamingService : BackgroundService
         _logger.LogInformation("AlpacaStreamingService starting");
 
         // Start the bar-flush loop as a concurrent background task
-        var flushTask = BarFlushLoopAsync(stoppingToken);
+        using var flushCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var flushTask = _barIngestion.RunFlushLoopAsync(flushCancellation.Token);
 
         var attempt = 0;
 
@@ -85,7 +75,23 @@ public class AlpacaStreamingService : BackgroundService
         {
             try
             {
+                if (!await IsAlpacaSelectedAsync(stoppingToken))
+                {
+                    if (await _barIngestion.FlushAsync(stoppingToken))
+                        _streamingStatus.MarkInactive();
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(_streamingSettings.WatchlistSyncIntervalSeconds),
+                        _timeProvider,
+                        stoppingToken);
+                    continue;
+                }
+
                 await ConnectAndStreamAsync(stoppingToken);
+                if (await _barIngestion.FlushAsync(stoppingToken))
+                {
+                    _streamingStatus.MarkInactive();
+                    _notificationService.PublishStreamingStatus(false);
+                }
                 attempt = 0; // reset on clean disconnect
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -116,64 +122,9 @@ public class AlpacaStreamingService : BackgroundService
         }
 
         // Signal the flush loop to drain remaining bars, then wait for it to finish
-        _barBuffer.Writer.TryComplete();
+        _barIngestion.Complete();
+        flushCancellation.Cancel();
         await flushTask;
-    }
-
-    /// <summary>
-    /// Drains <see cref="_barBuffer"/> on a 5-second periodic timer and persists all
-    /// buffered bars in a single DI scope / DB transaction, reducing per-bar scope overhead.
-    /// </summary>
-    private async Task BarFlushLoopAsync(CancellationToken ct)
-    {
-        using var timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(_streamingSettings.BarFlushIntervalSeconds),
-            _timeProvider);
-
-        // Keep flushing until the timer is cancelled AND the channel is drained
-        while (true)
-        {
-            // Wait for the next tick; if cancelled, do a final drain pass then exit
-            var ticked = false;
-            try
-            {
-                ticked = await timer.WaitForNextTickAsync(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                // Cancellation requested — perform one final flush then return
-                await FlushBarBatchAsync(CancellationToken.None);
-                return;
-            }
-
-            if (!ticked) break;
-
-            await FlushBarBatchAsync(ct);
-        }
-    }
-
-    private async Task FlushBarBatchAsync(CancellationToken ct)
-    {
-        var batch = new List<OhlcvBar>();
-
-        // Drain all currently available bars without blocking
-        while (_barBuffer.Reader.TryRead(out var bar))
-            batch.Add(bar);
-
-        if (batch.Count == 0) return;
-
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
-            await ohlcvRepo.AddBarsAsync(batch, ct);
-
-            _logger.LogDebug("Bar flush: persisted {Count} bars to DB", batch.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error flushing {Count} streaming bars to DB", batch.Count);
-        }
     }
 
     private async Task ConnectAndStreamAsync(CancellationToken ct)
@@ -192,6 +143,7 @@ public class AlpacaStreamingService : BackgroundService
             _logger.LogWarning("Alpaca WebSocket closed unexpectedly — triggering reconnect");
             _streamingStatus.MarkInactive();
             _notificationService.PublishStreamingStatus(false);
+            _barIngestion.RejectNewBars();
             // Cancelling cts unblocks WatchlistSyncLoopAsync, which causes
             // ConnectAndStreamAsync to throw IOException below, and the
             // ExecuteAsync backoff loop handles exponential-delay reconnection.
@@ -207,10 +159,15 @@ public class AlpacaStreamingService : BackgroundService
         _logger.LogInformation("Alpaca WebSocket streaming connected and authenticated");
 
         // Initial subscription
-        var symbols = await GetWatchlistSymbolsAsync(ct);
-        if (symbols.Count > 0)
+        var selection = await GetRuntimeSelectionAsync(ct);
+        if (selection.Source != DataSource.Alpaca)
+            return;
+
+        _barIngestion.StartAccepting();
+        _streamingStatus.MarkConnected();
+        if (selection.WatchlistSymbols.Count > 0)
         {
-            await SubscribeToSymbolsAsync(client, symbols, cts.Token);
+            await SubscribeToSymbolsAsync(client, selection.WatchlistSymbols, cts.Token);
         }
 
         _notificationService.PublishStreamingStatus(true);
@@ -230,6 +187,7 @@ public class AlpacaStreamingService : BackgroundService
         }
         finally
         {
+            await _barIngestion.StopAcceptingAsync();
             // Safe to clear now: sync loop has exited and no more bar callbacks can update these
             lock (_symbolsLock)
             {
@@ -250,8 +208,18 @@ public class AlpacaStreamingService : BackgroundService
         {
             try
             {
-                var currentSymbols = await GetWatchlistSymbolsAsync(ct);
-                var currentSet = new HashSet<string>(currentSymbols, StringComparer.OrdinalIgnoreCase);
+                var selection = await GetRuntimeSelectionAsync(ct);
+                if (selection.Source != DataSource.Alpaca)
+                {
+                    _logger.LogInformation(
+                        "Alpaca streaming stopping because selected provider changed to {Source}",
+                        selection.Source);
+                    return;
+                }
+
+                var currentSet = new HashSet<string>(
+                    selection.WatchlistSymbols,
+                    StringComparer.OrdinalIgnoreCase);
 
                 List<string> toSubscribe;
                 List<string> toUnsubscribe;
@@ -293,7 +261,18 @@ public class AlpacaStreamingService : BackgroundService
                 {
                     try
                     {
-                        await ProcessBarAsync(capturedSymbol, bar);
+                        await _barIngestion.ProcessAsync(new OhlcvBar
+                        {
+                            Symbol = capturedSymbol,
+                            Timestamp = bar.TimeUtc,
+                            TimeFrame = TimeFrame.OneMinute,
+                            Open = bar.Open,
+                            High = bar.High,
+                            Low = bar.Low,
+                            Close = bar.Close,
+                            Volume = (long)bar.Volume,
+                            Vwap = bar.Vwap
+                        });
                     }
                     catch (Exception ex)
                     {
@@ -357,58 +336,17 @@ public class AlpacaStreamingService : BackgroundService
             symbols.Count, string.Join(", ", symbols));
     }
 
-    private async Task ProcessBarAsync(string symbol, IBar bar)
+    private async Task<RealtimeMarketDataSelection> GetRuntimeSelectionAsync(
+        CancellationToken ct)
     {
-        try
-        {
-            _streamingStatus.MarkActive();
-
-            // Buffer bar for batch DB persist — BarFlushLoopAsync drains every 5 seconds
-            var ohlcvBar = new OhlcvBar
-            {
-                Symbol = symbol,
-                Timestamp = bar.TimeUtc,
-                TimeFrame = TimeFrame.OneMinute,
-                Open = bar.Open,
-                High = bar.High,
-                Low = bar.Low,
-                Close = bar.Close,
-                Volume = (long)bar.Volume,
-                Vwap = bar.Vwap
-            };
-            await _barBuffer.Writer.WriteAsync(ohlcvBar);
-
-            // Push symbol to pattern scanner channel
-            await _symbolChannel.Writer.WriteAsync(symbol);
-
-            // Publish price update for UI
-            var previousClose = _previousClose.GetValueOrDefault(symbol, bar.Open);
-            var change = bar.Close - previousClose;
-            var changePercent = previousClose != 0 ? change / previousClose * 100 : 0;
-
-            _notificationService.PublishPriceUpdate(new PriceUpdate(
-                symbol, bar.Close, change, changePercent, (long)bar.Volume, bar.TimeUtc));
-
-            _notificationService.PublishBarUpdate(symbol);
-
-            _previousClose[symbol] = bar.Close; // ConcurrentDictionary: thread-safe indexer
-
-            _logger.LogDebug("Streaming bar received: {Symbol} C={Close} V={Volume}",
-                symbol, bar.Close, bar.Volume);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing streaming bar for {Symbol}", symbol);
-        }
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var reader = scope.ServiceProvider
+            .GetRequiredService<IRealtimeMarketDataSelectionReader>();
+        return await reader.ReadAsync(ct);
     }
 
-    private async Task<List<string>> GetWatchlistSymbolsAsync(CancellationToken ct)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
-        var settings = await settingsRepo.GetAsync(ct);
-        return settings.WatchlistSymbols;
-    }
+    private async Task<bool> IsAlpacaSelectedAsync(CancellationToken ct) =>
+        (await GetRuntimeSelectionAsync(ct)).Source == DataSource.Alpaca;
 
     private TimeSpan CalculateBackoffDelay(int attempt)
     {

@@ -1977,6 +1977,88 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void IntradayDataWorkerOnlySchedulesTheProviderMarketCycle()
+    {
+        var repository = FindRepositoryRoot();
+        var workerPath = Path.Combine(
+            repository, "BackgroundServices/MarketDataIngestionService.cs");
+        var cyclePath = Path.Combine(
+            repository, "Services/DataFeed/IntradayMarketDataIngestionCycle.cs");
+        var dataPath = Path.Combine(
+            repository, "Services/DataFeed/IntradayMarketDataIngestionData.cs");
+        var contractsPath = Path.Combine(
+            repository, "Application/MarketData/IntradayMarketDataIngestionContracts.cs");
+        var streamingPath = Path.Combine(
+            repository, "BackgroundServices/AlpacaStreamingService.cs");
+        var selectionPath = Path.Combine(
+            repository, "Services/DataFeed/RealtimeMarketDataSelectionReader.cs");
+        var bufferPath = Path.Combine(
+            repository, "Services/Streaming/RealtimeBarIngestionBuffer.cs");
+        var sinkPath = Path.Combine(
+            repository, "Services/DataFeed/RealtimeBarBatchSink.cs");
+
+        var worker = File.ReadAllText(workerPath);
+        var cycle = File.ReadAllText(cyclePath);
+        var data = File.ReadAllText(dataPath);
+        var contracts = File.ReadAllText(contractsPath);
+        var streaming = File.ReadAllText(streamingPath);
+        var selection = File.ReadAllText(selectionPath);
+        var buffer = File.ReadAllText(bufferPath);
+        var sink = File.ReadAllText(sinkPath);
+
+        File.ReadAllLines(workerPath).Length.Should().BeLessThanOrEqualTo(100);
+        worker.Should().Contain("IIntradayMarketDataIngestionCycle");
+        worker.Should().Contain("PeriodicTimer(");
+        worker.Should().Contain("timeProvider");
+        worker.Should().Contain("IntradayDataMaxRetries");
+        worker.Should().Contain("DataFetchIntervalSeconds");
+        worker.Should().NotContain("IOhlcvRepository");
+        worker.Should().NotContain("IDataFeedServiceFactory");
+        worker.Should().NotContain("ISettingsRepository");
+        worker.Should().NotContain("IMarketCalendar");
+        worker.Should().NotContain("IStreamingStatusService");
+        worker.Should().NotContain("Channel<string>");
+        cycle.Should().Contain("DataProviderCatalog.Get(session.Source).MarketRegion");
+        cycle.Should().Contain("activeRealtimeSource == session.Source");
+        cycle.Should().Contain("connectedRealtimeSource != session.Source");
+        cycle.Should().Contain("RealtimeProviderTransition");
+        cycle.Should().Contain("errors == session.WatchlistSymbols.Count");
+        cycle.Should().Contain("marketCalendar.IsMarketOpen(market)");
+        cycle.Should().NotContain("MarketRegion.Korea");
+        cycle.Should().NotContain("MarketRegion.UnitedStates");
+        cycle.Should().NotContain("StockTrader.Data.Repositories");
+        cycle.Should().NotContain("IDataFeedService");
+        data.Should().Contain("MarketSymbolPolicy.NormalizeMany");
+        data.Should().Contain("TimeFrame.OneMinute");
+        File.ReadAllLines(streamingPath).Length.Should().BeLessThanOrEqualTo(400);
+        streaming.Should().Contain("IRealtimeBarIngestionBuffer");
+        streaming.Should().Contain("IRealtimeMarketDataSelectionReader");
+        streaming.Should().Contain("selection.Source != DataSource.Alpaca");
+        streaming.Should().Contain("_streamingStatus.MarkConnected()");
+        streaming.Should().Contain("_barIngestion.FlushAsync(stoppingToken)");
+        streaming.Should().Contain("_barIngestion.ProcessAsync(new OhlcvBar");
+        streaming.Should().Contain("flushCancellation.Cancel()");
+        streaming.Should().NotContain("IOhlcvRepository");
+        streaming.Should().NotContain("Channel<");
+        buffer.Should().Contain("_pendingBatch");
+        buffer.Should().Contain("_processingLock");
+        buffer.Should().Contain("batch retained for retry");
+        buffer.Should().Contain("_sink.PersistAndPublishAsync(_pendingBatch, ct)");
+        sink.Should().Contain("await repository.AddBarsAsync(bars, ct)");
+        sink.Should().Contain("await symbolChannel.Writer.WriteAsync(symbol, ct)");
+        sink.IndexOf("await repository.AddBarsAsync(bars, ct)",
+                StringComparison.Ordinal)
+            .Should().BeLessThan(sink.IndexOf(
+                "await symbolChannel.Writer.WriteAsync(symbol, ct)",
+                StringComparison.Ordinal));
+        streaming.Should().NotContain("ISettingsRepository");
+        selection.Should().Contain("MarketSymbolPolicy.NormalizeMany");
+        selection.Should().Contain("ISettingsRepository");
+        contracts.Should().NotContain("StockTrader.Services");
+        contracts.Should().NotContain("StockTrader.Data");
+    }
+
+    [Fact]
     public void PatternPreviewEndpointIsAThinHttpAdapterOverDeterministicSimulation()
     {
         var repository = FindRepositoryRoot();

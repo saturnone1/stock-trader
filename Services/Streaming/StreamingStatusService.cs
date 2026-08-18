@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
+using StockTrader.Domain.MarketData;
 
 namespace StockTrader.Services.Streaming;
 
@@ -11,6 +12,7 @@ public sealed class StreamingStatusService(
         TimeSpan.FromSeconds(settings.Value.StatusStalenessSeconds);
 
     private volatile bool _isActive;
+    private volatile bool _isConnected;
     private volatile bool _isReconnecting;
     private DateTime? _lastBarReceivedUtc;
     private readonly object _lock = new();
@@ -37,6 +39,12 @@ public sealed class StreamingStatusService(
 
     public bool IsReconnecting => _isReconnecting;
 
+    public DataSource? ActiveSource =>
+        IsStreamingActive ? DataSource.Alpaca : null;
+
+    public DataSource? ConnectedSource =>
+        _isConnected ? DataSource.Alpaca : null;
+
     public DateTime? LastBarReceivedUtc
     {
         get { lock (_lock) { return _lastBarReceivedUtc; } }
@@ -46,6 +54,7 @@ public sealed class StreamingStatusService(
     {
         lock (_lock)
         {
+            _isConnected = true;
             _lastBarReceivedUtc = timeProvider.GetUtcNow().UtcDateTime;
             _isActive = true;
             _isReconnecting = false;
@@ -56,7 +65,17 @@ public sealed class StreamingStatusService(
     {
         lock (_lock)
         {
+            _isConnected = false;
             _isActive = false;
+            _isReconnecting = false;
+        }
+    }
+
+    public void MarkConnected()
+    {
+        lock (_lock)
+        {
+            _isConnected = true;
             _isReconnecting = false;
         }
     }
@@ -65,6 +84,7 @@ public sealed class StreamingStatusService(
     {
         lock (_lock)
         {
+            _isConnected = false;
             _isActive = false;
             _isReconnecting = true;
         }

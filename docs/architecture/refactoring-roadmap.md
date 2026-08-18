@@ -2,6 +2,15 @@
 
 ## Current progress
 
+- REST minute-bar ingestion now crosses `IIntradayMarketDataIngestionCycle` and a provider-bound
+  session. The worker owns only injected-clock scheduling and configured recovery. The cycle checks
+  the selected provider's market instead of either global market. Alpaca streaming follows the
+  selected provider and exposes a drain transition that prevents mixed-provider writes. REST and
+  streaming batch persistence precede scanner publication, failed stream flushes remain retryable,
+  partial REST success is retained, and a total provider outage reaches the
+  retry/circuit breaker. Callback admission and retained batches live in
+  `IRealtimeBarIngestionBuffer`, persistence/publication in `IRealtimeBarBatchSink`, and the Alpaca
+  worker is below 400 lines. Regression tests lock provider-market and provider-stream isolation.
 - Pending live entries now reconcile through `ILiveEntryReconciliationCycle`; the 43-line hosted
   worker owns only scope creation and clocked scheduling. The cycle groups durable entries by owning
   account, shares one observation boundary, isolates broker failures per account, and never falls
@@ -210,6 +219,12 @@
   stored date, and SQLite upserts the canonical bar identity so completed OHLCV replaces an earlier
   partial sample. Regression tests lock market routing, close boundaries, weekend behavior,
   provider-switch invalidation, partial retry, completed-bar filtering, and storage replacement.
+- REST intraday ingestion likewise crosses `IIntradayMarketDataIngestionCycle`. Its provider-bound
+  session owns the normalized watchlist, latest-bar adapter, batch persistence, and scanner
+  publication. The cycle checks only the effective provider's market and realtime replacement state,
+  while the sub-100-line worker owns configured scheduling, retry, and cooldown. Alpaca streaming
+  disconnects and drains before a newly selected provider begins REST polling. A total provider
+  failure now reaches recovery instead of being swallowed as unrelated symbol errors.
 - `ICustomStrategyDetector` is now the runtime contract used by preview, backtest, optimization,
   scanning, and live exits. `CustomStrategyDetectorFactory` is the sole production constructor for
   `RuleBasedDetector`; production code no longer creates or casts the concrete detector directly,

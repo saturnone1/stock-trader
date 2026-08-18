@@ -13,6 +13,9 @@ public class TradingSettings
     public decimal MinExpectancy { get; set; } = 0m;
     public decimal MinConfidence { get; set; } = 0.3m;
     public int DataFetchIntervalSeconds { get; set; } = 60;
+    public int IntradayDataMaxRetries { get; set; } = 3;
+    public int IntradayDataMaxConsecutiveFailures { get; set; } = 5;
+    public int IntradayDataCooldownSeconds { get; set; } = 300;
     public int RiskCheckIntervalSeconds { get; set; } = 30;
     public int RiskMonitorMaxConsecutiveFailures { get; set; } = 5;
     public int RiskMonitorCooldownSeconds { get; set; } = 300;
