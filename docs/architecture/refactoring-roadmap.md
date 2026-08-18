@@ -325,7 +325,13 @@ from wall-clock minutes instead of their calendar cadence. Request payload const
 portfolio-weight serialization, plain execution, and sequential multi-scenario orchestration now
 live in `backtestExecution.js`. API-contract and orchestration goldens cover numeric normalization,
 data-source defaults, timing overlays, progress ordering, and result metadata. `Backtest.svelte` is
-now a 714-line orchestration shell rather than an API request builder.
+no longer an API request builder. Canonical reset state and provider-lookback warnings now live in
+`backtestWorkspace.js`; `backtestFactorLab.js` owns financial-factor response projection; and
+`backtestViewModel.js` derives selected patterns, scenario counts, cache-safe factor variants,
+comparison rows, and timing reports from one state snapshot. Goldens verify independent reset
+state, exact factor-query payloads, execution eligibility, and rejection of stale factor caches.
+`Backtest.svelte` is now a 457-line state coordinator, down from 2,130 lines, and its architecture
+guard enforces the normal 500-line orchestration limit.
 
 `PatternBuilder.svelte` decomposition has started at the strategy-safety boundary. Rule, sell-group,
 weight-tier, scaling, portfolio, and live-execution compatibility validation now resides in the pure

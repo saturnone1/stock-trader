@@ -63,11 +63,26 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/backtestExecution.js"));
         var executionTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/backtestExecution.test.js"));
+        var workspace = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestWorkspace.js"));
+        var workspaceTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestWorkspace.test.js"));
+        var factorLabModel = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestFactorLab.js"));
+        var factorLabModelTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestFactorLab.test.js"));
+        var viewModel = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestViewModel.js"));
+        var viewModelTests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/backtestViewModel.test.js"));
         var researchTests = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/backtestResearch.test.js"));
 
-        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(720);
+        File.ReadAllLines(pagePath).Length.Should().BeLessThanOrEqualTo(500);
         page.Should().Contain("from '../features/backtest/backtestResearch'");
+        page.Should().Contain("from '../features/backtest/backtestWorkspace'");
+        page.Should().Contain("from '../features/backtest/backtestFactorLab'");
+        page.Should().Contain("from '../features/backtest/backtestViewModel'");
         page.Should().Contain("from '../features/backtest/BacktestResultSummary.svelte'");
         page.Should().Contain("<BacktestResultSummary");
         page.Should().Contain("<BacktestPerformanceBreakdown");
@@ -106,6 +121,10 @@ public class ArchitectureDependencyTests
         page.Should().NotContain("getEquityCurveVolatility(");
         page.Should().NotContain("function buildRequestPayload(");
         page.Should().NotContain("function runSingleBacktestRequest(");
+        page.Should().NotContain("symbolsText: 'SPY, QQQ, TQQQ'");
+        page.Should().NotContain("function timeframeWarning(");
+        page.Should().NotContain("Promise.all(definitions.map(");
+        page.Should().NotContain("function getFactorLabRankingRows(");
         research.Should().Contain("export function getWhipsawStats(");
         research.Should().Contain("export function getEquityCurveVolatility(");
         research.Should().Contain("export function factorReturnLift(");
@@ -147,6 +166,14 @@ public class ArchitectureDependencyTests
         execution.Should().Contain("export async function runPlainBacktest(");
         executionTests.Should().Contain("executes sequentially");
         executionTests.Should().Contain("portfolio weight strategy only when enabled");
+        workspace.Should().Contain("export function createBacktestForm(");
+        workspace.Should().Contain("export function buildTimeframeWarning(");
+        workspaceTests.Should().Contain("reset factories return independent canonical research state");
+        factorLabModel.Should().Contain("export async function queryFactorLabCandidates(");
+        factorLabModelTests.Should().Contain("preserve API contract and build eligible universe variants");
+        viewModel.Should().Contain("export function buildBacktestViewModel(");
+        viewModel.Should().Contain("export function buildBacktestResearchPlans(");
+        viewModelTests.Should().Contain("stale factor variants never affect scenario estimates");
         researchTests.Should().Contain("API returnPct contract");
     }
 

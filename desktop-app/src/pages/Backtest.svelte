@@ -17,27 +17,20 @@
   import BacktestUniverseComparison from '../features/backtest/BacktestUniverseComparison.svelte'
   import BacktestUniverseControls from '../features/backtest/BacktestUniverseControls.svelte'
   import BacktestValidationResults from '../features/backtest/BacktestValidationResults.svelte'
-  import {
-    buildFactorExperimentDefinitions as createFactorExperimentDefinitions,
-    buildFactorSummaryTags,
-    buildScenarioPatterns as createScenarioPatterns,
-    buildTimingScenarios as createTimingScenarios,
-    buildUniverseVariants as createUniverseVariants,
-    combineScenarioPlans
-  } from '../features/backtest/backtestScenarioPlanning'
-  import {
-    buildFactorLabInsightCards,
-    buildFactorLabRankingRows,
-    buildFactorLabSummaryLine,
-    buildScenarioComparisonRows,
-    buildTimingReport,
-    buildUniverseComparisonRows
-  } from '../features/backtest/backtestResultAnalysis'
   import { runBacktestScenarios, runPlainBacktest } from '../features/backtest/backtestExecution'
+  import { queryFactorLabCandidates } from '../features/backtest/backtestFactorLab'
+  import { buildBacktestResearchPlans, buildBacktestViewModel } from '../features/backtest/backtestViewModel'
+  import {
+    createBacktestForm,
+    createCustomFactorExperiment,
+    createFactorLab,
+    createTimingLab,
+    createUniverseComparison,
+    toggleSelection
+  } from '../features/backtest/backtestWorkspace'
   import {
     factorExperimentPresets,
     factorRankingOptions,
-    intersectSymbols,
     timingStructureOptions,
     timingWindowOptions,
     uniqueSymbols
@@ -72,73 +65,17 @@
   let factorLabVariants = []
   let factorLabBaseSignature = ''
 
-  let timingLab = {
-    enabled: true,
-    includeBaseScenario: true,
-    marketSymbol: 'SPY',
-    selectedStructures: ['market', 'market-stock'],
-    selectedWindows: ['20-20', '20-10']
-  }
+  let timingLab = createTimingLab()
+  let universeComparison = createUniverseComparison()
+  let factorLab = createFactorLab()
+  let form = createBacktestForm()
 
-  let universeComparison = {
-    enabled: true,
-    includeCurrentSymbols: true,
-    includeUniverseBuilder: true,
-    includeFinancialFactor: true,
-    includeCombined: true
-  }
-
-  let factorLab = {
-    enabled: false,
-    selectedPresets: ['value-pe', 'quality-roe', 'turnaround-growth'],
-    includeCurrentBuilder: true,
-    minMatchedSymbols: 2,
-    rankingMode: 'balanced',
-    topRankedResults: 5,
-    customExperiments: [
-      {
-        id: 'custom-1',
-        label: '커스텀 조합 1',
-        peRatioMax: '',
-        pbRatioMax: '',
-        roePercentMin: '',
-        operatingMarginMin: '',
-        revenueGrowthMin: '',
-        netIncomeGrowthMin: '',
-        positiveEarningsOnly: true,
-        turnaroundOnly: false
-      }
-    ]
-  }
-
-  let form = {
-    symbolsText: 'SPY, QQQ, TQQQ',
-    from: '',
-    to: '',
-    initialCapital: 100000,
-    timeFrame: 'Daily',
-    dataSource: '',
-    slippageModel: 'Adaptive',
-    slippagePercent: 0.05,
-    commissionPerTrade: 1,
-    enableWalkForward: false,
-    walkForwardInSampleMonths: 12,
-    walkForwardOutOfSampleMonths: 3,
-    enableMonteCarlo: false,
-    monteCarloSimulations: 1000,
-    riskPerTradePercent: 0.01,
-    dailyLossLimitPercent: 0.03,
-    maxTotalPositions: 7,
-    maxPositionsPerSector: 2,
-    useWeightStrategy: false,
-    bullWeight: 1,
-    bearWeight: 0.3,
-    overheat1Weight: 0.7,
-    overheat2Weight: 0.4,
-    overheatStage1Pct: 1.15,
-    overheatStage2Pct: 1.25,
-    smaPeriod: 200
-  }
+  $: viewModel = buildBacktestViewModel({
+    form, patterns, selectedPatternIds, timingLab, universeComparison,
+    universeBuilderSymbols, financialFactorSymbols, financialFactorFilters,
+    factorLab, factorLabVariants, factorLabBaseSignature, factorLabSummaries,
+    comparisonResults, activeScenarioKey, dataProviders, timeFrameOptions
+  })
 
   onMount(async () => {
     await Promise.all([loadMetadata(), loadPatterns()])
@@ -169,18 +106,6 @@
     }
   }
 
-  function parseSymbols() {
-    return form.symbolsText.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean)
-  }
-
-  function symbolSignature(symbols = parseSymbols()) {
-    return uniqueSymbols(symbols).join('|')
-  }
-
-  function selectedPatterns() {
-    return patterns.filter((pattern) => selectedPatternIds.includes(String(pattern.id)))
-  }
-
   function togglePattern(id) {
     const value = String(id)
     selectedPatternIds = selectedPatternIds.includes(value)
@@ -189,38 +114,24 @@
   }
 
   function toggleTimingStructure(id) {
-    timingLab.selectedStructures = timingLab.selectedStructures.includes(id)
-      ? timingLab.selectedStructures.filter((item) => item !== id)
-      : [...timingLab.selectedStructures, id]
+    timingLab.selectedStructures = toggleSelection(timingLab.selectedStructures, id)
   }
 
   function toggleTimingWindow(id) {
-    timingLab.selectedWindows = timingLab.selectedWindows.includes(id)
-      ? timingLab.selectedWindows.filter((item) => item !== id)
-      : [...timingLab.selectedWindows, id]
+    timingLab.selectedWindows = toggleSelection(timingLab.selectedWindows, id)
   }
 
   function toggleFactorPreset(id) {
-    factorLab.selectedPresets = factorLab.selectedPresets.includes(id)
-      ? factorLab.selectedPresets.filter((item) => item !== id)
-      : [...factorLab.selectedPresets, id]
+    factorLab.selectedPresets = toggleSelection(factorLab.selectedPresets, id)
   }
 
   function addCustomFactorExperiment() {
     factorLab.customExperiments = [
       ...factorLab.customExperiments,
-      {
-        id: `custom-${Date.now()}-${factorLab.customExperiments.length + 1}`,
-        label: `커스텀 조합 ${factorLab.customExperiments.length + 1}`,
-        peRatioMax: '',
-        pbRatioMax: '',
-        roePercentMin: '',
-        operatingMarginMin: '',
-        revenueGrowthMin: '',
-        netIncomeGrowthMin: '',
-        positiveEarningsOnly: true,
-        turnaroundOnly: false
-      }
+      createCustomFactorExperiment(
+        factorLab.customExperiments.length + 1,
+        `custom-${Date.now()}-${factorLab.customExperiments.length + 1}`
+      )
     ]
   }
 
@@ -228,49 +139,11 @@
     factorLab.customExperiments = factorLab.customExperiments.filter((item) => item.id !== id)
   }
 
-  function timeframeWarning() {
-    if (!form.from || !form.to) return ''
-    const provider = dataProviders.find((item) => item.value === form.dataSource)
-    const maxDays = provider?.maximumLookbackDays?.[form.timeFrame]
-    const days = Math.max(0, Math.ceil((new Date(form.to).getTime() - new Date(form.from).getTime()) / 86400000))
-    if (maxDays && days > maxDays) {
-      const frameLabel = timeFrameOptions.find(([value]) => value === form.timeFrame)?.[1] ?? form.timeFrame
-      return `${provider.displayName}의 ${frameLabel} 조회 한도는 최대 ${maxDays}일입니다.`
-    }
-    return ''
-  }
-
-  function buildScenarioPatterns(basePatterns, scenario) {
-    return createScenarioPatterns(basePatterns, scenario, timingLab.marketSymbol)
-  }
-
-  function buildTimingScenarios() {
-    return createTimingScenarios(timingLab, timingStructureOptions, timingWindowOptions)
-  }
-
-  function factorRankingLabel() {
-    return factorRankingOptions.find((option) => option.id === factorLab.rankingMode)?.label ?? '균형 점수'
-  }
-
-  function buildFactorExperimentDefinitions() {
-    return createFactorExperimentDefinitions(factorLab, factorExperimentPresets, financialFactorFilters)
-  }
-
-  function factorExperimentSelectionCount() {
-    return buildFactorExperimentDefinitions().length
-  }
-
-  function factorLabVariantsFor(symbols) {
-    return factorLab.enabled && factorLabBaseSignature === symbolSignature(symbols)
-      ? factorLabVariants
-      : []
-  }
-
   async function loadFactorLabCandidates(baseSymbols, options = {}) {
     const { silent = false } = options
     const normalizedBaseSymbols = uniqueSymbols(baseSymbols)
-    const baseSignature = symbolSignature(normalizedBaseSymbols)
-    const definitions = buildFactorExperimentDefinitions()
+    const baseSignature = normalizedBaseSymbols.join('|')
+    const definitions = viewModel.factorDefinitions
 
     if (!factorLab.enabled || definitions.length === 0 || normalizedBaseSymbols.length === 0) {
       factorLabError = ''
@@ -282,49 +155,14 @@
 
     factorLabLoading = true
     try {
-      const responses = await Promise.all(definitions.map(async (definition) => {
-        const response = await financialFactorApi.query({
-          ...definition.params,
-          symbols: normalizedBaseSymbols.join(','),
-          limit: Math.max(normalizedBaseSymbols.length, 20)
-        })
-
-        const matchedSymbols = uniqueSymbols((response.data?.items ?? []).map((item) => item.symbol))
-        const filteredSummary = response.data?.comparison?.filtered ?? { count: 0, positiveEarningsCount: 0, turnaroundCount: 0 }
-
-        return {
-          definition,
-          matchedSymbols,
-          matched: response.data?.matched ?? matchedSymbols.length,
-          filteredSummary,
-          summaryTags: buildFactorSummaryTags(filteredSummary)
-        }
-      }))
-
-      const validResponses = responses.filter(Boolean)
-      factorLabSummaries = validResponses.map((item) => ({
-        id: item.definition.id,
-        label: item.definition.label,
-        note: item.definition.note,
-        source: item.definition.source,
-        matched: item.matched,
-        eligible: item.matched >= Number(factorLab.minMatchedSymbols),
-        filteredSummary: item.filteredSummary,
-        summaryTags: item.summaryTags
-      }))
-      factorLabVariants = validResponses
-        .filter((item) => item.matchedSymbols.length >= Number(factorLab.minMatchedSymbols))
-        .map((item) => ({
-          key: `factorlab-${item.definition.id}`,
-          kind: 'factor-lab',
-          label: `팩터 실험 · ${item.definition.label}`,
-          description: `${normalizedBaseSymbols.length}개 중 ${item.matchedSymbols.length}개가 ${item.definition.note} 조건을 만족합니다.`,
-          symbols: item.matchedSymbols,
-          symbolCount: item.matchedSymbols.length,
-          factorPresetId: item.definition.id,
-          factorPresetLabel: item.definition.label,
-          factorPresetNote: item.definition.note
-        }))
+      const candidates = await queryFactorLabCandidates({
+        definitions,
+        baseSymbols: normalizedBaseSymbols,
+        minMatchedSymbols: factorLab.minMatchedSymbols,
+        query: (payload) => financialFactorApi.query(payload)
+      })
+      factorLabSummaries = candidates.summaries
+      factorLabVariants = candidates.variants
       factorLabBaseSignature = baseSignature
       factorLabError = ''
       return factorLabVariants
@@ -342,47 +180,10 @@
 
   async function previewFactorLab() {
     try {
-      await loadFactorLabCandidates(parseSymbols())
+      await loadFactorLabCandidates(viewModel.symbols)
     } catch {
       // loadFactorLabCandidates already surfaces the error in factorLabError
     }
-  }
-
-  function buildUniverseVariants(baseSymbols, extraVariants = []) {
-    return createUniverseVariants({ baseSymbols, extraVariants, universeComparison, universeBuilderSymbols, financialFactorSymbols })
-  }
-
-  function buildScenarioPlans(baseSymbols, extraVariants = []) {
-    return combineScenarioPlans(buildUniverseVariants(baseSymbols, extraVariants), buildTimingScenarios())
-  }
-
-  function estimatedScenarioCount() {
-    if (!timingLab.enabled) return 1
-    return buildScenarioPlans(parseSymbols(), factorLabVariantsFor(parseSymbols())).length
-  }
-
-  function getTimingReport(entry) {
-    return buildTimingReport(comparisonResults, entry)
-  }
-
-  function getActiveComparisonEntry() {
-    return comparisonResults.find((item) => item.key === activeScenarioKey) ?? null
-  }
-
-  function getUniverseComparisonRows() {
-    return buildUniverseComparisonRows(comparisonResults)
-  }
-
-  function getFactorLabRankingRows() {
-    return buildFactorLabRankingRows(comparisonResults, factorLabSummaries, factorLab.rankingMode, factorLab.topRankedResults)
-  }
-
-  function getFactorLabInsightCards() {
-    return buildFactorLabInsightCards(getFactorLabRankingRows())
-  }
-
-  function getFactorLabSummaryLine() {
-    return buildFactorLabSummaryLine(getFactorLabRankingRows())
   }
 
   function selectScenarioResult(key) {
@@ -392,13 +193,9 @@
     result = next.data
   }
 
-  function getScenarioComparisonRows() {
-    return buildScenarioComparisonRows(comparisonResults)
-  }
-
   async function runBacktest() {
-    const symbols = parseSymbols()
-    const customPatterns = selectedPatterns()
+    const symbols = viewModel.symbols
+    const customPatterns = viewModel.selectedPatterns
     if (!symbols.length || !form.from || !form.to || !customPatterns.length) {
       error = '종목, 기간, 패턴을 모두 입력하세요.'
       return
@@ -412,8 +209,11 @@
     const factorVariants = factorLab.enabled
       ? await loadFactorLabCandidates(symbols, { silent: true })
       : []
+    const researchPlans = buildBacktestResearchPlans({
+      timingLab, universeComparison, universeBuilderSymbols, financialFactorSymbols
+    }, symbols, factorVariants)
 
-    if (timingLab.enabled && buildUniverseVariants(symbols, factorVariants).length === 0) {
+    if (timingLab.enabled && researchPlans.universeVariants.length === 0) {
       error = '현재 종목 입력에서 비교 가능한 유니버스가 없습니다. 필터 조건이나 종목 입력을 조정하세요.'
       return
     }
@@ -426,7 +226,7 @@
     result = null
     try {
       if (timingLab.enabled) {
-        const scenarios = buildScenarioPlans(symbols, factorVariants)
+        const scenarios = researchPlans.scenarioPlans
         const nextResults = await runBacktestScenarios({
           startBacktest: (payload) => backtestApi.start(payload),
           form,
@@ -464,64 +264,9 @@
     runStatus = ''
     comparisonResults = []
     activeScenarioKey = ''
-    form = {
-      ...form,
-      symbolsText: 'SPY, QQQ, TQQQ',
-      from: '',
-      to: '',
-      initialCapital: 100000,
-      timeFrame: 'Daily',
-      dataSource: '',
-      slippageModel: 'Adaptive',
-      slippagePercent: 0.05,
-      commissionPerTrade: 1,
-      enableWalkForward: false,
-      walkForwardInSampleMonths: 12,
-      walkForwardOutOfSampleMonths: 3,
-      enableMonteCarlo: false,
-      monteCarloSimulations: 1000,
-      riskPerTradePercent: 0.01,
-      dailyLossLimitPercent: 0.03,
-      maxTotalPositions: 7,
-      maxPositionsPerSector: 2,
-      useWeightStrategy: false,
-      bullWeight: 1,
-      bearWeight: 0.3,
-      overheat1Weight: 0.7,
-      overheat2Weight: 0.4,
-      overheatStage1Pct: 1.15,
-      overheatStage2Pct: 1.25,
-      smaPeriod: 200
-    }
-    timingLab = {
-      enabled: true,
-      includeBaseScenario: true,
-      marketSymbol: 'SPY',
-      selectedStructures: ['market', 'market-stock'],
-      selectedWindows: ['20-20', '20-10']
-    }
-    factorLab = {
-      enabled: false,
-      selectedPresets: ['value-pe', 'quality-roe', 'turnaround-growth'],
-      includeCurrentBuilder: true,
-      minMatchedSymbols: 2,
-      rankingMode: 'balanced',
-      topRankedResults: 5,
-      customExperiments: [
-        {
-          id: 'custom-1',
-          label: '커스텀 조합 1',
-          peRatioMax: '',
-          pbRatioMax: '',
-          roePercentMin: '',
-          operatingMarginMin: '',
-          revenueGrowthMin: '',
-          netIncomeGrowthMin: '',
-          positiveEarningsOnly: true,
-          turnaroundOnly: false
-        }
-      ]
-    }
+    form = createBacktestForm()
+    timingLab = createTimingLab()
+    factorLab = createFactorLab()
     factorLabLoading = false
     factorLabError = ''
     factorLabSummaries = []
@@ -605,17 +350,17 @@
           기본 패턴 그대로도 같이 실행
         </label>
         <div class="rounded-xl border border-blue-700/40 bg-blue-950/20 px-4 py-3 text-sm text-blue-100">
-          예상 시나리오 수: {estimatedScenarioCount()}개
+          예상 시나리오 수: {viewModel.estimatedScenarioCount}개
         </div>
       </div>
 
       <BacktestUniverseControls
         timingEnabled={timingLab.enabled}
         {universeComparison}
-        currentCount={uniqueSymbols(parseSymbols()).length}
-        universeCount={intersectSymbols(parseSymbols(), universeBuilderSymbols).length}
-        financialCount={intersectSymbols(parseSymbols(), financialFactorSymbols).length}
-        combinedCount={intersectSymbols(intersectSymbols(parseSymbols(), universeBuilderSymbols), financialFactorSymbols).length}
+        currentCount={viewModel.currentSymbolCount}
+        universeCount={viewModel.universeSymbolCount}
+        financialCount={viewModel.financialSymbolCount}
+        combinedCount={viewModel.combinedSymbolCount}
         universeMatched={universeBuilderSummary?.matched ?? 0}
         financialMatched={financialFactorSummary?.matched ?? 0}
       />
@@ -627,8 +372,8 @@
         summaries={factorLabSummaries}
         presets={factorExperimentPresets}
         rankingOptions={factorRankingOptions}
-        baseSymbolCount={uniqueSymbols(parseSymbols()).length}
-        selectionCount={factorExperimentSelectionCount()}
+        baseSymbolCount={viewModel.currentSymbolCount}
+        selectionCount={viewModel.factorExperimentSelectionCount}
         onPreview={previewFactorLab}
         onTogglePreset={toggleFactorPreset}
         onAddCustom={addCustomFactorExperiment}
@@ -656,7 +401,7 @@
         {timeFrameOptions}
         {dataSourceOptions}
         {slippageOptions}
-        warning={timeframeWarning()}
+        warning={viewModel.timeframeWarning}
       />
 
       <BacktestRiskSettings {form} />
@@ -673,23 +418,21 @@
     </section>
 
     {#if comparisonResults.length > 0}
-      {@const universeComparisonRows = getUniverseComparisonRows()}
-      {#if universeComparisonRows.length > 1}
-        <BacktestUniverseComparison rows={universeComparisonRows} />
+      {#if viewModel.universeComparisonRows.length > 1}
+        <BacktestUniverseComparison rows={viewModel.universeComparisonRows} />
       {/if}
 
-      {@const factorRankingRows = getFactorLabRankingRows()}
-      {#if factorRankingRows.length > 0}
+      {#if viewModel.factorRankingRows.length > 0}
         <BacktestFactorRanking
-          rows={factorRankingRows}
-          insightCards={getFactorLabInsightCards()}
-          summary={getFactorLabSummaryLine()}
-          rankingLabel={factorRankingLabel()}
+          rows={viewModel.factorRankingRows}
+          insightCards={viewModel.factorLabInsightCards}
+          summary={viewModel.factorLabSummaryLine}
+          rankingLabel={viewModel.factorRankingLabel}
         />
       {/if}
 
       <BacktestScenarioComparison
-        rows={getScenarioComparisonRows()}
+        rows={viewModel.scenarioComparisonRows}
         {activeScenarioKey}
         {runStatus}
         onSelect={selectScenarioResult}
@@ -700,7 +443,7 @@
       <section class="space-y-4">
         <BacktestResultSummary
           {result}
-          timingReport={getTimingReport(getActiveComparisonEntry())}
+          timingReport={viewModel.timingReport}
         />
 
         <BacktestPerformanceBreakdown {result} />
