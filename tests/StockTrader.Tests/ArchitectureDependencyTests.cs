@@ -1293,6 +1293,42 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void LiveSignalEvaluationUsesAnApplicationSnapshotInsteadOfEfEntities()
+    {
+        var repository = FindRepositoryRoot();
+        var service = File.ReadAllText(Path.Combine(
+            repository, "Services/Signal/SignalService.cs"));
+        var port = File.ReadAllText(Path.Combine(
+            repository, "Application/Signals/ILiveSignalEvaluationStore.cs"));
+        var completedTrade = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/StrategyCompletedTrade.cs"));
+        var cooldownPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/StrategyTradeTransitionPolicy.cs"));
+        var adapter = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/LiveSignalEvaluationStore.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/DataServiceExtensions.cs"));
+
+        service.Should().Contain("ILiveSignalEvaluationStore");
+        service.Should().Contain("evaluation.CompletedTradesFor(");
+        service.Should().NotContain("AppDbContext");
+        service.Should().NotContain("Microsoft.EntityFrameworkCore");
+        service.Should().NotContain(".TradeRecords");
+        service.Should().NotContain(".Positions");
+        service.Should().NotContain(".TradeRecommendations");
+        service.Should().NotContain(".Tickers");
+        port.Should().Contain("LiveSignalEvaluationSnapshot");
+        port.Should().NotContain("StockTrader.Models");
+        completedTrade.Should().NotContain("StockTrader.Models");
+        cooldownPolicy.Should().Contain("IReadOnlyList<StrategyCompletedTrade>");
+        cooldownPolicy.Should().NotContain("IReadOnlyList<TradeRecord>");
+        adapter.Should().Contain("ILiveSignalEvaluationStore");
+        adapter.Should().Contain("AsNoTracking()");
+        registrations.Should().Contain(
+            "AddScoped<ILiveSignalEvaluationStore, LiveSignalEvaluationStore>()");
+    }
+
+    [Fact]
     public void BacktestRuntimeStateHasOneRegistryOwner()
     {
         var repository = FindRepositoryRoot();

@@ -67,7 +67,7 @@ public sealed record StrategyHistoricalCooldownDecision(
 public static class StrategyHistoricalCooldownPolicy
 {
     public static StrategyHistoricalCooldownDecision Evaluate(
-        IReadOnlyList<TradeRecord> trades,
+        IReadOnlyList<StrategyCompletedTrade> trades,
         ReentryConfig reentry,
         CircuitBreakerConfig circuitBreaker,
         DateTime asOfUtc)
@@ -76,22 +76,22 @@ public static class StrategyHistoricalCooldownPolicy
             return new(false, false);
 
         var chronologicalTrades = trades
-            .OrderBy(trade => trade.ExitTime)
-            .ThenBy(trade => trade.Id)
+            .OrderBy(trade => trade.ExitedAt)
+            .ThenBy(trade => trade.SequenceId)
             .ToArray();
         var latest = chronologicalTrades[^1];
         var reentrySteps = StrategyTradeTransitionPolicy.ResolveReentryCooldownSteps(
-            latest.PnL,
+            latest.RealizedPnl,
             reentry);
         var reentryBlocked = reentrySteps > 0
-            && asOfUtc.Date <= AddWeekdays(latest.ExitTime.Date, reentrySteps);
+            && asOfUtc.Date <= AddWeekdays(latest.ExitedAt.Date, reentrySteps);
 
         var trailingLosses = StrategyTradeTransitionPolicy.CountTrailingLosses(
-            chronologicalTrades.Select(trade => trade.PnL));
+            chronologicalTrades.Select(trade => trade.RealizedPnl));
         var consecutiveLossBlocked = circuitBreaker.ConsecutiveLossLimit > 0
             && trailingLosses >= circuitBreaker.ConsecutiveLossLimit
             && asOfUtc.Date <= AddWeekdays(
-                latest.ExitTime.Date,
+                latest.ExitedAt.Date,
                 circuitBreaker.CooldownBars);
         return new(reentryBlocked, consecutiveLossBlocked);
     }

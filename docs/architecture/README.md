@@ -303,4 +303,6 @@ defaults, active-profile selection, and modification time have one application o
   while preserving live freshness and per-bar persistence identity.
 - `adr/0026-isolate-symbol-profile-assignment.md`: route profile validation, activation, API
   contracts, and live selection through one application boundary.
+- `adr/0027-isolate-live-signal-evaluation-state.md`: project live trade history, portfolio counts,
+  daily executions, and sector data through one persistence-independent application snapshot.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

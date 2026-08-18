@@ -1,9 +1,8 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Signals;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
-using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Services.Market;
@@ -18,7 +17,7 @@ public class SignalService : ISignalService
     private readonly IRiskManagementService _riskService;
     private readonly ISettingsRepository _settingsRepo;
     private readonly ICompiledStrategyRepository _strategies;
-    private readonly AppDbContext _db;
+    private readonly ILiveSignalEvaluationStore _evaluationStore;
     private readonly TradingSettings _tradingSettings;
     private readonly TimeProvider _timeProvider;
     private readonly IMarketCalendar _marketCalendar;
@@ -29,7 +28,7 @@ public class SignalService : ISignalService
         IRiskManagementService riskService,
         ISettingsRepository settingsRepo,
         ICompiledStrategyRepository strategies,
-        AppDbContext db,
+        ILiveSignalEvaluationStore evaluationStore,
         IOptions<TradingSettings> tradingSettings,
         TimeProvider timeProvider,
         IMarketCalendar marketCalendar,
@@ -39,7 +38,7 @@ public class SignalService : ISignalService
         _riskService = riskService;
         _settingsRepo = settingsRepo;
         _strategies = strategies;
-        _db = db;
+        _evaluationStore = evaluationStore;
         _tradingSettings = tradingSettings.Value;
         _timeProvider = timeProvider;
         _marketCalendar = marketCalendar;
@@ -65,36 +64,17 @@ public class SignalService : ISignalService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var customStrategies = await _strategies.GetByNamesAsync(customNames, ct);
-        var customTradeHistory = customNames.Count == 0
-            ? []
-            : await _db.TradeRecords.AsNoTracking()
-                .Where(trade => trade.CustomPatternName != null && customNames.Contains(trade.CustomPatternName))
-                .OrderBy(trade => trade.ExitTime)
-                .ThenBy(trade => trade.Id)
-                .ToListAsync(ct);
-        var openCustomPositions = customNames.Count == 0
-            ? []
-            : await _db.Positions.AsNoTracking()
-                .Where(position => position.ClosedAt == null)
-                .ToListAsync(ct);
         var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
         var marketTimeZone = _marketCalendar.GetTimeZone(MarketType.US);
         var marketDate = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, marketTimeZone).Date;
         var marketSessionStartUtc = TimeZoneInfo.ConvertTimeToUtc(
             DateTime.SpecifyKind(marketDate, DateTimeKind.Unspecified), marketTimeZone);
-        var executedToday = customNames.Count == 0
-            ? []
-            : await _db.TradeRecommendations.AsNoTracking()
-                .Where(rec => rec.WasExecuted
-                    && rec.GeneratedAt >= marketSessionStartUtc
-                    && rec.CustomPatternName != null)
-                .ToListAsync(ct);
-
-        // 섹터 정보를 일괄 조회하여 N+1 방지 (W02 fix)
         var symbols = signals.Select(s => s.Symbol).Distinct().ToList();
-        var sectorMap = await _db.Tickers
-            .Where(t => symbols.Contains(t.Symbol))
-            .ToDictionaryAsync(t => t.Symbol, t => t.Sector, StringComparer.OrdinalIgnoreCase, ct);
+        var evaluation = await _evaluationStore.LoadAsync(
+            customNames,
+            symbols,
+            marketSessionStartUtc,
+            ct);
 
         // 패턴 통계를 루프 진입 전 일괄 로드하여 N+1 DB 왕복 제거.
         // GetAllStatsAsync는 단일 쿼리로 전체 PatternStats를 반환한다.
@@ -120,10 +100,7 @@ public class SignalService : ISignalService
             var portfolioRules = customStrategy?.PortfolioRules;
             var reentryRules = customStrategy?.Reentry;
             var breakerRules = customStrategy?.CircuitBreaker;
-            var strategyTrades = string.IsNullOrWhiteSpace(signal.CustomPatternName)
-                ? []
-                : customTradeHistory.Where(trade => string.Equals(
-                    trade.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase)).ToList();
+            var strategyTrades = evaluation.CompletedTradesFor(signal.CustomPatternName);
 
             if (customDefinition != null && (!customDefinition.IsActive || !customDefinition.EnableLiveTrading))
                 continue;
@@ -134,20 +111,19 @@ public class SignalService : ISignalService
                     reentryRules ?? new ReentryConfig(),
                     breakerRules ?? new CircuitBreakerConfig(),
                     marketDate);
-                var entriesToday = executedToday.Count(rec => string.Equals(
-                        rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase))
+                var entriesToday = evaluation.ExecutedEntriesFor(signal.CustomPatternName)
                     + recommendations.Count(rec => string.Equals(
                         rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase));
                 var drawdownBlocked = breakerRules?.MaxDrawdownPercent > 0
                     && StrategyDrawdownPolicy.EvaluateHistory(
                         settings.AccountSize,
-                        strategyTrades.OrderBy(trade => trade.ExitTime).Select(trade => trade.PnL),
+                        strategyTrades.OrderBy(trade => trade.ExitedAt).Select(trade => trade.RealizedPnl),
                         breakerRules.MaxDrawdownPercent).IsBlocked;
                 var entryEligibility = StrategyEntryEligibilityPolicy.Evaluate(
                     new StrategyEntryEligibilityRequest(
                         _tradingSettings.MaxTotalPositions,
                         portfolioRules?.MaxTotalPositions ?? 0,
-                        openCustomPositions.Count + recommendations.Count,
+                        evaluation.OpenPositionCount + recommendations.Count,
                         drawdownBlocked,
                         cooldowns.ConsecutiveLossBlocked,
                         portfolioRules?.MaxEntriesPerDay ?? 0,
@@ -202,8 +178,9 @@ public class SignalService : ISignalService
             // ── 4. 리스크 체크 ──
             // W02 fix: Tickers 테이블에서 섹터 조회; 없으면 심볼 자체를 섹터로 사용하여
             // 동일 종목 중복 포지션을 MaxPositionsPerSector 체크가 잡아낼 수 있도록 함.
-            var sector = sectorMap.TryGetValue(signal.Symbol, out var s) && !string.IsNullOrEmpty(s)
-                ? s
+            var storedSector = evaluation.SectorFor(signal.Symbol);
+            var sector = !string.IsNullOrEmpty(storedSector)
+                ? storedSector
                 : signal.Symbol;
 
             var (allowed, reason) = await _riskService.CanOpenPositionAsync(
@@ -218,7 +195,9 @@ public class SignalService : ISignalService
 
             // ── 5. 포지션 사이징 ──
             var sizingTrades = strategyTrades
-                .Select(trade => new PositionSizingTradeSample(trade.PnL, trade.PnLPercent))
+                .Select(trade => new PositionSizingTradeSample(
+                    trade.RealizedPnl,
+                    trade.ReturnFraction))
                 .ToArray();
             var effectiveRisk = LongPositionSizingPolicy.ResolveRiskFraction(
                 _tradingSettings.RiskPerTradePercent,
