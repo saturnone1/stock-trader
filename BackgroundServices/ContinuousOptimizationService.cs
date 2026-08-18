@@ -1,5 +1,3 @@
-using StockTrader.Data.Repositories;
-using StockTrader.Models;
 using StockTrader.Application.Optimization;
 
 namespace StockTrader.BackgroundServices;
@@ -39,19 +37,17 @@ public class ContinuousOptimizationService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            OptimizationJob? job = null;
-
-            // scoped repository 접근
-            await using var scope = _scopeFactory.CreateAsyncScope();
-            var repo = scope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
+            OptimizationJobExecutionTicket? job = null;
 
             try
             {
-                job = await repo.GetNextPendingJobAsync();
+                job = await UseLifecycleAsync(
+                    lifecycle => lifecycle.TryStartNextAsync(UtcNow));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "다음 Pending Job 조회 실패 — {Delay}후 재시도", PollInterval);
+                _logger.LogError(ex,
+                    "다음 Pending Job 시작 실패 — {Delay}후 재시도", PollInterval);
                 await Task.Delay(PollInterval, _clock, stoppingToken);
                 continue;
             }
@@ -66,21 +62,6 @@ public class ContinuousOptimizationService : BackgroundService
             _logger.LogInformation(
                 "최적화 작업 시작: Job {Id} ({Name}), Priority={Priority}",
                 job.Id, job.Name, job.Priority);
-
-            // Running 상태로 전환
-            job.Status    = OptimizationJobStatus.Running;
-            job.StartedAt ??= UtcNow;
-
-            try
-            {
-                await repo.UpdateJobAsync(job);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Job {Id} 상태 업데이트 실패 (Running 전환)", job.Id);
-                await Task.Delay(PollInterval, _clock, stoppingToken);
-                continue;
-            }
 
             try
             {
@@ -104,7 +85,7 @@ public class ContinuousOptimizationService : BackgroundService
                     "최적화 작업 중단 (앱 종료): Job {Id} → Pending으로 복귀 (청크 인덱스={Chunk})",
                     job.Id, job.CurrentChunkIndex);
 
-                await PersistJobStateAsync(job.Id, OptimizationJobStatus.Pending);
+                await ReturnToPendingSafelyAsync(job.Id);
             }
             catch (Exception ex)
             {
@@ -112,11 +93,10 @@ public class ContinuousOptimizationService : BackgroundService
                     "최적화 작업 실패: Job {Id} ({Name})",
                     job.Id, job.Name);
 
-                await PersistJobStateAsync(
+                await MarkFailedSafelyAsync(
                     job.Id,
-                    OptimizationJobStatus.Failed,
-                    completedAt: UtcNow,
-                    errorMessage: ex.Message);
+                    UtcNow,
+                    ex.Message);
             }
         }
 
@@ -127,58 +107,67 @@ public class ContinuousOptimizationService : BackgroundService
         int jobId,
         OptimizationJobExecutionDisposition disposition)
     {
-        switch (disposition)
-        {
-            case OptimizationJobExecutionDisposition.Completed:
-                await PersistJobStateAsync(
-                    jobId,
-                    OptimizationJobStatus.Completed,
-                    completedAt: UtcNow,
-                    clearErrorMessage: true);
-                break;
-            case OptimizationJobExecutionDisposition.Paused:
-                _logger.LogInformation("최적화 작업 일시정지: Job {Id}", jobId);
-                break;
-            case OptimizationJobExecutionDisposition.Cancelled:
-                await PersistJobStateAsync(
-                    jobId,
-                    OptimizationJobStatus.Cancelled,
-                    completedAt: UtcNow,
-                    clearErrorMessage: true);
-                _logger.LogInformation("최적화 작업 취소: Job {Id}", jobId);
-                break;
-        }
-    }
-
-    private async Task PersistJobStateAsync(
-        int jobId,
-        OptimizationJobStatus status,
-        DateTime? completedAt = null,
-        string? errorMessage = null,
-        bool clearErrorMessage = false)
-    {
         try
         {
-            await using var scope = _scopeFactory.CreateAsyncScope();
-            var repo = scope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
-            var job = await repo.GetJobSummaryAsync(jobId);
-            if (job == null)
-                return;
-
-            job.Status = status;
-            job.CompletedAt = completedAt;
-
-            if (clearErrorMessage)
-                job.ErrorMessage = null;
-            else
-                job.ErrorMessage = errorMessage;
-
-            await repo.UpdateJobAsync(job);
+            await UseLifecycleAsync(lifecycle =>
+                lifecycle.ApplyDispositionAsync(jobId, disposition, UtcNow));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Job {Id} 상태 저장 실패", jobId);
+            _logger.LogError(ex, "Job {Id} 실행 결과 상태 저장 실패", jobId);
         }
+
+        if (disposition == OptimizationJobExecutionDisposition.Paused)
+            _logger.LogInformation("최적화 작업 일시정지: Job {Id}", jobId);
+        else if (disposition == OptimizationJobExecutionDisposition.Cancelled)
+            _logger.LogInformation("최적화 작업 취소: Job {Id}", jobId);
+    }
+
+    private async Task ReturnToPendingSafelyAsync(int jobId)
+    {
+        try
+        {
+            await UseLifecycleAsync(
+                lifecycle => lifecycle.ReturnToPendingAsync(jobId));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Job {Id} Pending 복귀 저장 실패", jobId);
+        }
+    }
+
+    private async Task MarkFailedSafelyAsync(
+        int jobId,
+        DateTime failedAt,
+        string errorMessage)
+    {
+        try
+        {
+            await UseLifecycleAsync(lifecycle =>
+                lifecycle.MarkFailedAsync(jobId, failedAt, errorMessage));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Job {Id} 실패 상태 저장 실패", jobId);
+        }
+    }
+
+    private async Task<T> UseLifecycleAsync<T>(
+        Func<IOptimizationJobLifecycle, Task<T>> action)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var lifecycle = scope.ServiceProvider
+            .GetRequiredService<IOptimizationJobLifecycle>();
+        return await action(lifecycle);
+    }
+
+    private async Task UseLifecycleAsync(
+        Func<IOptimizationJobLifecycle, Task> action)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var lifecycle = scope.ServiceProvider
+            .GetRequiredService<IOptimizationJobLifecycle>();
+        await action(lifecycle);
     }
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;

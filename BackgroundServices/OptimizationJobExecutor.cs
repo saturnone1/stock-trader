@@ -1,6 +1,5 @@
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
-using StockTrader.Models;
 
 namespace StockTrader.BackgroundServices;
 
@@ -30,7 +29,9 @@ public class OptimizationJobExecutor
     /// 작업 하나를 끝까지 (또는 취소/제한 도달까지) 실행합니다.
     /// 청크 단위로 진행되며, 중단되어도 CurrentChunkIndex가 저장되어 재시작 시 이어받을 수 있습니다.
     /// </summary>
-    internal async Task<OptimizationJobExecutionDisposition> ExecuteJobAsync(OptimizationJob job, CancellationToken ct)
+    internal async Task<OptimizationJobExecutionDisposition> ExecuteJobAsync(
+        OptimizationJobExecutionTicket job,
+        CancellationToken ct)
     {
         _logger.LogInformation("[Optimization] Job {Id} ({Name}) 실행 시작 — 청크크기={Chunk}",
             job.Id, job.Name, job.ChunkSize);
@@ -281,7 +282,7 @@ public class OptimizationJobExecutor
     }
 
     private async Task<List<OptimizeParamSnapshot>> BuildStage2NeighborsAsync(
-        OptimizationJob job,
+        OptimizationJobExecutionTicket job,
         IOptimizationJobExecutionStore executionStore,
         OptimizeRequest request,
         List<OptimizeResultItem> stage1Results,

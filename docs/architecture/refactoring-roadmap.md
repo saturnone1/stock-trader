@@ -184,6 +184,10 @@
   dropped from 579 to 329 lines after `IOptimizationJobExecutionStore` also absorbed persisted control
   signals, candidate JSON, chunk checkpoints, result-row mapping, and OOS-only updates. It is guarded
   by a 350-line cap and no longer references the broad repository contract.
+- `IOptimizationJobLifecycle` now owns Pending selection and every execution status transition. The
+  scheduler and executor exchange a storage-independent ticket rather than `OptimizationJob`; both
+  background components are free of `Data` and `Models` imports. The 174-line polling worker is
+  guarded by a 200-line cap.
 - API containers now have one listener configuration: `ASPNETCORE_HTTP_PORTS=5239`. Kestrel JSON
   and `ASPNETCORE_URLS` overrides were removed; K3s and Compose expose their public ports by mapping
   to the same container port, eliminating the former 8080/3000/5239 override chain.

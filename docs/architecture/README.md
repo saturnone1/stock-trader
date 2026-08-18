@@ -178,6 +178,10 @@ central market-regime benchmark, reference symbols, requested timeframe data, an
 `IOptimizationJobExecutionStore` isolates pause/cancel observation, chunk checkpoints, ranked-result
 storage, legacy parameter JSON, and OOS-only updates. Its SQLite adapter is the only owner of
 `OptimizationResult` mapping; the executor is now 329 lines and capped below 350 lines.
+`IOptimizationJobLifecycle` likewise owns Pending selection and Running, Completed, Cancelled,
+shutdown-Pending, and Failed transitions. It supplies a storage-independent execution ticket, so
+neither optimization background component imports `Data` or `Models`; the polling worker is capped
+below 200 lines.
 
 ## Decision records
 
@@ -204,4 +208,6 @@ storage, legacy parameter JSON, and OOS-only updates. Its SQLite adapter is the 
   prepared symbols, timeframe data, and risk settings through one optimization preparation port.
 - `adr/0012-isolate-optimization-job-execution-store.md`: keep job checkpoints, result JSON,
   persisted control signals, and OOS-only updates behind an application storage port.
+- `adr/0013-isolate-optimization-job-lifecycle.md`: map persisted jobs to application execution
+  tickets and centralize queue/status transitions behind one lifecycle port.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

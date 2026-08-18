@@ -1014,6 +1014,10 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/IOptimizationJobExecutionStore.cs"));
         var executionStore = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/OptimizationJobExecutionStore.cs"));
+        var lifecyclePort = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/IOptimizationJobLifecycle.cs"));
+        var lifecycle = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationJobLifecycle.cs"));
 
         source.Should().Contain("IOptimizationEvaluationContextPreparer");
         source.Should().Contain("IOptimizationJobExecutionStore");
@@ -1045,13 +1049,26 @@ public class ArchitectureDependencyTests
         executionStore.Should().Contain("JsonSerializer.Serialize(item.Params)");
         executionStore.Should().Contain("_repository.MergeResultsAsync(");
         executionStore.Should().Contain("_repository.UpdateResultOutOfSampleAsync(");
+        lifecyclePort.Should().Contain("OptimizationJobExecutionTicket");
+        lifecyclePort.Should().Contain("TryStartNextAsync(");
+        lifecyclePort.Should().NotContain("StockTrader.Models");
+        lifecyclePort.Should().NotContain("StockTrader.Data");
+        lifecycle.Should().Contain("OptimizationJobStatus.Running");
+        lifecycle.Should().Contain("OptimizationJobStatus.Completed");
+        lifecycle.Should().Contain("OptimizationJobStatus.Cancelled");
         source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
         source.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
         source.Should().Contain("TimeProvider");
         source.Should().NotContain("DateTime.UtcNow");
         worker.Should().Contain("TimeProvider");
+        worker.Should().Contain("IOptimizationJobLifecycle");
         worker.Should().Contain("Task.Delay(PollInterval, _clock, stoppingToken)");
         worker.Should().NotContain("DateTime.UtcNow");
+        worker.Should().NotContain("IOptimizationRepository");
+        worker.Should().NotContain("StockTrader.Models");
+        worker.Should().NotContain("OptimizationJobStatus");
+        source.Should().Contain("OptimizationJobExecutionTicket");
+        source.Should().NotContain("StockTrader.Models");
         policy.Should().Contain("InitialExplorationFraction = 0.60m");
         policy.Should().Contain("FineSearchSeedCount = 5");
         assumptions.Should().Contain("SlippagePercent = 0.05m");
@@ -1076,6 +1093,9 @@ public class ArchitectureDependencyTests
         File.ReadAllLines(Path.Combine(
                 repository, "BackgroundServices/OptimizationJobExecutor.cs"))
             .Length.Should().BeLessThanOrEqualTo(350);
+        File.ReadAllLines(Path.Combine(
+                repository, "BackgroundServices/ContinuousOptimizationService.cs"))
+            .Length.Should().BeLessThanOrEqualTo(200);
         source.Should().NotContain("GetHistoricalBarsAsync");
         source.Should().NotContain("IndicatorService.ExtractCloses");
         source.Should().NotContain("new PatternSettings()");
