@@ -61,6 +61,7 @@ public sealed class ManualOrderWorkflow
         }
 
         var recommendation = await CreateRecommendationAsync(signal, ct);
+        recommendation.SourceSignalId = signal.Id;
         var validationError = Validate(signal, recommendation);
         if (validationError is not null)
             return (false, validationError);
@@ -73,8 +74,10 @@ public sealed class ManualOrderWorkflow
         }
 
         await _trades.AddRecommendationAsync(recommendation, ct);
+        if (recommendation.WasExecuted)
+            return (false, $"{signal.Symbol} 시그널은 이미 주문 체결이 반영됐습니다.");
         var execution = await _entryExecutions.ExecuteAsync(recommendation, account, ct);
-        if (!execution.BrokerAccepted)
+        if (!execution.ShouldPreventRetry)
         {
             _logger.LogWarning(
                 "[MANUAL ORDER FAILED] {Symbol}: 브로커가 주문을 거부했습니다", signal.Symbol);
@@ -97,15 +100,23 @@ public sealed class ManualOrderWorkflow
         }
         if (!execution.IsTracked)
         {
+            if (execution.Status == LiveEntryExecutionStatus.AwaitingBroker)
+            {
+                return (true,
+                    $"{signal.Symbol} 주문이 접수됐으며 체결 확인을 기다리고 있습니다. "
+                    + "상태가 확정될 때까지 다시 주문하지 마세요.");
+            }
+
             _logger.LogCritical(
-                "[MANUAL ORDER ACCEPTED, TRACKING FAILED] {Symbol}: "
-                + "Account={AccountId} OrderId={OrderId}",
+                "[MANUAL ORDER REQUIRES RECONCILIATION] {Symbol}: "
+                + "Account={AccountId} OrderId={OrderId} Status={Status}",
                 signal.Symbol,
                 account.Account.Id,
-                execution.Order?.OrderId);
+                execution.Order?.OrderId,
+                execution.Status);
             return (true,
-                $"{signal.Symbol} 주문은 브로커에 접수됐지만 로컬 포지션 기록에 실패했습니다. "
-                + "재주문하지 말고 브로커 주문 내역을 확인하세요.");
+                $"{signal.Symbol} 주문의 접수 또는 로컬 반영 상태를 자동 확정하지 못했습니다. "
+                + "재주문하지 말고 진입 주문 상태와 브로커 내역을 확인하세요.");
         }
 
         var position = execution.Position!;

@@ -115,6 +115,27 @@ public sealed class AccountManagerTests
             It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task DisabledAccountBlocksNewOrdersButStillAllowsPendingOrderReconciliation()
+    {
+        var account = Account() with { IsEnabled = false };
+        var store = new Mock<ITradingAccountStore>();
+        var factory = new Mock<IAccountBrokerServiceFactory>();
+        var broker = new Mock<IBrokerService>().Object;
+        store.Setup(item => item.LoadByIdAsync(account.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(account);
+        factory.Setup(item => item.Create(account)).Returns(broker);
+        var manager = Manager(store, factory);
+
+        (await manager.GetBrokerContextAsync(account.Id)).Should().BeNull();
+        var reconciliation = await manager
+            .GetBrokerContextForReconciliationAsync(account.Id);
+
+        reconciliation.Should().NotBeNull();
+        reconciliation!.Account.IsEnabled.Should().BeFalse();
+        reconciliation.Broker.Should().BeSameAs(broker);
+    }
+
     private static AccountManager Manager(
         Mock<ITradingAccountStore> store,
         Mock<IAccountBrokerServiceFactory> factory) => new(

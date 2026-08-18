@@ -332,9 +332,59 @@ public class TradeRepository : ITradeRepository
     public async Task AddRecommendationAsync(TradeRecommendation recommendation,
         CancellationToken ct = default)
     {
+        if (recommendation.SourceSignalId.HasValue)
+        {
+            var existing = await _db.TradeRecommendations.AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.SourceSignalId == recommendation.SourceSignalId,
+                    ct);
+            if (existing is not null)
+            {
+                CopyPersistedEntryIdentity(existing, recommendation);
+                return;
+            }
+        }
+
         _db.TradeRecommendations.Add(recommendation);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException) when (recommendation.SourceSignalId.HasValue)
+        {
+            _db.Entry(recommendation).State = EntityState.Detached;
+            var existing = await _db.TradeRecommendations.AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.SourceSignalId == recommendation.SourceSignalId,
+                    ct);
+            if (existing is null)
+                throw;
+            CopyPersistedEntryIdentity(existing, recommendation);
+        }
         InvalidateRecsCache();
+    }
+
+    private static void CopyPersistedEntryIdentity(
+        TradeRecommendation stored,
+        TradeRecommendation target)
+    {
+        target.Id = stored.Id;
+        target.SourceSignalId = stored.SourceSignalId;
+        target.Symbol = stored.Symbol;
+        target.PatternType = stored.PatternType;
+        target.CustomPatternName = stored.CustomPatternName;
+        target.GeneratedAt = stored.GeneratedAt;
+        target.EntryPrice = stored.EntryPrice;
+        target.StopLossPrice = stored.StopLossPrice;
+        target.TargetPrice = stored.TargetPrice;
+        target.PositionSize = stored.PositionSize;
+        target.ShareQuantity = stored.ShareQuantity;
+        target.Expectancy = stored.Expectancy;
+        target.WasExecuted = stored.WasExecuted;
+        target.EntryRequestedAt = stored.EntryRequestedAt;
+        target.EntryAccountId = stored.EntryAccountId;
+        target.EntryOrderId = stored.EntryOrderId;
+        target.EntryExecutionNote = stored.EntryExecutionNote;
     }
 
     public async Task UpdateRecommendationAsync(TradeRecommendation recommendation,
@@ -389,19 +439,22 @@ public class TradeRepository : ITradeRepository
                 && barTimes.Contains(signal.SignalBarAt))
             .Select(signal => new
             {
+                signal.Id,
                 signal.Symbol,
                 signal.PatternType,
                 signal.CustomPatternName,
                 signal.SignalBarAt
             })
             .ToListAsync(ct);
-        var identities = existingSignals
-            .Select(signal => SignalIdentity(
+        var persistedIds = existingSignals
+            .ToDictionary(signal => SignalIdentity(
                 signal.Symbol,
                 signal.PatternType,
                 signal.CustomPatternName,
-                signal.SignalBarAt!.Value))
-            .ToHashSet(StringComparer.Ordinal);
+                signal.SignalBarAt!.Value),
+                signal => signal.Id,
+                StringComparer.Ordinal);
+        var identities = persistedIds.Keys.ToHashSet(StringComparer.Ordinal);
         var newSignals = candidates
             .Where(signal => identities.Add(SignalIdentity(
                 signal.Symbol,
@@ -409,13 +462,22 @@ public class TradeRepository : ITradeRepository
                 signal.CustomPatternName,
                 signal.SignalBarAt!.Value)))
             .ToList();
-        if (newSignals.Count == 0)
-            return;
+        if (newSignals.Count > 0)
+        {
+            // AddRange stages all new identities; single SaveChangesAsync writes them in one transaction.
+            _db.PatternSignals.AddRange(newSignals);
+            await _db.SaveChangesAsync(ct);
+            foreach (var signal in newSignals)
+                persistedIds[SignalIdentity(signal)] = signal.Id;
+            _cache.Remove(TradeReadCache.ActiveSignals);
+        }
 
-        // AddRange stages all new identities; single SaveChangesAsync writes them in one transaction.
-        _db.PatternSignals.AddRange(newSignals);
-        await _db.SaveChangesAsync(ct);
-        _cache.Remove(TradeReadCache.ActiveSignals);
+        // 재시작 후 이미 저장된 동일 시그널도 추천 멱등 키를 잃지 않도록 ID를 되돌려 준다.
+        foreach (var signal in candidates.Where(signal => signal.Id <= 0))
+        {
+            if (persistedIds.TryGetValue(SignalIdentity(signal), out var id))
+                signal.Id = id;
+        }
     }
 
     private static string SignalIdentity(
@@ -428,6 +490,12 @@ public class TradeRepository : ITradeRepository
             (int)patternType,
             customPatternName?.Trim().ToUpperInvariant() ?? string.Empty,
             signalBarAt.Ticks);
+
+    private static string SignalIdentity(PatternSignal signal) => SignalIdentity(
+        signal.Symbol,
+        signal.PatternType,
+        signal.CustomPatternName,
+        signal.SignalBarAt!.Value);
 
     public async Task DeactivateSignalAsync(long signalId, CancellationToken ct = default)
     {

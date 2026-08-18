@@ -190,6 +190,38 @@ public class DatabaseSchemaMigratorTests
     }
 
     [Fact]
+    public async Task DurableEntryExecutionStateRoundTripsThroughEfSchema()
+    {
+        await using var connection = await OpenConnectionAsync();
+        var requestedAt = new DateTime(2026, 8, 18, 15, 0, 0, DateTimeKind.Utc);
+        await using (var writeDb = CreateContext(connection))
+        {
+            await CreateMigrator(writeDb).MigrateAsync();
+            writeDb.TradeRecommendations.Add(new StockTrader.Models.TradeRecommendation
+            {
+                Symbol = "TQQQ",
+                GeneratedAt = requestedAt.AddMinutes(-1),
+                EntryPrice = 100m,
+                StopLossPrice = 95m,
+                TargetPrice = 110m,
+                ShareQuantity = 10,
+                EntryRequestedAt = requestedAt,
+                EntryAccountId = 7,
+                EntryOrderId = "entry-order-123",
+                EntryExecutionNote = "확인 필요",
+            });
+            await writeDb.SaveChangesAsync();
+        }
+
+        await using var readDb = CreateContext(connection);
+        var restored = await readDb.TradeRecommendations.AsNoTracking().SingleAsync();
+        restored.EntryRequestedAt.Should().Be(requestedAt);
+        restored.EntryAccountId.Should().Be(7);
+        restored.EntryOrderId.Should().Be("entry-order-123");
+        restored.EntryExecutionNote.Should().Be("확인 필요");
+    }
+
+    [Fact]
     public async Task PositionExitQuantityMigrationBackfillsLegacyOpenAndPendingState()
     {
         await using var connection = await OpenConnectionAsync();

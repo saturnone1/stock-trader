@@ -1376,6 +1376,28 @@
         }
       }
     },
+    "/api/orders/reconcile-entry-order": {
+      "post": {
+        "tags": [
+          "OrderEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/custom-patterns": {
       "get": {
         "tags": [
@@ -2507,6 +2529,18 @@
           "LsSecurities",
           null
         ]
+      },
+      "EntryRecommendationRequest": {
+        "required": [
+          "recommendationId"
+        ],
+        "type": "object",
+        "properties": {
+          "recommendationId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "ExecuteSignalRequest": {
         "required": [

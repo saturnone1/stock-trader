@@ -1,4 +1,5 @@
 using StockTrader.Api.Contracts;
+using StockTrader.Application.Execution;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 
@@ -11,6 +12,7 @@ public static class TradeEndpoints
         // GET /api/trades/recommendations?count=50
         group.MapGet("/trades/recommendations", async (
             ITradeRepository tradeRepo,
+            TimeProvider timeProvider,
             int? count,
             CancellationToken ct) =>
         {
@@ -19,22 +21,34 @@ public static class TradeEndpoints
             return Results.Ok(new
             {
                 Count = recs.Count,
-                Recommendations = recs.Select(r => new
+                Recommendations = recs.Select(r =>
                 {
-                    r.Id,
-                    r.Symbol,
-                    Pattern          = r.PatternType.ToString(),
-                    r.EntryPrice,
-                    r.StopLossPrice,
-                    r.TargetPrice,
-                    r.PositionSize,
-                    r.ShareQuantity,
-                    r.Expectancy,
-                    r.RiskRewardRatio,
-                    r.StopLossPercent,
-                    r.WasExecuted,
-                    Mode             = r.Mode.ToString(),
-                    GeneratedAt      = r.GeneratedAt.ToString("o")
+                    var entry = LiveEntryOrderStatusPolicy.Evaluate(
+                        r, timeProvider.GetUtcNow().UtcDateTime);
+                    return new
+                    {
+                        r.Id,
+                        r.SourceSignalId,
+                        r.Symbol,
+                        Pattern = r.PatternType.ToString(),
+                        r.EntryPrice,
+                        r.StopLossPrice,
+                        r.TargetPrice,
+                        r.PositionSize,
+                        r.ShareQuantity,
+                        r.Expectancy,
+                        r.RiskRewardRatio,
+                        r.StopLossPercent,
+                        r.WasExecuted,
+                        EntryStatus = entry.State.ToString(),
+                        entry.AccountId,
+                        entry.HasBrokerOrderId,
+                        entry.PendingSeconds,
+                        entry.Note,
+                        EntryRequestedAt = entry.RequestedAt?.ToString("o"),
+                        Mode = r.Mode.ToString(),
+                        GeneratedAt = r.GeneratedAt.ToString("o")
+                    };
                 })
             });
         }).RequireAuthorization();

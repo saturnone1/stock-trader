@@ -229,6 +229,7 @@ public class SignalService : ISignalService
 
             var recommendation = new TradeRecommendation
             {
+                SourceSignalId = signal.Id > 0 ? signal.Id : null,
                 Symbol = signal.Symbol,
                 PatternType = signal.PatternType,
                 CustomPatternName = signal.CustomPatternName,

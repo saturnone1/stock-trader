@@ -180,6 +180,19 @@ public sealed class AccountManager : IAccountManager
         return broker is null ? null : new AccountBrokerContext(account, broker);
     }
 
+    public async Task<AccountBrokerContext?> GetBrokerContextForReconciliationAsync(
+        int accountId,
+        CancellationToken ct = default)
+    {
+        var account = await _store.LoadByIdAsync(accountId, ct);
+        if (account is null)
+            return null;
+        if (_brokerCache.TryGetValue(account.Id, out var cached))
+            return new AccountBrokerContext(account, cached);
+        var broker = GetOrCreateBrokerService(account);
+        return broker is null ? null : new AccountBrokerContext(account, broker);
+    }
+
     public async Task<IReadOnlyList<AccountConnectionStatus>>
         GetAllConnectionStatusAsync(CancellationToken ct = default)
     {
@@ -280,11 +293,11 @@ public sealed class AccountManager : IAccountManager
         int accountId,
         DateTime checkedAt,
         string message) => new()
-    {
-        AccountId = accountId,
-        StatusMessage = message,
-        CheckedAt = checkedAt
-    };
+        {
+            AccountId = accountId,
+            StatusMessage = message,
+            CheckedAt = checkedAt
+        };
 
     private static void EnsureValid(ManagedTradingAccount account)
     {

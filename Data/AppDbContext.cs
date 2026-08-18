@@ -61,6 +61,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TradeRecommendation>(entity =>
         {
             entity.HasIndex(r => r.GeneratedAt);
+            entity.HasIndex(r => new { r.WasExecuted, r.EntryRequestedAt });
+            entity.HasIndex(r => r.SourceSignalId)
+                .IsUnique()
+                .HasFilter("\"SourceSignalId\" IS NOT NULL");
             entity.Ignore(r => r.StopLossPercent);
             entity.Ignore(r => r.RiskRewardRatio);
         });

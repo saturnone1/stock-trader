@@ -346,20 +346,27 @@ public class TradeRepositoryTests
         var repository = new TradeRepository(db, cache);
         var barAt = new DateTime(2026, 8, 17, 0, 0, 0, DateTimeKind.Utc);
 
+        var firstDuplicate = Signal("AAPL", PatternType.Breakout, null, barAt, barAt.AddHours(1));
+        var secondDuplicate = Signal("AAPL", PatternType.Breakout, null, barAt, barAt.AddHours(2));
         await repository.AddSignalsBatchAsync([
-            Signal("AAPL", PatternType.Breakout, null, barAt, barAt.AddHours(1)),
-            Signal("AAPL", PatternType.Breakout, null, barAt, barAt.AddHours(2)),
+            firstDuplicate,
+            secondDuplicate,
             Signal("AAPL", PatternType.Custom, "alpha", barAt, barAt.AddHours(1)),
             Signal("AAPL", PatternType.Custom, "beta", barAt, barAt.AddHours(1))
         ]);
+        var restoredDuplicate = Signal(
+            "aapl", PatternType.Breakout, null, barAt, barAt.AddHours(3));
         await repository.AddSignalsBatchAsync([
-            Signal("aapl", PatternType.Breakout, null, barAt, barAt.AddHours(3)),
+            restoredDuplicate,
             Signal("AAPL", PatternType.Custom, "ALPHA", barAt, barAt.AddHours(3))
         ]);
 
         var stored = await db.PatternSignals.AsNoTracking().OrderBy(signal => signal.Id).ToListAsync();
         stored.Should().HaveCount(3);
         stored.Select(signal => signal.CustomPatternName).Should().BeEquivalentTo([null, "alpha", "beta"]);
+        firstDuplicate.Id.Should().BeGreaterThan(0);
+        secondDuplicate.Id.Should().Be(firstDuplicate.Id);
+        restoredDuplicate.Id.Should().Be(firstDuplicate.Id);
     }
 
     [Fact]
@@ -380,6 +387,33 @@ public class TradeRepositoryTests
             .WithMessage("*signal bar timestamp*");
     }
 
+    [Fact]
+    public async Task AddRecommendationAsync_ReusesPersistedRecommendationForSameSignal()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+        await using var db = new AppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var repository = new TradeRepository(db, cache);
+        var first = Recommendation(sourceSignalId: 81, entryPrice: 100m);
+        await repository.AddRecommendationAsync(first);
+        first.EntryRequestedAt = new DateTime(2026, 8, 18, 15, 0, 0);
+        first.EntryAccountId = 7;
+        first.EntryOrderId = "entry-81";
+        await repository.UpdateRecommendationAsync(first);
+        var duplicate = Recommendation(sourceSignalId: 81, entryPrice: 999m);
+
+        await repository.AddRecommendationAsync(duplicate);
+
+        (await db.TradeRecommendations.CountAsync()).Should().Be(1);
+        duplicate.Id.Should().Be(first.Id);
+        duplicate.EntryPrice.Should().Be(100m);
+        duplicate.EntryRequestedAt.Should().Be(first.EntryRequestedAt);
+        duplicate.EntryOrderId.Should().Be("entry-81");
+    }
+
     private static PatternSignal Signal(
         string symbol,
         PatternType patternType,
@@ -398,6 +432,18 @@ public class TradeRepositoryTests
             Confidence = 0.8m,
             IsActive = true
         };
+
+    private static TradeRecommendation Recommendation(long sourceSignalId, decimal entryPrice) => new()
+    {
+        SourceSignalId = sourceSignalId,
+        Symbol = "TQQQ",
+        PatternType = PatternType.GapUpPullback,
+        GeneratedAt = new DateTime(2026, 8, 18, 14, 0, 0),
+        EntryPrice = entryPrice,
+        StopLossPrice = 95m,
+        TargetPrice = 110m,
+        ShareQuantity = 10,
+    };
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {

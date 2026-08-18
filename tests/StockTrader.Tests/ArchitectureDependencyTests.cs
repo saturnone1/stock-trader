@@ -1720,8 +1720,11 @@ public class ArchitectureDependencyTests
         backtest.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         liveExecution.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         preview.Should().Contain("LongEntryFillPolicy.Reprice(");
-        entryExecution.Should().Contain("LiveEntryPositionFactory.Create(");
-        entryExecution.Should().Contain("BrokerPositionConfirmation.WaitForAsync(");
+        entryExecution.Should().Contain("LiveEntryPositionFactory.CreateFromFill(");
+        entryExecution.Should().NotContain("BrokerPositionConfirmation.WaitForAsync(");
+        entryExecution.Should().Contain("store.TryClaimAsync(");
+        entryExecution.Should().Contain("store.SetOrderEvidenceAsync(");
+        entryExecution.Should().Contain("store.CommitFilledEntryAsync(");
         entryExecution.Should().Contain("SubmitEntryOrderAsync(recommendation, ct)");
         entryExecution.Should().Contain("LiveEntryOrderEvidencePolicy.ValidateAcceptedOrder(");
         entryEvidence.Should().Contain("order.Direction != TradeDirection.Long");

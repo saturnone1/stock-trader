@@ -1,13 +1,15 @@
 <script>
   import { onMount } from 'svelte'
-  import { analysisApi, tradeApi } from '../api/endpoints'
+  import { analysisApi, orderApi, tradeApi } from '../api/endpoints'
 
   let loading = true
   let analysisLoading = false
   let error = ''
+  let notice = ''
   let rows = []
   let selectedSymbol = ''
   let analysis = null
+  let reconcilingId = null
 
   onMount(load)
 
@@ -19,6 +21,41 @@
     if (grade === 'StrongBuy' || grade === 'Buy') return 'text-green-300'
     if (grade === 'StrongSell' || grade === 'Sell') return 'text-red-300'
     return 'text-yellow-300'
+  }
+
+  function entryStatus(row) {
+    return row.EntryStatus ?? row.entryStatus ?? 'Ready'
+  }
+
+  function entryStatusLabel(status) {
+    return ({
+      Ready: '주문 전',
+      SubmissionUnconfirmed: '접수 확인 필요',
+      AwaitingBroker: '체결 대기',
+      Completed: '체결 반영 완료',
+      Failed: '주문 실패',
+    })[status] ?? status
+  }
+
+  function entryStatusClass(status) {
+    if (status === 'Completed') return 'text-green-300'
+    if (status === 'SubmissionUnconfirmed' || status === 'Failed') return 'text-red-300'
+    if (status === 'AwaitingBroker') return 'text-yellow-300'
+    return 'text-gray-400'
+  }
+
+  async function reconcileEntry(row) {
+    const id = row.Id ?? row.id
+    reconcilingId = id
+    try {
+      const { data } = await orderApi.reconcileEntryOrder(id)
+      await load()
+      notice = data?.message ?? '진입 주문 상태를 확인했습니다.'
+    } catch (e) {
+      error = e?.response?.data?.error || e?.message || '진입 주문 상태를 확인하지 못했습니다.'
+    } finally {
+      reconcilingId = null
+    }
   }
 
   async function load() {
@@ -74,14 +111,15 @@
       <div class="space-y-2 p-4">
         {#each rows as row}
           {@const symbol = row.Symbol ?? row.symbol}
-          <button
-            on:click={() => loadAnalysis(symbol)}
-            class={`w-full rounded-lg border p-4 text-left transition ${
+          {@const status = entryStatus(row)}
+          <div
+            class={`w-full rounded-lg border p-4 transition ${
               selectedSymbol === symbol
                 ? 'border-blue-600 bg-blue-950/30'
                 : 'border-gray-800 bg-gray-900 hover:border-gray-700'
             }`}
           >
+            <button on:click={() => loadAnalysis(symbol)} class="w-full text-left">
             <div class="mb-2 flex items-start justify-between">
               <div>
                 <div class="font-mono text-lg text-blue-400">{symbol}</div>
@@ -90,6 +128,7 @@
               <div class="text-right text-xs text-gray-400">
                 <div>{row.Mode ?? row.mode}</div>
                 <div>R/R {(row.RiskRewardRatio ?? row.riskRewardRatio ?? 0).toFixed(2)}</div>
+                <div class={entryStatusClass(status)}>{entryStatusLabel(status)}</div>
               </div>
             </div>
             <div class="grid grid-cols-3 gap-2 text-xs">
@@ -97,7 +136,25 @@
               <div><div class="text-gray-500">Stop</div><div class="text-red-300">{(row.StopLossPrice ?? row.stopLossPrice ?? 0).toFixed(2)}</div></div>
               <div><div class="text-gray-500">Target</div><div class="text-green-300">{(row.TargetPrice ?? row.targetPrice ?? 0).toFixed(2)}</div></div>
             </div>
-          </button>
+            </button>
+            {#if status === 'SubmissionUnconfirmed' || status === 'AwaitingBroker'}
+              <div class="mt-3 border-t border-gray-800 pt-3">
+                <div class="mb-2 text-xs text-yellow-200">
+                  자동 재조정 중입니다. 확정 전에는 같은 주문을 다시 실행하지 마세요.
+                </div>
+                <button
+                  on:click={() => reconcileEntry(row)}
+                  disabled={reconcilingId === (row.Id ?? row.id)}
+                  class="rounded bg-yellow-700 px-3 py-1.5 text-xs text-white hover:bg-yellow-600 disabled:opacity-50"
+                >
+                  {reconcilingId === (row.Id ?? row.id) ? '확인 중...' : '지금 브로커 상태 확인'}
+                </button>
+              </div>
+            {/if}
+            {#if row.Note ?? row.note}
+              <div class="mt-2 text-xs text-red-300">{row.Note ?? row.note}</div>
+            {/if}
+          </div>
         {/each}
       </div>
     {/if}
@@ -106,6 +163,9 @@
   <main class="flex-1 overflow-auto p-8">
     {#if error}
       <div class="mb-6 rounded-lg border border-red-700 bg-red-900/20 p-4 text-red-300">{error}</div>
+    {/if}
+    {#if notice}
+      <div class="mb-6 rounded-lg border border-green-700 bg-green-900/20 p-4 text-green-300">{notice}</div>
     {/if}
 
     {#if analysisLoading}
