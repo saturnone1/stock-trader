@@ -18,6 +18,7 @@ public sealed class EmailNotificationChannel : INotificationChannel
     private readonly INotificationSettingsProvider _settingsProvider;
     private readonly NotificationSettings _fallbackSettings;
     private readonly ILogger<EmailNotificationChannel> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public string ChannelName => "Email";
 
@@ -32,11 +33,13 @@ public sealed class EmailNotificationChannel : INotificationChannel
     public EmailNotificationChannel(
         INotificationSettingsProvider settingsProvider,
         IOptions<NotificationSettings> fallbackSettings,
-        ILogger<EmailNotificationChannel> logger)
+        ILogger<EmailNotificationChannel> logger,
+        TimeProvider timeProvider)
     {
         _settingsProvider = settingsProvider;
         _fallbackSettings = fallbackSettings.Value;
         _logger           = logger;
+        _timeProvider     = timeProvider;
     }
 
     private Task<NotificationSettings> GetSettingsAsync(CancellationToken ct) =>
@@ -76,7 +79,7 @@ public sealed class EmailNotificationChannel : INotificationChannel
             <h2 style="color:#E67E22;">경고</h2>
             <p style="font-size:16px;">{System.Net.WebUtility.HtmlEncode(message)}</p>
             <hr/>
-            <p style="color:#999;font-size:12px;">StockTrader &mdash; {DateTime.Now:yyyy-MM-dd HH:mm}</p>
+            <p style="color:#999;font-size:12px;">StockTrader &mdash; {_timeProvider.GetUtcNow():yyyy-MM-dd HH:mm} UTC</p>
             </body></html>
             """;
         await SendEmailAsync(subject, body, isHtml: true, settings, ct);

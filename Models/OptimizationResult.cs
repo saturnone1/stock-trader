@@ -33,7 +33,7 @@ public class OptimizationResult
 
     // 메타
     public long TestedAtCombination { get; set; }
-    public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
+    public DateTime DiscoveredAt { get; set; }
 
     // Navigation
     public OptimizationJob Job { get; set; } = null!;

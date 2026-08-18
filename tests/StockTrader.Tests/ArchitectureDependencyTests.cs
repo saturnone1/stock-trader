@@ -2956,6 +2956,44 @@ public class ArchitectureDependencyTests
         settings.Should().Contain("\"TokenExpirySafetyMinutes\": 5");
     }
 
+    [Fact]
+    public void PersistedEntitiesAndNotificationRenderingDoNotReadTheSystemClock()
+    {
+        var repository = FindRepositoryRoot();
+        var entityPaths = new[]
+        {
+            "Models/CustomPatternDefinition.cs",
+            "Models/FinancialImportRun.cs",
+            "Models/FinancialSnapshot.cs",
+            "Models/OptimizationJob.cs",
+            "Models/OptimizationResult.cs",
+            "Models/SymbolProfile.cs"
+        };
+
+        foreach (var path in entityPaths)
+        {
+            var source = File.ReadAllText(Path.Combine(repository, path));
+            source.Should().NotContain("DateTime.UtcNow", $"{path} is a persistence shape");
+            source.Should().NotContain("DateTime.Now", $"{path} is a persistence shape");
+        }
+
+        foreach (var path in new[]
+                 {
+                     "Services/Notification/DiscordNotificationChannel.cs",
+                     "Services/Notification/EmailNotificationChannel.cs"
+                 })
+        {
+            var source = File.ReadAllText(Path.Combine(repository, path));
+            source.Should().Contain("TimeProvider", $"{path} renders observed time");
+            source.Should().NotContain("DateTime.UtcNow");
+            source.Should().NotContain("DateTime.Now");
+        }
+
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/NotificationServiceExtensions.cs"));
+        registrations.Should().Contain("GetRequiredService<TimeProvider>()");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

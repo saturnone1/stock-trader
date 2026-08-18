@@ -107,8 +107,8 @@ public class CustomPatternDefinition
     /// 기존 연구 전략이 배포만으로 주문을 만들지 않도록 기본값은 false입니다.
     /// </summary>
     public bool EnableLiveTrading { get; set; } = false;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>

@@ -25,6 +25,7 @@ public sealed class DiscordNotificationChannel : INotificationChannel
     private readonly INotificationSettingsProvider _settingsProvider;
     private readonly NotificationSettings _fallbackSettings;
     private readonly ILogger<DiscordNotificationChannel> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public string ChannelName => "Discord";
 
@@ -38,12 +39,14 @@ public sealed class DiscordNotificationChannel : INotificationChannel
         HttpClient http,
         INotificationSettingsProvider settingsProvider,
         IOptions<NotificationSettings> fallbackSettings,
-        ILogger<DiscordNotificationChannel> logger)
+        ILogger<DiscordNotificationChannel> logger,
+        TimeProvider timeProvider)
     {
         _http             = http;
         _settingsProvider = settingsProvider;
         _fallbackSettings = fallbackSettings.Value;
         _logger           = logger;
+        _timeProvider     = timeProvider;
     }
 
     private Task<NotificationSettings> GetSettingsAsync(CancellationToken ct) =>
@@ -106,7 +109,7 @@ public sealed class DiscordNotificationChannel : INotificationChannel
                     title = "알림",
                     description = message,
                     color = ColorOrange,
-                    timestamp = DateTime.UtcNow.ToString("o")
+                    timestamp = _timeProvider.GetUtcNow().ToString("o")
                 }
             }
         };
@@ -148,7 +151,7 @@ public sealed class DiscordNotificationChannel : INotificationChannel
                         new { name = "주요 시그널", value = topSignalsText,                inline = false }
                     },
                     footer = new { text = "StockTrader Daily Report" },
-                    timestamp = DateTime.UtcNow.ToString("o")
+                    timestamp = _timeProvider.GetUtcNow().ToString("o")
                 }
             }
         };
