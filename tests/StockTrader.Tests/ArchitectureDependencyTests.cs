@@ -2067,6 +2067,43 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void EntryReconciliationWorkerIsOnlyAClockedSchedulingAdapter()
+    {
+        var repository = FindRepositoryRoot();
+        var workerPath = Path.Combine(
+            repository, "BackgroundServices/EntryExecutionReconciliationService.cs");
+        var cyclePath = Path.Combine(
+            repository, "Services/Order/LiveEntryReconciliationCycle.cs");
+        var contractPath = Path.Combine(
+            repository, "Application/Execution/ILiveEntryReconciliationCycle.cs");
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+
+        File.Exists(cyclePath).Should().BeTrue();
+        File.Exists(contractPath).Should().BeTrue();
+
+        var worker = File.ReadAllText(workerPath);
+        var cycle = File.ReadAllText(cyclePath);
+        var contract = File.ReadAllText(contractPath);
+
+        File.ReadAllLines(workerPath).Length.Should().BeLessThanOrEqualTo(70);
+        worker.Should().Contain("ILiveEntryReconciliationCycle");
+        worker.Should().Contain("cycle.RunAsync(stoppingToken)");
+        worker.Should().Contain("Task.Delay(interval, timeProvider, stoppingToken)");
+        worker.Should().NotContain("ILiveEntryExecutionStore");
+        worker.Should().NotContain("IAccountManager");
+        worker.Should().NotContain("GetOrderHistoryAsync(");
+        contract.Should().NotContain("StockTrader.Services");
+        contract.Should().NotContain("StockTrader.Models");
+        cycle.Should().Contain("GetBrokerContextForReconciliationAsync(");
+        cycle.Should().Contain("coordinator.ReconcileAsync(");
+        cycle.Should().NotContain("GetActiveBrokerServiceAsync(");
+        cycle.Should().NotContain("DateTime.UtcNow");
+        registrations.Should().Contain(
+            "AddScoped<ILiveEntryReconciliationCycle, LiveEntryReconciliationCycle>");
+    }
+
+    [Fact]
     public void PositionApisShareOperationalOrderStatusContract()
     {
         var repository = FindRepositoryRoot();

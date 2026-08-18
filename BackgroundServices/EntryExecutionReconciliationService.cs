@@ -1,15 +1,12 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Execution;
 using StockTrader.Configuration;
-using StockTrader.Services.Account;
-using StockTrader.Services.Order;
 
 namespace StockTrader.BackgroundServices;
 
 /// <summary>재시작 뒤에도 미확정 신규 진입을 브로커 주문 내역과 재조정한다.</summary>
 public sealed class EntryExecutionReconciliationService(
     IServiceScopeFactory scopeFactory,
-    IAccountManager accounts,
     IOptions<TradingSettings> settings,
     TimeProvider timeProvider,
     ILogger<EntryExecutionReconciliationService> logger)
@@ -18,11 +15,17 @@ public sealed class EntryExecutionReconciliationService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("EntryExecutionReconciliationService started");
+        var interval = TimeSpan.FromSeconds(
+            settings.Value.EntryReconciliationIntervalSeconds);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await ReconcilePendingAsync(stoppingToken);
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var cycle = scope.ServiceProvider
+                    .GetRequiredService<ILiveEntryReconciliationCycle>();
+                await cycle.RunAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -33,77 +36,8 @@ public sealed class EntryExecutionReconciliationService(
                 logger.LogError(exception, "Pending entry reconciliation cycle failed");
             }
 
-            var seconds = Math.Clamp(
-                settings.Value.EntryReconciliationIntervalSeconds, 5, 300);
-            await Task.Delay(TimeSpan.FromSeconds(seconds), stoppingToken);
+            await Task.Delay(interval, timeProvider, stoppingToken);
         }
         logger.LogInformation("EntryExecutionReconciliationService stopped");
-    }
-
-    private async Task ReconcilePendingAsync(CancellationToken ct)
-    {
-        using var scope = scopeFactory.CreateScope();
-        var store = scope.ServiceProvider.GetRequiredService<ILiveEntryExecutionStore>();
-        var coordinator = scope.ServiceProvider
-            .GetRequiredService<ILiveEntryExecutionCoordinator>();
-        var pending = await store.LoadPendingAsync(
-            settings.Value.EntryReconciliationBatchSize,
-            ct);
-
-        foreach (var accountGroup in pending
-                     .Where(item => item.EntryAccountId.HasValue)
-                     .GroupBy(item => item.EntryAccountId!.Value))
-        {
-            var account = await accounts.GetBrokerContextForReconciliationAsync(
-                accountGroup.Key, ct);
-            if (account is null)
-            {
-                logger.LogError(
-                    "Cannot reconcile {Count} pending entries: account {AccountId} is unavailable",
-                    accountGroup.Count(),
-                    accountGroup.Key);
-                continue;
-            }
-            if (!BrokerCatalog.Get(account.Account.BrokerType).Capabilities.CanReadOrderHistory)
-            {
-                logger.LogCritical(
-                    "Cannot reconcile {Count} pending entries: broker {BrokerType} does not support order history",
-                    accountGroup.Count(),
-                    account.Account.BrokerType);
-                continue;
-            }
-
-            var requestedFrom = accountGroup
-                .Min(item => item.EntryRequestedAt!.Value)
-                .AddSeconds(-2);
-            var orders = await account.Broker.GetOrderHistoryAsync(
-                requestedFrom,
-                timeProvider.GetUtcNow().UtcDateTime.AddSeconds(1),
-                ct);
-            foreach (var recommendation in accountGroup)
-            {
-                try
-                {
-                    var result = await coordinator.ReconcileAsync(
-                        recommendation, account, orders, ct);
-                    if (result.Status is LiveEntryExecutionStatus.EvidenceMismatch
-                        or LiveEntryExecutionStatus.AmbiguousEvidence)
-                    {
-                        logger.LogCritical(
-                            "Pending entry requires operator review: Recommendation={RecommendationId} "
-                            + "Symbol={Symbol} Status={Status}",
-                            recommendation.Id,
-                            recommendation.Symbol,
-                            result.Status);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    logger.LogError(exception,
-                        "Pending entry reconciliation failed: Recommendation={RecommendationId}",
-                        recommendation.Id);
-                }
-            }
-        }
     }
 }

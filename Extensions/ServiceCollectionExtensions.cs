@@ -74,7 +74,13 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.RiskMonitorMaxConsecutiveFailures > 0, "RiskMonitorMaxConsecutiveFailures must be positive")
             .Validate(settings => settings.RiskMonitorCooldownSeconds > 0, "RiskMonitorCooldownSeconds must be positive")
             .Validate(settings => settings.RiskHaltAlertIntervalMinutes > 0, "RiskHaltAlertIntervalMinutes must be positive")
-            .Validate(settings => settings.EntryReconciliationIntervalSeconds > 0, "EntryReconciliationIntervalSeconds must be positive")
+            .Validate(
+                settings => settings.EntryReconciliationIntervalSeconds
+                    is >= TradingSettings.MinimumEntryReconciliationIntervalSeconds
+                    and <= TradingSettings.MaximumEntryReconciliationIntervalSeconds,
+                $"EntryReconciliationIntervalSeconds must be between "
+                + $"{TradingSettings.MinimumEntryReconciliationIntervalSeconds} and "
+                + $"{TradingSettings.MaximumEntryReconciliationIntervalSeconds}")
             .Validate(settings => settings.EntryReconciliationBatchSize > 0, "EntryReconciliationBatchSize must be positive")
             .Validate(settings => settings.PositionMonitoringIntervalSeconds > 0,
                 "PositionMonitoringIntervalSeconds must be positive")
@@ -228,6 +234,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ManualOrderWorkflow>();
         services.AddSingleton<ManualSignalEntryPolicy>();
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
+        services.AddScoped<ILiveEntryReconciliationCycle, LiveEntryReconciliationCycle>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
         services.AddScoped<ILiveOrderManagement, LiveOrderManagement>();
