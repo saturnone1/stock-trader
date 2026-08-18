@@ -8,6 +8,7 @@ namespace StockTrader.Services.Broker;
 public sealed class AccountBrokerServiceFactory(
     IHttpClientFactory httpClientFactory,
     LsAuthService lsAuthService,
+    TimeProvider timeProvider,
     ILoggerFactory loggerFactory)
     : IAccountBrokerServiceFactory
 {
@@ -24,6 +25,7 @@ public sealed class AccountBrokerServiceFactory(
             BrokerType.LsSecurities => new LsSecuritiesBrokerService(
                 httpClientFactory.CreateClient(nameof(LsSecuritiesBrokerService)),
                 lsAuthService,
+                timeProvider,
                 loggerFactory.CreateLogger<LsSecuritiesBrokerService>()),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(account.BrokerType), account.BrokerType, "Unsupported broker type")
@@ -48,6 +50,7 @@ public sealed class AccountBrokerServiceFactory(
             account.ApiKey,
             account.ApiSecret,
             isPaper,
-            loggerFactory.CreateLogger<AlpacaBrokerService>());
+            timeProvider,
+            loggerFactory.CreateLogger<DynamicAlpacaBrokerService>());
     }
 }

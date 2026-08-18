@@ -1,32 +1,31 @@
 using Alpaca.Markets;
+using StockTrader.Application.Accounts;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
 namespace StockTrader.Services.Broker;
 
 /// <summary>
-/// 계좌별 API 키로 동적으로 초기화되는 Alpaca 브로커 서비스.
-///
-/// AlpacaBrokerService와 달리 IOptions에 의존하지 않으며,
-/// AccountManager가 계좌별로 인스턴스를 직접 생성할 때 사용한다.
-///
-/// AlpacaBrokerService의 로직을 그대로 위임하되,
-/// 생성자 시그니처만 달라진다 (DI 없이 직접 생성).
+/// 계좌별 API 키로 초기화되는 단일 Alpaca 브로커 어댑터입니다.
+/// AccountBrokerServiceFactory가 계좌 스냅샷과 공용 시계를 전달해 생성합니다.
 /// </summary>
 public sealed class DynamicAlpacaBrokerService : IBrokerService
 {
     public BrokerType BrokerType => BrokerType.Alpaca;
 
     private readonly IAlpacaTradingClient _tradingClient;
-    private readonly ILogger<AlpacaBrokerService> _logger;
+    private readonly ILogger<DynamicAlpacaBrokerService> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public DynamicAlpacaBrokerService(
         string apiKey,
         string apiSecret,
         bool isPaper,
-        ILogger<AlpacaBrokerService> logger)
+        TimeProvider timeProvider,
+        ILogger<DynamicAlpacaBrokerService> logger)
     {
         _logger = logger;
+        _timeProvider = timeProvider;
 
         // 빈 키는 더미 키로 대체 — API 호출 시 401로 실패하지만 생성 자체는 성공
         var key = string.IsNullOrWhiteSpace(apiKey) ? "DUMMY_KEY" : apiKey;
@@ -127,19 +126,17 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
         return MapToModel(order);
     }
 
-    public async Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<BrokerPositionSnapshot>> GetPositionsAsync(
+        CancellationToken ct = default)
     {
         try
         {
             var alpacaPositions = await _tradingClient.ListPositionsAsync(ct);
-            return alpacaPositions.Select(p => new Position
-            {
-                Symbol = p.Symbol,
-                Quantity = (int)p.IntegerQuantity,
-                EntryPrice = p.AverageEntryPrice,
-                CurrentPrice = p.AssetCurrentPrice ?? p.AverageEntryPrice,
-                OpenedAt = DateTime.UtcNow
-            }).ToList();
+            return alpacaPositions.Select(p => new BrokerPositionSnapshot(
+                p.Symbol,
+                (int)p.IntegerQuantity,
+                p.AverageEntryPrice,
+                p.AssetCurrentPrice ?? p.AverageEntryPrice)).ToList();
         }
         catch (Exception ex)
         {
@@ -161,7 +158,7 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
                 BuyingPower = account.BuyingPower ?? 0m,
                 IsTradingBlocked = account.IsTradingBlocked,
                 StatusMessage = account.IsTradingBlocked ? "Trading blocked" : "Active",
-                FetchedAt = DateTime.UtcNow
+                FetchedAt = _timeProvider.GetUtcNow().UtcDateTime
             };
         }
         catch (Exception ex)
@@ -180,7 +177,8 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
                 .WithInterval(new Interval<DateTime>(from, to));
 
             var orders = await _tradingClient.ListOrdersAsync(request, ct);
-            return orders.Select(MapToModel).ToList();
+            var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
+            return orders.Select(order => MapToModel(order, observedAt)).ToList();
         }
         catch (Exception ex)
         {
@@ -189,7 +187,10 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
         }
     }
 
-    private static BrokerOrder MapToModel(IOrder o) => new()
+    private BrokerOrder MapToModel(IOrder o) =>
+        MapToModel(o, _timeProvider.GetUtcNow().UtcDateTime);
+
+    private static BrokerOrder MapToModel(IOrder o, DateTime observedAt) => new()
     {
         OrderId = o.OrderId.ToString(),
         Symbol = o.Symbol,
@@ -200,7 +201,7 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
         AverageFillPrice = o.AverageFillPrice,
         Status = MapStatus(o.OrderStatus),
         OrderType = MapOrderType(o.OrderType),
-        SubmittedAt = o.SubmittedAtUtc ?? DateTime.UtcNow,
+        SubmittedAt = o.SubmittedAtUtc ?? observedAt,
         FilledAt = o.FilledAtUtc
     };
 

@@ -21,16 +21,19 @@ public class LsSecuritiesSettings
     public bool IsPaper { get; set; } = true;
 
     /// <summary>REST API 운영 URL</summary>
-    public string BaseUrl { get; set; } = "https://openapi.ls-sec.co.kr:8080";
+    public string BaseUrl { get; set; } = string.Empty;
 
     /// <summary>REST API 모의투자 URL</summary>
-    public string PaperBaseUrl { get; set; } = "https://openapi.ls-sec.co.kr:29080";
+    public string PaperBaseUrl { get; set; } = string.Empty;
 
     /// <summary>WebSocket URL (운영)</summary>
-    public string WebSocketUrl { get; set; } = "wss://openapi.ls-sec.co.kr:9443/websocket";
+    public string WebSocketUrl { get; set; } = string.Empty;
 
     /// <summary>WebSocket URL (모의투자)</summary>
-    public string WebSocketPaperUrl { get; set; } = "wss://openapi.ls-sec.co.kr:29443/websocket";
+    public string WebSocketPaperUrl { get; set; } = string.Empty;
+
+    /// <summary>토큰 실제 만료 전에 갱신하기 위한 안전 여유(분)</summary>
+    public int TokenExpirySafetyMinutes { get; set; }
 
     /// <summary>실제 사용할 REST URL (IsPaper 기반 자동 분기)</summary>
     public string EffectiveBaseUrl => IsPaper ? PaperBaseUrl : BaseUrl;

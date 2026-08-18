@@ -31,5 +31,5 @@ public class BrokerAccount
     public string StatusMessage { get; set; } = string.Empty;
 
     /// <summary>조회 시각 (UTC)</summary>
-    public DateTime FetchedAt { get; set; } = DateTime.UtcNow;
+    public DateTime FetchedAt { get; set; }
 }

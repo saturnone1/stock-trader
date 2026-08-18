@@ -2872,6 +2872,90 @@ public class ArchitectureDependencyTests
         settings.Should().Contain("\"CacheMinutes\": 5");
     }
 
+    [Fact]
+    public void BrokerSnapshotsAndStreamingStatusDoNotInventTradingEventTime()
+    {
+        var repository = FindRepositoryRoot();
+        var brokerPort = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/IBrokerService.cs"));
+        var brokerSnapshot = File.ReadAllText(Path.Combine(
+            repository, "Application/Accounts/BrokerPositionSnapshot.cs"));
+        var brokerDirectory = Path.Combine(repository, "Services/Broker");
+        var brokerAdapters = string.Join(
+            Environment.NewLine,
+            Directory.GetFiles(brokerDirectory, "*.cs")
+                .Select(File.ReadAllText));
+        var factory = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/AccountBrokerServiceFactory.cs"));
+        var lsTimestampParser = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/LsOrderTimestampParser.cs"));
+        var lsBroker = File.ReadAllText(Path.Combine(
+            repository, "Services/Broker/LsSecuritiesBrokerService.cs"));
+        var normalizedLsBroker = lsBroker.ReplaceLineEndings("\n");
+        var lsAuth = File.ReadAllText(Path.Combine(
+            repository, "Services/LsSecurities/LsAuthService.cs"));
+        var lsTiming = File.ReadAllText(Path.Combine(
+            repository, "Services/LsSecurities/LsOperationalTimingPolicy.cs"));
+        var lsDataFeed = File.ReadAllText(Path.Combine(
+            repository, "Services/DataFeed/LsSecuritiesDataFeedService.cs"));
+        var streamingStatus = File.ReadAllText(Path.Combine(
+            repository, "Services/Streaming/StreamingStatusService.cs"));
+        var streamingWorker = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/AlpacaStreamingService.cs"));
+        var orderPort = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/IOrderService.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+        var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
+
+        brokerPort.Should().Contain("IReadOnlyList<BrokerPositionSnapshot>");
+        brokerPort.Should().NotContain("Task<List<Position>>");
+        brokerSnapshot.Should().NotContain("OpenedAt");
+        brokerSnapshot.Should().NotContain("StockTrader.Models");
+        brokerAdapters.Should().NotContain("DateTime.UtcNow");
+        brokerAdapters.Should().NotContain("new Position");
+        File.Exists(Path.Combine(
+            brokerDirectory, "AlpacaBrokerService.cs")).Should().BeFalse();
+        factory.Should().Contain("TimeProvider timeProvider");
+        factory.Should().Contain("new DynamicAlpacaBrokerService(");
+        brokerAdapters.Should().Contain("LsOrderTimestampParser.TryParseUtc(");
+        lsTimestampParser.Should().Contain("OrdTime");
+        lsTimestampParser.Should().Contain("TimeZoneInfo.ConvertTimeToUtc(");
+        lsTimestampParser.Should().NotContain("DateTime.UtcNow");
+        normalizedLsBroker.Should().Contain(
+            "\"/stock/accno\",\n                \"CSPAQ13700\"");
+        lsAuth.Should().Contain("TimeProvider timeProvider");
+        lsAuth.Should().Contain("LsOperationalTimingPolicy.CalculateTokenExpiryUtc(");
+        lsAuth.Should().Contain("Task.Delay(delay, _timeProvider, ct)");
+        lsAuth.Should().NotContain("DateTime.UtcNow");
+        lsTiming.Should().Contain("CalculateRateLimitDelay(");
+        lsTiming.Should().Contain("DailyTokenExpiryKst = new(7, 0)");
+        lsTiming.Should().Contain("MinimumChartRequestInterval = TimeSpan.FromSeconds(1)");
+        lsTiming.Should().NotContain("DateTime.UtcNow");
+        lsDataFeed.Should().Contain("TimeProvider timeProvider");
+        lsDataFeed.Should().NotContain("DateTime.UtcNow");
+        orderPort.Should().NotContain("GetOpenPositionsAsync");
+        streamingStatus.Should().Contain("TimeProvider timeProvider");
+        streamingStatus.Should().Contain("IOptions<StreamingSettings>");
+        streamingStatus.Should().NotContain("DateTime.UtcNow");
+        streamingWorker.Should().Contain("IOptions<StreamingSettings>");
+        streamingWorker.Should().Contain("Task.Delay(delay, _timeProvider");
+        streamingWorker.Should().NotContain("DateTime.UtcNow");
+        registrations.Should().Contain("AddOptions<StreamingSettings>()");
+        registrations.Should().Contain("AddOptions<LsSecuritiesSettings>()");
+        settings.Should().NotContain("\"StreamTypes\"");
+        settings.Should().NotContain("\"DataBaseUrl\"");
+        settings.Should().NotContain("\"BaseUrl\": \"https://paper-api.alpaca.markets\"");
+        settings.Should().Contain("\"MaxReconnectAttempts\": 10");
+        settings.Should().Contain("\"InitialReconnectDelaySeconds\": 2");
+        settings.Should().Contain("\"MaxReconnectDelaySeconds\": 300");
+        settings.Should().Contain("\"StatusStalenessSeconds\": 180");
+        settings.Should().Contain("\"BarFlushIntervalSeconds\": 5");
+        settings.Should().Contain("\"WatchlistSyncIntervalSeconds\": 60");
+        settings.Should().Contain("\"BufferCapacity\": 10000");
+        settings.Should().Contain("\"TokenExpirySafetyMinutes\": 5");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

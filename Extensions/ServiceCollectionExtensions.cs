@@ -42,6 +42,24 @@ public static class ServiceCollectionExtensions
     {
         // Configuration binding
         services.Configure<AlpacaSettings>(configuration.GetSection("Alpaca"));
+        services.AddOptions<StreamingSettings>()
+            .Bind(configuration.GetSection("Streaming"))
+            .Validate(settings => settings.MaxReconnectAttempts >= 0,
+                "Streaming MaxReconnectAttempts cannot be negative")
+            .Validate(settings => settings.InitialReconnectDelaySeconds > 0,
+                "Streaming InitialReconnectDelaySeconds must be positive")
+            .Validate(settings => settings.MaxReconnectDelaySeconds
+                    >= settings.InitialReconnectDelaySeconds,
+                "Streaming MaxReconnectDelaySeconds must be at least the initial delay")
+            .Validate(settings => settings.StatusStalenessSeconds > 0,
+                "Streaming StatusStalenessSeconds must be positive")
+            .Validate(settings => settings.BarFlushIntervalSeconds > 0,
+                "Streaming BarFlushIntervalSeconds must be positive")
+            .Validate(settings => settings.WatchlistSyncIntervalSeconds > 0,
+                "Streaming WatchlistSyncIntervalSeconds must be positive")
+            .Validate(settings => settings.BufferCapacity > 0,
+                "Streaming BufferCapacity must be positive")
+            .ValidateOnStart();
         services.Configure<YahooFinanceSettings>(configuration.GetSection("YahooFinance"));
         services.AddOptions<TradingSettings>()
             .Bind(configuration.GetSection("Trading"))
@@ -108,7 +126,27 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.CacheMinutes > 0,
                 "PatternStatistics CacheMinutes must be positive")
             .ValidateOnStart();
-        services.Configure<LsSecuritiesSettings>(configuration.GetSection("LsSecurities"));
+        services.AddOptions<LsSecuritiesSettings>()
+            .Bind(configuration.GetSection("LsSecurities"))
+            .Validate(settings => Uri.TryCreate(
+                    settings.BaseUrl, UriKind.Absolute, out var uri)
+                    && uri.Scheme == Uri.UriSchemeHttps,
+                "LsSecurities BaseUrl must be an HTTPS URI")
+            .Validate(settings => Uri.TryCreate(
+                    settings.PaperBaseUrl, UriKind.Absolute, out var uri)
+                    && uri.Scheme == Uri.UriSchemeHttps,
+                "LsSecurities PaperBaseUrl must be an HTTPS URI")
+            .Validate(settings => Uri.TryCreate(
+                    settings.WebSocketUrl, UriKind.Absolute, out var uri)
+                    && uri.Scheme == "wss",
+                "LsSecurities WebSocketUrl must be a WSS URI")
+            .Validate(settings => Uri.TryCreate(
+                    settings.WebSocketPaperUrl, UriKind.Absolute, out var uri)
+                    && uri.Scheme == "wss",
+                "LsSecurities WebSocketPaperUrl must be a WSS URI")
+            .Validate(settings => settings.TokenExpirySafetyMinutes >= 0,
+                "LsSecurities TokenExpirySafetyMinutes cannot be negative")
+            .ValidateOnStart();
         services.Configure<FinancialDataPipelineSettings>(configuration.GetSection("FinancialDataPipeline"));
         services.AddOptions<StockAnalysisSettings>()
             .Bind(configuration.GetSection("StockAnalysis"))

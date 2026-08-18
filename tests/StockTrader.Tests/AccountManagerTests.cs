@@ -60,7 +60,9 @@ public sealed class AccountManagerTests
                 BuyingPower = 8_000m
             });
         broker.Setup(item => item.GetPositionsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new Position { Symbol = "TQQQ" }]);
+            .ReturnsAsync([
+                new BrokerPositionSnapshot("TQQQ", 10, 50m, 51m)
+            ]);
         factory.Setup(item => item.Create(account)).Returns(broker.Object);
         var manager = Manager(store, factory);
 

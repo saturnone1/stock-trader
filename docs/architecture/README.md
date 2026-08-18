@@ -35,6 +35,12 @@ infrastructure.
 - Order execution modes and their operator-facing meaning: one domain catalog.
 - Broker identity and operation-specific capabilities: one domain catalog used by account metadata,
   adapters, workers, and live execution guards.
+- Broker balance positions: one purpose-specific application snapshot without EF strategy state or
+  fabricated open timestamps; durable positions are created only from confirmed fill evidence.
+- Streaming runtime: one validated operational settings section and one injected observation clock
+  for reconnect timing, buffer flushing, watchlist synchronization, and activity staleness.
+- LS provider timing: one deterministic KST token-expiry/rate-limit policy and injected clock shared
+  by authentication, account/order adapters, and market-data boundaries.
 - Live position order state: one application execution port for conditional claim, broker evidence,
   release, and atomic position/realized-trade fill commit.
 - Open-position display state: one application query for holding duration, durable-order status,
@@ -386,4 +392,6 @@ defaults, active-profile selection, and modification time have one application o
   transitions, observation time, and best-effort security audit persistence.
 - `adr/0048-make-statistics-and-ml-scheduling-deterministic.md`: make derived statistics timestamps
   explicit and re-anchor configured ML retraining windows across weekends and DST.
+- `adr/0049-separate-broker-snapshots-and-streaming-clock.md`: prevent broker balance snapshots from
+  masquerading as durable positions and make streaming timing explicit and configurable.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

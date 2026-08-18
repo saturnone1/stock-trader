@@ -337,7 +337,7 @@ public class CustomStrategyExecutionParityTests
             new MarketRegime { SpyAbove200Ma = true },
             CancellationToken.None);
         liveSignal.Should().NotBeNull();
-        var livePosition = LiveEntryPositionFactory.Create(
+        var livePosition = LiveEntryPositionFactory.CreateFromFill(
             new TradeRecommendation
             {
                 Symbol = "AAA",
@@ -348,14 +348,9 @@ public class CustomStrategyExecutionParityTests
                 TargetPrice = liveSignal.TargetPrice,
                 ShareQuantity = 1,
             },
-            new Position
-            {
-                Symbol = "AAA",
-                Quantity = 1,
-                EntryPrice = bars[51].Open,
-                CurrentPrice = bars[51].Open,
-            },
             accountId: 1,
+            filledQuantity: 1,
+            averageFillPrice: bars[51].Open,
             preview!.Markers.Single(marker => marker.Type == "ENTRY").Date);
 
         var previewEntry = preview.Markers.Single(marker => marker.Type == "ENTRY");

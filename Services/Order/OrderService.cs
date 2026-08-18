@@ -24,7 +24,6 @@ public class OrderService : IOrderService
 {
     private readonly IAccountManager _accountManager;
     private readonly ITradeRecommendationStore _recommendations;
-    private readonly IOpenPositionStore _positions;
     private readonly ISettingsRepository _settingsRepo;
     private readonly INotificationService _notificationService;
     private readonly IMarketCalendar _marketCalendar;
@@ -35,7 +34,6 @@ public class OrderService : IOrderService
     public OrderService(
         IAccountManager accountManager,
         ITradeRecommendationStore recommendations,
-        IOpenPositionStore positions,
         ISettingsRepository settingsRepo,
         INotificationService notificationService,
         IMarketCalendar marketCalendar,
@@ -45,7 +43,6 @@ public class OrderService : IOrderService
     {
         _accountManager = accountManager;
         _recommendations = recommendations;
-        _positions = positions;
         _settingsRepo = settingsRepo;
         _notificationService = notificationService;
         _marketCalendar = marketCalendar;
@@ -175,26 +172,6 @@ public class OrderService : IOrderService
             _logger.LogWarning("[ORDER CANCEL FAILED] OrderId={OrderId}", orderId);
 
         return success;
-    }
-
-    /// <inheritdoc />
-    public async Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default)
-    {
-        var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
-
-        if (brokerService != null)
-        {
-            if (BrokerCatalog.Get(brokerService.BrokerType).Capabilities.CanReadPositions)
-            {
-                var positions = await brokerService.GetPositionsAsync(ct);
-                if (positions.Count > 0)
-                    return positions;
-            }
-        }
-
-        // 브로커에서 포지션을 가져오지 못한 경우 DB 폴백
-        _logger.LogDebug("Broker returned no positions, falling back to local DB");
-        return await _positions.GetOpenPositionsAsync(ct);
     }
 
     /// <inheritdoc />

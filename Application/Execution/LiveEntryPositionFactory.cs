@@ -9,61 +9,36 @@ namespace StockTrader.Application.Execution;
 /// </summary>
 public static class LiveEntryPositionFactory
 {
-    public static Position Create(
-        TradeRecommendation recommendation,
-        Position? brokerPosition,
-        int accountId,
-        DateTime openedAt)
-    {
-        ArgumentNullException.ThrowIfNull(recommendation);
-
-        var actualEntry = brokerPosition?.EntryPrice > 0
-            ? brokerPosition.EntryPrice
-            : recommendation.EntryPrice;
-        var actualQuantity = brokerPosition?.Quantity > 0
-            ? brokerPosition.Quantity
-            : recommendation.ShareQuantity;
-        var currentPrice = brokerPosition?.CurrentPrice > 0
-            ? brokerPosition.CurrentPrice
-            : actualEntry;
-        var fill = LongEntryFillPolicy.ReanchorExecutedFill(
-            recommendation.EntryPrice,
-            recommendation.StopLossPrice,
-            recommendation.TargetPrice,
-            actualEntry);
-
-        return new Position
-        {
-            AccountId = accountId,
-            Symbol = recommendation.Symbol,
-            Quantity = actualQuantity,
-            InitialQuantity = actualQuantity,
-            EntryPrice = actualEntry,
-            CurrentPrice = currentPrice,
-            StopLossPrice = fill.StopPrice,
-            TargetPrice = fill.TargetPrice,
-            PatternType = recommendation.PatternType,
-            CustomPatternName = recommendation.CustomPatternName,
-            OpenedAt = openedAt,
-            HighSinceEntry = actualEntry,
-            InitialRiskDistance = fill.RiskDistance,
-        };
-    }
-
     public static Position CreateFromFill(
         TradeRecommendation recommendation,
         int accountId,
         int filledQuantity,
         decimal averageFillPrice,
-        DateTime filledAt) => Create(
-            recommendation,
-            new Position
-            {
-                Symbol = recommendation.Symbol,
-                Quantity = filledQuantity,
-                EntryPrice = averageFillPrice,
-                CurrentPrice = averageFillPrice,
-            },
-            accountId,
-            filledAt);
+        DateTime filledAt)
+    {
+        ArgumentNullException.ThrowIfNull(recommendation);
+
+        var fill = LongEntryFillPolicy.ReanchorExecutedFill(
+            recommendation.EntryPrice,
+            recommendation.StopLossPrice,
+            recommendation.TargetPrice,
+            averageFillPrice);
+
+        return new Position
+        {
+            AccountId = accountId,
+            Symbol = recommendation.Symbol,
+            Quantity = filledQuantity,
+            InitialQuantity = filledQuantity,
+            EntryPrice = averageFillPrice,
+            CurrentPrice = averageFillPrice,
+            StopLossPrice = fill.StopPrice,
+            TargetPrice = fill.TargetPrice,
+            PatternType = recommendation.PatternType,
+            CustomPatternName = recommendation.CustomPatternName,
+            OpenedAt = filledAt,
+            HighSinceEntry = averageFillPrice,
+            InitialRiskDistance = fill.RiskDistance,
+        };
+    }
 }

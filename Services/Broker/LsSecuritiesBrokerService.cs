@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using StockTrader.Application.Accounts;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.LsSecurities;
@@ -17,6 +18,7 @@ public class LsSecuritiesBrokerService : IBrokerService
 
     private readonly HttpClient _http;
     private readonly LsAuthService _auth;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<LsSecuritiesBrokerService> _logger;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -28,10 +30,12 @@ public class LsSecuritiesBrokerService : IBrokerService
     public LsSecuritiesBrokerService(
         HttpClient http,
         LsAuthService auth,
+        TimeProvider timeProvider,
         ILogger<LsSecuritiesBrokerService> logger)
     {
         _http = http;
         _auth = auth;
+        _timeProvider = timeProvider;
         _logger = logger;
         _http.BaseAddress = new Uri(_auth.Settings.EffectiveBaseUrl);
     }
@@ -100,7 +104,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 OrderPrice = recommendation.EntryPrice,
                 Status = BrokerOrderStatus.Accepted,
                 OrderType = BrokerOrderType.Limit,
-                SubmittedAt = DateTime.UtcNow,
+                SubmittedAt = _timeProvider.GetUtcNow().UtcDateTime,
             };
         }
         catch (Exception ex)
@@ -230,7 +234,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 Quantity = quantity,
                 Status = BrokerOrderStatus.Accepted,
                 OrderType = BrokerOrderType.Market,
-                SubmittedAt = DateTime.UtcNow,
+                SubmittedAt = _timeProvider.GetUtcNow().UtcDateTime,
             };
         }
         catch (Exception ex)
@@ -286,7 +290,8 @@ public class LsSecuritiesBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public async Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<BrokerPositionSnapshot>> GetPositionsAsync(
+        CancellationToken ct = default)
     {
         try
         {
@@ -312,7 +317,7 @@ public class LsSecuritiesBrokerService : IBrokerService
             }
 
             using var doc = JsonDocument.Parse(json);
-            var positions = new List<Position>();
+            var positions = new List<BrokerPositionSnapshot>();
 
             if (doc.RootElement.TryGetProperty("t0424OutBlock1", out var items))
             {
@@ -325,14 +330,11 @@ public class LsSecuritiesBrokerService : IBrokerService
 
                     if (qty <= 0) continue;
 
-                    positions.Add(new Position
-                    {
-                        Symbol = symbol,
-                        Quantity = (int)qty,
-                        EntryPrice = avgPrice,
-                        CurrentPrice = curPrice,
-                        OpenedAt = DateTime.UtcNow
-                    });
+                    positions.Add(new BrokerPositionSnapshot(
+                        symbol,
+                        (int)qty,
+                        avgPrice,
+                        curPrice));
                 }
             }
 
@@ -388,7 +390,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 Cash = block2.TryGetProperty("D2Dps", out var cash) ? cash.GetDecimal() : 0,
                 BuyingPower = block2.TryGetProperty("MnyOrdAbleAmt", out var bp) ? bp.GetDecimal() : 0,
                 UnrealizedPnL = block2.TryGetProperty("InvstOrgAmt", out var upl) ? upl.GetDecimal() : 0,
-                FetchedAt = DateTime.UtcNow,
+                FetchedAt = _timeProvider.GetUtcNow().UtcDateTime,
                 StatusMessage = "정상"
             };
         }
@@ -423,7 +425,9 @@ public class LsSecuritiesBrokerService : IBrokerService
         }
     }
 
-    private async Task<List<BrokerOrder>> GetOrdersForDateAsync(DateTime date, CancellationToken ct)
+    private async Task<List<BrokerOrder>> GetOrdersForDateAsync(
+        DateTime date,
+        CancellationToken ct)
     {
         try
         {
@@ -445,7 +449,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                 }
             };
 
-            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
+            var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/accno",
                 "CSPAQ13700", body, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -463,6 +467,18 @@ public class LsSecuritiesBrokerService : IBrokerService
             {
                 foreach (var item in items.EnumerateArray())
                 {
+                    if (!LsOrderTimestampParser.TryParseUtc(
+                            item,
+                            date,
+                            LsAuthService.KstZone,
+                            out var submittedAt))
+                    {
+                        _logger.LogWarning(
+                            "[LS] 실제 주문시각을 읽지 못한 주문내역을 제외함: {Date:yyyy-MM-dd}",
+                            date);
+                        continue;
+                    }
+
                     var ordNo = item.TryGetProperty("OrdNo", out var on) ? on.GetInt64().ToString() : "";
                     var symbol = item.TryGetProperty("IsuNo", out var isn) ? isn.GetString() ?? "" : "";
                     var bnsCode = item.TryGetProperty("BnsTpCode", out var bn) ? bn.GetString() : "0";
@@ -488,7 +504,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                             : execQty > 0 ? BrokerOrderStatus.PartiallyFilled
                             : BrokerOrderStatus.Pending,
                         OrderType = BrokerOrderType.Limit,
-                        SubmittedAt = DateTime.UtcNow
+                        SubmittedAt = submittedAt
                     });
                 }
             }
