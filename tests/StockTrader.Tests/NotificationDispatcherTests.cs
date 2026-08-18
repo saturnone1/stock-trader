@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using StockTrader.Application.Reporting;
 using StockTrader.Configuration;
 using StockTrader.Models;
 using StockTrader.Services.Notification;
@@ -304,7 +305,7 @@ public class NotificationDispatcherTests
         var report = CreateDailyReport();
 
         // Act
-        await sut.DispatchDailyReportAsync(report);
+        await sut.PublishAsync(report);
 
         // Assert: 동일한 report 객체 전달 확인
         channel.Verify(
@@ -323,7 +324,7 @@ public class NotificationDispatcherTests
         var report = CreateDailyReport();
 
         // Act & Assert
-        var act = async () => await sut.DispatchDailyReportAsync(report);
+        var act = async () => await sut.PublishAsync(report);
         await act.Should().NotThrowAsync();
 
         disabled.Verify(

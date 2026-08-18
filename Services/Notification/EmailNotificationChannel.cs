@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Text;
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Reporting;
 using StockTrader.Configuration;
 using StockTrader.Models;
 

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Reporting;
 using StockTrader.Configuration;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Streaming;
@@ -44,7 +45,11 @@ public static class NotificationServiceExtensions
         });
 
         // NotificationDispatcher: 모든 채널에 병렬 발송 (DB 설정 우선)
-        services.AddSingleton<INotificationDispatcher, NotificationDispatcher>();
+        services.AddSingleton<NotificationDispatcher>();
+        services.AddSingleton<INotificationDispatcher>(sp =>
+            sp.GetRequiredService<NotificationDispatcher>());
+        services.AddSingleton<IDailyReportPublisher>(sp =>
+            sp.GetRequiredService<NotificationDispatcher>());
 
         // Backend notification facade and external dispatch coordinator
         services.AddSingleton<INotificationService, BackendNotificationService>();

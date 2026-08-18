@@ -10,7 +10,6 @@ public interface INotificationDispatcher
 {
     Task DispatchSignalAsync(TradeRecommendation recommendation, CancellationToken ct = default);
     Task DispatchAlertAsync(string message, CancellationToken ct = default);
-    Task DispatchDailyReportAsync(DailyReportData report, CancellationToken ct = default);
     Task<Dictionary<string, bool>> TestAllChannelsAsync(CancellationToken ct = default);
     Task<bool> TestChannelAsync(string channelName, CancellationToken ct = default);
 }
