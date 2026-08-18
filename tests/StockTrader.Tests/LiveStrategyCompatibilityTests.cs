@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using StockTrader.Application.Strategies;
+using StockTrader.Domain.Strategies;
 using StockTrader.Models;
 
 namespace StockTrader.Tests;
@@ -8,12 +9,13 @@ namespace StockTrader.Tests;
 public class LiveStrategyCompatibilityTests
 {
     [Fact]
-    public void PartialExitInfrastructureDoesNotEnableLivePartialProfitStrategies()
+    public void PartialProfitStrategyIsSupportedWhenOtherLiveConstraintsAreMet()
     {
         var compilation = StrategyCompiler.Compile(new StrategyDocument
         {
             Name = "부분 익절 전략",
             PartialProfitR = 1.5m,
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
             EntryRulesJson = JsonSerializer.Serialize(new[]
             {
                 new EntryRule
@@ -27,8 +29,8 @@ public class LiveStrategyCompatibilityTests
         });
 
         compilation.IsValid.Should().BeTrue();
-        LiveStrategyCompatibilityPolicy.SupportsPartialExit.Should().BeFalse();
+        LiveStrategyCompatibilityPolicy.SupportsPartialExit.Should().BeTrue();
         LiveStrategyCompatibilityPolicy.Validate(compilation.Strategy!)
-            .Should().ContainSingle(error => error.Contains("부분 익절"));
+            .Should().BeEmpty();
     }
 }

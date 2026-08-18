@@ -1,0 +1,107 @@
+using System.Text.Json;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Moq;
+using StockTrader.Application.Strategies;
+using StockTrader.Configuration;
+using StockTrader.Data.Repositories;
+using StockTrader.Domain.Strategies;
+using StockTrader.Models;
+using StockTrader.Models.Enums;
+using StockTrader.Services.Indicators;
+using StockTrader.Services.Order;
+using StockTrader.Services.Patterns;
+
+namespace StockTrader.Tests;
+
+public class LivePositionExitEvaluatorTests
+{
+    [Fact]
+    public async Task EvaluateAsync_UsesCompiledPartialProfitPolicyAndDefersStateUntilFill()
+    {
+        var compilation = StrategyCompiler.Compile(new StrategyDocument
+        {
+            Name = "live-partial-parity",
+            TimeFrame = TimeFrame.Daily,
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
+            AtrStopMultiplier = 5m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0,
+            PartialProfitR = 1m,
+            EntryRulesJson = JsonSerializer.Serialize(new[]
+            {
+                new EntryRule
+                {
+                    Indicator = "PRICE_CHANGE",
+                    Operator = ">=",
+                    Value = -100m,
+                    Params = new Dictionary<string, decimal> { ["bars"] = 1m },
+                },
+            }),
+        });
+        compilation.Errors.Should().BeEmpty();
+
+        var now = new DateTime(2026, 8, 18, 0, 0, 0, DateTimeKind.Utc);
+        var bars = Enumerable.Range(0, 60).Select(index => new OhlcvBar
+        {
+            Symbol = "AAA",
+            TimeFrame = TimeFrame.Daily,
+            Timestamp = now.AddDays(index - 59),
+            Open = 100m,
+            High = 100m,
+            Low = 100m,
+            Close = 100m,
+            Volume = 1_000,
+        }).ToList();
+        var repository = new Mock<IOhlcvRepository>();
+        repository.Setup(value => value.GetBarsAsync(
+                "AAA", TimeFrame.Daily, It.IsAny<DateTime>(), It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bars);
+        var settings = new Mock<IOptionsMonitor<PatternSettings>>();
+        settings.SetupGet(value => value.CurrentValue).Returns(new PatternSettings());
+        var position = new Position
+        {
+            Symbol = "AAA",
+            PatternType = PatternType.Custom,
+            CustomPatternName = compilation.Strategy!.Name,
+            Quantity = 10,
+            InitialQuantity = 10,
+            EntryPrice = 100m,
+            CurrentPrice = 105m,
+            StopLossPrice = 95m,
+            TargetPrice = 600m,
+            InitialRiskDistance = 5m,
+            EntryAtr = 1m,
+            HighSinceEntry = 100m,
+            OpenedAt = now.AddDays(-2),
+        };
+        var indicators = new IndicatorService();
+        var evaluator = new LivePositionExitEvaluator(
+            indicators,
+            new CustomStrategyDetectorFactory(
+                indicators,
+                new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero))),
+            settings.Object,
+            new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero)),
+            NullLogger<LivePositionExitEvaluator>.Instance);
+
+        var result = await evaluator.EvaluateAsync(
+            position, compilation.Strategy, repository.Object, null);
+
+        result.ShouldExit.Should().BeTrue();
+        result.Intent!.Quantity.Should().Be(5);
+        result.Intent.MarksPartialProfit.Should().BeTrue();
+        result.Reason.Should().Be("부분 익절(1R)");
+        position.Quantity.Should().Be(10);
+        position.PartialProfitTaken.Should().BeFalse();
+        position.StopLossPrice.Should().Be(95m);
+        position.BreakevenApplied.Should().BeFalse();
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+}

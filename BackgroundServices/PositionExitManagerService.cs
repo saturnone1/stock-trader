@@ -144,7 +144,13 @@ public class PositionExitManagerService : BackgroundService
                         position.CurrentPrice, position.CurrentPrice / position.EntryPrice - 1);
 
                     var submission = await exitCoordinator.SubmitAsync(
-                        position, exitResult.Reason, brokerService, ct);
+                        position,
+                        new LivePositionExitRequest(
+                            exitResult.Intent!.Quantity,
+                            exitResult.Intent.Reason,
+                            exitResult.Intent.MarksPartialProfit),
+                        brokerService,
+                        ct);
                     if (submission.Status != LiveExitSubmissionStatus.Accepted
                         || submission.Order is null
                         || !submission.RequestedAt.HasValue)

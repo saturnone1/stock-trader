@@ -89,11 +89,12 @@ ordering, the policy deliberately uses the conservative sequence: the stop known
 then partial profit, target/strategy/time exit, and finally protective-stop updates that take
 effect on the next bar. `LongPositionExitPolicyCatalog` is the sole owner of built-in defaults and
 custom-strategy exit-policy construction for preview, backtest, and live monitoring. Live monitoring
-uses a separate decision adapter because it submits a real
-broker order and records the broker's fill instead of inventing an OHLC fill; it still shares the
-same state, `LongPositionCloseDecisionPolicy` target/strategy/time priority, and protective-stop
-calculation. Snapshot parity fixtures compare bar-based and live decisions where price ordering is
-fully observable. Built-in close rules such as cumulative RSI2 trend-break/threshold decisions also
+projects a flat current-price snapshot through `LiveLongPositionExecutionAdapter` into the same
+execution session. It submits only the first ordered execution intent and waits for a real broker
+fill before applying quantity or partial-profit state, so simultaneous partial/target observations
+cannot create overlapping orders. Snapshot parity fixtures compare bar-based and live decisions
+where price ordering is fully observable. Built-in close rules such as cumulative RSI2
+trend-break/threshold decisions also
 live in pure execution policies rather than in backtest or worker adapters.
 `LongPositionScalingPolicy` likewise owns original-entry-based share rounding, scale-in weighted
 average price, adapter-supplied capital-cap enforcement, and scale-out remaining cost. The common
@@ -103,8 +104,10 @@ session events into markers or trade records. Backtest custom-rule instructions 
 silently use different exit or scaling rules.
 Backtest scaling counts travel with each open position rather than living in processor memory, so
 recreating an orchestration component cannot reset a rule's maximum-fill limit.
-Live trading fails closed for scaling strategies until the
-broker adapter can persist and reconcile equivalent partial-order state.
+Live partial-profit fills use the same common-session share rounding and atomically move the
+remaining stop to breakeven with the quantity reduction. Live trading still fails closed for
+custom scaling strategies until cost basis and per-rule execution counts can be persisted and
+reconciled with broker fills.
 `LivePositionExitEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,
 custom sell-rule evaluation, and translation into the shared decision policy. The 230-line
 `PositionExitManagerService` now owns only scheduling, broker state, persistence, and durable exit

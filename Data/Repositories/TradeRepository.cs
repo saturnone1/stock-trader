@@ -208,6 +208,12 @@ public class TradeRepository : ITradeRepository
                     .SetProperty(stored => stored.CurrentPrice, fill.FillPrice)
                     .SetProperty(stored => stored.PartialProfitTaken,
                         stored => stored.PartialProfitTaken || fill.MarksPartialProfit)
+                    .SetProperty(stored => stored.StopLossPrice,
+                        stored => fill.MarksPartialProfit && stored.StopLossPrice < stored.EntryPrice
+                            ? stored.EntryPrice
+                            : stored.StopLossPrice)
+                    .SetProperty(stored => stored.BreakevenApplied,
+                        stored => stored.BreakevenApplied || fill.MarksPartialProfit)
                     .SetProperty(stored => stored.ExitRequestedAt, (DateTime?)null)
                     .SetProperty(stored => stored.ExitRequestReason, (string?)null)
                     .SetProperty(stored => stored.ExitRequestQuantity, (int?)null)

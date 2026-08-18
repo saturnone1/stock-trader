@@ -222,6 +222,8 @@ public class LivePositionExitCoordinatorTests
         position.Quantity.Should().Be(6);
         position.ClosedAt.Should().BeNull();
         position.PartialProfitTaken.Should().BeTrue();
+        position.StopLossPrice.Should().Be(50m);
+        position.BreakevenApplied.Should().BeTrue();
         position.ExitRequestedAt.Should().BeNull();
         savedFill!.ExpectedPositionQuantity.Should().Be(10);
         savedTrade!.Quantity.Should().Be(4);
@@ -273,17 +275,17 @@ public class LivePositionExitCoordinatorTests
         decimal? fillPrice = null,
         int quantity = 0,
         int filledQuantity = 0) => new()
-    {
-        OrderId = "exit-1",
-        Symbol = "TQQQ",
-        Direction = TradeDirection.Short,
-        Quantity = quantity,
-        FilledQuantity = filledQuantity,
-        Status = status,
-        AverageFillPrice = fillPrice,
-        SubmittedAt = Now.UtcDateTime,
-        FilledAt = status == BrokerOrderStatus.Filled ? Now.UtcDateTime.AddSeconds(1) : null
-    };
+        {
+            OrderId = "exit-1",
+            Symbol = "TQQQ",
+            Direction = TradeDirection.Short,
+            Quantity = quantity,
+            FilledQuantity = filledQuantity,
+            Status = status,
+            AverageFillPrice = fillPrice,
+            SubmittedAt = Now.UtcDateTime,
+            FilledAt = status == BrokerOrderStatus.Filled ? Now.UtcDateTime.AddSeconds(1) : null
+        };
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {

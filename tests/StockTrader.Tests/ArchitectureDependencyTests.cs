@@ -1407,6 +1407,8 @@ public class ArchitectureDependencyTests
         var backtest = File.ReadAllText(Path.Combine(repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
         var executionSession = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/LongPositionExecutionSessionPolicy.cs"));
+        var liveExecution = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LiveLongPositionExecutionAdapter.cs"));
         var order = File.ReadAllText(Path.Combine(repository, "Services/Order/OrderService.cs"));
         var manualOrder = File.ReadAllText(Path.Combine(
             repository, "Services/Order/ManualOrderWorkflow.cs"));
@@ -1414,12 +1416,16 @@ public class ArchitectureDependencyTests
             repository, "Application/Execution/LiveEntryPositionFactory.cs"));
         var parity = File.ReadAllText(Path.Combine(
             repository, "tests/StockTrader.Tests/CustomStrategyExecutionParityTests.cs"));
+        var executionParity = File.ReadAllText(Path.Combine(
+            repository, "tests/StockTrader.Tests/LongPositionExecutionParityTests.cs"));
 
         preview.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
         backtest.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
+        liveExecution.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
         executionSession.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
         preview.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         backtest.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
+        liveExecution.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         preview.Should().Contain("LongEntryFillPolicy.Reprice(");
         order.Split("LiveEntryPositionFactory.Create(").Length.Should().Be(2);
         manualOrder.Should().Contain("LiveEntryPositionFactory.Create(");
@@ -1442,6 +1448,7 @@ public class ArchitectureDependencyTests
         parity.Should().Contain("PreviewAndBacktest_ApplyCustomExitOnTheNextOpenEntryBar");
         parity.Should().Contain("PreviewAndBacktest_ApplyScaleOutOnTheNextOpenEntryBar");
         parity.Should().Contain("ScalingStrategy_IsRejectedForLiveUntilBrokerExecutionHasParity");
+        executionParity.Should().Contain("CommonSessionAndLiveAdapter_AgreeOnPartialProfitIntent");
         parity.Should().Contain("previewEntry.StopPrice.Should().Be(livePosition.StopLossPrice)");
         parity.Should().Contain("liveExit.Reason.Should().Be(previewExit.Reason)");
         preview.Should().NotContain("current.Low <= position.StopPrice");
@@ -1527,10 +1534,10 @@ public class ArchitectureDependencyTests
         var barPolicy = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/LongPositionExecutionPolicy.cs"));
         var livePolicy = File.ReadAllText(Path.Combine(
-            repository, "Application/Execution/LiveLongPositionDecisionPolicy.cs"));
+            repository, "Application/Execution/LiveLongPositionExecutionAdapter.cs"));
 
         barPolicy.Should().Contain("LongPositionCloseDecisionPolicy.Resolve(");
-        livePolicy.Should().Contain("LongPositionCloseDecisionPolicy.Resolve(");
+        livePolicy.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
         barPolicy.Should().NotContain("bar.High >= next.TargetPrice");
         livePolicy.Should().NotContain("currentPrice >= next.TargetPrice");
     }
@@ -1608,8 +1615,9 @@ public class ArchitectureDependencyTests
             .Length.Should().BeLessThanOrEqualTo(250);
         File.ReadAllLines(evaluatorPath).Length.Should().BeLessThanOrEqualTo(300);
         liveManager.Should().Contain("exitEvaluator.EvaluateAsync(");
-        liveManager.Should().NotContain("LiveLongPositionDecisionPolicy.Evaluate(");
-        evaluator.Should().Contain("LiveLongPositionDecisionPolicy.Evaluate(");
+        liveManager.Should().NotContain("LiveLongPositionExecutionAdapter.Evaluate(");
+        evaluator.Should().Contain("LiveLongPositionExecutionAdapter.Evaluate(");
+        evaluator.Should().NotContain("EnablePartialProfit = false");
         evaluator.Should().NotContain("position.CurrentPrice <= position.StopLossPrice");
         evaluator.Should().NotContain("position.CurrentPrice >= position.TargetPrice");
         liveManager.Should().NotContain("DateTime.UtcNow");
