@@ -6,12 +6,12 @@ public interface IMarketRegimeClassifier
 {
     /// <summary>
     /// 주어진 공급자 기준 종목 바 데이터로 현재 시장 레짐을 분류합니다.
-    /// 모델이 없거나 데이터 부족 시 기존 MarketRegime을 그대로 반환합니다 (graceful degradation).
+    /// 모델·manifest가 없거나 데이터가 부족하면 공통 장기추세 레짐을 반환합니다.
     /// </summary>
     Task<MarketRegime> ClassifyAsync(OhlcvBar[] benchmarkBars, CancellationToken ct = default);
 
     /// <summary>
-    /// 공급자 기준 종목 히스토리로 K-Means 클러스터링 모델을 학습합니다.
+    /// 공급자 기준 종목의 완료된 과거 일봉으로 K-Means 모델을 학습합니다.
     /// </summary>
     Task<bool> TrainAsync(OhlcvBar[] benchmarkBars, CancellationToken ct = default);
 

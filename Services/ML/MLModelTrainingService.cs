@@ -110,7 +110,8 @@ public class MLModelTrainingService : IMLModelTrainingService
             {
                 _trainingStatus = "시장 레짐 분류기 학습 중...";
                 regimeTrained = await _regimeClassifier.TrainAsync(regimeBars, ct);
-                regimeSamples = regimeBars.Length;
+                if (regimeTrained)
+                    regimeSamples = _regimeClassifier.TrainingSamples;
             }
             else
             {
@@ -160,7 +161,7 @@ public class MLModelTrainingService : IMLModelTrainingService
                 regimeTrained,
                 scorerTrained,
                 regimeSymbol,
-                regimeBars.Length,
+                regimeSamples,
                 samples.Count,
                 _mlSettings.MinTrainingSamples);
 
