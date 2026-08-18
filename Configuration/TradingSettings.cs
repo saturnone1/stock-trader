@@ -17,6 +17,7 @@ public class TradingSettings
     public int IntradayDataMaxConsecutiveFailures { get; set; } = 5;
     public int IntradayDataCooldownSeconds { get; set; } = 300;
     public int RiskCheckIntervalSeconds { get; set; } = 30;
+    public int RiskOpenPositionCacheSeconds { get; set; } = 5;
     public int RiskMonitorMaxConsecutiveFailures { get; set; } = 5;
     public int RiskMonitorCooldownSeconds { get; set; } = 300;
     public int RiskHaltAlertIntervalMinutes { get; set; } = 60;

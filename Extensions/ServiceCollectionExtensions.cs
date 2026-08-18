@@ -82,6 +82,8 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.IntradayDataCooldownSeconds > 0,
                 "IntradayDataCooldownSeconds must be positive")
             .Validate(settings => settings.RiskCheckIntervalSeconds > 0, "RiskCheckIntervalSeconds must be positive")
+            .Validate(settings => settings.RiskOpenPositionCacheSeconds > 0,
+                "RiskOpenPositionCacheSeconds must be positive")
             .Validate(settings => settings.RiskMonitorMaxConsecutiveFailures > 0, "RiskMonitorMaxConsecutiveFailures must be positive")
             .Validate(settings => settings.RiskMonitorCooldownSeconds > 0, "RiskMonitorCooldownSeconds must be positive")
             .Validate(settings => settings.RiskHaltAlertIntervalMinutes > 0, "RiskHaltAlertIntervalMinutes must be positive")
@@ -267,7 +269,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISignalListQuery, SignalListQuery>();
         services.AddScoped<ISignalService, SignalService>();
         services.AddScoped<ILiveSignalProcessor, LiveSignalProcessor>();
-        services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
+        services.AddSingleton(serviceProvider =>
+        {
+            var settings = serviceProvider
+                .GetRequiredService<IOptions<TradingSettings>>()
+                .Value;
+            return new RiskManagementOptions(
+                settings.DailyLossLimitPercent,
+                settings.MaxTotalPositions,
+                settings.MaxPositionsPerSector);
+        });
+        services.AddSingleton<RiskStateStore>();
+        services.AddScoped<IRiskManagementDataSource, RiskManagementDataSource>();
+        services.AddScoped<IRiskManagementService, MultiAccountRiskService>();
         services.AddScoped<IRiskOverviewQuery, RiskOverviewQuery>();
         services.AddScoped<IPortfolioPerformanceQuery, PortfolioPerformanceQuery>();
         services.AddScoped<IOpenPositionQuery, OpenPositionQuery>();

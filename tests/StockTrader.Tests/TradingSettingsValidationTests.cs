@@ -11,6 +11,7 @@ public class TradingSettingsValidationTests
 {
     [Theory]
     [InlineData("Trading:RiskMonitorMaxConsecutiveFailures", "0")]
+    [InlineData("Trading:RiskOpenPositionCacheSeconds", "0")]
     [InlineData("Trading:DataFetchIntervalSeconds", "0")]
     [InlineData("Trading:IntradayDataMaxRetries", "0")]
     [InlineData("Trading:IntradayDataMaxConsecutiveFailures", "0")]

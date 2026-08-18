@@ -512,6 +512,13 @@ depends on purpose-specific application training and status use cases and maps n
 OpenAPI/TypeScript success and error contracts
 without changing the established JSON field names.
 
+Runtime risk management now crosses an application-owned scoped use case and a purpose-specific
+evidence port. Broker, account, settings, open-position, and short-lived cache access remain in one
+Services adapter instead of being located through nested scopes. A singleton state store publishes
+all account, portfolio, and fallback snapshots as one immutable generation, so API, signal
+evaluation, and monitoring cannot observe a partially refreshed multi-account result. With no
+enabled account, current open-position loss now replaces the formerly stale portfolio snapshot.
+
 Stock-analysis detail now returns an explicit OpenAPI contract and the desktop consumes its
 generated camel-case shape. Pattern cards retain stable codes while displaying central catalog
 names. Fractional confidence/win-rate values and percentage-point forecast values have separate

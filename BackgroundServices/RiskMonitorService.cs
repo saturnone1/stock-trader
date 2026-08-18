@@ -2,7 +2,6 @@ using Microsoft.Extensions.Options;
 using StockTrader.Application.Risk;
 using StockTrader.Configuration;
 using StockTrader.Services.Notification;
-using StockTrader.Services.Risk;
 
 namespace StockTrader.BackgroundServices;
 

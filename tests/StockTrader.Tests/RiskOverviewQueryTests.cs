@@ -18,13 +18,13 @@ public class RiskOverviewQueryTests
         var observedAt = new DateTimeOffset(2026, 8, 18, 4, 30, 0, TimeSpan.Zero);
         var risk = new Mock<IRiskManagementService>();
         risk.Setup(service => service.GetCurrentRiskStateAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RiskState
-            {
-                DailyPnL = 125m,
-                DailyPnLPercent = 0.00125m,
-                OpenPositionCount = 2,
-                LastUpdated = observedAt.UtcDateTime
-            });
+            .ReturnsAsync(new RiskStateSnapshot(
+                125m,
+                0.00125m,
+                false,
+                2,
+                new Dictionary<string, int>(),
+                observedAt.UtcDateTime));
         var positions = new Mock<IOpenPositionQuery>();
         positions.Setup(query => query.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OpenPositionListSnapshot(
