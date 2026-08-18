@@ -983,7 +983,7 @@
         }
       }
     },
-    "/api/orders/reconcile-position-exit": {
+    "/api/orders/reconcile-position-order": {
       "post": {
         "tags": [
           "OrderEndpoints"

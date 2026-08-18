@@ -81,7 +81,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ManualOrderWorkflow>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
-        services.AddScoped<LivePositionExitEvaluator>();
+        services.AddScoped<LivePositionExecutionEvaluator>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddSingleton<FinancialSnapshotImportService>();
         services.AddSingleton<FinancialSnapshotFileParser>();

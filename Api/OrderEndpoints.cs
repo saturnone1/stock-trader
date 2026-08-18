@@ -12,7 +12,7 @@ public static class OrderEndpoints
         var orders = api.MapGroup("/orders").RequireAuthorization();
         orders.MapPost("/execute-signal", ExecuteSignalAsync).RequireRateLimiting("api");
         orders.MapPost("/close-position", ClosePositionAsync).RequireRateLimiting("api");
-        orders.MapPost("/reconcile-position-exit", ReconcilePositionExitAsync)
+        orders.MapPost("/reconcile-position-order", ReconcilePositionOrderAsync)
             .RequireRateLimiting("api");
         return api;
     }
@@ -95,7 +95,7 @@ public static class OrderEndpoints
         };
     }
 
-    private static async Task<IResult> ReconcilePositionExitAsync(
+    private static async Task<IResult> ReconcilePositionOrderAsync(
         HttpContext context,
         IAccountManager accounts,
         ITradeRepository trades,
@@ -136,7 +136,7 @@ public static class OrderEndpoints
             return Results.Ok(new
             {
                 status = LivePositionExecutionReconciliationStatus.NotPending.ToString(),
-                message = $"{symbol}에는 확인할 청산 주문이 없습니다."
+                message = $"{symbol}에는 확인할 포지션 주문이 없습니다."
             });
         }
 
@@ -148,13 +148,13 @@ public static class OrderEndpoints
             position, broker, ct: context.RequestAborted);
         var message = reconciliation.Status switch
         {
-            LivePositionExecutionReconciliationStatus.Completed => $"{symbol} 청산 체결을 확인하고 거래 기록을 완료했습니다.",
-            LivePositionExecutionReconciliationStatus.ReleasedForRetry => $"{symbol} 청산 주문의 실패가 확인되어 다시 청산할 수 있습니다.",
-            LivePositionExecutionReconciliationStatus.AwaitingBroker => $"{symbol} 청산 주문은 아직 브로커 확정 상태를 기다리고 있습니다.",
+            LivePositionExecutionReconciliationStatus.Completed => $"{symbol} 포지션 주문 체결을 확인하고 상태 반영을 완료했습니다.",
+            LivePositionExecutionReconciliationStatus.ReleasedForRetry => $"{symbol} 포지션 주문 실패가 확인되어 다시 평가할 수 있습니다.",
+            LivePositionExecutionReconciliationStatus.AwaitingBroker => $"{symbol} 포지션 주문은 아직 브로커 확정 상태를 기다리고 있습니다.",
             LivePositionExecutionReconciliationStatus.ConcurrentChange => $"{symbol} 상태가 다른 작업에서 변경되어 최신 목록을 다시 불러옵니다.",
             LivePositionExecutionReconciliationStatus.BrokerFillMismatch =>
-                $"{symbol} 청산 요청 수량과 브로커 체결 수량이 달라 자동 반영을 중단했습니다. 브로커 주문 내역을 확인하세요.",
-            _ => $"{symbol}에는 확인할 청산 주문이 없습니다."
+                $"{symbol} 주문 요청 수량과 브로커 체결 수량이 달라 자동 반영을 중단했습니다. 브로커 주문 내역을 확인하세요.",
+            _ => $"{symbol}에는 확인할 포지션 주문이 없습니다."
         };
         return Results.Ok(new
         {

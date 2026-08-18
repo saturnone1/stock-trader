@@ -19,19 +19,20 @@ public sealed record OpenPositionResponse(
     decimal EntryAtr,
     int HoldingDays,
     string OpenedAt,
-    string ExitStatus,
-    string? ExitRequestedAt,
-    string? ExitRequestReason,
-    bool HasExitOrderId,
-    long ExitPendingSeconds,
-    int ExitRequestQuantity,
-    bool ExitRequestMarksPartialProfit);
+    string OrderStatus,
+    string? OrderRequestedAt,
+    string? OrderReason,
+    string? OrderKind,
+    bool HasBrokerOrderId,
+    long OrderPendingSeconds,
+    int OrderQuantity,
+    bool OrderMarksPartialProfit);
 
 public static class OpenPositionResponseMapper
 {
     public static OpenPositionResponse Map(Position position, DateTime utcNow)
     {
-        var exit = LiveExitIntentStatusPolicy.Evaluate(position, utcNow);
+        var order = LivePositionOrderStatusPolicy.Evaluate(position, utcNow);
         return new OpenPositionResponse(
             position.Id,
             position.Symbol,
@@ -48,12 +49,13 @@ public static class OpenPositionResponseMapper
             position.EntryAtr,
             Math.Max(0, (utcNow - position.OpenedAt).Days),
             position.OpenedAt.ToString("o"),
-            exit.State.ToString(),
-            exit.RequestedAt?.ToString("o"),
-            exit.Reason,
-            exit.HasBrokerOrderId,
-            exit.PendingSeconds,
-            exit.RequestedQuantity,
-            exit.MarksPartialProfit);
+            order.State.ToString(),
+            order.RequestedAt?.ToString("o"),
+            order.Reason,
+            order.Kind?.ToString(),
+            order.HasBrokerOrderId,
+            order.PendingSeconds,
+            order.RequestedQuantity,
+            order.MarksPartialProfit);
     }
 }

@@ -43,28 +43,36 @@
     }
   }
 
-  async function reconcilePositionExit(symbol) {
+  async function reconcilePositionOrder(symbol) {
     busySymbol = symbol
     try {
-      const response = await orderApi.reconcilePositionExit(symbol)
-      message = response.data?.message || `${symbol} 청산 주문 상태를 다시 확인했습니다.`
+      const response = await orderApi.reconcilePositionOrder(symbol)
+      message = response.data?.message || `${symbol} 포지션 주문 상태를 다시 확인했습니다.`
       error = ''
       await load()
     } catch (e) {
-      error = e?.response?.data?.error || e?.message || '청산 주문 상태 확인에 실패했습니다.'
+      error = e?.response?.data?.error || e?.message || '포지션 주문 상태 확인에 실패했습니다.'
     } finally {
       busySymbol = ''
     }
   }
 
-  function exitStatusLabel(row) {
-    if (row.exitStatus === 'SubmissionUnconfirmed') return '주문 ID 확인 필요'
-    if (row.exitStatus === 'AwaitingBroker') return '브로커 처리 중'
+  function orderStatusLabel(row) {
+    if (row.orderStatus === 'SubmissionUnconfirmed') return '주문 번호 확인 필요'
+    if (row.orderStatus === 'AwaitingBroker') return '브로커 처리 중'
     return '보유 중'
   }
 
+  function orderKindLabel(kind) {
+    if (kind === 'ScaleIn') return '추가 매수'
+    if (kind === 'ScaleOut') return '분할 매도'
+    if (kind === 'PartialProfit') return '부분 익절'
+    if (kind === 'FullExit') return '전량 매도'
+    return '포지션 주문'
+  }
+
   function pendingTime(row) {
-    const seconds = Number(row.exitPendingSeconds ?? 0)
+    const seconds = Number(row.orderPendingSeconds ?? 0)
     if (seconds < 60) return `${seconds}초`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}분`
     return `${Math.floor(seconds / 3600)}시간`
@@ -105,7 +113,7 @@
             <th class="px-4 py-3 text-right">Entry</th>
             <th class="px-4 py-3 text-right">Current</th>
             <th class="px-4 py-3 text-right">PnL</th>
-            <th class="px-4 py-3 text-left">청산 상태</th>
+            <th class="px-4 py-3 text-left">포지션 주문</th>
             <th class="px-4 py-3 text-right">Action</th>
           </tr>
         </thead>
@@ -119,22 +127,22 @@
               <td class="px-4 py-3 text-right">{(row.currentPrice ?? 0).toFixed(2)}</td>
               <td class="px-4 py-3 text-right {(row.unrealizedPnL ?? 0) >= 0 ? 'text-green-300' : 'text-red-300'}">{(row.unrealizedPnL ?? 0).toFixed(2)}</td>
               <td class="px-4 py-3">
-                <div class={row.exitStatus === 'Ready' ? 'text-gray-300' : row.exitStatus === 'AwaitingBroker' ? 'text-blue-300' : 'text-amber-300'}>
-                  {exitStatusLabel(row)}
+                <div class={row.orderStatus === 'Ready' ? 'text-gray-300' : row.orderStatus === 'AwaitingBroker' ? 'text-blue-300' : 'text-amber-300'}>
+                  {orderStatusLabel(row)}
                 </div>
-                {#if row.exitStatus !== 'Ready'}
+                {#if row.orderStatus !== 'Ready'}
                   <div class="mt-1 text-xs text-gray-500">
-                    {row.exitRequestReason || '청산 요청'} · {row.exitRequestQuantity ?? row.quantity}주 · {pendingTime(row)}
+                    {orderKindLabel(row.orderKind)} · {row.orderReason || '전략 조건 충족'} · {row.orderQuantity ?? row.quantity}주 · {pendingTime(row)}
                   </div>
                 {/if}
               </td>
               <td class="px-4 py-3 text-right">
-                {#if row.exitStatus === 'Ready'}
+                {#if row.orderStatus === 'Ready'}
                   <button disabled={busySymbol === row.symbol} on:click={() => closePosition(row.symbol)} class="rounded bg-red-700 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-wait disabled:opacity-50">
                     {busySymbol === row.symbol ? '요청 중…' : '청산'}
                   </button>
                 {:else}
-                  <button disabled={busySymbol === row.symbol} on:click={() => reconcilePositionExit(row.symbol)} class="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600 disabled:cursor-wait disabled:opacity-50">
+                  <button disabled={busySymbol === row.symbol} on:click={() => reconcilePositionOrder(row.symbol)} class="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600 disabled:cursor-wait disabled:opacity-50">
                     {busySymbol === row.symbol ? '확인 중…' : '상태 재확인'}
                   </button>
                 {/if}

@@ -32,13 +32,14 @@ export interface Position {
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
-  exitStatus?: 'Ready' | 'SubmissionUnconfirmed' | 'AwaitingBroker';
-  exitRequestedAt?: string | null;
-  exitRequestReason?: string | null;
-  hasExitOrderId?: boolean;
-  exitPendingSeconds?: number;
-  exitRequestQuantity?: number;
-  exitRequestMarksPartialProfit?: boolean;
+  orderStatus?: 'Ready' | 'SubmissionUnconfirmed' | 'AwaitingBroker';
+  orderRequestedAt?: string | null;
+  orderReason?: string | null;
+  orderKind?: 'FullExit' | 'PartialProfit' | 'ScaleIn' | 'ScaleOut' | null;
+  hasBrokerOrderId?: boolean;
+  orderPendingSeconds?: number;
+  orderQuantity?: number;
+  orderMarksPartialProfit?: boolean;
 }
 
 export interface Signal {

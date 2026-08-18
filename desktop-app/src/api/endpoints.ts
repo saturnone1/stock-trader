@@ -201,13 +201,14 @@ export const dashboardApi = {
           pnlPercent: pos.entryPrice && pos.quantity
             ? (pos.unrealizedPnL ?? 0) / (pos.entryPrice * pos.quantity)
             : 0,
-          exitStatus: pos.exitStatus ?? 'Ready',
-          exitRequestedAt: pos.exitRequestedAt ?? null,
-          exitRequestReason: pos.exitRequestReason ?? null,
-          hasExitOrderId: !!pos.hasExitOrderId,
-          exitPendingSeconds: pos.exitPendingSeconds ?? 0,
-          exitRequestQuantity: pos.exitRequestQuantity ?? 0,
-          exitRequestMarksPartialProfit: pos.exitRequestMarksPartialProfit ?? false,
+          orderStatus: pos.orderStatus ?? 'Ready',
+          orderRequestedAt: pos.orderRequestedAt ?? null,
+          orderReason: pos.orderReason ?? null,
+          orderKind: pos.orderKind ?? null,
+          hasBrokerOrderId: !!pos.hasBrokerOrderId,
+          orderPendingSeconds: pos.orderPendingSeconds ?? 0,
+          orderQuantity: pos.orderQuantity ?? 0,
+          orderMarksPartialProfit: pos.orderMarksPartialProfit ?? false,
         })),
         signals: data.recentSignals ?? [],
         recommendations: data.recentSignals ?? [],
@@ -490,6 +491,6 @@ export const orderApi = {
     api.post('/api/orders/execute-signal', { signalId: Number(signalId) }),
   closePosition: (symbol: string) =>
     api.post('/api/orders/close-position', { symbol }),
-  reconcilePositionExit: (symbol: string) =>
-    api.post('/api/orders/reconcile-position-exit', { symbol }),
+  reconcilePositionOrder: (symbol: string) =>
+    api.post('/api/orders/reconcile-position-order', { symbol }),
 };

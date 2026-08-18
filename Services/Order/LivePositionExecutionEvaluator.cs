@@ -11,9 +11,9 @@ using StockTrader.Services.Patterns;
 
 namespace StockTrader.Services.Order;
 
-public sealed record LivePositionExitDecision(LiveLongPositionExecutionIntent? Intent)
+public sealed record LivePositionExecutionDecision(LiveLongPositionExecutionIntent? Intent)
 {
-    public bool ShouldExit => Intent is not null;
+    public bool ShouldExecute => Intent is not null;
     public string Reason => Intent?.Reason ?? string.Empty;
 }
 
@@ -22,23 +22,23 @@ internal sealed record LiveCustomStrategyInstructions(
     LongPositionScalingInstruction? Scaling);
 
 /// <summary>
-/// 실시간 포지션의 지표 스냅샷을 준비하고 공통 롱 포지션 정책으로 청산 여부를 평가합니다.
+/// 실시간 포지션의 지표 스냅샷을 준비하고 공통 롱 포지션 정책으로 주문 여부를 평가합니다.
 /// 백그라운드 워커는 조회 주기와 주문 조정만 담당합니다.
 /// </summary>
-public sealed class LivePositionExitEvaluator
+public sealed class LivePositionExecutionEvaluator
 {
     private readonly IIndicatorService _indicators;
     private readonly ICustomStrategyDetectorFactory _customDetectors;
     private readonly IOptionsMonitor<PatternSettings> _patternSettings;
     private readonly TimeProvider _timeProvider;
-    private readonly ILogger<LivePositionExitEvaluator> _logger;
+    private readonly ILogger<LivePositionExecutionEvaluator> _logger;
 
-    public LivePositionExitEvaluator(
+    public LivePositionExecutionEvaluator(
         IIndicatorService indicators,
         ICustomStrategyDetectorFactory customDetectors,
         IOptionsMonitor<PatternSettings> patternSettings,
         TimeProvider timeProvider,
-        ILogger<LivePositionExitEvaluator> logger)
+        ILogger<LivePositionExecutionEvaluator> logger)
     {
         _indicators = indicators;
         _customDetectors = customDetectors;
@@ -47,7 +47,7 @@ public sealed class LivePositionExitEvaluator
         _logger = logger;
     }
 
-    public async Task<LivePositionExitDecision> EvaluateAsync(
+    public async Task<LivePositionExecutionDecision> EvaluateAsync(
         Position position,
         CompiledStrategy? customStrategy,
         IOhlcvRepository repository,
@@ -80,9 +80,9 @@ public sealed class LivePositionExitEvaluator
         {
             var lookbackDays = position.PatternType == PatternType.Tqqq200Sma
                 ? Math.Max(
-                    StrategyEvaluationPolicy.LiveExitIndicatorLookbackDays,
+                    StrategyEvaluationPolicy.LivePositionIndicatorLookbackDays,
                     Tqqq200SmaExecutionPolicy.RequiredCalendarLookbackDays(tqqq.SmaPeriod))
-                : StrategyEvaluationPolicy.LiveExitIndicatorLookbackDays;
+                : StrategyEvaluationPolicy.LivePositionIndicatorLookbackDays;
             var now = UtcNow;
             recentBars = (await repository.GetBarsAsync(
                     position.Symbol,
@@ -115,7 +115,7 @@ public sealed class LivePositionExitEvaluator
         if (position.PatternType == PatternType.Tqqq200Sma && !dynamicStopFloor.HasValue)
         {
             _logger.LogWarning(
-                "[EXIT-MGR] {Symbol}: TQQQ 장기 추세선 보호 손절을 계산하지 못했습니다. " +
+                "[POSITION-EVAL] {Symbol}: TQQQ 장기 추세선 보호 손절을 계산하지 못했습니다. " +
                 "기존 손절가를 유지합니다. bars={BarCount}, period={Period}",
                 position.Symbol,
                 recentBars?.Count ?? 0,
@@ -188,12 +188,12 @@ public sealed class LivePositionExitEvaluator
         if (decision.StopUpdate is not null)
         {
             _logger.LogDebug(
-                "[EXIT-MGR] {Symbol}: {Reason} {Price:F2}",
+                "[POSITION-EVAL] {Symbol}: {Reason} {Price:F2}",
                 position.Symbol,
                 decision.StopUpdate.Reason,
                 decision.StopUpdate.Price);
         }
-        return new LivePositionExitDecision(decision.Intent);
+        return new LivePositionExecutionDecision(decision.Intent);
     }
 
     private async Task<LiveCustomStrategyInstructions> ResolveCustomInstructionsAsync(
@@ -260,7 +260,7 @@ public sealed class LivePositionExitEvaluator
             result[referenceSymbol] = (await repository.GetBarsAsync(
                     referenceSymbol,
                     TimeFrame.Daily,
-                    now.AddDays(-StrategyEvaluationPolicy.LiveExitIndicatorLookbackDays),
+                    now.AddDays(-StrategyEvaluationPolicy.LivePositionIndicatorLookbackDays),
                     now,
                     ct))
                 .OrderBy(bar => bar.Timestamp)
