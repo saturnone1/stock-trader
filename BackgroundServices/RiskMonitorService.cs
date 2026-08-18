@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using StockTrader.Application.Risk;
 using StockTrader.Configuration;
 using StockTrader.Services.Notification;
 using StockTrader.Services.Risk;
@@ -7,12 +8,10 @@ namespace StockTrader.BackgroundServices;
 
 public class RiskMonitorService : BackgroundService
 {
-    private const int MaxConsecutiveFailures = 5;
-    private static readonly TimeSpan CooldownPeriod = TimeSpan.FromMinutes(5);
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly INotificationService _notificationService;
     private readonly TradingSettings _settings;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<RiskMonitorService> _logger;
 
     private int _consecutiveFailures = 0;
@@ -22,11 +21,13 @@ public class RiskMonitorService : BackgroundService
         IServiceScopeFactory scopeFactory,
         INotificationService notificationService,
         IOptions<TradingSettings> settings,
+        TimeProvider timeProvider,
         ILogger<RiskMonitorService> logger)
     {
         _scopeFactory = scopeFactory;
         _notificationService = notificationService;
         _settings = settings.Value;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -35,20 +36,22 @@ public class RiskMonitorService : BackgroundService
         _logger.LogInformation("RiskMonitorService started");
 
         using var timer = new PeriodicTimer(
-            TimeSpan.FromSeconds(_settings.RiskCheckIntervalSeconds));
+            TimeSpan.FromSeconds(_settings.RiskCheckIntervalSeconds),
+            _timeProvider);
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             // Circuit breaker: cooldown when too many consecutive failures.
             // Risk monitoring is critical — log at Warning so it is visible immediately.
-            if (_consecutiveFailures >= MaxConsecutiveFailures)
+            if (_consecutiveFailures >= _settings.RiskMonitorMaxConsecutiveFailures)
             {
+                var cooldown = TimeSpan.FromSeconds(_settings.RiskMonitorCooldownSeconds);
                 _logger.LogWarning(
                     "{Service} entering cooldown after {Failures} consecutive failures. " +
                     "RISK MONITORING IS SUSPENDED for {Cooldown}",
-                    nameof(RiskMonitorService), _consecutiveFailures, CooldownPeriod);
+                    nameof(RiskMonitorService), _consecutiveFailures, cooldown);
 
-                await Task.Delay(CooldownPeriod, stoppingToken);
+                await Task.Delay(cooldown, _timeProvider, stoppingToken);
                 _consecutiveFailures = 0;
             }
 
@@ -94,12 +97,16 @@ public class RiskMonitorService : BackgroundService
             "Risk check: PnL={PnL:C2} ({PnLPct:P2}), Positions={Positions}, Halted={Halted}",
             state.DailyPnL, state.DailyPnLPercent, state.OpenPositionCount, state.IsTradingHalted);
 
-        if (state.IsTradingHalted
-            && (DateTime.UtcNow - _lastHaltAlertUtc).TotalHours >= 1)
+        var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
+        if (RiskAlertPolicy.IsDue(
+                state.IsTradingHalted,
+                _lastHaltAlertUtc,
+                observedAt,
+                TimeSpan.FromMinutes(_settings.RiskHaltAlertIntervalMinutes)))
         {
             _notificationService.Alert(
                 $"거래 중단: 일일 손실 {state.DailyPnLPercent:P2}이(가) 한도를 초과했습니다");
-            _lastHaltAlertUtc = DateTime.UtcNow;
+            _lastHaltAlertUtc = observedAt;
         }
     }
 }

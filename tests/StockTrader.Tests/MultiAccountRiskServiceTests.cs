@@ -38,7 +38,9 @@ public class MultiAccountRiskServiceTests
         };
     }
 
-    private MultiAccountRiskService CreateSut(TradingSettings? settings = null)
+    private MultiAccountRiskService CreateSut(
+        TradingSettings? settings = null,
+        TimeProvider? timeProvider = null)
     {
         var opts = Options.Create(settings ?? _defaultSettings);
 
@@ -52,6 +54,7 @@ public class MultiAccountRiskServiceTests
             opts,
             _accountManagerMock.Object,
             cache,
+            timeProvider ?? TimeProvider.System,
             NullLogger<MultiAccountRiskService>.Instance);
     }
 
@@ -526,11 +529,9 @@ public class MultiAccountRiskServiceTests
     }
 
     [Fact]
-    public async Task UpdateDailyPnLAsync_MultipleAccounts_PortfolioPnLIsSumOfAllAccountPnL()
+    public async Task UpdateDailyPnLAsync_LegacyPositionsAreAssignedToOnlyFirstEnabledAccount()
     {
-        // Arrange: 계좌 2개, 브로커 없어서 둘 다 같은 positionPnL(50)을 적용
-        // 현재 구현: 각 계좌별로 전체 포지션 PnL을 독립적으로 집계
-        // → totalPnL = positionPnL * 계좌_수 = 50 * 2 = 100
+        // Arrange: 계좌 미지정 레거시 포지션은 첫 활성 계좌에만 귀속되어야 한다.
         var account1 = MakeAccount(id: 1);
         var account2 = MakeAccount(id: 2);
         var userSettings = new UserSettings { AccountSize = 50_000m };
@@ -564,10 +565,44 @@ public class MultiAccountRiskServiceTests
         // Act
         await sut.UpdateDailyPnLAsync();
 
-        // Assert: 2개 계좌 각각 positionPnL=50을 집계 → totalPnL = 100
-        // (향후 계좌별 포지션 필터링으로 변경 시 이 테스트를 업데이트해야 함)
+        // Assert: 같은 레거시 손익을 활성 계좌 수만큼 중복하지 않는다.
         var portfolio = sut.GetPortfolioRiskState();
-        portfolio.DailyPnL.Should().Be(100m);
+        portfolio.DailyPnL.Should().Be(50m);
         portfolio.OpenPositionCount.Should().Be(2);
+        sut.GetAccountRiskState(1).DailyPnL.Should().Be(50m);
+        sut.GetAccountRiskState(2).DailyPnL.Should().Be(0m);
+    }
+
+    [Fact]
+    public async Task UpdateDailyPnLAsync_UsesOneInjectedObservationTimeForEveryRiskState()
+    {
+        var observedAt = new DateTimeOffset(2026, 8, 18, 4, 30, 0, TimeSpan.Zero);
+        var account1 = MakeAccount(id: 1);
+        var account2 = MakeAccount(id: 2);
+        _accountManagerMock
+            .Setup(m => m.GetAllAccountsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ManagedTradingAccount> { account1, account2 });
+        _accountManagerMock
+            .Setup(m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StockTrader.Services.Broker.IBrokerService?)null);
+        _settingsRepoMock
+            .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSettings { AccountSize = 100_000m });
+        _positionStoreMock
+            .Setup(r => r.GetOpenPositionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Position>());
+
+        var sut = CreateSut(timeProvider: new FixedTimeProvider(observedAt));
+
+        await sut.UpdateDailyPnLAsync();
+
+        sut.GetAccountRiskState(1).LastUpdated.Should().Be(observedAt.UtcDateTime);
+        sut.GetAccountRiskState(2).LastUpdated.Should().Be(observedAt.UtcDateTime);
+        sut.GetPortfolioRiskState().LastUpdated.Should().Be(observedAt.UtcDateTime);
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset observedAt) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => observedAt;
     }
 }

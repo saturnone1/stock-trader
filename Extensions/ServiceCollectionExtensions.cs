@@ -20,6 +20,7 @@ using StockTrader.Application.Strategies;
 using StockTrader.Application.Optimization;
 using StockTrader.Application.SymbolProfiles;
 using StockTrader.Application.Research;
+using StockTrader.Application.Risk;
 
 namespace StockTrader.Extensions;
 
@@ -32,7 +33,24 @@ public static class ServiceCollectionExtensions
         // Configuration binding
         services.Configure<AlpacaSettings>(configuration.GetSection("Alpaca"));
         services.Configure<YahooFinanceSettings>(configuration.GetSection("YahooFinance"));
-        services.Configure<TradingSettings>(configuration.GetSection("Trading"));
+        services.AddOptions<TradingSettings>()
+            .Bind(configuration.GetSection("Trading"))
+            .Validate(settings => settings.DefaultAccountSize > 0, "DefaultAccountSize must be positive")
+            .Validate(settings => settings.RiskPerTradePercent is > 0 and <= 1, "RiskPerTradePercent must be in (0, 1]")
+            .Validate(settings => settings.DailyLossLimitPercent is > 0 and <= 1, "DailyLossLimitPercent must be in (0, 1]")
+            .Validate(settings => settings.MaxPositionsPerSector > 0, "MaxPositionsPerSector must be positive")
+            .Validate(settings => settings.MaxTotalPositions > 0, "MaxTotalPositions must be positive")
+            .Validate(settings => settings.MinConfidence is >= 0 and <= 1, "MinConfidence must be in [0, 1]")
+            .Validate(settings => settings.DataFetchIntervalSeconds > 0, "DataFetchIntervalSeconds must be positive")
+            .Validate(settings => settings.RiskCheckIntervalSeconds > 0, "RiskCheckIntervalSeconds must be positive")
+            .Validate(settings => settings.RiskMonitorMaxConsecutiveFailures > 0, "RiskMonitorMaxConsecutiveFailures must be positive")
+            .Validate(settings => settings.RiskMonitorCooldownSeconds > 0, "RiskMonitorCooldownSeconds must be positive")
+            .Validate(settings => settings.RiskHaltAlertIntervalMinutes > 0, "RiskHaltAlertIntervalMinutes must be positive")
+            .Validate(settings => settings.EntryReconciliationIntervalSeconds > 0, "EntryReconciliationIntervalSeconds must be positive")
+            .Validate(settings => settings.EntryReconciliationBatchSize > 0, "EntryReconciliationBatchSize must be positive")
+            .Validate(settings => TimeSpan.TryParse(settings.MarketOpenET, out _), "MarketOpenET must be a valid time")
+            .Validate(settings => TimeSpan.TryParse(settings.MarketCloseET, out _), "MarketCloseET must be a valid time")
+            .ValidateOnStart();
         services.Configure<PatternSettings>(configuration.GetSection("Patterns"));
         services.Configure<NotificationSettings>(configuration.GetSection("Notification"));
         services.Configure<MLSettings>(configuration.GetSection("ML"));
@@ -81,6 +99,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IStatisticsService, StatisticsService>();
         services.AddScoped<ISignalService, SignalService>();
         services.AddSingleton<IRiskManagementService, MultiAccountRiskService>();
+        services.AddScoped<IRiskOverviewQuery, RiskOverviewQuery>();
         services.AddScoped<ManualOrderWorkflow>();
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<IOrderService, OrderService>();
