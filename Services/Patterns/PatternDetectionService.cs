@@ -1,6 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using StockTrader.Application.Strategies;
-using StockTrader.Data;
+using StockTrader.Application.SymbolProfiles;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -20,7 +19,7 @@ public class PatternDetectionService
     private readonly ICustomStrategyDetectorFactory _customDetectors;
     private readonly IOhlcvRepository _ohlcvRepository;
     private readonly ICompiledStrategyRepository _strategies;
-    private readonly AppDbContext _db;
+    private readonly SymbolProfileManagementService _symbolProfiles;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<PatternDetectionService> _logger;
 
@@ -33,7 +32,7 @@ public class PatternDetectionService
         ICustomStrategyDetectorFactory customDetectors,
         IOhlcvRepository ohlcvRepository,
         ICompiledStrategyRepository strategies,
-        AppDbContext db,
+        SymbolProfileManagementService symbolProfiles,
         TimeProvider timeProvider,
         ILogger<PatternDetectionService> logger)
     {
@@ -45,7 +44,7 @@ public class PatternDetectionService
         _customDetectors = customDetectors;
         _ohlcvRepository = ohlcvRepository;
         _strategies = strategies;
-        _db = db;
+        _symbolProfiles = symbolProfiles;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -53,15 +52,11 @@ public class PatternDetectionService
     public async Task<List<PatternSignal>> ScanSymbolAsync(
         string symbol, OhlcvBar[] bars, MarketRegime regime, CancellationToken ct = default)
     {
+        symbol = MarketSymbolPolicy.Normalize(symbol);
         var settings = await _settingsRepo.GetAsync(ct);
 
         // 종목별 활성 프로파일이 있으면 해당 프로파일의 패턴 목록 사용
-        var profile = await _db.SymbolProfiles
-            .AsNoTracking()
-            .Where(p => p.Symbol == symbol && p.IsActive)
-            .OrderByDescending(p => p.UpdatedAt)
-            .ThenBy(p => p.Id)
-            .FirstOrDefaultAsync(ct);
+        var profile = await _symbolProfiles.GetActiveAsync(symbol, ct);
 
         var enabledPatterns = profile?.EnabledPatterns ?? settings.EnabledPatterns;
 

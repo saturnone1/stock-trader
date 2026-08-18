@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Configuration;
 using StockTrader.Data;
+using StockTrader.Data.Repositories;
 using StockTrader.Services.Analysis;
 using StockTrader.Services.Backtest;
 using StockTrader.Services.Indicators;
@@ -16,6 +17,7 @@ using StockTrader.Services.StrategyPreview;
 using StockTrader.Application.StrategyPreview;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.SymbolProfiles;
 
 namespace StockTrader.Extensions;
 
@@ -83,6 +85,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
         services.AddScoped<LivePositionExecutionEvaluator>();
         services.AddScoped<CustomPatternManagementService>();
+        services.AddScoped<ISymbolProfileStore, SymbolProfileStore>();
+        services.AddScoped<SymbolProfileManagementService>();
         services.AddSingleton<FinancialSnapshotImportService>();
         services.AddSingleton<FinancialSnapshotFileParser>();
         services.AddScoped<BacktestDataPreparer>();

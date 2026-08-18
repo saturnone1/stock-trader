@@ -15,7 +15,7 @@ public class SymbolProfile
     public string Symbol { get; set; } = "";
 
     /// <summary>프로파일 이름 (예: "기본", "공격형", "보수적")</summary>
-    public string Name { get; set; } = "기본";
+    public string Name { get; set; } = SymbolProfilePolicy.DefaultName;
 
     /// <summary>이 프로파일이 실매매에 활성화되어 있는지 여부. 종목당 1개만 활성.</summary>
     public bool IsActive { get; set; }
@@ -32,8 +32,8 @@ public class SymbolProfile
     public string? WeightStrategyJson { get; set; }
 
     // ── 리스크 파라미터 ────────────────────────────────────────────────
-    public decimal RiskPerTradePercent { get; set; } = 0.01m;
-    public int MaxTotalPositions { get; set; } = 7;
+    public decimal RiskPerTradePercent { get; set; } = SymbolProfilePolicy.DefaultRiskPerTradePercent;
+    public int MaxTotalPositions { get; set; } = SymbolProfilePolicy.DefaultMaximumPositions;
 
     // ── 백테스트 결과 스냅샷 ───────────────────────────────────────────
     public decimal? BacktestReturnPct { get; set; }

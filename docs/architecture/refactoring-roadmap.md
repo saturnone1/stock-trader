@@ -341,6 +341,13 @@ management use case. The API no longer binds the EF settings entity, secret valu
 and catalog/risk/watchlist validation completes before the SQLite adapter mutates state. The
 injected clock is the sole owner of user-visible modification time.
 
+Signal persistence now distinguishes deterministic event time (`SignalBarAt`) from live observation
+time. New signals are idempotent per named strategy and evaluated bar, while the EF migration keeps
+legacy rows intact. Symbol-profile assignment also crosses an application service and purpose-built
+store: API routes and live detection no longer query EF directly, activation updates are atomic,
+explicit OpenAPI contracts preserve the existing wire format, and central catalog/symbol policies
+validate writes before persistence.
+
 Exit gate: no schema-altering SQL exists in `Program.cs`; old databases migrate automatically.
 
 ## Phase 5 — Desktop decomposition

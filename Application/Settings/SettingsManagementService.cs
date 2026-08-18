@@ -1,8 +1,8 @@
-using System.Text.RegularExpressions;
+using StockTrader.Domain.MarketData;
 
 namespace StockTrader.Application.Settings;
 
-public sealed partial class SettingsManagementService(
+public sealed class SettingsManagementService(
     ISettingsManagementStore store,
     TimeProvider timeProvider)
 {
@@ -84,7 +84,7 @@ public sealed partial class SettingsManagementService(
             var symbols = NormalizeSymbols(command.WatchlistSymbols);
             if (symbols.Count > MaximumWatchlistSize)
                 errors.Add($"관심종목은 최대 {MaximumWatchlistSize}개까지 저장할 수 있습니다.");
-            if (symbols.Any(symbol => !SymbolPattern().IsMatch(symbol)))
+            if (symbols.Any(symbol => !MarketSymbolPolicy.IsValid(symbol)))
                 errors.Add("관심종목에는 영문자, 숫자, 점(.)과 하이픈(-)만 사용할 수 있습니다.");
         }
 
@@ -116,13 +116,5 @@ public sealed partial class SettingsManagementService(
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static IReadOnlyList<string> NormalizeSymbols(IEnumerable<string> values) =>
-        values
-            .SelectMany(value => (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries))
-            .Select(value => value.Trim().ToUpperInvariant())
-            .Where(value => value.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-    [GeneratedRegex("^[A-Z0-9][A-Z0-9.-]{0,14}$", RegexOptions.CultureInvariant)]
-    private static partial Regex SymbolPattern();
+        MarketSymbolPolicy.NormalizeMany(values);
 }

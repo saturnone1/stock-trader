@@ -1081,7 +1081,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileResponse"][];
+                    };
                 };
             };
         };
@@ -1093,14 +1095,38 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SymbolProfileUpsertRequest"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileResponse"];
+                    };
+                };
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileErrorResponse"];
+                    };
                 };
             };
         };
@@ -1133,7 +1159,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileResponse"][];
+                    };
                 };
             };
         };
@@ -1167,6 +1195,15 @@ export interface paths {
             responses: {
                 /** @description OK */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileActionResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1205,6 +1242,15 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileActionResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
                     content?: never;
                 };
             };
@@ -1238,6 +1284,15 @@ export interface paths {
             responses: {
                 /** @description OK */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SymbolProfileActionResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2936,6 +2991,65 @@ export interface components {
             sizingMode?: string;
             isActive?: boolean;
             enableLiveTrading?: boolean;
+        };
+        SymbolProfileActionResponse: {
+            message: string;
+        };
+        SymbolProfileErrorResponse: {
+            errors: string[];
+        };
+        SymbolProfileResponse: {
+            /** Format: int64 */
+            id: number;
+            symbol: string;
+            name: string;
+            isActive: boolean;
+            enabledPatterns: components["schemas"]["PatternType"][];
+            parameterOverridesJson: null | string;
+            weightStrategyJson: null | string;
+            /** Format: double */
+            riskPerTradePercent: number;
+            /** Format: int32 */
+            maxTotalPositions: number;
+            /** Format: double */
+            backtestReturnPct: null | number;
+            /** Format: double */
+            backtestWinRate: null | number;
+            /** Format: double */
+            backtestMaxDrawdown: null | number;
+            /** Format: double */
+            backtestSharpe: null | number;
+            /** Format: int32 */
+            backtestTrades: null | number;
+            backtestFrom: null | string;
+            backtestTo: null | string;
+            createdAt: string;
+            updatedAt: string;
+        };
+        SymbolProfileUpsertRequest: {
+            symbol: string;
+            name?: null | string;
+            enabledPatterns?: null | components["schemas"]["PatternType"][];
+            parameterOverridesJson?: null | string;
+            weightStrategyJson?: null | string;
+            /** Format: double */
+            riskPerTradePercent?: null | number;
+            /** Format: int32 */
+            maxTotalPositions?: null | number;
+            /** Format: double */
+            backtestReturnPct?: null | number;
+            /** Format: double */
+            backtestWinRate?: null | number;
+            /** Format: double */
+            backtestMaxDrawdown?: null | number;
+            /** Format: double */
+            backtestSharpe?: null | number;
+            /** Format: int32 */
+            backtestTrades?: null | number;
+            /** Format: date-time */
+            backtestFrom?: null | string;
+            /** Format: date-time */
+            backtestTo?: null | string;
         };
         /** @enum {unknown} */
         TimeFrame: "OneMinute" | "FiveMinute" | "FifteenMinute" | "Daily" | "Weekly";

@@ -771,7 +771,17 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SymbolProfileResponse"
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -779,9 +789,46 @@
         "tags": [
           "StockTrader"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SymbolProfileUpsertRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolProfileResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolProfileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolProfileErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -803,7 +850,17 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SymbolProfileResponse"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -826,7 +883,17 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolProfileActionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -849,7 +916,17 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolProfileActionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -872,7 +949,17 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolProfileActionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -4136,6 +4223,249 @@
           },
           "enableLiveTrading": {
             "type": "boolean"
+          }
+        }
+      },
+      "SymbolProfileActionResponse": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "SymbolProfileErrorResponse": {
+        "required": [
+          "errors"
+        ],
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SymbolProfileResponse": {
+        "required": [
+          "id",
+          "symbol",
+          "name",
+          "isActive",
+          "enabledPatterns",
+          "parameterOverridesJson",
+          "weightStrategyJson",
+          "riskPerTradePercent",
+          "maxTotalPositions",
+          "backtestReturnPct",
+          "backtestWinRate",
+          "backtestMaxDrawdown",
+          "backtestSharpe",
+          "backtestTrades",
+          "backtestFrom",
+          "backtestTo",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "enabledPatterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PatternType"
+            }
+          },
+          "parameterOverridesJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "weightStrategyJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "riskPerTradePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxTotalPositions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "backtestReturnPct": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestWinRate": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestMaxDrawdown": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestSharpe": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestTrades": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "backtestFrom": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "backtestTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "SymbolProfileUpsertRequest": {
+        "required": [
+          "symbol"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enabledPatterns": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PatternType"
+            }
+          },
+          "parameterOverridesJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "weightStrategyJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "riskPerTradePercent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "maxTotalPositions": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "backtestReturnPct": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestWinRate": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestMaxDrawdown": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestSharpe": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "backtestTrades": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "backtestFrom": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "backtestTo": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },

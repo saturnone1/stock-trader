@@ -400,6 +400,61 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void SymbolProfileAssignmentHasOneApplicationBoundaryAndNoDirectEfConsumers()
+    {
+        var repository = FindRepositoryRoot();
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/SymbolProfileEndpoints.cs"));
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/SymbolProfileContracts.cs"));
+        var service = File.ReadAllText(Path.Combine(
+            repository, "Application/SymbolProfiles/SymbolProfileManagementService.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/SymbolProfileStore.cs"));
+        var detection = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/PatternDetectionService.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+
+        endpoints.Should().Contain("SymbolProfileManagementService service");
+        endpoints.Should().Contain("SymbolProfileUpsertRequest request");
+        endpoints.Should().NotContain("AppDbContext");
+        endpoints.Should().NotContain("SymbolProfiles.");
+        endpoints.Should().NotContain("DateTime.UtcNow");
+        contracts.Should().Contain("public sealed record SymbolProfileResponse(");
+        service.Should().Contain("PatternCatalog.IsBuiltIn");
+        service.Should().Contain("SymbolProfilePolicy.DefaultRiskPerTradePercent");
+        service.Should().Contain("MarketSymbolPolicy.Normalize");
+        service.Should().NotContain("StockTrader.Data");
+        service.Should().NotContain("StockTrader.Models");
+        store.Should().Contain("ISymbolProfileStore");
+        store.Should().Contain("ExecuteUpdateAsync(");
+        detection.Should().Contain("SymbolProfileManagementService");
+        detection.Should().NotContain("AppDbContext");
+        detection.Should().NotContain("Microsoft.EntityFrameworkCore");
+        registrations.Should().Contain("AddScoped<ISymbolProfileStore, SymbolProfileStore>()");
+    }
+
+    [Fact]
+    public void ResearchAndLiveBoundariesShareTheMarketSymbolPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var consumers = new[]
+        {
+            "Application/Settings/SettingsManagementService.cs",
+            "Application/MarketData/DailyMarketDataSyncPolicy.cs",
+            "Application/SymbolProfiles/SymbolProfileManagementService.cs",
+            "Services/Backtest/BacktestDataPreparer.cs",
+            "Services/StrategyPreview/PatternPreviewService.cs",
+            "Services/Patterns/PatternDetectionService.cs"
+        };
+
+        consumers
+            .Where(path => !File.ReadAllText(Path.Combine(repository, path))
+                .Contains("MarketSymbolPolicy.", StringComparison.Ordinal))
+            .Should().BeEmpty("종목 식별자는 미리보기·백테스트·실시간·설정에서 같아야 합니다");
+    }
+
+    [Fact]
     public void DesktopSettingsUsesServerCatalogsAndPureRequestProjection()
     {
         var repository = FindRepositoryRoot();

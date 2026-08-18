@@ -9,12 +9,8 @@ public static class DailyMarketDataSyncPolicy
     public static IReadOnlyList<string> ResolveRequiredSymbols(
         IEnumerable<string> watchlistSymbols,
         DataSource source) =>
-        watchlistSymbols
-            .Append(DataProviderCatalog.RegimeBenchmarkSymbol(source))
-            .Where(symbol => !string.IsNullOrWhiteSpace(symbol))
-            .Select(symbol => symbol.Trim().ToUpperInvariant())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        MarketSymbolPolicy.NormalizeMany(
+            watchlistSymbols.Append(DataProviderCatalog.RegimeBenchmarkSymbol(source)));
 
     public static int MinimumRequiredBars(string symbol, DataSource source) =>
         symbol.Equals(
