@@ -28,6 +28,7 @@ infrastructure.
   warmup, and supported timeframes.
 - Strategy definitions: one typed aggregate compiled for preview, backtest, and live execution.
 - Pattern identity, stable codes, investor-facing names, and built-in support: one domain catalog.
+- Order execution modes and their operator-facing meaning: one domain catalog.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -190,6 +191,15 @@ Stored display names have a separate server-owned normalized key with a database
 The application pre-check provides an early conflict response, while the persistence adapter maps
 the remaining concurrent-write race to the same typed conflict result.
 
+User settings now cross `SettingsManagementService` and `ISettingsManagementStore`. The HTTP
+boundary accepts and returns explicit contracts instead of the EF `UserSettings` entity, validates
+provider, order-mode, built-in-pattern, watchlist, and risk invariants before persistence, and uses
+the injected application clock for modification time. Secret values are write-only through the API;
+responses expose only configured-state booleans. `OrderMode` and its operator-facing labels live in
+`Domain.Trading.OrderModeCatalog`, while provider and pattern choices are projected from their
+existing domain catalogs. The desktop consumes those server choices and normalizes watchlist input
+in a tested settings model rather than inventing fallback codes.
+
 Background optimization delegates OOS boundaries, deterministic 60/40 search planning, restart
 chunk positions, and duration checks to `OptimizationJobExecutionPolicy`. Both synchronous and
 background optimization consume `OptimizationBacktestAssumptions`, so candidate rankings share one
@@ -280,4 +290,6 @@ actual stored strategy name when one is available.
   runtime calculator and split evaluation caching, dispatch, categories, and math.
 - `adr/0023-own-pattern-identity-and-display-metadata.md`: preserve pattern identity compatibility
   while centralizing investor-facing names and built-in support metadata in Domain.
+- `adr/0024-isolate-settings-management.md`: move settings validation and mutation behind an
+  application use case, keep secrets write-only, and drive desktop choices from domain catalogs.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

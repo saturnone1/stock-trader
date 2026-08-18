@@ -14,17 +14,20 @@ public class LiveParameterService : ILiveParameterService
     private readonly IOptions<PatternSettings> _patternSettings;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<LiveParameterService> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public LiveParameterService(
         ISettingsRepository settingsRepo,
         IOptions<PatternSettings> patternSettings,
         IWebHostEnvironment env,
-        ILogger<LiveParameterService> logger)
+        ILogger<LiveParameterService> logger,
+        TimeProvider timeProvider)
     {
         _settingsRepo = settingsRepo;
         _patternSettings = patternSettings;
         _env = env;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task ApplyToLiveAsync(
@@ -44,6 +47,7 @@ public class LiveParameterService : ILiveParameterService
         settings.DailyLossLimitPercent = dailyLossLimitPercent;
         settings.MaxTotalPositions = maxTotalPositions;
         settings.MaxPositionsPerSector = maxPositionsPerSector;
+        settings.LastModified = _timeProvider.GetUtcNow().UtcDateTime;
         await _settingsRepo.SaveAsync(settings, ct);
 
         _logger.LogInformation("Live parameter overrides saved to DB");

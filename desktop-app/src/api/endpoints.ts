@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { DashboardData, Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus } from './types';
+import type { DashboardData, Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus, SettingsResponse, SettingsUpdateRequest, SettingsUpdateResponse } from './types';
 
 const CUMULATIVE_RSI_PRESET_ID = -1001
 const CUMULATIVE_RSI_PRESET_NAME = '누적 RSI 절대수익'
@@ -405,8 +405,8 @@ export const portfolioApi = {
 };
 
 export const settingsApi = {
-  get: () => api.get('/api/settings'),
-  update: (data: any) => api.put('/api/settings', data),
+  get: () => api.get<SettingsResponse>('/api/settings'),
+  update: (data: SettingsUpdateRequest) => api.put<SettingsUpdateResponse>('/api/settings', data),
 };
 
 export const accountApi = {

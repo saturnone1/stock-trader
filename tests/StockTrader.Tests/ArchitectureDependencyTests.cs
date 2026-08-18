@@ -352,9 +352,76 @@ public class ArchitectureDependencyTests
         File.Exists(Path.Combine(domain, "MarketData", "TimeFrame.cs")).Should().BeTrue();
         File.Exists(Path.Combine(domain, "MarketData", "DataSource.cs")).Should().BeTrue();
         File.Exists(Path.Combine(domain, "Strategies", "PatternType.cs")).Should().BeTrue();
+        File.Exists(Path.Combine(domain, "Trading", "OrderMode.cs")).Should().BeTrue();
         File.Exists(Path.Combine(legacyEnums, "TimeFrame.cs")).Should().BeFalse();
         File.Exists(Path.Combine(legacyEnums, "DataSource.cs")).Should().BeFalse();
         File.Exists(Path.Combine(repository, "Models", "PatternType.cs")).Should().BeFalse();
+        File.Exists(Path.Combine(legacyEnums, "OrderMode.cs")).Should().BeFalse();
+    }
+
+    [Fact]
+    public void SettingsHttpBoundaryUsesAnApplicationUseCaseAndExplicitContracts()
+    {
+        var repository = FindRepositoryRoot();
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/SettingsEndpoints.cs"));
+        var contracts = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/SettingsContracts.cs"));
+        var service = File.ReadAllText(Path.Combine(
+            repository, "Application/Settings/SettingsManagementService.cs"));
+        var store = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/SettingsManagementStore.cs"));
+
+        endpoints.Should().Contain("SettingsManagementService service");
+        endpoints.Should().Contain("SettingsUpdateRequest request");
+        endpoints.Should().NotContain("ISettingsRepository");
+        endpoints.Should().NotContain("UserSettings");
+        endpoints.Should().NotContain("DateTime.UtcNow");
+        contracts.Should().Contain("TelegramBotTokenConfigured");
+        contracts.Should().Contain("DiscordWebhookConfigured");
+        contracts.Should().Contain("SmtpPasswordConfigured");
+        contracts.Should().NotContain("MaskSecret");
+        service.Should().Contain("timeProvider.GetUtcNow()");
+        service.Should().NotContain("StockTrader.Data");
+        service.Should().NotContain("StockTrader.Models");
+        store.Should().Contain("ISettingsManagementStore");
+        store.Should().Contain("UserSettings");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            repository, "desktop-app/openapi/stocktrader_desktop.json")));
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        var responseSchema = schemas.GetProperty("SettingsResponse").GetRawText();
+        var requestSchema = schemas.GetProperty("SettingsUpdateRequest").GetRawText();
+        responseSchema.Should().NotContain("telegramBotToken\"");
+        responseSchema.Should().NotContain("discordWebhookUrl\"");
+        responseSchema.Should().NotContain("smtpPassword\"");
+        requestSchema.Should().Contain("telegramBotToken");
+        requestSchema.Should().Contain("discordWebhookUrl");
+        requestSchema.Should().Contain("smtpPassword");
+    }
+
+    [Fact]
+    public void DesktopSettingsUsesServerCatalogsAndPureRequestProjection()
+    {
+        var repository = FindRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(repository, "desktop-app/src/pages/Settings.svelte"));
+        var model = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/settings/settingsModel.js"));
+        var tests = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/settings/settingsModel.test.js"));
+
+        page.Should().Contain("createSettingsForm(data)");
+        page.Should().Contain("buildSettingsRequest(form)");
+        page.Should().Contain("form.orderModes as option");
+        page.Should().Contain("form.dataProviders as option");
+        page.Should().Contain("form.patterns as pattern");
+        page.Should().Contain("패턴 빌더 미리보기는 빌더에서 지정한 종목");
+        page.Should().NotContain("SignalOnly");
+        page.Should().NotContain("YahooFinance");
+        page.Should().NotContain("data.OrderMode");
+        page.Should().NotContain("data.WatchlistSymbols");
+        model.Should().Contain("export function buildSettingsRequest(");
+        model.Should().Contain("export function parseWatchlist(");
+        tests.Should().Contain("fails closed instead of inventing unsupported defaults");
     }
 
     [Fact]

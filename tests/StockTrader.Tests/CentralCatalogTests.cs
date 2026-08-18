@@ -29,6 +29,20 @@ public class CentralCatalogTests
     }
 
     [Fact]
+    public void OrderModeCatalogPreservesPersistedIdentityAndHasInvestorFacingMetadata()
+    {
+        Enum.GetValues<OrderMode>().Select(value => (value, (int)value)).Should().Equal(
+            (OrderMode.AlertOnly, 0),
+            (OrderMode.AutoOrder, 1));
+        OrderModeCatalog.All.Select(item => item.Value)
+            .Should().Equal(Enum.GetValues<OrderMode>());
+        OrderModeCatalog.All.Should().OnlyContain(item =>
+            item.Code == item.Value.ToString()
+            && !string.IsNullOrWhiteSpace(item.DisplayName)
+            && !string.IsNullOrWhiteSpace(item.Description));
+    }
+
+    [Fact]
     public void IndicatorCatalogHasUniqueCodesAndCompleteUiMetadata()
     {
         IndicatorCatalog.All.Should().HaveCount(34);

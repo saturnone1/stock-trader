@@ -1,6 +1,7 @@
 using StockTrader.Configuration;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.Settings;
 using StockTrader.Data.Repositories;
 using StockTrader.Data.Migrations;
 using StockTrader.Models.Enums;
@@ -20,6 +21,8 @@ public static class DataServiceExtensions
         services.AddScoped<IPatternStatsRepository, PatternStatsRepository>();
         services.AddScoped<ITradeRepository, TradeRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
+        services.AddScoped<ISettingsManagementStore, SettingsManagementStore>();
+        services.AddScoped<SettingsManagementService>();
         services.AddScoped<IOptimizationJobExecutionStore, OptimizationJobExecutionStore>();
         services.AddScoped<IOptimizationJobLifecycle, OptimizationJobLifecycle>();
         services.AddScoped<IOptimizationJobControlStore, OptimizationJobControlStore>();

@@ -170,6 +170,9 @@ export type CustomPatternWriteRequest = Required<
   components['schemas']['CustomPatternWriteRequest']
 >;
 export type StrategyDocument = components['schemas']['StrategyDocument'];
+export type SettingsResponse = components['schemas']['SettingsResponse'];
+export type SettingsUpdateRequest = components['schemas']['SettingsUpdateRequest'];
+export type SettingsUpdateResponse = components['schemas']['SettingsUpdateResponse'];
 
 export interface Pattern {
   id: string;
