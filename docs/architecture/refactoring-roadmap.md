@@ -433,6 +433,10 @@ future-dated observations before recommendation sizing. The operational lifetime
 configuration rather than a workflow-owned constant, while historical rows remain available for
 audit.
 
+The desktop page set now follows the same single-owner rule. Unreachable legacy dashboard, signal,
+risk, and ML pages and their private API wrappers are removed; supported backend APIs remain intact,
+while every retained Svelte page belongs to the explicit navigation flow.
+
 Live signal recommendation now reads completed strategy trades, total open positions, executed
 session entries, and ticker sectors through `ILiveSignalEvaluationStore`. Its snapshot contains no
 EF entities, and cooldown, drawdown, and sizing rules consume the persistence-independent

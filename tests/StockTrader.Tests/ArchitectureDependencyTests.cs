@@ -2472,8 +2472,6 @@ public class ArchitectureDependencyTests
             repository, "Services/Patterns/PatternDetectionService.cs"));
         var registrations = File.ReadAllText(Path.Combine(
             repository, "Extensions/ServiceCollectionExtensions.cs"));
-        var signalPage = File.ReadAllText(Path.Combine(
-            repository, "desktop-app/src/pages/Signals.svelte"));
         var statsPage = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/pages/PatternStats.svelte"));
 
@@ -2506,9 +2504,6 @@ public class ArchitectureDependencyTests
         registrations.Should().Contain("AddScoped<IPatternStatisticsQuery, PatternStatisticsQuery>");
         registrations.Should().Contain("AddScoped<ISignalListQuery, SignalListQuery>");
 
-        signalPage.Should().Contain("data?.signals");
-        signalPage.Should().NotContain("data?.Signals");
-        signalPage.Should().NotContain("row.PatternWinRate");
         statsPage.Should().Contain("data?.stats");
         statsPage.Should().NotContain("data?.Stats");
         statsPage.Should().NotContain("row.Expectancy");
@@ -2587,12 +2582,8 @@ public class ArchitectureDependencyTests
             repository, "Data/Repositories/DashboardActivityStore.cs"));
         var riskContract = File.ReadAllText(Path.Combine(
             repository, "Application/Risk/RiskOverviewContracts.cs"));
-        var endpoints = File.ReadAllText(Path.Combine(
-            repository, "desktop-app/src/api/endpoints.ts"));
         var legacyTypes = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/api/types.ts"));
-        var page = File.ReadAllText(Path.Combine(
-            repository, "desktop-app/src/pages/Dashboard.svelte"));
 
         File.ReadAllLines(endpointPath).Length.Should().BeLessThanOrEqualTo(25);
         endpoint.Should().Contain("IDashboardQuery");
@@ -2613,15 +2604,7 @@ public class ArchitectureDependencyTests
         activityStore.Should().Contain("ThenByDescending(recommendation => recommendation.Id)");
         riskContract.Should().Contain("OpenPositionListSnapshot OpenPositions");
         riskContract.Should().Contain("OrderMode OrderMode");
-        endpoints.Should().Contain("api.get<DashboardResponse>('/api/dashboard')");
-        endpoints.Should().NotContain("totalExposure: 0");
-        endpoints.Should().NotContain("maxDrawdown: Math.max");
         legacyTypes.Should().NotContain("interface DashboardData");
-        page.Should().Contain("dashboard.risk.dailyPnL");
-        page.Should().Contain("dashboard.risk.dailyPnLPercent");
-        page.Should().NotContain("totalExposure");
-        page.Should().NotContain("maxDrawdown");
-        page.Should().NotContain("riskLevel");
     }
 
     [Fact]
@@ -2754,6 +2737,31 @@ public class ArchitectureDependencyTests
         dashboardStore.Should().Contain("signalDetectedThroughInclusiveUtc");
         settings.Should().Contain("\"SignalLifecycle\"");
         settings.Should().Contain("\"ActionableLifetimeHours\": 24");
+    }
+
+    [Fact]
+    public void DesktopHasNoUnreachableLegacyOperationalPagesOrApiWrappers()
+    {
+        var repository = FindRepositoryRoot();
+        var retiredPages = new[]
+        {
+            "Dashboard.svelte",
+            "Signals.svelte",
+            "Risk.svelte",
+            "Ml.svelte",
+        };
+        var pages = Path.Combine(repository, "desktop-app/src/pages");
+        var app = File.ReadAllText(Path.Combine(repository, "desktop-app/src/App.svelte"));
+        var endpoints = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/endpoints.ts"));
+
+        foreach (var page in retiredPages)
+            File.Exists(Path.Combine(pages, page)).Should().BeFalse();
+        app.Should().NotContain("currentPage === 'ml'");
+        endpoints.Should().NotContain("export const dashboardApi");
+        endpoints.Should().NotContain("export const signalApi");
+        endpoints.Should().NotContain("export const riskApi");
+        endpoints.Should().NotContain("export const mlApi");
     }
 
     private static string FindRepositoryRoot()

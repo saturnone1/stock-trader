@@ -58,6 +58,8 @@ infrastructure.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
+- Desktop page ownership: every retained page is reachable from the single navigation flow; legacy
+  dashboard, signal, risk, and ML screens with no route are removed rather than maintained in parallel.
 - Operations: `docker-compose.yml` locally and `scripts/deploy-k3s.sh` for K3s production.
 
 ## Current transition seams
