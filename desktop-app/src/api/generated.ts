@@ -376,7 +376,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["RiskOverviewResponse"];
+                    };
                 };
             };
         };
@@ -3312,6 +3314,24 @@ export interface components {
         };
         /** @enum {unknown} */
         PatternType: "GapUpPullback" | "Breakout" | "VwapReversion" | "RsiMeanReversion" | "TrendPullback" | "OpeningRangeBreakout" | "VolumeSpikeContinuation" | "EarningsDrift" | "IndexRegimeFilter" | "VolatilityExpansion" | "MomentumReversal" | "MultiTimeframeTrend" | "MeanReversionChannel" | "Rsi2Bollinger" | "VolatilityBreakout" | "Tqqq200Sma" | "CumulativeRsi2" | "Custom";
+        PositionRiskResponse: {
+            symbol: string;
+            pattern: string;
+            /** Format: double */
+            entryPrice: number;
+            /** Format: double */
+            currentPrice: number;
+            /** Format: double */
+            stopLossPrice: number;
+            /** Format: double */
+            riskPerShare: number;
+            /** Format: double */
+            rMultiple: number;
+            /** Format: double */
+            unrealizedPnL: number;
+            /** Format: int32 */
+            holdingDays: number;
+        };
         PositionSymbolRequest: {
             symbol: null | string;
         };
@@ -3344,6 +3364,42 @@ export interface components {
             marketCap: number;
             /** Format: double */
             marketCapPercentile: number;
+        };
+        RiskOverviewResponse: {
+            riskState: components["schemas"]["RiskStateResponse"];
+            settings: components["schemas"]["RiskSettingsResponse"];
+            positionRMultiples: components["schemas"]["PositionRiskResponse"][];
+            /** Format: double */
+            totalUnrealizedPnL: number;
+        };
+        RiskSettingsResponse: {
+            /** Format: double */
+            accountSize: number;
+            /** Format: double */
+            riskPerTradePercent: number;
+            /** Format: double */
+            dailyLossLimitPercent: number;
+            /** Format: int32 */
+            maxTotalPositions: number;
+            /** Format: int32 */
+            maxPositionsPerSector: number;
+            /** Format: double */
+            minExpectancy: number;
+            /** Format: double */
+            minConfidence: number;
+        };
+        RiskStateResponse: {
+            /** Format: double */
+            dailyPnL: number;
+            /** Format: double */
+            dailyPnLPercent: number;
+            isTradingHalted: boolean;
+            /** Format: int32 */
+            openPositionCount: number;
+            positionsPerSector: {
+                [key: string]: number;
+            };
+            lastUpdated: string;
         };
         RuleFieldRange: {
             scope?: string;

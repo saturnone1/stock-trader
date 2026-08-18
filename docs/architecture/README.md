@@ -335,4 +335,6 @@ defaults, active-profile selection, and modification time have one application o
   focused ports, isolate EF contexts, and remove mutable open-position caching.
 - `adr/0036-isolate-live-order-management.md`: move operator exit and reconciliation orchestration
   behind one use case and route every persisted position through its owning account.
+- `adr/0037-isolate-risk-overview-and-clock.md`: move risk-screen projection behind one application
+  query, inject observation time, and count legacy accountless positions exactly once.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

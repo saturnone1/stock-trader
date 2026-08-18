@@ -344,6 +344,12 @@ Exit gate: the engine runs without EF, ASP.NET, HTTP, broker SDKs, or system tim
 - Make endpoints and workers thin adapters.
 - Centralize retries, clock access, market sessions, and idempotency.
 
+Progress: the risk overview endpoint now delegates its complete projection to
+`IRiskOverviewQuery`; deterministic policies own R-multiple, holding-day, and halt-alert timing.
+Risk services and monitoring use one injected observation clock per evaluation, monitor thresholds
+are validated typed options, and legacy accountless positions contribute to portfolio PnL exactly
+once. The endpoint contains no persistence access or portfolio arithmetic.
+
 Exit gate: endpoints and workers contain no strategy or portfolio calculations.
 
 ## Phase 4 — Persistence and contracts

@@ -1,0 +1,36 @@
+using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using StockTrader.Configuration;
+using StockTrader.Extensions;
+
+namespace StockTrader.Tests;
+
+public class TradingSettingsValidationTests
+{
+    [Theory]
+    [InlineData("Trading:RiskMonitorMaxConsecutiveFailures", "0")]
+    [InlineData("Trading:RiskMonitorCooldownSeconds", "0")]
+    [InlineData("Trading:RiskHaltAlertIntervalMinutes", "-1")]
+    [InlineData("Trading:RiskPerTradePercent", "1.1")]
+    [InlineData("Trading:MarketOpenET", "not-a-time")]
+    public void InvalidOperationalSettingsFailValidation(string key, string value)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = "Data Source=:memory:",
+                [key] = value
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddStockTraderServices(configuration, includeHostedServices: false);
+        using var provider = services.BuildServiceProvider();
+
+        var readSettings = () => provider.GetRequiredService<IOptions<TradingSettings>>().Value;
+
+        readSettings.Should().Throw<OptionsValidationException>();
+    }
+}

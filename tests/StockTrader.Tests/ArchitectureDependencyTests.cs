@@ -2265,6 +2265,49 @@ public class ArchitectureDependencyTests
         accountPage.Should().NotContain("row.AccountName");
     }
 
+    [Fact]
+    public void RiskOverviewHasAThinApiAndDeterministicApplicationProjection()
+    {
+        var repository = FindRepositoryRoot();
+        var endpoints = File.ReadAllText(Path.Combine(repository, "Api/RiskEndpoints.cs"));
+        var queryContract = File.ReadAllText(Path.Combine(
+            repository, "Application/Risk/RiskOverviewContracts.cs"));
+        var projection = File.ReadAllText(Path.Combine(
+            repository, "Application/Risk/PositionRiskProjectionPolicy.cs"));
+        var query = File.ReadAllText(Path.Combine(
+            repository, "Services/Risk/RiskOverviewQuery.cs"));
+        var riskService = File.ReadAllText(Path.Combine(
+            repository, "Services/Risk/MultiAccountRiskService.cs"));
+        var worker = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/RiskMonitorService.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+
+        endpoints.Should().Contain("IRiskOverviewQuery");
+        endpoints.Should().Contain("Produces<RiskOverviewResponse>");
+        endpoints.Should().NotContain("IOpenPositionStore");
+        endpoints.Should().NotContain("ISettingsRepository");
+        endpoints.Should().NotContain("DateTime.UtcNow");
+        File.ReadAllLines(Path.Combine(repository, "Api/RiskEndpoints.cs")).Length
+            .Should().BeLessThanOrEqualTo(20);
+
+        queryContract.Should().Contain("interface IRiskOverviewQuery");
+        queryContract.Should().NotContain("StockTrader.Models");
+        queryContract.Should().NotContain("EntityFrameworkCore");
+        projection.Should().NotContain("DateTime.UtcNow");
+        query.Should().Contain("TimeProvider");
+        query.Should().Contain("PositionRiskProjectionPolicy.Evaluate");
+        query.Should().NotContain("DateTime.UtcNow");
+        riskService.Should().Contain("legacyPositionAccountId");
+        riskService.Should().Contain("TimeProvider");
+        riskService.Should().NotContain("DateTime.UtcNow");
+        worker.Should().Contain("RiskAlertPolicy.IsDue");
+        worker.Should().NotContain("DateTime.UtcNow");
+        registrations.Should().Contain("AddScoped<IRiskOverviewQuery, RiskOverviewQuery>");
+        registrations.Should().Contain("RiskMonitorMaxConsecutiveFailures");
+        registrations.Should().Contain("ValidateOnStart()");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

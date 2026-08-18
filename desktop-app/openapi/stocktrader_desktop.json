@@ -231,7 +231,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskOverviewResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4739,6 +4746,56 @@
           "Custom"
         ]
       },
+      "PositionRiskResponse": {
+        "required": [
+          "symbol",
+          "pattern",
+          "entryPrice",
+          "currentPrice",
+          "stopLossPrice",
+          "riskPerShare",
+          "rMultiple",
+          "unrealizedPnL",
+          "holdingDays"
+        ],
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "entryPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "currentPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "stopLossPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "riskPerShare": {
+            "type": "number",
+            "format": "double"
+          },
+          "rMultiple": {
+            "type": "number",
+            "format": "double"
+          },
+          "unrealizedPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "holdingDays": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "PositionSymbolRequest": {
         "required": [
           "symbol"
@@ -4854,6 +4911,113 @@
           "marketCapPercentile": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "RiskOverviewResponse": {
+        "required": [
+          "riskState",
+          "settings",
+          "positionRMultiples",
+          "totalUnrealizedPnL"
+        ],
+        "type": "object",
+        "properties": {
+          "riskState": {
+            "$ref": "#/components/schemas/RiskStateResponse"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RiskSettingsResponse"
+          },
+          "positionRMultiples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PositionRiskResponse"
+            }
+          },
+          "totalUnrealizedPnL": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "RiskSettingsResponse": {
+        "required": [
+          "accountSize",
+          "riskPerTradePercent",
+          "dailyLossLimitPercent",
+          "maxTotalPositions",
+          "maxPositionsPerSector",
+          "minExpectancy",
+          "minConfidence"
+        ],
+        "type": "object",
+        "properties": {
+          "accountSize": {
+            "type": "number",
+            "format": "double"
+          },
+          "riskPerTradePercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "dailyLossLimitPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxTotalPositions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "maxPositionsPerSector": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "minExpectancy": {
+            "type": "number",
+            "format": "double"
+          },
+          "minConfidence": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "RiskStateResponse": {
+        "required": [
+          "dailyPnL",
+          "dailyPnLPercent",
+          "isTradingHalted",
+          "openPositionCount",
+          "positionsPerSector",
+          "lastUpdated"
+        ],
+        "type": "object",
+        "properties": {
+          "dailyPnL": {
+            "type": "number",
+            "format": "double"
+          },
+          "dailyPnLPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "isTradingHalted": {
+            "type": "boolean"
+          },
+          "openPositionCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "positionsPerSector": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "lastUpdated": {
+            "type": "string"
           }
         }
       },

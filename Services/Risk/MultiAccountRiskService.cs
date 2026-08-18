@@ -25,6 +25,7 @@ public class MultiAccountRiskService : IRiskManagementService
     private readonly TradingSettings _tradingSettings;
     private readonly IAccountManager _accountManager;
     private readonly IMemoryCache _cache;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<MultiAccountRiskService> _logger;
 
     // 계좌 ID → 독립 RiskState (ConcurrentDictionary: 스레드 안전)
@@ -45,12 +46,14 @@ public class MultiAccountRiskService : IRiskManagementService
         IOptions<TradingSettings> tradingSettings,
         IAccountManager accountManager,
         IMemoryCache cache,
+        TimeProvider timeProvider,
         ILogger<MultiAccountRiskService> logger)
     {
         _scopeFactory = scopeFactory;
         _tradingSettings = tradingSettings.Value;
         _accountManager = accountManager;
         _cache = cache;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -138,23 +141,29 @@ public class MultiAccountRiskService : IRiskManagementService
         var settings = await settingsRepo.GetAsync(ct);
         var allOpenPositions = await positions.GetOpenPositionsAsync(ct);
         var accounts = await _accountManager.GetAllAccountsAsync(ct);
+        var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
 
-        if (accounts.Count == 0)
+        var enabledAccounts = accounts.Where(account => account.IsEnabled).ToList();
+        if (enabledAccounts.Count == 0)
         {
-            // 계좌 없음: 기본 상태 업데이트
-            UpdateFallbackState(settings, allOpenPositions);
+            // 활성 계좌 없음: 포지션을 한 번만 집계하는 기본 상태 업데이트
+            UpdateFallbackState(settings, allOpenPositions, observedAt);
             return;
         }
+
+        var legacyPositionAccountId = enabledAccounts[0].Id;
 
         decimal totalPnL = 0;
         decimal totalAccountSize = 0;
 
-        foreach (var account in accounts.Where(a => a.IsEnabled))
+        foreach (var account in enabledAccounts)
         {
             // 이 계좌 소속 포지션만 필터링.
-            // AccountId == 0은 레거시(마이그레이션 전) 데이터 — 첫 번째 활성 계좌 소속으로 간주.
+            // AccountId == 0은 레거시(마이그레이션 전) 데이터이므로 목록의 첫 활성 계좌에만
+            // 귀속한다. 모든 계좌에 포함하면 포트폴리오 손익이 활성 계좌 수만큼 중복된다.
             var accountPositions = allOpenPositions
-                .Where(p => p.AccountId == account.Id || p.AccountId == 0)
+                .Where(p => p.AccountId == account.Id
+                    || (p.AccountId == 0 && account.Id == legacyPositionAccountId))
                 .ToList();
 
             // 계좌별 잔고 조회 (브로커 API 호출)
@@ -204,7 +213,7 @@ public class MultiAccountRiskService : IRiskManagementService
                 IsTradingHalted = pnlPercent <= -_tradingSettings.DailyLossLimitPercent,
                 OpenPositionCount = accountPositions.Count,
                 PositionsPerSector = sectorCounts,
-                LastUpdated = DateTime.UtcNow
+                LastUpdated = observedAt
             };
 
             _accountRiskStates[account.Id] = accountRiskState;
@@ -233,11 +242,14 @@ public class MultiAccountRiskService : IRiskManagementService
             IsTradingHalted = totalPnLPercent <= -_tradingSettings.DailyLossLimitPercent,
             OpenPositionCount = allOpenPositions.Count,
             PositionsPerSector = allSectorCounts,
-            LastUpdated = DateTime.UtcNow
+            LastUpdated = observedAt
         };
     }
 
-    private void UpdateFallbackState(UserSettings settings, List<Models.Position> openPositions)
+    private void UpdateFallbackState(
+        UserSettings settings,
+        List<Models.Position> openPositions,
+        DateTime observedAt)
     {
         var dailyPnL = openPositions.Sum(p => p.UnrealizedPnL);
         var dailyPnLPercent = settings.AccountSize > 0 ? dailyPnL / settings.AccountSize : 0;
@@ -248,7 +260,7 @@ public class MultiAccountRiskService : IRiskManagementService
             DailyPnLPercent = dailyPnLPercent,
             IsTradingHalted = dailyPnLPercent <= -_tradingSettings.DailyLossLimitPercent,
             OpenPositionCount = openPositions.Count,
-            LastUpdated = DateTime.UtcNow
+            LastUpdated = observedAt
         };
     }
 }
