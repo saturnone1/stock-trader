@@ -1,6 +1,6 @@
+using StockTrader.Application.Backtesting;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
-using StockTrader.Models.Enums;
 
 namespace StockTrader.Services.Backtest;
 
@@ -24,14 +24,13 @@ internal static class BacktestResultBuilder
         var winCount = tradeCycles.Count(trade => trade.IsWin);
         var winRate = tradeCycles.Count > 0 ? (decimal)winCount / tradeCycles.Count : 0;
 
-        var calendarDays = tradeCycles.Count > 0
-            ? Math.Max(1, (int)(tradeCycles.Max(t => t.ExitTime) - tradeCycles.Min(t => t.EntryTime)).TotalDays)
-            : 1;
-        var annualizedReturn = PerformanceCalculator.ComputeAnnualizedReturn(
-            totalReturnPercent * 100, calendarDays);
-        var sortinoRatio = PerformanceCalculator.ComputeSortinoRatio(tradeCycles, input.TimeFrame);
-        var calmarRatio = PerformanceCalculator.ComputeCalmarRatio(
-            annualizedReturn, input.MaxDrawdown * 100);
+        var periodPerformance = BacktestPerformancePolicy.Evaluate(
+            totalReturnPercent,
+            input.MaxDrawdown,
+            tradeCycles.Select(trade => trade.PnLPercent).ToList(),
+            input.From,
+            input.To);
+        var annualizedReturnPercent = periodPerformance.AnnualizedReturnFraction * 100m;
         var profitFactor = PerformanceCalculator.ComputeProfitFactor(tradeCycles);
 
         var perPatternStats = PerformanceCalculator.ComputePerPatternStats(
@@ -55,7 +54,7 @@ internal static class BacktestResultBuilder
             var recommendedSize = Math.Round(halfKellyFraction * 100, 1);
             var winRatePercent = Math.Round(winRate * 100, 1);
             input.Warnings.Add($"[권장 파라미터] Half-Kelly 포지션 크기: {recommendedSize}% | " +
-                               $"WinRate {winRatePercent}% | ProfitFactor {profitFactor:F2} | Sortino {sortinoRatio:F2}");
+                               $"WinRate {winRatePercent}% | ProfitFactor {profitFactor:F2} | Sortino {periodPerformance.SortinoRatio:F2}");
         }
 
         return new BacktestResult
@@ -64,7 +63,7 @@ internal static class BacktestResultBuilder
             TotalReturn = totalReturn,
             TotalReturnPercent = totalReturnPercent,
             MaxDrawdown = input.MaxDrawdown,
-            SharpeRatio = PerformanceCalculator.ComputeSharpeRatio(tradeCycles, input.TimeFrame),
+            SharpeRatio = periodPerformance.SharpeRatio,
             TotalTrades = tradeCycles.Count,
             OverallWinRate = winRate,
             PerPatternStats = perPatternStats,
@@ -77,10 +76,10 @@ internal static class BacktestResultBuilder
             WeightReducedTrades = input.WeightReducedTrades,
             Warnings = input.Warnings,
             ActualDataFrom = input.ActualDataFrom,
-            SortinoRatio = sortinoRatio,
-            CalmarRatio = calmarRatio,
+            SortinoRatio = periodPerformance.SortinoRatio,
+            CalmarRatio = periodPerformance.CalmarRatio,
             ProfitFactor = profitFactor,
-            AnnualizedReturn = annualizedReturn,
+            AnnualizedReturn = annualizedReturnPercent,
             KellyFraction = kellyFraction,
             HalfKellyFraction = halfKellyFraction,
             SurvivorshipBiasWarning = survivorshipWarning,
@@ -137,7 +136,6 @@ internal sealed record BacktestResultInputs
     public required List<string> Warnings { get; init; }
     public required DateTime From { get; init; }
     public required DateTime To { get; init; }
-    public required TimeFrame TimeFrame { get; init; }
     public required decimal InitialCapital { get; init; }
     public required decimal CurrentEquity { get; init; }
     public required decimal MaxDrawdown { get; init; }

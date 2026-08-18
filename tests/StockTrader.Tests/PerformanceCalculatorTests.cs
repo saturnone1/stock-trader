@@ -48,14 +48,6 @@ public class PerformanceCalculatorTests
     }
 
     [Fact]
-    public void ComputeAnnualizedReturn_UsesCalendarDays()
-    {
-        var result = PerformanceCalculator.ComputeAnnualizedReturn(10m, 365);
-
-        result.Should().BeApproximately(10m, 0.02m);
-    }
-
-    [Fact]
     public void AggregateTradeCycles_TreatsPartialExitsAsOneTrade()
     {
         var entryTime = new DateTime(2024, 1, 2);
@@ -73,18 +65,4 @@ public class PerformanceCalculatorTests
         cycles[0].IsWin.Should().BeTrue();
     }
 
-    [Fact]
-    public void ComputeSortinoRatio_UsesObservedTradeFrequency()
-    {
-        var trades = Enumerable.Range(0, 12).Select(index => new TradeRecord
-        {
-            EntryTime = new DateTime(2024, 1, 1).AddMonths(index),
-            ExitTime = new DateTime(2024, 1, 2).AddMonths(index),
-            PnLPercent = index % 3 == 0 ? -0.02m : 0.01m
-        }).ToList();
-
-        var result = PerformanceCalculator.ComputeSortinoRatio(trades, TimeFrame.Weekly);
-
-        result.Should().BeInRange(0m, 2m);
-    }
 }

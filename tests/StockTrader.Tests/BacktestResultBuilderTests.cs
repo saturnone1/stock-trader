@@ -1,4 +1,5 @@
 using FluentAssertions;
+using StockTrader.Application.Backtesting;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.Backtest;
@@ -23,7 +24,6 @@ public class BacktestResultBuilderTests
             Warnings = [],
             From = new DateTime(2025, 1, 1),
             To = new DateTime(2025, 1, 31),
-            TimeFrame = TimeFrame.Daily,
             InitialCapital = 1_000m,
             CurrentEquity = 1_060m,
             MaxDrawdown = 0.04m,
@@ -41,6 +41,16 @@ public class BacktestResultBuilderTests
         result.TotalCommissionCost.Should().Be(2m);
         result.WeightStrategyApplied.Should().BeTrue();
         result.WeightReducedTrades.Should().Be(1);
+        var expectedAnnualizedFraction = BacktestPerformancePolicy.ComputeAnnualizedReturnFraction(
+            0.06m,
+            new DateTime(2025, 1, 1),
+            new DateTime(2025, 1, 31));
+        result.AnnualizedReturn.Should().BeApproximately(
+            expectedAnnualizedFraction * 100m,
+            0.0001m);
+        result.CalmarRatio.Should().BeApproximately(
+            expectedAnnualizedFraction / 0.04m,
+            0.0001m);
         result.PerPatternStats.Values.Should().OnlyContain(stats =>
             stats.LastUpdated == new DateTime(2025, 1, 31));
         result.PerStrategyStats.Values.Should().OnlyContain(stats =>
@@ -71,7 +81,6 @@ public class BacktestResultBuilderTests
         Warnings = [],
         From = new DateTime(2025, 1, 1),
         To = new DateTime(2025, 1, 2),
-        TimeFrame = TimeFrame.Daily,
         InitialCapital = 1_000m,
         CurrentEquity = 1_000m,
         MaxDrawdown = 0m,

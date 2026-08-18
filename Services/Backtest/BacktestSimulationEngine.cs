@@ -162,7 +162,6 @@ public sealed class BacktestSimulationEngine
             Warnings = warnings,
             From = from,
             To = to,
-            TimeFrame = timeFrame,
             InitialCapital = initialCapital,
             CurrentEquity = portfolio.CurrentEquity,
             MaxDrawdown = portfolio.MaxDrawdown,
