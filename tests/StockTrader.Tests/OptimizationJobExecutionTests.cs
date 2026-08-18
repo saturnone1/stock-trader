@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Api;
 using StockTrader.Application.Optimization;
-using StockTrader.BackgroundServices;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -42,7 +41,7 @@ public class OptimizationJobExecutionTests
     [Fact]
     public void CalculateStage1StartChunk_SkipsCompletedStage1AfterRestart()
     {
-        var startChunk = OptimizationJobExecutor.CalculateStage1StartChunk(
+        var startChunk = OptimizationJobExecutionPolicy.CalculateStage1StartChunk(
             testedCombinations: 600,
             stage1CombinationCount: 600,
             persistedChunkIndex: 2,
@@ -61,7 +60,7 @@ public class OptimizationJobExecutionTests
         int chunkSize,
         int expectedChunk)
     {
-        var startChunk = OptimizationJobExecutor.CalculateStage2StartChunk(
+        var startChunk = OptimizationJobExecutionPolicy.CalculateStage2StartChunk(
             testedCombinations,
             stage1CombinationCount,
             chunkSize);
@@ -91,7 +90,7 @@ public class OptimizationJobExecutionTests
             CreateSnapshot(6m)
         };
 
-        var selected = OptimizationJobExecutor.BuildStage2CandidatePool(
+        var selected = OptimizationJobExecutionPolicy.BuildStage2CandidatePool(
             preferred,
             stage1,
             all,
@@ -102,6 +101,54 @@ public class OptimizationJobExecutionTests
         selected.Select(s => s.AtrStopMultiplier).Should().OnlyHaveUniqueItems();
         selected.Select(s => s.AtrStopMultiplier).Should().NotContain([1m, 2m]);
         selected.First().AtrStopMultiplier.Should().Be(3m);
+    }
+
+    [Fact]
+    public void SplitPeriod_ClampsOutOfSampleToHalfAndUsesOneBoundary()
+    {
+        var from = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var to = from.AddDays(100);
+
+        var split = OptimizationJobExecutionPolicy.SplitPeriod(from, to, 0.75m);
+
+        split.InSampleTo.Should().Be(from.AddDays(50));
+        split.OutOfSampleFrom.Should().Be(split.InSampleTo);
+        split.OutOfSampleTo.Should().Be(to);
+        split.HasOutOfSample.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BuildSearchPlan_IsDeterministicAndPreservesSixtyFortyBudget()
+    {
+        var combinations = Enumerable.Range(1, 20)
+            .Select(value => CreateSnapshot(value))
+            .ToList();
+
+        var first = OptimizationJobExecutionPolicy.BuildSearchPlan(combinations, 10);
+        var resumed = OptimizationJobExecutionPolicy.BuildSearchPlan(combinations, 10);
+
+        first.Stage1Combinations.Should().HaveCount(6);
+        first.Stage2Budget.Should().Be(4);
+        first.Stage1Combinations.Select(value => value.AtrStopMultiplier)
+            .Should().Equal(resumed.Stage1Combinations.Select(value => value.AtrStopMultiplier));
+        first.Stage1Combinations.Select(value => value.AtrStopMultiplier)
+            .Should().Equal(1m, 4m, 7m, 11m, 14m, 17m);
+    }
+
+    [Fact]
+    public void HasExceededDuration_UsesInjectedObservationBoundary()
+    {
+        var startedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        OptimizationJobExecutionPolicy.HasExceededDuration(
+                startedAt, startedAt.AddHours(2), 2m)
+            .Should().BeFalse("the existing limit is exceeded only after the boundary");
+        OptimizationJobExecutionPolicy.HasExceededDuration(
+                startedAt, startedAt.AddHours(2).AddTicks(1), 2m)
+            .Should().BeTrue();
+        OptimizationJobExecutionPolicy.HasExceededDuration(
+                startedAt, startedAt.AddYears(1), null)
+            .Should().BeFalse();
     }
 
     private static OptimizeParamSnapshot CreateSnapshot(decimal atrStop)

@@ -165,6 +165,12 @@ Stored display names have a separate server-owned normalized key with a database
 The application pre-check provides an early conflict response, while the persistence adapter maps
 the remaining concurrent-write race to the same typed conflict result.
 
+Background optimization delegates OOS boundaries, deterministic 60/40 search planning, restart
+chunk positions, and duration checks to `OptimizationJobExecutionPolicy`. Both synchronous and
+background optimization consume `OptimizationBacktestAssumptions`, so candidate rankings share one
+slippage, commission, and cost-model baseline. Optimization workers receive `TimeProvider` instead
+of reading system time; the executor is capped below 500 lines as an I/O coordinator.
+
 ## Decision records
 
 - `adr/0001-modular-monolith.md`: why a modular monolith is the target.
@@ -182,4 +188,6 @@ the remaining concurrent-write race to the same typed conflict result.
   side-effect-free build-time OpenAPI metadata and reject drift in CI.
 - `adr/0008-separate-strategy-document-from-storage.md`: keep preview, backtest, optimization, and
   runtime compilation independent from the EF storage entity.
+- `adr/0009-deterministic-optimization-job-policy.md`: keep search planning, restart semantics,
+  clocks, and candidate execution assumptions deterministic across optimization modes.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

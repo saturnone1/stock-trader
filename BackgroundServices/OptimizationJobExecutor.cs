@@ -14,13 +14,6 @@ using StockTrader.Services.Patterns;
 
 namespace StockTrader.BackgroundServices;
 
-internal enum OptimizationJobExecutionDisposition
-{
-    Completed,
-    Paused,
-    Cancelled
-}
-
 /// <summary>
 /// 단일 OptimizationJob을 실제로 실행하는 Executor.
 /// Singleton 수명이며 Scoped 서비스(BacktestService, IOptimizationRepository)는
@@ -31,16 +24,18 @@ public class OptimizationJobExecutor
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OptimizationJobExecutor> _logger;
+    private readonly TimeProvider _clock;
 
-    private static readonly JsonSerializerOptions JsonOpts =
-        new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     public OptimizationJobExecutor(
         IServiceScopeFactory scopeFactory,
-        ILogger<OptimizationJobExecutor> logger)
+        ILogger<OptimizationJobExecutor> logger,
+        TimeProvider clock)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _clock = clock;
     }
 
     /// <summary>
@@ -76,14 +71,8 @@ public class OptimizationJobExecutor
         }
 
         // ── 2. IS/OOS 기간 분할 ──
-        var oosPercent = Math.Clamp(request.OosPercent, 0m, 0.5m);
-        var totalDays  = (request.To - request.From).TotalDays;
-        var isTo       = oosPercent > 0
-            ? request.From.AddDays(totalDays * (double)(1m - oosPercent))
-            : request.To;
-        var oosFrom = isTo;
-        var oosTo   = request.To;
-        var hasOos  = oosPercent > 0 && oosFrom < oosTo;
+        var period = OptimizationJobExecutionPolicy.SplitPeriod(
+            request.From, request.To, request.OosPercent);
 
         // ── 3. 데이터 피드 및 레짐 맵 1회 준비 ──
         var dataFeed = request.DataSource.HasValue
@@ -138,36 +127,19 @@ public class OptimizationJobExecutor
                 job.TotalCombinations);
         }
 
-        // Random seed를 job.Id로 고정 → 재시작 시 동일 순서 재현
-        var rng = new Random(job.Id);
-
-        List<OptimizeParamSnapshot> stage1Combinations;
-        int stage2Budget = 0;
-        if (allCombinations.Count <= request.MaxCombinations)
-        {
-            stage1Combinations = allCombinations;
-        }
-        else
-        {
-            var stage1Budget = (int)(request.MaxCombinations * 0.6);
-            stage2Budget = request.MaxCombinations - stage1Budget;
-            stage1Combinations = allCombinations
-                .OrderBy(_ => rng.Next())
-                .Take(stage1Budget)
-                .ToList();
-        }
+        var searchPlan = OptimizationJobExecutionPolicy.BuildSearchPlan(
+            allCombinations, request.MaxCombinations);
+        var stage1Combinations = searchPlan.Stage1Combinations;
+        var stage2Budget = searchPlan.Stage2Budget;
 
         var riskParams  = backtestService.DefaultRiskParams;
-        var startedAt   = job.StartedAt ?? DateTime.UtcNow;
-        var maxDuration = job.MaxDurationHours.HasValue
-            ? TimeSpan.FromHours((double)job.MaxDurationHours.Value)
-            : TimeSpan.MaxValue;
+        var startedAt   = job.StartedAt ?? UtcNow;
 
         // ── 6. Stage 1 청크 반복 ──
         int chunkSize   = Math.Max(1, job.ChunkSize);
         int totalChunks = (int)Math.Ceiling(stage1Combinations.Count / (double)chunkSize);
         var stage1Results = new List<OptimizeResultItem>();
-        int stage1StartChunk = CalculateStage1StartChunk(
+        int stage1StartChunk = OptimizationJobExecutionPolicy.CalculateStage1StartChunk(
             job.TestedCombinations,
             stage1Combinations.Count,
             job.CurrentChunkIndex,
@@ -181,7 +153,8 @@ public class OptimizationJobExecutor
             if (stopDisposition.HasValue)
                 return stopDisposition.Value;
 
-            if (DateTime.UtcNow - startedAt > maxDuration)
+            if (OptimizationJobExecutionPolicy.HasExceededDuration(
+                    startedAt, UtcNow, job.MaxDurationHours))
             {
                 _logger.LogInformation(
                     "[Optimization] Job {Id}: MaxDurationHours {H}h 도달, 중단",
@@ -204,21 +177,22 @@ public class OptimizationJobExecutor
 
             var chunkResults = await RunChunkAsync(
                 chunk, request, backtestService, customDetectors, fullDataMap, dataByTimeFrame,
-                regimeByDate, riskParams, isTo, ct);
+                regimeByDate, riskParams, period.InSampleTo, ct);
 
             stage1Results.AddRange(chunkResults);
 
             if (chunkResults.Count > 0)
             {
                 var dbResults = chunkResults
-                    .Select((r, i) => MapToDbResult(r, job.Id, job.TestedCombinations + i))
+                    .Select((r, i) => MapToDbResult(
+                        r, job.Id, job.TestedCombinations + i, UtcNow))
                     .ToList();
                 await repo.MergeResultsAsync(job.Id, dbResults, job.TopResultsToKeep, job.RankBy);
             }
 
             job.TestedCombinations += chunk.Count;
             job.CurrentChunkIndex   = chunkIdx + 1;
-            job.LastProgressAt      = DateTime.UtcNow;
+            job.LastProgressAt      = UtcNow;
             await repo.UpdateJobProgressAsync(
                 job.Id,
                 job.TestedCombinations,
@@ -250,7 +224,7 @@ public class OptimizationJobExecutor
 
                 int stage2ChunkCount = (int)Math.Ceiling(neighbors.Count / (double)chunkSize);
                 int stage2StartChunk = Math.Min(
-                    CalculateStage2StartChunk(
+                    OptimizationJobExecutionPolicy.CalculateStage2StartChunk(
                         job.TestedCombinations,
                         stage1Combinations.Count,
                         chunkSize),
@@ -263,7 +237,8 @@ public class OptimizationJobExecutor
                     if (stopDisposition.HasValue)
                         return stopDisposition.Value;
 
-                    if (DateTime.UtcNow - startedAt > maxDuration) break;
+                    if (OptimizationJobExecutionPolicy.HasExceededDuration(
+                            startedAt, UtcNow, job.MaxDurationHours)) break;
                     if (job.MaxTestedCombinations.HasValue
                         && job.TestedCombinations >= job.MaxTestedCombinations.Value) break;
 
@@ -273,19 +248,20 @@ public class OptimizationJobExecutor
 
                     var chunkResults2 = await RunChunkAsync(
                         chunk2, request, backtestService, customDetectors, fullDataMap, dataByTimeFrame,
-                        regimeByDate, riskParams, isTo, ct);
+                        regimeByDate, riskParams, period.InSampleTo, ct);
 
                     if (chunkResults2.Count > 0)
                     {
                         var dbResults2 = chunkResults2
-                            .Select((r, i) => MapToDbResult(r, job.Id, job.TestedCombinations + i))
+                            .Select((r, i) => MapToDbResult(
+                                r, job.Id, job.TestedCombinations + i, UtcNow))
                             .ToList();
                         await repo.MergeResultsAsync(job.Id, dbResults2, job.TopResultsToKeep, job.RankBy);
                     }
 
                     job.TestedCombinations += chunk2.Count;
                     job.CurrentChunkIndex   = totalChunks + c + 1;
-                    job.LastProgressAt      = DateTime.UtcNow;
+                    job.LastProgressAt      = UtcNow;
                     await repo.UpdateJobProgressAsync(
                         job.Id,
                         job.TestedCombinations,
@@ -296,7 +272,7 @@ public class OptimizationJobExecutor
         }
 
         // ── 8. OOS 검증: DB 상위 N개 재백테스트 ──
-        if (hasOos)
+        if (period.HasOutOfSample)
         {
             _logger.LogInformation("[Optimization] Job {Id}: OOS 검증 시작", job.Id);
 
@@ -336,9 +312,11 @@ public class OptimizationJobExecutor
                 {
                     var oosResult = await backtestService.RunCoreWithPreloadedDataAsync(
                         request.Symbols, comboDataMap, oosDetectors, regimeByDate,
-                        oosFrom, oosTo, request.InitialCapital,
-                        0.05m, 1.00m, comboTf, riskParams,
-                        null, SlippageModel.Adaptive, null, null, ct);
+                        period.OutOfSampleFrom, period.OutOfSampleTo, request.InitialCapital,
+                        OptimizationBacktestAssumptions.SlippagePercent,
+                        OptimizationBacktestAssumptions.CommissionPerTrade,
+                        comboTf, riskParams, null,
+                        OptimizationBacktestAssumptions.CostModel, null, null, ct);
 
                     dbResult.OosTotalReturn     = oosResult.TotalReturnPercent * 100;
                     dbResult.OosSortinoRatio     = oosResult.SortinoRatio;
@@ -366,8 +344,6 @@ public class OptimizationJobExecutor
         return OptimizationJobExecutionDisposition.Completed;
     }
 
-    // ── 청크 단위 백테스트 실행 ──────────────────────────────────────────────────
-
     private async Task<List<OptimizeResultItem>> RunChunkAsync(
         List<OptimizeParamSnapshot> chunk,
         OptimizeRequest request,
@@ -377,7 +353,7 @@ public class OptimizationJobExecutor
         Dictionary<TimeFrame, IReadOnlyDictionary<string, PreparedSymbolData>> dataByTimeFrame,
         Dictionary<DateOnly, MarketRegime> regimeByDate,
         BacktestRiskParameters riskParams,
-        DateTime isTo,
+        DateTime inSampleTo,
         CancellationToken ct)
     {
         var results = new List<OptimizeResultItem>(chunk.Count);
@@ -405,9 +381,11 @@ public class OptimizationJobExecutor
 
                 var btResult = await backtestService.RunCoreWithPreloadedDataAsync(
                     request.Symbols, comboDataMap, detectors, regimeByDate,
-                    request.From, isTo, request.InitialCapital,
-                    0.05m, 1.00m, comboTf, riskParams,
-                    null, SlippageModel.Adaptive, null, null, ct);
+                    request.From, inSampleTo, request.InitialCapital,
+                    OptimizationBacktestAssumptions.SlippagePercent,
+                    OptimizationBacktestAssumptions.CommissionPerTrade,
+                    comboTf, riskParams, null,
+                    OptimizationBacktestAssumptions.CostModel, null, null, ct);
 
                 results.Add(new OptimizeResultItem
                 {
@@ -432,10 +410,11 @@ public class OptimizationJobExecutor
         return results;
     }
 
-    // ── 매핑 헬퍼 ────────────────────────────────────────────────────────────────
-
     private static OptimizationResult MapToDbResult(
-        OptimizeResultItem item, int jobId, long testedAtCombination)
+        OptimizeResultItem item,
+        int jobId,
+        long testedAtCombination,
+        DateTime discoveredAt)
     {
         return new OptimizationResult
         {
@@ -451,75 +430,8 @@ public class OptimizationJobExecutor
             CalmarRatio         = item.CalmarRatio,
             AnnualizedReturn    = item.AnnualizedReturn,
             TestedAtCombination = testedAtCombination,
-            DiscoveredAt        = DateTime.UtcNow,
+            DiscoveredAt        = discoveredAt,
         };
-    }
-
-    internal static int CalculateStage1StartChunk(
-        long testedCombinations,
-        int stage1CombinationCount,
-        int persistedChunkIndex,
-        int totalChunks)
-    {
-        if (testedCombinations >= stage1CombinationCount)
-            return totalChunks;
-
-        return Math.Clamp(persistedChunkIndex, 0, totalChunks);
-    }
-
-    internal static int CalculateStage2StartChunk(
-        long testedCombinations,
-        int stage1CombinationCount,
-        int chunkSize)
-    {
-        var safeChunkSize = Math.Max(1, chunkSize);
-        var processedStage2 = Math.Max(0L, testedCombinations - stage1CombinationCount);
-        return (int)Math.Ceiling(processedStage2 / (double)safeChunkSize);
-    }
-
-    internal static List<OptimizeParamSnapshot> BuildStage2CandidatePool(
-        IEnumerable<OptimizeParamSnapshot> preferredCandidates,
-        List<OptimizeParamSnapshot> stage1Combinations,
-        List<OptimizeParamSnapshot> allCombinations,
-        int budget,
-        int randomSeed)
-    {
-        if (budget <= 0)
-            return new List<OptimizeParamSnapshot>();
-
-        static string SnapshotKey(OptimizeParamSnapshot snapshot)
-            => JsonSerializer.Serialize(snapshot);
-
-        var rng = new Random(randomSeed);
-        var selected = new List<OptimizeParamSnapshot>(budget);
-        var seenKeys = new HashSet<string>(stage1Combinations.Select(SnapshotKey));
-
-        void TryAdd(OptimizeParamSnapshot candidate)
-        {
-            if (selected.Count >= budget)
-                return;
-
-            if (!seenKeys.Add(SnapshotKey(candidate)))
-                return;
-
-            selected.Add(candidate);
-        }
-
-        foreach (var candidate in preferredCandidates)
-        {
-            TryAdd(candidate);
-            if (selected.Count >= budget)
-                return selected;
-        }
-
-        foreach (var candidate in allCombinations.OrderBy(_ => rng.Next()))
-        {
-            TryAdd(candidate);
-            if (selected.Count >= budget)
-                break;
-        }
-
-        return selected;
     }
 
     private async Task<OptimizationJobExecutionDisposition?> GetExternalStopDispositionAsync(
@@ -547,13 +459,18 @@ public class OptimizationJobExecutor
         List<OptimizeParamSnapshot> seeds;
         if (stage1Results.Count >= 3)
         {
-            seeds = OptimizationResultRanker.RankOptimizeResults(stage1Results, job.RankBy, 5)
+            seeds = OptimizationResultRanker.RankOptimizeResults(
+                    stage1Results,
+                    job.RankBy,
+                    OptimizationJobExecutionPolicy.FineSearchSeedCount)
                 .Select(r => r.Params)
                 .ToList();
         }
         else
         {
-            var persistedTopResults = await repo.GetResultsAsync(job.Id, 5);
+            var persistedTopResults = await repo.GetResultsAsync(
+                job.Id,
+                OptimizationJobExecutionPolicy.FineSearchSeedCount);
             seeds = persistedTopResults
                 .Select(r => JsonSerializer.Deserialize<OptimizeParamSnapshot>(r.ParamsJson, JsonOpts))
                 .Where(s => s != null)
@@ -569,11 +486,13 @@ public class OptimizationJobExecutor
                 stage1Combinations)
             : new List<OptimizeParamSnapshot>();
 
-        return BuildStage2CandidatePool(
+        return OptimizationJobExecutionPolicy.BuildStage2CandidatePool(
             neighbors,
             stage1Combinations,
             allCombinations,
             stage2Budget,
             job.Id);
     }
+
+    private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
 }

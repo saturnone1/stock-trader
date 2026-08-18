@@ -13,11 +13,6 @@ namespace StockTrader.Services.Backtest;
 /// <summary>파라미터 후보 준비, IS/OOS 실행과 결과 랭킹을 조정하는 최적화 유스케이스입니다.</summary>
 public sealed class BacktestOptimizationService
 {
-    private const decimal OptimizationSlippagePercent = 0.05m;
-    private const decimal OptimizationCommissionPerTrade = 1.00m;
-    private const decimal CoarseSearchFraction = 0.60m;
-    private const int FineSearchSeedCount = 5;
-
     private readonly IDataFeedServiceFactory _dataFeeds;
     private readonly ICustomStrategyDetectorFactory _detectors;
     private readonly BacktestDataPreparer _dataPreparer;
@@ -55,8 +50,10 @@ public sealed class BacktestOptimizationService
         var allCombinations = StrategyOptimizationSpace.GenerateOptimizeCombinations(
             request.OptimizeParams);
         var totalCombinations = allCombinations.Count;
-        var (coarseCombinations, fineBudget) = SelectSearchStages(
+        var searchPlan = OptimizationJobExecutionPolicy.BuildSearchPlan(
             allCombinations, request.MaxCombinations);
+        var coarseCombinations = searchPlan.Stage1Combinations;
+        var fineBudget = searchPlan.Stage2Budget;
 
         _logger.LogInformation(
             "파라미터 최적화 시작: 총 {Total}개 조합, Stage1={Stage1}개, Stage2 예산={Stage2}개, 심볼={Symbols}",
@@ -65,13 +62,8 @@ public sealed class BacktestOptimizationService
             fineBudget,
             string.Join(",", request.Symbols));
 
-        var oosPercent = Math.Clamp(request.OosPercent, 0m, 0.5m);
-        var totalDays = (request.To - request.From).TotalDays;
-        var isTo = oosPercent > 0
-            ? request.From.AddDays(totalDays * (double)(1m - oosPercent))
-            : request.To;
-        var oosFrom = isTo;
-        var hasOos = oosPercent > 0 && oosFrom < request.To;
+        var period = OptimizationJobExecutionPolicy.SplitPeriod(
+            request.From, request.To, request.OosPercent);
         var dataFeed = request.DataSource.HasValue
             ? _dataFeeds.GetService(request.DataSource.Value)
             : await _dataFeeds.GetServiceAsync(ct);
@@ -107,7 +99,7 @@ public sealed class BacktestOptimizationService
                 defaultData,
                 regimeByDate,
                 request.From,
-                isTo,
+                period.InSampleTo,
                 risk,
                 "최적화 조합 백테스트 실패 — 건너뜀",
                 ct);
@@ -117,7 +109,9 @@ public sealed class BacktestOptimizationService
         if (fineBudget > 0 && results.Count >= 3)
         {
             var seeds = OptimizationResultRanker.RankOptimizeResults(
-                results, request.RankBy, FineSearchSeedCount);
+                results,
+                request.RankBy,
+                OptimizationJobExecutionPolicy.FineSearchSeedCount);
             var neighbors = StrategyOptimizationSpace.GenerateNeighborCombinations(
                 seeds.Select(result => result.Params).ToList(),
                 request.OptimizeParams,
@@ -135,7 +129,7 @@ public sealed class BacktestOptimizationService
                     defaultData,
                     regimeByDate,
                     request.From,
-                    isTo,
+                    period.InSampleTo,
                     risk,
                     "Stage 2 백테스트 실패",
                     ct);
@@ -145,7 +139,7 @@ public sealed class BacktestOptimizationService
 
         var ranked = OptimizationResultRanker.RankOptimizeResults(
             results, request.RankBy, request.MaxResults);
-        if (hasOos)
+        if (period.HasOutOfSample)
         {
             foreach (var item in ranked)
             {
@@ -155,8 +149,8 @@ public sealed class BacktestOptimizationService
                     dataByTimeFrame,
                     defaultData,
                     regimeByDate,
-                    oosFrom,
-                    request.To,
+                    period.OutOfSampleFrom,
+                    period.OutOfSampleTo,
                     risk,
                     "OOS 백테스트 실패",
                     ct);
@@ -176,9 +170,9 @@ public sealed class BacktestOptimizationService
             ElapsedMs = stopwatch.ElapsedMilliseconds,
             Results = ranked,
             IsFrom = request.From,
-            IsTo = isTo,
-            OosFrom = hasOos ? oosFrom : null,
-            OosTo = hasOos ? request.To : null
+            IsTo = period.InSampleTo,
+            OosFrom = period.HasOutOfSample ? period.OutOfSampleFrom : null,
+            OosTo = period.HasOutOfSample ? period.OutOfSampleTo : null
         };
     }
 
@@ -262,12 +256,12 @@ public sealed class BacktestOptimizationService
                 from,
                 to,
                 request.InitialCapital,
-                OptimizationSlippagePercent,
-                OptimizationCommissionPerTrade,
+                OptimizationBacktestAssumptions.SlippagePercent,
+                OptimizationBacktestAssumptions.CommissionPerTrade,
                 timeFrame,
                 risk,
                 null,
-                SlippageModel.Adaptive,
+                OptimizationBacktestAssumptions.CostModel,
                 null,
                 _patternSettings,
                 ct);
@@ -277,17 +271,6 @@ public sealed class BacktestOptimizationService
             _logger.LogWarning(ex, failureMessage);
             return null;
         }
-    }
-
-    private static (List<OptimizeParamSnapshot> Coarse, int FineBudget) SelectSearchStages(
-        List<OptimizeParamSnapshot> all,
-        int maximum)
-    {
-        if (all.Count <= maximum) return (all, 0);
-        var coarseBudget = (int)(maximum * CoarseSearchFraction);
-        return (
-            StrategyOptimizationSpace.SelectDeterministicSample(all, coarseBudget),
-            maximum - coarseBudget);
     }
 
     private static OptimizeResultItem ToItem(

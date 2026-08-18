@@ -1,5 +1,6 @@
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
+using StockTrader.Application.Optimization;
 
 namespace StockTrader.BackgroundServices;
 
@@ -16,17 +17,20 @@ public class ContinuousOptimizationService : BackgroundService
     private readonly OptimizationJobExecutor _executor;
     private readonly OptimizationAutoTuneService _autoTuneService;
     private readonly ILogger<ContinuousOptimizationService> _logger;
+    private readonly TimeProvider _clock;
 
     public ContinuousOptimizationService(
         IServiceScopeFactory scopeFactory,
         OptimizationJobExecutor executor,
         OptimizationAutoTuneService autoTuneService,
-        ILogger<ContinuousOptimizationService> logger)
+        ILogger<ContinuousOptimizationService> logger,
+        TimeProvider clock)
     {
         _scopeFactory = scopeFactory;
         _executor = executor;
         _autoTuneService = autoTuneService;
         _logger = logger;
+        _clock = clock;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -48,14 +52,14 @@ public class ContinuousOptimizationService : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "다음 Pending Job 조회 실패 — {Delay}후 재시도", PollInterval);
-                await Task.Delay(PollInterval, stoppingToken);
+                await Task.Delay(PollInterval, _clock, stoppingToken);
                 continue;
             }
 
             if (job == null)
             {
                 _logger.LogDebug("대기 중인 최적화 작업 없음 — {Delay} 대기", PollInterval);
-                await Task.Delay(PollInterval, stoppingToken);
+                await Task.Delay(PollInterval, _clock, stoppingToken);
                 continue;
             }
 
@@ -65,7 +69,7 @@ public class ContinuousOptimizationService : BackgroundService
 
             // Running 상태로 전환
             job.Status    = OptimizationJobStatus.Running;
-            job.StartedAt ??= DateTime.UtcNow;
+            job.StartedAt ??= UtcNow;
 
             try
             {
@@ -74,7 +78,7 @@ public class ContinuousOptimizationService : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Job {Id} 상태 업데이트 실패 (Running 전환)", job.Id);
-                await Task.Delay(PollInterval, stoppingToken);
+                await Task.Delay(PollInterval, _clock, stoppingToken);
                 continue;
             }
 
@@ -111,7 +115,7 @@ public class ContinuousOptimizationService : BackgroundService
                 await PersistJobStateAsync(
                     job.Id,
                     OptimizationJobStatus.Failed,
-                    completedAt: DateTime.UtcNow,
+                    completedAt: UtcNow,
                     errorMessage: ex.Message);
             }
         }
@@ -129,7 +133,7 @@ public class ContinuousOptimizationService : BackgroundService
                 await PersistJobStateAsync(
                     jobId,
                     OptimizationJobStatus.Completed,
-                    completedAt: DateTime.UtcNow,
+                    completedAt: UtcNow,
                     clearErrorMessage: true);
                 break;
             case OptimizationJobExecutionDisposition.Paused:
@@ -139,7 +143,7 @@ public class ContinuousOptimizationService : BackgroundService
                 await PersistJobStateAsync(
                     jobId,
                     OptimizationJobStatus.Cancelled,
-                    completedAt: DateTime.UtcNow,
+                    completedAt: UtcNow,
                     clearErrorMessage: true);
                 _logger.LogInformation("최적화 작업 취소: Job {Id}", jobId);
                 break;
@@ -176,4 +180,6 @@ public class ContinuousOptimizationService : BackgroundService
             _logger.LogError(ex, "Job {Id} 상태 저장 실패", jobId);
         }
     }
+
+    private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
 }

@@ -986,8 +986,35 @@ public class ArchitectureDependencyTests
     {
         var repository = FindRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(repository, "BackgroundServices/OptimizationJobExecutor.cs"));
+        var worker = File.ReadAllText(Path.Combine(repository, "BackgroundServices/ContinuousOptimizationService.cs"));
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationJobExecutionPolicy.cs"));
+        var assumptions = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationBacktestAssumptions.cs"));
+        var synchronous = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestOptimizationService.cs"));
 
         source.Should().Contain("BacktestDataPreparer");
+        source.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
+        source.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
+        source.Should().Contain("TimeProvider");
+        source.Should().NotContain("DateTime.UtcNow");
+        worker.Should().Contain("TimeProvider");
+        worker.Should().Contain("Task.Delay(PollInterval, _clock, stoppingToken)");
+        worker.Should().NotContain("DateTime.UtcNow");
+        policy.Should().Contain("InitialExplorationFraction = 0.60m");
+        policy.Should().Contain("FineSearchSeedCount = 5");
+        assumptions.Should().Contain("SlippagePercent = 0.05m");
+        assumptions.Should().Contain("CommissionPerTrade = 1.00m");
+        source.Should().Contain("OptimizationBacktestAssumptions.SlippagePercent");
+        synchronous.Should().Contain("OptimizationBacktestAssumptions.SlippagePercent");
+        synchronous.Should().Contain("OptimizationJobExecutionPolicy.SplitPeriod(");
+        synchronous.Should().Contain("OptimizationJobExecutionPolicy.BuildSearchPlan(");
+        synchronous.Should().NotContain("Math.Clamp(request.OosPercent");
+        source.Should().NotContain("0.05m, 1.00m");
+        File.ReadAllLines(Path.Combine(
+                repository, "BackgroundServices/OptimizationJobExecutor.cs"))
+            .Length.Should().BeLessThanOrEqualTo(500);
         source.Should().NotContain("GetHistoricalBarsAsync");
         source.Should().NotContain("IndicatorService.ExtractCloses");
         source.Should().NotContain("new PatternSettings()");
