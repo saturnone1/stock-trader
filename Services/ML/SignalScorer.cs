@@ -29,11 +29,11 @@ public sealed class SignalScorer : ISignalScorer
             lock (_modelLock) return _model is not null;
         }
     }
-    public DateTime? TrainedAt { get; private set; }
-    public int TrainingSamples { get; private set; }
-    public double LastAccuracy { get; private set; }
-    public double LastAuc { get; private set; }
-    public List<FeatureImportance> FeatureImportances { get; private set; } = [];
+    private DateTime? _trainedAt;
+    private int _trainingSamples;
+    private double _lastAccuracy;
+    private double _lastAuc;
+    private IReadOnlyList<FeatureImportance> _featureImportances = [];
 
     public SignalScorer(
         IOptions<MLSettings> settings,
@@ -133,6 +133,20 @@ public sealed class SignalScorer : ISignalScorer
         }
     }
 
+    public SignalScorerStatus GetStatus()
+    {
+        lock (_modelLock)
+        {
+            return new SignalScorerStatus(
+                _model is not null,
+                _trainedAt,
+                _trainingSamples,
+                _lastAccuracy,
+                _lastAuc,
+                _featureImportances.ToArray());
+        }
+    }
+
     private void Publish(ITransformer model, SignalScorerModelManifest manifest)
     {
         var engine = _mlContext.Model
@@ -141,11 +155,11 @@ public sealed class SignalScorer : ISignalScorer
         {
             _model = model;
             _predictionEngine = engine;
-            TrainedAt = manifest.TrainedAtUtc;
-            TrainingSamples = manifest.TrainingSamples;
-            LastAccuracy = manifest.ValidationAccuracy;
-            LastAuc = manifest.ValidationAuc;
-            FeatureImportances = manifest.FeatureImportances ?? [];
+            _trainedAt = manifest.TrainedAtUtc;
+            _trainingSamples = manifest.TrainingSamples;
+            _lastAccuracy = manifest.ValidationAccuracy;
+            _lastAuc = manifest.ValidationAuc;
+            _featureImportances = manifest.FeatureImportances ?? [];
         }
     }
 }

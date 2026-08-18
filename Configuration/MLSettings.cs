@@ -20,6 +20,9 @@ public class MLSettings
     /// <summary>레짐 분류기 학습용 공급자 기준 종목 히스토리 일수</summary>
     public int RegimeTrainingDays { get; set; }
 
+    /// <summary>한 번의 시그널 스코러 학습에서 읽을 최근 인과적 샘플 상한</summary>
+    public int SignalTrainingSampleLimit { get; set; }
+
     /// <summary>ML 스코어를 기존 Confidence와 혼합할 가중치 (0=기존만, 1=ML만)</summary>
     public double MlScoreBlendWeight { get; set; }
 

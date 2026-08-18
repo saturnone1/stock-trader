@@ -1930,7 +1930,7 @@ public class ArchitectureDependencyTests
         var store = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/SignalScoringTrainingStore.cs"));
         var training = File.ReadAllText(Path.Combine(
-            repository, "Services/ML/MLModelTrainingService.cs"));
+            repository, "Application/MachineLearning/MLModelTrainingService.cs"));
         var entryFactory = File.ReadAllText(Path.Combine(
             repository, "Application/Execution/LiveEntryPositionFactory.cs"));
         var execution = File.ReadAllText(Path.Combine(
@@ -2023,6 +2023,93 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void MachineLearningTrainingIsAnApplicationUseCaseWithExplicitApiContracts()
+    {
+        var repository = FindRepositoryRoot();
+        var trainingContracts = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/MlTrainingContracts.cs"));
+        var scoringContracts = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/SignalScoringContracts.cs"));
+        var regimeContracts = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/MarketRegimeModelContracts.cs"));
+        var service = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/MLModelTrainingService.cs"));
+        var statusQuery = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/MlModelStatusQuery.cs"));
+        var runState = File.ReadAllText(Path.Combine(
+            repository, "Application/MachineLearning/MlTrainingRunState.cs"));
+        var regimeData = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/MarketRegimeTrainingDataSource.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(
+            repository, "Api/MlEndpoints.cs"));
+        var apiContracts = File.ReadAllText(Path.Combine(
+            repository, "Api/MlContracts.cs"));
+        var registrations = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+        var openApi = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/openapi/stocktrader_desktop.json"));
+        var generated = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/api/generated.ts"));
+
+        foreach (var contracts in new[]
+                 {
+                     trainingContracts,
+                     scoringContracts,
+                     regimeContracts,
+                 })
+        {
+            contracts.Should().NotContain("StockTrader.Services");
+            contracts.Should().NotContain("StockTrader.Data");
+            contracts.Should().NotContain("Microsoft.EntityFrameworkCore");
+            contracts.Should().NotContain("Microsoft.AspNetCore");
+        }
+
+        service.Should().Contain("IMarketRegimeTrainingDataSource regimeData");
+        service.Should().Contain("ISignalScoringTrainingStore trainingStore");
+        service.Should().Contain("MlTrainingRunState runState");
+        statusQuery.Should().Contain("regimeClassifier.GetStatus()");
+        statusQuery.Should().Contain("signalScorer.GetStatus()");
+        statusQuery.Should().NotContain("StockTrader.Services");
+        statusQuery.Should().NotContain("StockTrader.Data");
+        service.Should().NotContain("IServiceScopeFactory");
+        service.Should().NotContain("CreateScope(");
+        service.Should().NotContain("GetRequiredService<");
+        service.Should().NotContain("StockTrader.Services");
+        service.Should().NotContain("StockTrader.Data");
+        service.Should().NotContain("IOptions<");
+        service.Should().NotContain("5000");
+        regimeData.Should().Contain("IDataFeedServiceFactory dataFeeds");
+        regimeData.Should().Contain("DataProviderCatalog.RegimeBenchmarkSymbol(");
+        registrations.Should().Contain(
+            "AddScoped<IMLModelTrainingService, MLModelTrainingService>()");
+        registrations.Should().Contain(
+            "AddSingleton<IMlModelStatusQuery, MlModelStatusQuery>()");
+        registrations.Should().Contain(
+            "AddScoped<IMarketRegimeTrainingDataSource, MarketRegimeTrainingDataSource>()");
+        registrations.Should().Contain("AddSingleton<MlTrainingRunState>()");
+        registrations.Should().NotContain(
+            "AddSingleton<IMLModelTrainingService, MLModelTrainingService>()");
+        endpoints.Should().Contain("MlStatusResponse");
+        endpoints.Should().Contain("MlTrainingResponse");
+        endpoints.Should().Contain("MlTrainingErrorResponse");
+        endpoints.Should().Contain("IMlModelStatusQuery statusQuery");
+        endpoints.Should().Contain("IMLModelTrainingService training");
+        endpoints.Should().NotContain("new {");
+        endpoints.Should().NotContain("StockTrader.Services");
+        runState.Should().Contain("Interlocked.CompareExchange");
+        runState.Should().Contain("Volatile.Read");
+        apiContracts.Should().Contain("MlStatusResponse");
+        openApi.Should().Contain("#/components/schemas/MlStatusResponse");
+        generated.Should().Contain("MlStatusResponse:");
+        File.Exists(Path.Combine(repository, "Services/ML/ISignalScorer.cs"))
+            .Should().BeFalse();
+        File.Exists(Path.Combine(repository, "Services/ML/IMarketRegimeClassifier.cs"))
+            .Should().BeFalse();
+        File.Exists(Path.Combine(repository, "Services/ML/MLModelTrainingService.cs"))
+            .Should().BeFalse();
+    }
+
+    [Fact]
     public void LivePatternScannerIsOnlyAChannelAndResilienceAdapter()
     {
         var repository = FindRepositoryRoot();
@@ -2069,7 +2156,7 @@ public class ArchitectureDependencyTests
             "Services/DataFeed/LiveDailyScanData.cs",
             "Services/Analysis/StockAnalysisService.cs",
             "Services/StrategyPreview/PatternPreviewService.cs",
-            "Services/ML/MLModelTrainingService.cs",
+            "Services/ML/MarketRegimeTrainingDataSource.cs",
             "Services/Backtest/BacktestService.cs",
             "Services/Backtest/BacktestRegimeMapBuilder.cs",
             "Services/Backtest/OptimizationEvaluationContextPreparer.cs"
@@ -2086,7 +2173,7 @@ public class ArchitectureDependencyTests
         var sync = File.ReadAllText(Path.Combine(
             repository, "Services/DataFeed/DailyMarketDataSyncCycle.cs"));
         var ml = File.ReadAllText(Path.Combine(
-            repository, "Services/ML/MLModelTrainingService.cs"));
+            repository, "Application/MachineLearning/MLModelTrainingService.cs"));
         var regimeClassifier = File.ReadAllText(Path.Combine(
             repository, "Services/ML/MarketRegimeClassifier.cs"));
         var signalScorer = File.ReadAllText(Path.Combine(
@@ -2094,7 +2181,7 @@ public class ArchitectureDependencyTests
         sync.Should().Contain("DailyMarketDataSyncPolicy.ResolveRequiredSymbols(");
         sync.Should().Contain("timeProvider.GetUtcNow()");
         sync.Should().NotContain("DateTime.UtcNow");
-        ml.Should().Contain("_mlSettings.MinTrainingSamples");
+        ml.Should().Contain("_options.MinimumTrainingSamples");
         ml.Should().Contain("_timeProvider.GetUtcNow()");
         ml.Should().NotContain("DateTime.UtcNow");
         regimeClassifier.Should().Contain("_timeProvider.GetUtcNow()");

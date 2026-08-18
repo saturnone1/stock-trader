@@ -72,15 +72,18 @@ public sealed class MarketRegimeModelIntegrityTests
             var classifier = CreateClassifier(settings);
             (await classifier.TrainAsync(Bars(360))).Should().BeTrue();
             classifier.IsModelLoaded.Should().BeTrue();
-            classifier.TrainingSamples.Should().Be(335);
-            classifier.ClusterLabels.Values.Should()
+            var trainedStatus = classifier.GetStatus();
+            trainedStatus.TrainingSamples.Should().Be(335);
+            trainedStatus.ClusterLabels.Values.Should()
                 .BeEquivalentTo(MarketRegimeClusterCatalog.Labels);
             File.Exists(manifestPath).Should().BeTrue();
 
             var reloaded = CreateClassifier(settings);
             reloaded.IsModelLoaded.Should().BeTrue();
-            reloaded.TrainingSamples.Should().Be(classifier.TrainingSamples);
-            reloaded.ClusterLabels.Should().BeEquivalentTo(classifier.ClusterLabels);
+            var reloadedStatus = reloaded.GetStatus();
+            reloadedStatus.TrainingSamples.Should().Be(trainedStatus.TrainingSamples);
+            reloadedStatus.ClusterLabels.Should().BeEquivalentTo(
+                trainedStatus.ClusterLabels);
 
             var predictionBars = Bars(360);
             var baseline = await reloaded.ClassifyAsync(predictionBars);

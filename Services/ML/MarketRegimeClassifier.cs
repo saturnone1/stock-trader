@@ -31,13 +31,18 @@ public sealed class MarketRegimeClassifier : IMarketRegimeClassifier
         }
     }
 
-    public DateTime? TrainedAt { get; private set; }
-    public int TrainingSamples { get; private set; }
-    public IReadOnlyDictionary<uint, string> ClusterLabels
+    private DateTime? _trainedAt;
+    private int _trainingSamples;
+
+    public MarketRegimeClassifierStatus GetStatus()
     {
-        get
+        lock (_modelLock)
         {
-            lock (_modelLock) return new Dictionary<uint, string>(_clusterLabels);
+            return new MarketRegimeClassifierStatus(
+                _model is not null,
+                _trainedAt,
+                _trainingSamples,
+                new Dictionary<uint, string>(_clusterLabels));
         }
     }
 
@@ -152,8 +157,8 @@ public sealed class MarketRegimeClassifier : IMarketRegimeClassifier
             _model = model;
             _predictionEngine = engine;
             _clusterLabels = new Dictionary<uint, string>(manifest.ClusterLabels);
-            TrainedAt = manifest.TrainedAtUtc;
-            TrainingSamples = manifest.TrainingSamples;
+            _trainedAt = manifest.TrainedAtUtc;
+            _trainingSamples = manifest.TrainingSamples;
         }
     }
 }

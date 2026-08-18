@@ -1,4 +1,4 @@
-using StockTrader.Services.ML;
+using StockTrader.Application.MachineLearning;
 
 namespace StockTrader.Api;
 
@@ -6,66 +6,52 @@ public static class MlEndpoints
 {
     public static RouteGroupBuilder MapMlApi(this RouteGroupBuilder group)
     {
-        // GET /api/ml — ML 모델 상태
-        group.MapGet("/ml", (
-            IMLModelTrainingService trainingService,
-            IMarketRegimeClassifier regimeClassifier,
-            ISignalScorer signalScorer) =>
+        group.MapGet("/ml", (IMlModelStatusQuery statusQuery) =>
         {
-            var status = trainingService.GetStatus();
-
-            return Results.Ok(new
-            {
-                RegimeClassifier = new
-                {
+            var status = statusQuery.GetStatus();
+            return TypedResults.Ok(new MlStatusResponse(
+                new MlRegimeClassifierStatusResponse(
                     status.IsRegimeModelLoaded,
-                    TrainedAt       = status.RegimeModelTrainedAt?.ToString("o"),
+                    status.RegimeModelTrainedAt?.ToString("o"),
                     status.RegimeTrainingSamples,
-                    ClusterLabels   = regimeClassifier.ClusterLabels
-                        .ToDictionary(kv => kv.Key.ToString(), kv => kv.Value)
-                },
-                SignalScorer = new
-                {
+                    status.RegimeClusterLabels.ToDictionary(
+                        pair => pair.Key.ToString(),
+                        pair => pair.Value)),
+                new MlSignalScorerStatusResponse(
                     status.IsSignalScorerLoaded,
-                    TrainedAt           = status.SignalScorerTrainedAt?.ToString("o"),
+                    status.SignalScorerTrainedAt?.ToString("o"),
                     status.SignalScorerTrainingSamples,
                     status.SignalScorerAccuracy,
-                    SignalScorerAuc     = signalScorer.LastAuc,
-                    FeatureImportances  = signalScorer.FeatureImportances.Select(f => new
-                    {
-                        f.FeatureName,
-                        f.Importance
-                    })
-                },
-                IsTraining      = status.IsTraining,
-                TrainingStatus  = status.TrainingStatus
-            });
+                    status.SignalScorerAuc,
+                    status.SignalScorerFeatureImportances
+                        .Select(feature => new MlFeatureImportanceResponse(
+                            feature.FeatureName,
+                            feature.Importance))
+                        .ToArray()),
+                status.IsTraining,
+                status.TrainingStatus));
         }).RequireAuthorization();
 
-        // POST /api/ml/train — 모델 학습 트리거
         group.MapPost("/ml/train", async (
-            IMLModelTrainingService trainingService,
+            IMLModelTrainingService training,
             CancellationToken ct) =>
         {
-            var result = await trainingService.TrainAllAsync(ct);
-
+            var result = await training.TrainAllAsync(ct);
             return result.Success
-                ? Results.Ok(new
-                {
+                ? Results.Ok(new MlTrainingResponse(
                     result.Success,
                     result.Message,
                     result.RegimeSamples,
                     result.SignalSamples,
                     result.SignalScorerAccuracy,
                     result.SignalScorerAuc,
-                    TrainingDurationSeconds = result.TrainingDuration.TotalSeconds
-                })
-                : Results.BadRequest(new
-                {
+                    result.TrainingDuration.TotalSeconds))
+                : Results.BadRequest(new MlTrainingErrorResponse(
                     result.Success,
-                    result.Message
-                });
-        }).RequireAuthorization();
+                    result.Message));
+        }).RequireAuthorization()
+          .Produces<MlTrainingResponse>()
+          .Produces<MlTrainingErrorResponse>(StatusCodes.Status400BadRequest);
 
         return group;
     }

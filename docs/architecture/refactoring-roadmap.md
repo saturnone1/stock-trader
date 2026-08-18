@@ -504,6 +504,14 @@ contains no persistence port or trading calculation, exposes explicit generated 
 and rejects malformed filters instead of silently broadening them. The desktop consumes only the
 canonical camel-case contract.
 
+ML training now crosses application-owned classifier, scorer, training-result, and immutable status
+contracts. The scoped use case receives the selected data feed and causal sample store by constructor
+injection instead of locating them through nested scopes. A singleton run claim still serializes API
+and scheduled training, while each model publishes one locked status snapshot. The ML HTTP adapter
+depends on purpose-specific application training and status use cases and maps named
+OpenAPI/TypeScript success and error contracts
+without changing the established JSON field names.
+
 Stock-analysis detail now returns an explicit OpenAPI contract and the desktop consumes its
 generated camel-case shape. Pattern cards retain stable codes while displaying central catalog
 names. Fractional confidence/win-rate values and percentage-point forecast values have separate
