@@ -10,6 +10,7 @@ obj/
 appsettings.*.json
 !appsettings.json
 secrets.json
+.claude/
 
 ## K8s Secrets (contain real API keys — never commit)
 k8s/secret.yaml

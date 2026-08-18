@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret source identifier"
+regexTarget = "match"
+regexes = [
+  '''closestKey'''
+]
