@@ -37,6 +37,8 @@ export interface Position {
   exitRequestReason?: string | null;
   hasExitOrderId?: boolean;
   exitPendingSeconds?: number;
+  exitRequestQuantity?: number;
+  exitRequestMarksPartialProfit?: boolean;
 }
 
 export interface Signal {

@@ -1,3 +1,4 @@
+using StockTrader.Application.Execution;
 using StockTrader.Models;
 
 namespace StockTrader.Data.Repositories;
@@ -18,13 +19,12 @@ public interface ITradeRepository
     Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default);
     Task<Position?> GetPositionAsync(long id, CancellationToken ct = default);
     Task SavePositionAsync(Position position, CancellationToken ct = default);
-    Task<bool> TryClaimPositionExitAsync(long positionId, DateTime requestedAt, string reason,
-        CancellationToken ct = default);
+    Task<bool> TryClaimPositionExitAsync(PositionExitClaim claim, CancellationToken ct = default);
     Task<bool> SetPositionExitOrderIdAsync(long positionId, DateTime requestedAt, string? orderId,
         CancellationToken ct = default);
     Task<bool> ReleasePositionExitClaimAsync(long positionId, DateTime requestedAt,
         CancellationToken ct = default);
-    Task<bool> TryCompletePositionExitAsync(Position position, TradeRecord trade,
+    Task<bool> TryApplyPositionExitFillAsync(PositionExitFill fill, TradeRecord trade,
         CancellationToken ct = default);
     Task<List<TradeRecommendation>> GetRecentRecommendationsAsync(int count = 20,
         CancellationToken ct = default);

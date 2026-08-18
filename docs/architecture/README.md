@@ -127,10 +127,14 @@ workers must not embed exchange hours or approximate trading sessions from calen
 Live exit submission is a use case, not a broker call hidden in a worker or UI. All automatic and
 manual exits first atomically claim the persisted position, then store the broker's order ID. A
 restart reconciles that order as filled, terminally failed, or still uncertain; uncertain orders
-are never blindly resubmitted. Position closure and its trade record commit atomically.
+are never blindly resubmitted. The intent also persists its requested quantity and partial-profit
+meaning. A proven fill either reduces the remaining position or closes it, and the position update
+plus its quantity-matched trade record commit atomically. A broker-reported quantity mismatch fails
+closed for operator review instead of guessing.
 `LivePositionExitCoordinator` owns both submission and evidence-based reconciliation. Background
 monitoring and the operator API call the same use case. Position responses use one contract that
-shows whether an exit is ready, missing a confirmed broker order ID, or awaiting broker resolution;
+shows whether an exit is ready, missing a confirmed broker order ID, or awaiting broker resolution,
+including the durable requested quantity;
 the operator can request reconciliation but cannot force-clear an uncertain order.
 
 Database schema ownership now crosses a fail-closed EF Core boundary. Empty databases are created

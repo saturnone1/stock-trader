@@ -37,6 +37,7 @@ public static class LiveEntryPositionFactory
             AccountId = accountId,
             Symbol = recommendation.Symbol,
             Quantity = actualQuantity,
+            InitialQuantity = actualQuantity,
             EntryPrice = actualEntry,
             CurrentPrice = currentPrice,
             StopLossPrice = fill.StopPrice,

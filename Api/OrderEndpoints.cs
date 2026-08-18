@@ -152,6 +152,8 @@ public static class OrderEndpoints
             LiveExitReconciliationStatus.ReleasedForRetry => $"{symbol} 청산 주문의 실패가 확인되어 다시 청산할 수 있습니다.",
             LiveExitReconciliationStatus.AwaitingBroker => $"{symbol} 청산 주문은 아직 브로커 확정 상태를 기다리고 있습니다.",
             LiveExitReconciliationStatus.ConcurrentChange => $"{symbol} 상태가 다른 작업에서 변경되어 최신 목록을 다시 불러옵니다.",
+            LiveExitReconciliationStatus.BrokerFillMismatch =>
+                $"{symbol} 청산 요청 수량과 브로커 체결 수량이 달라 자동 반영을 중단했습니다. 브로커 주문 내역을 확인하세요.",
             _ => $"{symbol}에는 확인할 청산 주문이 없습니다."
         };
         return Results.Ok(new
@@ -159,7 +161,8 @@ public static class OrderEndpoints
             status = reconciliation.Status.ToString(),
             message,
             brokerStatus = reconciliation.Order?.Status.ToString(),
-            fillPrice = reconciliation.Order?.AverageFillPrice
+            fillPrice = reconciliation.Order?.AverageFillPrice,
+            filledQuantity = reconciliation.FilledQuantity
         });
     }
 

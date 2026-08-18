@@ -82,7 +82,20 @@ public class LsSecuritiesBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public async Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default)
+    public Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default) =>
+        ClosePositionCoreAsync(symbol, null, ct);
+
+    /// <inheritdoc />
+    public Task<BrokerOrder?> ClosePositionAsync(
+        string symbol,
+        int quantity,
+        CancellationToken ct = default) =>
+        ClosePositionCoreAsync(symbol, quantity, ct);
+
+    private async Task<BrokerOrder?> ClosePositionCoreAsync(
+        string symbol,
+        int? requestedQuantity,
+        CancellationToken ct)
     {
         try
         {
@@ -97,6 +110,15 @@ public class LsSecuritiesBrokerService : IBrokerService
                 return null;
             }
 
+            var sellQuantity = requestedQuantity ?? pos.Quantity;
+            if (sellQuantity <= 0 || sellQuantity > pos.Quantity)
+            {
+                _logger.LogWarning(
+                    "[LS] 잘못된 청산 수량: {Symbol} 요청={Requested} 보유={Available}",
+                    symbol, sellQuantity, pos.Quantity);
+                return null;
+            }
+
             var sellBody = new Dictionary<string, object>
             {
                 ["CSPAT00600InBlock1"] = new Dictionary<string, object>
@@ -104,7 +126,7 @@ public class LsSecuritiesBrokerService : IBrokerService
                     ["AcntNo"] = _auth.Settings.AccountNo,
                     ["InptPwd"] = _auth.Settings.AccountPassword,
                     ["IsuNo"] = $"A{symbol}",
-                    ["OrdQty"] = pos.Quantity,
+                    ["OrdQty"] = sellQuantity,
                     ["OrdPrc"] = 0,       // 시장가
                     ["BnsTpCode"] = "1",  // 매도
                     ["OrdprcPtnCode"] = "03", // 시장가
@@ -142,13 +164,13 @@ public class LsSecuritiesBrokerService : IBrokerService
             }
 
             _logger.LogInformation("[LS] 포지션 청산 성공: {Symbol} {Qty}주",
-                symbol, pos.Quantity);
+                symbol, sellQuantity);
             return new BrokerOrder
             {
                 OrderId = orderId,
                 Symbol = symbol,
                 Direction = TradeDirection.Short,
-                Quantity = pos.Quantity,
+                Quantity = sellQuantity,
                 Status = BrokerOrderStatus.Accepted,
                 OrderType = BrokerOrderType.Market,
                 SubmittedAt = DateTime.UtcNow,

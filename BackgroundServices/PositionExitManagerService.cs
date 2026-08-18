@@ -209,6 +209,16 @@ public class PositionExitManagerService : BackgroundService
             return;
         }
 
+        if (reconciliation.Status == LiveExitReconciliationStatus.BrokerFillMismatch)
+        {
+            _logger.LogError(
+                "[EXIT] {Symbol}: 요청 수량 {RequestedQuantity}주와 브로커 체결 수량 {FilledQuantity}주가 다릅니다. 자동 반영을 중단합니다.",
+                position.Symbol,
+                position.ExitRequestQuantity ?? position.Quantity,
+                reconciliation.FilledQuantity);
+            return;
+        }
+
         if (reconciliation.Status != LiveExitReconciliationStatus.Completed)
         {
             _logger.LogDebug("[EXIT] {Symbol}: 청산 주문 {OrderId}의 확정 상태를 기다립니다.",
@@ -223,7 +233,7 @@ public class PositionExitManagerService : BackgroundService
             CustomPatternName = position.CustomPatternName,
             EntryPrice = position.EntryPrice,
             TargetPrice = position.ExitPrice ?? position.CurrentPrice,
-            ShareQuantity = position.Quantity,
+            ShareQuantity = reconciliation.FilledQuantity,
             GeneratedAt = _timeProvider.GetUtcNow().UtcDateTime,
         });
     }

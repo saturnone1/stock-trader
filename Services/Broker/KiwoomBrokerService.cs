@@ -40,6 +40,15 @@ public class KiwoomBrokerService : IBrokerService
         return Task.FromResult<BrokerOrder?>(null);
     }
 
+    public Task<BrokerOrder?> ClosePositionAsync(
+        string symbol,
+        int quantity,
+        CancellationToken ct = default)
+    {
+        _logger.LogWarning("[Kiwoom] Partial close is not implemented: {Symbol} {Quantity}", symbol, quantity);
+        return Task.FromResult<BrokerOrder?>(null);
+    }
+
     public Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
     {
         _logger.LogWarning("[Kiwoom] GetPositionsAsync: 키움증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 빈 목록을 반환합니다.");

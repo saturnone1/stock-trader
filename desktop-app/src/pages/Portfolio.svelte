@@ -123,7 +123,9 @@
                   {exitStatusLabel(row)}
                 </div>
                 {#if row.exitStatus !== 'Ready'}
-                  <div class="mt-1 text-xs text-gray-500">{row.exitRequestReason || '청산 요청'} · {pendingTime(row)}</div>
+                  <div class="mt-1 text-xs text-gray-500">
+                    {row.exitRequestReason || '청산 요청'} · {row.exitRequestQuantity ?? row.quantity}주 · {pendingTime(row)}
+                  </div>
                 {/if}
               </td>
               <td class="px-4 py-3 text-right">

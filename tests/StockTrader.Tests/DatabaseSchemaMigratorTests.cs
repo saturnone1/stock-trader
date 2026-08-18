@@ -157,11 +157,16 @@ public class DatabaseSchemaMigratorTests
             writeDb.Positions.Add(new StockTrader.Models.Position
             {
                 Symbol = "TQQQ",
+                Quantity = 10,
+                InitialQuantity = 12,
                 InitialRiskDistance = 4.25m,
                 BreakevenApplied = true,
                 TrailingStopActivated = true,
+                PartialProfitTaken = true,
                 ExitRequestedAt = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc),
                 ExitRequestReason = "손절",
+                ExitRequestQuantity = 4,
+                ExitRequestMarksPartialProfit = true,
                 ExitOrderId = "order-123",
             });
             await writeDb.SaveChangesAsync();
@@ -171,10 +176,50 @@ public class DatabaseSchemaMigratorTests
         var restored = await readDb.Positions.AsNoTracking().SingleAsync();
 
         restored.InitialRiskDistance.Should().Be(4.25m);
+        restored.InitialQuantity.Should().Be(12);
         restored.BreakevenApplied.Should().BeTrue();
         restored.TrailingStopActivated.Should().BeTrue();
+        restored.PartialProfitTaken.Should().BeTrue();
         restored.ExitRequestReason.Should().Be("손절");
+        restored.ExitRequestQuantity.Should().Be(4);
+        restored.ExitRequestMarksPartialProfit.Should().BeTrue();
         restored.ExitOrderId.Should().Be("order-123");
+    }
+
+    [Fact]
+    public async Task PositionExitQuantityMigrationBackfillsLegacyOpenAndPendingState()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+        var previousMigration = db.Database.GetMigrations().Single(value =>
+            value.EndsWith("_AddNormalizedCustomPatternName", StringComparison.Ordinal));
+        await db.GetService<IMigrator>().MigrateAsync(previousMigration);
+        await ExecuteAsync(connection, """
+            INSERT INTO Positions (
+                AccountId, Symbol, Sector, Quantity,
+                EntryPrice, CurrentPrice, StopLossPrice, TargetPrice,
+                PatternType, OpenedAt, HighSinceEntry, EntryAtr, InitialRiskDistance,
+                BreakevenApplied, TrailingStopActivated,
+                ExitRequestedAt, ExitRequestReason, ExitOrderId)
+            VALUES (
+                1, 'TQQQ', '', 7,
+                50, 55, 45, 60,
+                0, '2026-08-17T14:00:00Z', 55, 2, 5,
+                0, 0,
+                '2026-08-18T14:00:00Z', '레거시 전량 청산', 'exit-old');
+            """);
+
+        await CreateMigrator(db).MigrateAsync();
+
+        (await ScalarAsync<long>(connection,
+            "SELECT InitialQuantity FROM Positions WHERE Symbol = 'TQQQ'"))
+            .Should().Be(7);
+        (await ScalarAsync<long>(connection,
+            "SELECT ExitRequestQuantity FROM Positions WHERE Symbol = 'TQQQ'"))
+            .Should().Be(7);
+        (await ScalarAsync<long>(connection,
+            "SELECT ExitRequestMarksPartialProfit FROM Positions WHERE Symbol = 'TQQQ'"))
+            .Should().Be(0);
     }
 
     private static DatabaseSchemaMigrator CreateMigrator(AppDbContext db) =>

@@ -39,6 +39,9 @@ public interface IBrokerService
     /// <returns>접수된 청산 주문. 제출 실패 시 null.</returns>
     Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default);
 
+    /// <summary>지정 수량만 시장가로 청산한다.</summary>
+    Task<BrokerOrder?> ClosePositionAsync(string symbol, int quantity, CancellationToken ct = default);
+
     // ── 포지션 조회 ────────────────────────────────────────────────────────
 
     /// <summary>

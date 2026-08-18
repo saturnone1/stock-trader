@@ -92,6 +92,23 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService
         return MapToModel(order);
     }
 
+    public async Task<BrokerOrder?> ClosePositionAsync(
+        string symbol,
+        int quantity,
+        CancellationToken ct = default)
+    {
+        if (quantity <= 0)
+            return null;
+
+        var request = new DeletePositionRequest(symbol)
+        {
+            PositionQuantity = PositionQuantity.InShares(quantity),
+        };
+        var order = await _tradingClient.DeletePositionAsync(request, ct);
+        _logger.LogInformation("[DynAlpaca] Position reduced — {Symbol} {Quantity} shares", symbol, quantity);
+        return MapToModel(order);
+    }
+
     public async Task<List<Position>> GetPositionsAsync(CancellationToken ct = default)
     {
         try

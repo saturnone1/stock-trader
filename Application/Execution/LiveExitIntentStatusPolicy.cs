@@ -14,7 +14,9 @@ public sealed record LiveExitIntentStatus(
     DateTime? RequestedAt,
     string? Reason,
     bool HasBrokerOrderId,
-    long PendingSeconds);
+    long PendingSeconds,
+    int RequestedQuantity,
+    bool MarksPartialProfit);
 
 /// <summary>저장된 청산 의도를 운영 화면에서 이해할 수 있는 상태로 변환합니다.</summary>
 public static class LiveExitIntentStatusPolicy
@@ -22,7 +24,8 @@ public static class LiveExitIntentStatusPolicy
     public static LiveExitIntentStatus Evaluate(Position position, DateTime utcNow)
     {
         if (!position.ExitRequestedAt.HasValue)
-            return new LiveExitIntentStatus(LiveExitIntentState.Ready, null, null, false, 0);
+            return new LiveExitIntentStatus(
+                LiveExitIntentState.Ready, null, null, false, 0, 0, false);
 
         var hasOrderId = !string.IsNullOrWhiteSpace(position.ExitOrderId);
         var elapsed = utcNow - position.ExitRequestedAt.Value;
@@ -33,6 +36,8 @@ public static class LiveExitIntentStatusPolicy
             position.ExitRequestedAt,
             position.ExitRequestReason,
             hasOrderId,
-            Math.Max(0, (long)elapsed.TotalSeconds));
+            Math.Max(0, (long)elapsed.TotalSeconds),
+            position.ExitRequestQuantity ?? position.Quantity,
+            position.ExitRequestMarksPartialProfit);
     }
 }

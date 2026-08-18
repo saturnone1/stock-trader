@@ -13,6 +13,9 @@ public class Position
     public string Symbol { get; set; } = string.Empty;
     public string Sector { get; set; } = string.Empty;
     public int Quantity { get; set; }
+
+    /// <summary>최초 체결 수량. 부분 청산 뒤에도 원래 포지션 규모를 보존한다.</summary>
+    public int InitialQuantity { get; set; }
     public decimal EntryPrice { get; set; }
     public decimal CurrentPrice { get; set; }
     public decimal StopLossPrice { get; set; }
@@ -38,11 +41,20 @@ public class Position
     /// <summary>추적손절이 활성화됐는지 여부. 서비스 재시작 후에도 유지한다.</summary>
     public bool TrailingStopActivated { get; set; }
 
+    /// <summary>전략의 1차 이익실현이 체결됐는지 여부.</summary>
+    public bool PartialProfitTaken { get; set; }
+
     /// <summary>브로커 청산 주문 전에 기록하는 내구성 있는 주문 의도 시각.</summary>
     public DateTime? ExitRequestedAt { get; set; }
 
     /// <summary>청산 의도를 발생시킨 전략 사유.</summary>
     public string? ExitRequestReason { get; set; }
+
+    /// <summary>이번 청산 주문에서 매도하도록 청구한 수량.</summary>
+    public int? ExitRequestQuantity { get; set; }
+
+    /// <summary>이번 청산 체결이 전략의 1차 이익실현 상태를 확정하는지 여부.</summary>
+    public bool ExitRequestMarksPartialProfit { get; set; }
 
     /// <summary>브로커가 반환한 청산 주문 ID. 재시작 후 체결 재조정에 사용한다.</summary>
     public string? ExitOrderId { get; set; }

@@ -161,6 +161,7 @@ public sealed class LivePositionExitEvaluator
                 position.EntryAtr > 0 ? position.EntryAtr : atr,
                 EntryBarIndex: 0,
                 position.Quantity,
+                PartialProfitTaken: position.PartialProfitTaken,
                 BreakevenApplied: position.BreakevenApplied,
                 TrailingActivated: position.TrailingStopActivated),
             position.CurrentPrice,

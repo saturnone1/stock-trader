@@ -206,6 +206,8 @@ export const dashboardApi = {
           exitRequestReason: pos.exitRequestReason ?? null,
           hasExitOrderId: !!pos.hasExitOrderId,
           exitPendingSeconds: pos.exitPendingSeconds ?? 0,
+          exitRequestQuantity: pos.exitRequestQuantity ?? 0,
+          exitRequestMarksPartialProfit: pos.exitRequestMarksPartialProfit ?? false,
         })),
         signals: data.recentSignals ?? [],
         recommendations: data.recentSignals ?? [],

@@ -23,7 +23,9 @@ public sealed record OpenPositionResponse(
     string? ExitRequestedAt,
     string? ExitRequestReason,
     bool HasExitOrderId,
-    long ExitPendingSeconds);
+    long ExitPendingSeconds,
+    int ExitRequestQuantity,
+    bool ExitRequestMarksPartialProfit);
 
 public static class OpenPositionResponseMapper
 {
@@ -50,6 +52,8 @@ public static class OpenPositionResponseMapper
             exit.RequestedAt?.ToString("o"),
             exit.Reason,
             exit.HasBrokerOrderId,
-            exit.PendingSeconds);
+            exit.PendingSeconds,
+            exit.RequestedQuantity,
+            exit.MarksPartialProfit);
     }
 }

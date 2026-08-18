@@ -18,6 +18,11 @@ public sealed record LiveExitSubmission(
     BrokerOrder? Order = null,
     bool BrokerOrderIdPersisted = false);
 
+public sealed record LivePositionExitRequest(
+    int Quantity,
+    string Reason,
+    bool MarksPartialProfit = false);
+
 public enum LiveExitReconciliationStatus
 {
     NotPending,
@@ -25,17 +30,26 @@ public enum LiveExitReconciliationStatus
     ReleasedForRetry,
     Completed,
     ConcurrentChange,
+    BrokerFillMismatch,
 }
 
 public sealed record LiveExitReconciliationResult(
     LiveExitReconciliationStatus Status,
-    BrokerOrder? Order = null);
+    BrokerOrder? Order = null,
+    int FilledQuantity = 0,
+    bool IsFullExit = false);
 
 public interface ILivePositionExitCoordinator
 {
     Task<LiveExitSubmission> SubmitAsync(
         Position position,
         string reason,
+        IBrokerService broker,
+        CancellationToken ct = default);
+
+    Task<LiveExitSubmission> SubmitAsync(
+        Position position,
+        LivePositionExitRequest request,
         IBrokerService broker,
         CancellationToken ct = default);
 
@@ -62,24 +76,49 @@ public sealed class LivePositionExitCoordinator : ILivePositionExitCoordinator
         Position position,
         string reason,
         IBrokerService broker,
+        CancellationToken ct = default) =>
+        await SubmitAsync(
+            position,
+            new LivePositionExitRequest(position.Quantity, reason),
+            broker,
+            ct);
+
+    public async Task<LiveExitSubmission> SubmitAsync(
+        Position position,
+        LivePositionExitRequest request,
+        IBrokerService broker,
         CancellationToken ct = default)
     {
         if (position.ExitRequestedAt.HasValue)
             return new LiveExitSubmission(
                 LiveExitSubmissionStatus.AlreadyPending, position.ExitRequestedAt);
+        if (request.Quantity <= 0
+            || request.Quantity > position.Quantity
+            || string.IsNullOrWhiteSpace(request.Reason))
+            return new LiveExitSubmission(LiveExitSubmissionStatus.Failed);
 
         var requestedAt = _timeProvider.GetUtcNow().UtcDateTime;
-        if (!await _trades.TryClaimPositionExitAsync(position.Id, requestedAt, reason, ct))
+        var claim = new PositionExitClaim(
+            position.Id,
+            requestedAt,
+            request.Reason,
+            position.Quantity,
+            request.Quantity,
+            request.MarksPartialProfit);
+        if (!await _trades.TryClaimPositionExitAsync(claim, ct))
             return new LiveExitSubmission(LiveExitSubmissionStatus.AlreadyPending);
 
         position.ExitRequestedAt = requestedAt;
-        position.ExitRequestReason = reason;
-        var order = await broker.ClosePositionAsync(position.Symbol, ct);
+        position.ExitRequestReason = request.Reason;
+        position.ExitRequestQuantity = request.Quantity;
+        position.ExitRequestMarksPartialProfit = request.MarksPartialProfit;
+        var order = request.Quantity == position.Quantity
+            ? await broker.ClosePositionAsync(position.Symbol, ct)
+            : await broker.ClosePositionAsync(position.Symbol, request.Quantity, ct);
         if (order is null)
         {
             await _trades.ReleasePositionExitClaimAsync(position.Id, requestedAt, ct);
-            position.ExitRequestedAt = null;
-            position.ExitRequestReason = null;
+            ClearExitIntent(position);
             return new LiveExitSubmission(LiveExitSubmissionStatus.Failed);
         }
 
@@ -139,10 +178,22 @@ public sealed class LivePositionExitCoordinator : ILivePositionExitCoordinator
                 LiveExitReconciliationStatus.AwaitingBroker, resolution.Order);
         }
 
+        var requestedQuantity = position.ExitRequestQuantity ?? position.Quantity;
+        var filledQuantity = resolution.Order.FilledQuantity > 0
+            ? resolution.Order.FilledQuantity
+            : resolution.Order.Quantity > 0
+                ? resolution.Order.Quantity
+                : requestedQuantity;
+        if (requestedQuantity <= 0 || filledQuantity != requestedQuantity)
+        {
+            return new LiveExitReconciliationResult(
+                LiveExitReconciliationStatus.BrokerFillMismatch,
+                resolution.Order,
+                filledQuantity);
+        }
+
         var exitPrice = resolution.Order.AverageFillPrice.Value;
         var exitTime = resolution.Order.FilledAt ?? _timeProvider.GetUtcNow().UtcDateTime;
-        position.ClosedAt = exitTime;
-        position.ExitPrice = exitPrice;
         var trade = new TradeRecord
         {
             Symbol = position.Symbol,
@@ -150,25 +201,56 @@ public sealed class LivePositionExitCoordinator : ILivePositionExitCoordinator
             CustomPatternName = position.CustomPatternName,
             EntryPrice = position.EntryPrice,
             ExitPrice = exitPrice,
-            Quantity = position.Quantity,
+            Quantity = filledQuantity,
             EntryTime = position.OpenedAt,
             ExitTime = exitTime,
-            PnL = (exitPrice - position.EntryPrice) * position.Quantity,
+            PnL = (exitPrice - position.EntryPrice) * filledQuantity,
             PnLPercent = position.EntryPrice > 0 ? exitPrice / position.EntryPrice - 1 : 0,
             ExitReason = position.ExitRequestReason ?? "실시간 청산",
         };
-        var completed = await _trades.TryCompletePositionExitAsync(position, trade, ct);
+        var isFullExit = filledQuantity == position.Quantity;
+        var fill = new PositionExitFill(
+            position.Id,
+            requestedAt,
+            position.Quantity,
+            filledQuantity,
+            exitPrice,
+            exitTime,
+            position.ExitOrderId,
+            position.ExitRequestMarksPartialProfit);
+        var completed = await _trades.TryApplyPositionExitFillAsync(fill, trade, ct);
+        if (completed)
+            ApplyFill(position, fill, isFullExit);
         return new LiveExitReconciliationResult(
             completed
                 ? LiveExitReconciliationStatus.Completed
                 : LiveExitReconciliationStatus.ConcurrentChange,
-            resolution.Order);
+            resolution.Order,
+            completed ? filledQuantity : 0,
+            completed && isFullExit);
+    }
+
+    private static void ApplyFill(Position position, PositionExitFill fill, bool isFullExit)
+    {
+        if (isFullExit)
+        {
+            position.ClosedAt = fill.FilledAt;
+            position.ExitPrice = fill.FillPrice;
+            return;
+        }
+
+        position.Quantity -= fill.FilledQuantity;
+        position.CurrentPrice = fill.FillPrice;
+        position.PartialProfitTaken |= fill.MarksPartialProfit;
+        ClearExitIntent(position);
     }
 
     private static void ClearExitIntent(Position position)
     {
         position.ExitRequestedAt = null;
         position.ExitRequestReason = null;
+        position.ExitRequestQuantity = null;
+        position.ExitRequestMarksPartialProfit = false;
         position.ExitOrderId = null;
     }
 }

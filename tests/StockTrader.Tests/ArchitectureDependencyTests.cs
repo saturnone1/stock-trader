@@ -1598,7 +1598,7 @@ public class ArchitectureDependencyTests
         liveManager.Should().NotContain("brokerService.ClosePositionAsync(");
         liveManager.Should().NotContain("ExitOrderReconciliationPolicy.Resolve(");
         liveManager.Should().NotContain("ReleasePositionExitClaimAsync(");
-        liveManager.Should().NotContain("TryCompletePositionExitAsync(");
+        liveManager.Should().NotContain("TryApplyPositionExitFillAsync(");
         evaluator.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
         evaluator.Should().Contain("StrategyEvaluationPolicy.LiveExitIndicatorLookbackDays");
     }

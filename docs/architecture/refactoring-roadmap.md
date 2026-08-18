@@ -23,8 +23,10 @@
   observed market bars instead of approximating business days as calendar days.
 - Automatic and manual live exits share `LivePositionExitCoordinator`. It atomically claims the
   database position before contacting a broker, persists the broker order ID, waits on ambiguous
-  states instead of resubmitting, and finalizes the position plus trade record in one transaction.
-  The broker port returns a trackable `BrokerOrder` instead of discarding it as a boolean.
+  states instead of resubmitting, and atomically applies a quantity-matched partial or full fill plus
+  its trade record. Requested quantity and partial-profit meaning survive restarts; mismatched broker
+  fill quantities fail closed. The broker port returns a trackable `BrokerOrder` and exposes an
+  explicit quantity-close contract instead of discarding submission evidence as a boolean.
 - `Program.cs` is now a 59-line composition root. Health, authentication, order, and backtest APIs
   are registered through feature endpoint modules; startup migration/recovery/seeding and the web
   middleware pipeline have dedicated extensions. A route-table test verifies the extracted public
@@ -82,8 +84,9 @@
   live code no longer reaches into a nested backtest-adapter profile type.
 - `LivePositionExitCoordinator` now owns evidence-based reconciliation as well as idempotent submission.
   The background worker and authenticated operator endpoint share it; only a proven terminal failure
-  releases a claim and only a proven fill closes the position. Trade, portfolio, and dashboard APIs
-  share one open-position response with pending-exit state and elapsed time. The desktop portfolio
+  releases a claim and only a proven quantity-matched fill reduces or closes the position. Trade,
+  portfolio, and dashboard APIs share one open-position response with pending-exit state, requested
+  quantity, and elapsed time. The desktop portfolio
   disables duplicate close requests and offers a safe status refresh instead of a force retry.
 - Live exit indicator preparation and strategy evaluation now run behind
   `LivePositionExitEvaluator`; `PositionExitManagerService` has dropped from 426 to 230 lines and
