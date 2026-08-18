@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using StockTrader.Application.Trading;
+using StockTrader.Application.MachineLearning;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
@@ -34,12 +34,12 @@ public class MLModelTrainingServiceTests
         var feeds = new Mock<IDataFeedServiceFactory>();
         feeds.Setup(value => value.SelectAsync(null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DataFeedSelection(DataSource.LsSecurities, feed.Object));
-        var trades = new Mock<ITradeHistoryStore>();
-        trades.Setup(value => value.GetRecentAsync(5000, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TradeRecord>());
+        var samples = new Mock<ISignalScoringTrainingStore>();
+        samples.Setup(value => value.GetRecentAsync(5000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<SignalScoringTrainingSample>());
         var services = new ServiceCollection()
             .AddScoped(_ => feeds.Object)
-            .AddScoped(_ => trades.Object)
+            .AddScoped(_ => samples.Object)
             .BuildServiceProvider();
         var service = new MLModelTrainingService(
             new Mock<IMarketRegimeClassifier>().Object,
@@ -58,7 +58,7 @@ public class MLModelTrainingServiceTests
         result.Success.Should().BeFalse();
         result.RegimeSamples.Should().Be(0);
         result.TrainingDuration.Should().Be(TimeSpan.Zero);
-        result.Message.Should().Contain("최소 3개 거래 필요");
+        result.Message.Should().Contain("최소 3개 인과적 샘플 필요");
         feed.VerifyAll();
     }
 

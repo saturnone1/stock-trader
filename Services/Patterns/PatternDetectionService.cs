@@ -1,3 +1,4 @@
+using StockTrader.Application.MachineLearning;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Settings;
 using StockTrader.Application.Statistics;
@@ -100,8 +101,9 @@ public class PatternDetectionService : ILivePatternDetection
                 if (signal != null)
                 {
                     StampLiveTiming(signal, bars);
-                    // ML 기반 신뢰도 보정
-                    signal.Confidence = await EnhanceConfidenceAsync(signal, bars, effectiveRegime, ct);
+                    ApplyScoringResult(
+                        signal,
+                        await EvaluateConfidenceAsync(signal, bars, effectiveRegime, ct));
 
                     _logger.LogInformation(
                         "Pattern {Pattern} detected for {Symbol} (confidence={Confidence:F2})",
@@ -131,7 +133,9 @@ public class PatternDetectionService : ILivePatternDetection
                 var signal = await detector.DetectAsync(symbol, bars, effectiveRegime, ct);
                 if (signal == null) continue;
                 StampLiveTiming(signal, bars);
-                signal.Confidence = await EnhanceConfidenceAsync(signal, bars, effectiveRegime, ct);
+                ApplyScoringResult(
+                    signal,
+                    await EvaluateConfidenceAsync(signal, bars, effectiveRegime, ct));
                 signals.Add(signal);
                 _logger.LogInformation("Custom strategy {Strategy} detected for {Symbol}", strategy.Name, symbol);
             }
@@ -172,12 +176,9 @@ public class PatternDetectionService : ILivePatternDetection
     /// 해당 패턴의 역사적 승률을 조회 후 ML SignalScorer로 Confidence를 보정합니다.
     /// 모델이 없으면 원래 값을 그대로 반환합니다.
     /// </summary>
-    private async Task<decimal> EnhanceConfidenceAsync(
+    private async Task<SignalScoringResult> EvaluateConfidenceAsync(
         PatternSignal signal, OhlcvBar[] bars, MarketRegime regime, CancellationToken ct)
     {
-        if (!_signalScorer.IsModelLoaded)
-            return signal.Confidence;
-
         try
         {
             // 종목별 역사적 승률을 우선하고, 없으면 패턴 전체 통계를 사용합니다.
@@ -189,12 +190,31 @@ public class PatternDetectionService : ILivePatternDetection
                 : null;
             var winRate = stats?.WinRate ?? 0.5m;
 
-            return await _signalScorer.ScoreAsync(signal, bars, regime, winRate, ct);
+            return await _signalScorer.EvaluateAsync(signal, bars, regime, winRate, ct);
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "ML 신뢰도 보정 실패 — 기존 값 사용");
-            return signal.Confidence;
+            return new SignalScoringResult(signal.Confidence, null);
         }
+    }
+
+    private static void ApplyScoringResult(
+        PatternSignal signal,
+        SignalScoringResult result)
+    {
+        signal.Confidence = result.Confidence;
+        if (result.Features is not { } features) return;
+
+        signal.ScoringFeatureVersion = features.SchemaVersion;
+        signal.ScoringRsi = features.Rsi;
+        signal.ScoringBollingerPosition = features.BollingerPosition;
+        signal.ScoringVolumeRatio = features.VolumeRatio;
+        signal.ScoringMarketRegimeCode = features.MarketRegimeCode;
+        signal.ScoringAtrPercent = features.AtrPercent;
+        signal.ScoringHistoricalWinRate = features.HistoricalWinRate;
+        signal.ScoringRiskRewardRatio = features.RiskRewardRatio;
+        signal.ScoringPriceVsLongMovingAverage = features.PriceVsLongMovingAverage;
+        signal.ScoringLongTrendHistoryAvailable = features.LongTrendHistoryAvailable;
     }
 }

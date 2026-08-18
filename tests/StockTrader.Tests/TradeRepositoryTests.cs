@@ -50,7 +50,9 @@ public class TradingDataStoreTests
         stored.ClosedAt.Should().Be(filledAt);
         stored.ExitPrice.Should().Be(55m);
         stored.Quantity.Should().Be(2);
-        (await db.TradeRecords.AsNoTracking().SingleAsync()).ExitPrice.Should().Be(55m);
+        var storedTrade = await db.TradeRecords.AsNoTracking().SingleAsync();
+        storedTrade.ExitPrice.Should().Be(55m);
+        storedTrade.SourceSignalId.Should().Be(777);
     }
 
     [Fact]
@@ -480,6 +482,7 @@ public class TradingDataStoreTests
         decimal exitPrice,
         int quantity,
         string reason) => new(
+            777,
             symbol,
             PatternType.GapUpPullback,
             null,

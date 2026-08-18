@@ -99,9 +99,13 @@ public class SignalScorerInput
     [LoadColumn(8)]
     public float RiskRewardRatio { get; set; }
 
-    /// <summary>가격이 200MA 대비 위치 (%)</summary>
+    /// <summary>가격이 중앙 장기 이동평균 대비 위치</summary>
     [LoadColumn(9)]
-    public float PriceVs200Ma { get; set; }
+    public float PriceVsLongMovingAverage { get; set; }
+
+    /// <summary>장기 이동평균을 계산할 완성봉 이력이 충분한지 여부</summary>
+    [LoadColumn(10)]
+    public float LongTrendHistoryAvailable { get; set; }
 }
 
 /// <summary>Binary Classification 예측 출력</summary>

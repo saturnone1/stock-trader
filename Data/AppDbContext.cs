@@ -75,6 +75,7 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(p => p.ClosedAt);
             entity.HasIndex(p => p.Symbol);
+            entity.HasIndex(p => p.SourceSignalId);
             entity.Ignore(p => p.IsOpen);
             entity.Ignore(p => p.UnrealizedPnL);
             entity.Ignore(p => p.RealizedPnL);
@@ -100,6 +101,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<TradeRecord>(entity =>
         {
             entity.HasIndex(t => new { t.PatternType, t.EntryTime });
+            entity.HasIndex(t => t.SourceSignalId);
             entity.Ignore(t => t.IsWin);
         });
 

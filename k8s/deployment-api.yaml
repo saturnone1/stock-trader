@@ -26,6 +26,8 @@ spec:
           value: "Production"
         - name: ConnectionStrings__DefaultConnection
           value: "Data Source=/data/stocktrader.db"
+        - name: ML__ModelDirectory
+          value: "/data/ml_models"
         - name: ALPACA__APIKEY
           valueFrom:
             secretKeyRef:

@@ -298,6 +298,7 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
         int quantity,
         decimal exitPrice,
         DateTime exitTime) => new(
+            position.SourceSignalId,
             position.Symbol,
             position.PatternType,
             position.CustomPatternName,

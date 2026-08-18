@@ -382,6 +382,47 @@ public class DatabaseSchemaMigratorTests
             """)).Should().Be(0);
     }
 
+    [Fact]
+    public async Task CausalSignalScoringMigrationPreservesLegacySignalsAsUnusableTrainingRows()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var db = CreateContext(connection);
+        var previousMigration = db.Database.GetMigrations().Single(value =>
+            value.EndsWith("_SupersedeLegacyActivityDuplicates", StringComparison.Ordinal));
+        await db.GetService<IMigrator>().MigrateAsync(previousMigration);
+        await ExecuteAsync(connection, """
+            INSERT INTO PatternSignals (
+                Symbol, PatternType, CustomPatternName, SignalBarAt, DetectedAt,
+                EntryPrice, StopLossPrice, TargetPrice, Confidence, Details,
+                IsActive, IsSuperseded)
+            VALUES (
+                'AAPL', 2, NULL, '2026-08-18T14:00:00Z', '2026-08-18T14:00:01Z',
+                100, 95, 110, 0.8, '', 1, 0);
+            """);
+
+        await CreateMigrator(db).MigrateAsync();
+
+        (await ScalarAsync<long>(connection, "SELECT COUNT(*) FROM PatternSignals"))
+            .Should().Be(1);
+        (await ScalarAsync<long>(connection, """
+            SELECT COUNT(*) FROM PatternSignals
+            WHERE ScoringFeatureVersion IS NULL
+              AND ScoringRsi IS NULL
+              AND ScoringRiskRewardRatio IS NULL
+            """)).Should().Be(1);
+        (await ScalarAsync<long>(connection, """
+            SELECT COUNT(*) FROM pragma_table_info('PatternSignals')
+            WHERE name LIKE 'Scoring%'
+            """)).Should().Be(10);
+        (await ScalarAsync<long>(connection, """
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'index'
+              AND name IN (
+                'IX_Positions_SourceSignalId',
+                'IX_TradeRecords_SourceSignalId')
+            """)).Should().Be(2);
+    }
+
     private static DatabaseSchemaMigrator CreateMigrator(AppDbContext db) =>
         new(db, NullLogger<DatabaseSchemaMigrator>.Instance);
 

@@ -27,6 +27,9 @@ infrastructure.
   catalog shared by provider metadata, calendars, scanning, synchronization, and scheduling.
 - Market-regime trend evidence: one completed-bar policy with an explicit as-of cutoff, central
   200-day window, strict boundary semantics, and fail-closed insufficient-history behavior.
+- ML signal-scoring evidence: one versioned causal feature catalog captured at signal time, one
+  source-signal lineage through live positions and realized trades, and one chronological validation
+  policy. Models without a matching manifest and content hash are not executable.
 - Backtest and preview range policy: dedicated policy catalogs.
 - Backtest period metrics: one unit-explicit application policy using the full evaluation range;
   trade activity dates never define CAGR, Calmar, Sharpe, or Sortino annualization.
@@ -461,4 +464,6 @@ defaults, active-profile selection, and modification time have one application o
   deterministic, fail-closed owner across preview, backtest, live, analysis, and ML.
 - `adr/0060-isolate-ls-broker-protocol.md`: isolate current LS request shapes, tolerant response
   parsing, and exact UTC-to-KST order-history evidence behind purpose-specific clients.
+- `adr/0061-require-causal-signal-scoring-evidence.md`: train and validate signal scoring only from
+  entry-time features linked to completed position outcomes, with versioned model artifacts.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
