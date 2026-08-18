@@ -91,11 +91,13 @@ jobs:
           --configuration Release
           --no-restore
 
-      - name: Verify generated desktop API contracts
+      - name: Verify desktop tests, build, and generated API contracts
         if: matrix.os == 'ubuntu-latest'
         working-directory: desktop-app
         run: |
           npm ci
+          npm test
+          npm run build
           npm run api:check
           git diff --exit-code -- openapi/stocktrader_desktop.json src/api/generated.ts
 
