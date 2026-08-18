@@ -2,6 +2,11 @@
 
 ## Current progress
 
+- Pending live entries now reconcile through `ILiveEntryReconciliationCycle`; the 43-line hosted
+  worker owns only scope creation and clocked scheduling. The cycle groups durable entries by owning
+  account, shares one observation boundary, isolates broker failures per account, and never falls
+  back to the active account when ownership is missing. The former hidden interval clamp is a named,
+  startup-validated configuration range.
 - The unused order-ID-only cancellation surface is removed. It previously selected whichever
   account was active even though broker order identifiers do not prove account ownership. Broker
   adapters retain cancellation capability, but any future application command must first resolve a

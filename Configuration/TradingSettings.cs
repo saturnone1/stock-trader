@@ -2,6 +2,9 @@ namespace StockTrader.Configuration;
 
 public class TradingSettings
 {
+    public const int MinimumEntryReconciliationIntervalSeconds = 5;
+    public const int MaximumEntryReconciliationIntervalSeconds = 300;
+
     public decimal DefaultAccountSize { get; set; } = 100_000m;
     public decimal RiskPerTradePercent { get; set; } = 0.01m;
     public decimal DailyLossLimitPercent { get; set; } = 0.03m;

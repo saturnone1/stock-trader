@@ -403,4 +403,7 @@ defaults, active-profile selection, and modification time have one application o
 - `adr/0052-remove-account-ambiguous-order-cancellation.md`: remove the unused order-ID-only
   cancellation surface and require durable account ownership before any future cancellation use
   case can reach a broker adapter.
+- `adr/0053-isolate-live-entry-reconciliation-cycle.md`: keep the hosted worker as a clocked
+  scheduler while a purpose-specific cycle owns account-grouped entry reconciliation and isolates
+  provider failures.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
