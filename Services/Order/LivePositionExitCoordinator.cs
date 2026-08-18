@@ -242,6 +242,11 @@ public sealed class LivePositionExitCoordinator : ILivePositionExitCoordinator
         position.Quantity -= fill.FilledQuantity;
         position.CurrentPrice = fill.FillPrice;
         position.PartialProfitTaken |= fill.MarksPartialProfit;
+        if (fill.MarksPartialProfit)
+        {
+            position.StopLossPrice = Math.Max(position.StopLossPrice, position.EntryPrice);
+            position.BreakevenApplied = true;
+        }
         ClearExitIntent(position);
     }
 

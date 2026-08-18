@@ -85,6 +85,7 @@ public class CentralCatalogTests
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
         contract.LiveStrategyConstraints.SupportedEntryModes.Should().Contain("NextOpen");
+        contract.LiveStrategyConstraints.SupportsPartialExit.Should().BeTrue();
         contract.Indicators.Select(item => item.Code)
             .Should().Equal(IndicatorCatalog.All.Select(item => item.Code));
         contract.TimeFrames.Select(item => item.Value)

@@ -83,3 +83,24 @@ test('live trading rejects strategy features not supported by the execution engi
   assert.ok(issues.some((issue) => issue.includes('부분 익절')))
   assert.ok(issues.some((issue) => issue.includes('추가 매수·분할 매도 전략')))
 })
+
+test('live trading accepts partial profit when the server execution engine supports it', () => {
+  const workspace = validWorkspace({
+    enableLiveTrading: true,
+    timeFrame: 'Daily',
+    entryMode: 'NextOpen',
+    partialProfitR: 1,
+    scalingRules: []
+  })
+  const issues = collectPatternValidationIssues(workspace, {
+    ...context,
+    liveStrategyConstraints: {
+      supportedTimeFrames: ['Daily'],
+      supportedEntryModes: ['NextOpen'],
+      supportsPartialExit: true,
+      supportsScaling: false
+    }
+  })
+
+  assert.ok(!issues.some((issue) => issue.includes('부분 익절')))
+})

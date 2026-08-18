@@ -74,7 +74,7 @@ public class StrategyCompilerValidationTests
     }
 
     [Fact]
-    public void Validate_RejectsLiveSettingsThatCannotMatchBacktestExecution()
+    public void Validate_RejectsUnsupportedLiveTimeFrameAndEntryButAllowsPartialProfit()
     {
         var pattern = ValidPattern();
         pattern.EnableLiveTrading = true;
@@ -86,7 +86,7 @@ public class StrategyCompilerValidationTests
 
         errors.Should().Contain(error => error.Contains("일봉"));
         errors.Should().Contain(error => error.Contains("다음 봉 시가"));
-        errors.Should().Contain(error => error.Contains("부분 익절"));
+        errors.Should().NotContain(error => error.Contains("부분 익절"));
     }
 
     private static StrategyDocument ValidPattern() => new()

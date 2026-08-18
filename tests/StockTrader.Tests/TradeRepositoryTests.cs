@@ -101,6 +101,7 @@ public class TradeRepositoryTests
             InitialQuantity = 10,
             EntryPrice = 50m,
             CurrentPrice = 54m,
+            StopLossPrice = 45m,
         };
         await repository.SavePositionAsync(position);
         var requestedAt = new DateTime(2026, 8, 18, 13, 59, 0, DateTimeKind.Utc);
@@ -125,6 +126,8 @@ public class TradeRepositoryTests
         stored.InitialQuantity.Should().Be(10);
         stored.CurrentPrice.Should().Be(55m);
         stored.PartialProfitTaken.Should().BeTrue();
+        stored.StopLossPrice.Should().Be(50m);
+        stored.BreakevenApplied.Should().BeTrue();
         stored.ClosedAt.Should().BeNull();
         stored.ExitRequestedAt.Should().BeNull();
         stored.ExitRequestQuantity.Should().BeNull();
@@ -196,6 +199,50 @@ public class TradeRepositoryTests
         stored.PartialProfitTaken.Should().BeTrue();
         stored.ExitRequestedAt.Should().BeNull();
         (await verifyDb.TradeRecords.AsNoTracking().CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ManualPartialFillDoesNotMarkStrategyProfitOrMoveStop()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+        await using var db = new AppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var repository = new TradeRepository(db, cache);
+        var position = new Position
+        {
+            Symbol = "TQQQ",
+            Quantity = 10,
+            InitialQuantity = 10,
+            EntryPrice = 50m,
+            StopLossPrice = 45m,
+        };
+        await repository.SavePositionAsync(position);
+        var requestedAt = new DateTime(2026, 8, 18, 14, 0, 0, DateTimeKind.Utc);
+        var claim = new PositionExitClaim(
+            position.Id, requestedAt, "수동 일부 매도", 10, 4, MarksPartialProfit: false);
+        (await repository.TryClaimPositionExitAsync(claim)).Should().BeTrue();
+
+        var applied = await repository.TryApplyPositionExitFillAsync(
+            new PositionExitFill(
+                position.Id, requestedAt, 10, 4, 52m, requestedAt, "manual-1", false),
+            new TradeRecord
+            {
+                Symbol = "TQQQ",
+                EntryPrice = 50m,
+                ExitPrice = 52m,
+                Quantity = 4,
+                ExitReason = "수동 일부 매도",
+            });
+
+        applied.Should().BeTrue();
+        var stored = await db.Positions.AsNoTracking().SingleAsync();
+        stored.Quantity.Should().Be(6);
+        stored.PartialProfitTaken.Should().BeFalse();
+        stored.StopLossPrice.Should().Be(45m);
+        stored.BreakevenApplied.Should().BeFalse();
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider

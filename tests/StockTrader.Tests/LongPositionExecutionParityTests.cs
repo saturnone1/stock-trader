@@ -48,8 +48,9 @@ public class LongPositionExecutionParityTests
             2m,
             Policy,
             strategyExit);
-        var liveResult = LiveLongPositionDecisionPolicy.Evaluate(
+        var liveResult = LiveLongPositionExecutionAdapter.Evaluate(
             state,
+            10,
             currentPrice,
             2m,
             Policy,
@@ -86,8 +87,9 @@ public class LongPositionExecutionParityTests
 
         var barAdvance = LongPositionExecutionPolicy.Evaluate(
             state, advanceBar, 1, 2m, noTargetPolicy, dynamicStopFloor: dynamicStopFloor);
-        var liveAdvance = LiveLongPositionDecisionPolicy.Evaluate(
-            state, 105m, 2m, noTargetPolicy, false, dynamicStopFloor: dynamicStopFloor);
+        var liveAdvance = LiveLongPositionExecutionAdapter.Evaluate(
+            state, 10, 105m, 2m, noTargetPolicy, false,
+            dynamicStopFloor: dynamicStopFloor);
 
         barAdvance.IsClosed.Should().BeFalse();
         liveAdvance.ShouldExit.Should().BeFalse();
@@ -97,13 +99,52 @@ public class LongPositionExecutionParityTests
         var barExit = LongPositionExecutionPolicy.Evaluate(
             barAdvance.State, FlatBar(98m), 2, 2m, noTargetPolicy,
             dynamicStopFloor: dynamicStopFloor);
-        var liveExit = LiveLongPositionDecisionPolicy.Evaluate(
-            liveAdvance.State, 98m, 2m, noTargetPolicy, false,
+        var liveExit = LiveLongPositionExecutionAdapter.Evaluate(
+            liveAdvance.State, 10, 98m, 2m, noTargetPolicy, false,
             dynamicStopFloor: dynamicStopFloor);
 
         barExit.IsClosed.Should().BeTrue();
         liveExit.ShouldExit.Should().BeTrue();
         liveExit.Reason.Should().Be(barExit.Events.Last().Reason);
+    }
+
+    [Fact]
+    public void CommonSessionAndLiveAdapter_AgreeOnPartialProfitIntent()
+    {
+        var partialPolicy = Policy with
+        {
+            EnablePartialProfit = true,
+            PartialProfitRMultiple = 1m,
+            EnableTargetExit = false,
+            EnableTimeExit = false,
+        };
+        var state = State();
+        var session = LongPositionExecutionSessionPolicy.Evaluate(
+            new LongPositionSessionState(
+                state,
+                InitialQuantity: 10,
+                TotalCost: 1_000m,
+                RealizedPnl: 0m,
+                new Dictionary<int, int>()),
+            FlatBar(105m),
+            barIndex: 1,
+            currentAtr: 2m,
+            partialPolicy);
+        var live = LiveLongPositionExecutionAdapter.Evaluate(
+            state,
+            initialQuantity: 10,
+            currentPrice: 105m,
+            currentAtr: 2m,
+            partialPolicy,
+            timeExitReached: false);
+
+        var partial = session.Events.Should().ContainSingle(item =>
+            item.Type == LongPositionSessionEventType.PartialExit).Subject;
+        live.Intent!.Quantity.Should().Be(partial.Quantity);
+        live.Intent.Reason.Should().Be(partial.Reason);
+        live.Intent.MarksPartialProfit.Should().BeTrue();
+        live.State.CurrentQuantity.Should().Be(10,
+            "live quantity changes only after the broker fill is reconciled");
     }
 
     private static OhlcvBar FlatBar(decimal price) => new()

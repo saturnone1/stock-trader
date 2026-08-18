@@ -15,10 +15,12 @@
   policies and atomically owns long-entry state projection, gap-stop fills, same-bar exit priority,
   partial profit, target/strategy/time exits, scale-in/out, realized PnL, weighted cost, execution
   counts, and next-bar protective-stop updates.
-- Live position monitoring delegates stop, target, strategy/time priority, breakeven, and trailing
-  decisions to `LiveLongPositionDecisionPolicy`, while broker submission and actual fill lookup stay
-  in the live adapter. Both execution policies share the same position state and protective-stop
-  calculation.
+- Live position monitoring projects current-price snapshots through
+  `LiveLongPositionExecutionAdapter` into the same `LongPositionExecutionSessionPolicy` used by
+  preview and backtest. The adapter emits one durable broker intent at a time; quantity and
+  partial-profit state change only after a broker-confirmed fill. Built-in and custom partial-profit
+  strategies therefore share the same sizing and priority semantics in research and live trading.
+  Custom scaling remains fail-closed until live cost basis and scaling-count persistence are added.
 - Live protective-stop state is persisted on `Position` in the EF-owned schema; process restarts
   no longer discard initial risk, breakeven, or
   trailing activation. Market-open checks use the injected clock, and daily holding limits count

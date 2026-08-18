@@ -11,7 +11,11 @@ using StockTrader.Services.Patterns;
 
 namespace StockTrader.Services.Order;
 
-public sealed record LivePositionExitDecision(bool ShouldExit, string Reason);
+public sealed record LivePositionExitDecision(LiveLongPositionExecutionIntent? Intent)
+{
+    public bool ShouldExit => Intent is not null;
+    public string Reason => Intent?.Reason ?? string.Empty;
+}
 
 /// <summary>
 /// 실시간 포지션의 지표 스냅샷을 준비하고 공통 롱 포지션 정책으로 청산 여부를 평가합니다.
@@ -142,15 +146,10 @@ public sealed class LivePositionExitEvaluator
         if (position.InitialRiskDistance <= 0)
             position.InitialRiskDistance = stopDistance;
 
-        var policy = exitPolicy with
-        {
-            EnablePartialProfit = false,
-            PartialProfitRMultiple = 0m
-        };
         var timeExitReached = recentBars is not null
             && HoldingPeriodPolicy.HasReachedDailyBarLimit(
                 position.OpenedAt, recentBars, exitPolicy.MaxHoldingBars);
-        var decision = LiveLongPositionDecisionPolicy.Evaluate(
+        var decision = LiveLongPositionExecutionAdapter.Evaluate(
             new LongPositionExecutionState(
                 position.EntryPrice,
                 position.StopLossPrice,
@@ -164,9 +163,10 @@ public sealed class LivePositionExitEvaluator
                 PartialProfitTaken: position.PartialProfitTaken,
                 BreakevenApplied: position.BreakevenApplied,
                 TrailingActivated: position.TrailingStopActivated),
+            position.InitialQuantity > 0 ? position.InitialQuantity : position.Quantity,
             position.CurrentPrice,
             atr,
-            policy,
+            exitPolicy,
             timeExitReached,
             strategyExit,
             dynamicStopFloor);
@@ -183,7 +183,7 @@ public sealed class LivePositionExitEvaluator
                 decision.StopUpdate.Reason,
                 decision.StopUpdate.Price);
         }
-        return new LivePositionExitDecision(decision.ShouldExit, decision.Reason);
+        return new LivePositionExitDecision(decision.Intent);
     }
 
     private async Task<StrategyExitInstruction?> ResolveStrategyExitAsync(

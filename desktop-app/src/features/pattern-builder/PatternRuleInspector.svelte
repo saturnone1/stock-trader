@@ -135,7 +135,7 @@
             <input type="checkbox" bind:checked={workspace.enableLiveTrading} on:change={touch} />
             실시간 감시와 자동 주문에 연결
           </span>
-          <span class="mt-2 block text-xs leading-5 text-amber-300/80">현재 실시간 실행은 ‘일봉 + 다음 봉 시가 + 전량 청산’ 전략만 지원합니다. 추가 매수·부분 익절·분할 매도 전략은 미리보기와 백테스트에서 검증할 수 있지만 실시간 주문은 켤 수 없습니다.</span>
+          <span class="mt-2 block text-xs leading-5 text-amber-300/80">현재 실시간 실행은 ‘일봉 + 다음 봉 시가’ 전략과 1차 부분 익절을 지원합니다. 추가 매수·사용자 정의 분할 매도는 미리보기와 백테스트에서 검증할 수 있지만 실시간 주문은 아직 켤 수 없습니다.</span>
         </label>
       </div>
     {:else if selectedNode.type === 'group'}
