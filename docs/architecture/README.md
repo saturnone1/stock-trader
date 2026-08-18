@@ -45,6 +45,8 @@ infrastructure.
   isolated account-equity and notification adapters.
 - Dashboard reads: one storage-independent query reusing the risk/position observation, one focused
   activity store, one active-account projection, and an explicit generated desktop contract.
+- Trade activity reads: one storage-independent recommendation/history query, one focused activity
+  store, validated pagination, and explicit generated desktop contracts.
 - Live built-in configuration: one database-backed application service; entry detection and exit
   evaluation resolve the same persisted override snapshot and never rewrite application files.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
@@ -356,4 +358,8 @@ defaults, active-profile selection, and modification time have one application o
   windows, activity reads, equity access, and notification publication behind application ports.
 - `adr/0041-isolate-dashboard-query.md`: replace endpoint orchestration and fabricated desktop risk
   values with one explicit storage-independent dashboard read model.
+- `adr/0042-centralize-live-pattern-configuration.md`: make executable pattern availability and
+  persisted live parameters one shared runtime source.
+- `adr/0043-isolate-trade-activity-query.md`: move recommendation/history projection and validated
+  pagination behind a storage-independent application read boundary.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

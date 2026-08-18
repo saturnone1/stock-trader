@@ -6,6 +6,15 @@ type SignalListResponse = components['schemas']['SignalListResponse'];
 type PatternStatisticsListResponse = components['schemas']['PatternStatisticsListResponse'];
 type DashboardResponse = components['schemas']['DashboardResponse'];
 type StrategyBuilderMetadataResponse = components['schemas']['StrategyBuilderMetadataResponse'];
+type TradeRecommendationListResponse = components['schemas']['TradeRecommendationListResponse'];
+type TradeHistoryResponse = components['schemas']['TradeHistoryResponse'];
+type TradeHistoryParams = {
+  pattern?: components['schemas']['PatternType'];
+  from?: string;
+  to?: string;
+  skip?: number;
+  take?: number;
+};
 
 const CUMULATIVE_RSI_PRESET_ID = -1001
 const CUMULATIVE_RSI_PRESET_NAME = '누적 RSI 절대수익'
@@ -344,10 +353,13 @@ export const backtestApi = {
 };
 
 export const tradeApi = {
-  recommendations: () => api.get('/api/trades/recommendations'),
+  recommendations: (count?: number) =>
+    api.get<TradeRecommendationListResponse>('/api/trades/recommendations', {
+      params: count === undefined ? undefined : { count }
+    }),
   positions: () => api.get('/api/trades/positions'),
-  history: (params: Record<string, string | number | undefined> = {}) =>
-    api.get('/api/trades/history', { params }),
+  history: (params: TradeHistoryParams = {}) =>
+    api.get<TradeHistoryResponse>('/api/trades/history', { params }),
 };
 
 export const analysisApi = {

@@ -290,7 +290,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["TradeRecommendationListResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TradeActivityErrorResponse"];
+                    };
                 };
             };
         };
@@ -347,7 +358,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    pattern?: string;
+                    pattern?: components["schemas"]["PatternType"];
                     from?: string;
                     to?: string;
                     skip?: number;
@@ -364,7 +375,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["TradeHistoryResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TradeActivityErrorResponse"];
+                    };
                 };
             };
         };
@@ -3931,6 +3953,87 @@ export interface components {
             /** Format: double */
             annualizationPeriods: number;
             preview: components["schemas"]["PreviewTimeFrameMetadataResponse"];
+        };
+        TradeActivityErrorResponse: {
+            errors: string[];
+        };
+        TradeHistoryItemResponse: {
+            /** Format: int64 */
+            id: number;
+            symbol: string;
+            pattern: string;
+            patternName: string;
+            /** Format: double */
+            entryPrice: number;
+            /** Format: double */
+            exitPrice: number;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: double */
+            pnL: number;
+            /** Format: double */
+            pnLPercent: number;
+            isWin: boolean;
+            exitReason: string;
+            /** Format: date-time */
+            entryTime: string;
+            /** Format: date-time */
+            exitTime: string;
+            /** Format: int32 */
+            holdingDays: number;
+        };
+        TradeHistoryResponse: {
+            /** Format: int32 */
+            totalCount: number;
+            /** Format: int32 */
+            skip: number;
+            /** Format: int32 */
+            take: number;
+            trades: components["schemas"]["TradeHistoryItemResponse"][];
+        };
+        TradeRecommendationListResponse: {
+            /** Format: int32 */
+            count: number;
+            recommendations: components["schemas"]["TradeRecommendationResponse"][];
+        };
+        TradeRecommendationResponse: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            sourceSignalId: null | number;
+            symbol: string;
+            pattern: string;
+            patternName: string;
+            /** Format: double */
+            entryPrice: number;
+            /** Format: double */
+            stopLossPrice: number;
+            /** Format: double */
+            targetPrice: number;
+            /** Format: double */
+            positionSize: number;
+            /** Format: int32 */
+            shareQuantity: number;
+            /** Format: double */
+            expectancy: number;
+            /** Format: double */
+            riskRewardRatio: number;
+            /** Format: double */
+            stopLossPercent: number;
+            wasExecuted: boolean;
+            entryStatus: string;
+            /** Format: int32 */
+            accountId: null | number;
+            hasBrokerOrderId: boolean;
+            /** Format: int64 */
+            pendingSeconds: number;
+            note: null | string;
+            mode: string;
+            modeName: string;
+            /** Format: date-time */
+            generatedAt: string;
+            /** Format: date-time */
+            entryRequestedAt: null | string;
         };
         TradingAccountCreateRequest: {
             accountName?: string;
