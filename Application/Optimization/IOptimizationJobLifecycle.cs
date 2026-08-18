@@ -1,3 +1,5 @@
+using StockTrader.Domain.Optimization;
+
 namespace StockTrader.Application.Optimization;
 
 /// <summary>영속 엔티티와 분리된 단일 최적화 작업의 실행 스냅샷입니다.</summary>
@@ -15,7 +17,7 @@ public sealed class OptimizationJobExecutionTicket
     public DateTime? LastProgressAt { get; set; }
     public decimal? MaxDurationHours { get; init; }
     public long? MaxTestedCombinations { get; init; }
-    public string RankBy { get; init; } = "sortinoRatio";
+    public string RankBy { get; init; } = OptimizationRankingCatalog.DefaultCode;
     public int TopResultsToKeep { get; init; }
 }
 

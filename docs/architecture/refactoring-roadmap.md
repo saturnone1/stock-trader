@@ -241,6 +241,11 @@
   desktop, where a fail-closed adapter supplies both the execution selector and its explanation.
   Optimization entry and sizing candidates likewise render the existing server strategy catalog
   instead of retaining separate arrays in the page and form component.
+- Optimization ranking codes, labels, default selection, legacy alias normalization, and metric
+  identity now live in `OptimizationRankingCatalog`. Synchronous result ranking and OOS-aware
+  automatic promotion both use one `OptimizationRankingPolicy`, while the desktop obtains the full
+  list (including annualized return) from versioned server metadata. Unknown stored or submitted
+  values normalize deterministically to Sortino instead of leaking arbitrary strings into jobs.
 
 Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
 remaining orchestration services and extending broker-order parity around the shared compiled

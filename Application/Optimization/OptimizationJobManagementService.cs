@@ -1,3 +1,5 @@
+using StockTrader.Domain.Optimization;
+
 namespace StockTrader.Application.Optimization;
 
 public sealed record CreateOptimizationJobCommand(
@@ -60,7 +62,7 @@ public sealed record OptimizationJobRecord
     public DateTime? LastProgressAt { get; init; }
     public decimal? MaxDurationHours { get; init; }
     public long? MaxTestedCombinations { get; init; }
-    public string RankBy { get; init; } = "sortinoRatio";
+    public string RankBy { get; init; } = OptimizationRankingCatalog.DefaultCode;
     public int TopResultsToKeep { get; init; }
     public bool ContinuousMode { get; init; }
     public bool AutoApplyBestResult { get; init; }
@@ -159,9 +161,7 @@ public sealed class OptimizationJobManagementService
             CreatedAt = _clock.GetUtcNow().UtcDateTime,
             MaxDurationHours = command.MaxDurationHours,
             MaxTestedCombinations = command.MaxTestedCombinations,
-            RankBy = string.IsNullOrWhiteSpace(command.RankBy)
-                ? "sortinoRatio"
-                : command.RankBy,
+            RankBy = OptimizationRankingCatalog.Normalize(command.RankBy),
             TopResultsToKeep = command.TopResultsToKeep > 0
                 ? command.TopResultsToKeep
                 : DefaultTopResults,

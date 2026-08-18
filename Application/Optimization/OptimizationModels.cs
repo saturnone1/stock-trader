@@ -1,6 +1,7 @@
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Application.Strategies;
+using StockTrader.Domain.Optimization;
 
 namespace StockTrader.Application.Optimization;
 
@@ -141,8 +142,8 @@ public class OptimizeRequest
     /// <summary>최적화할 파라미터 범위 정의</summary>
     public OptimizeParams OptimizeParams { get; set; } = new();
 
-    /// <summary>결과 정렬 기준: totalReturn, sortinoRatio, sharpeRatio, calmarRatio, profitFactor, winRate</summary>
-    public string RankBy { get; set; } = "sortinoRatio";
+    /// <summary>결과 정렬 기준. 허용값과 기본값은 OptimizationRankingCatalog가 소유합니다.</summary>
+    public string RankBy { get; set; } = OptimizationRankingCatalog.DefaultCode;
 
     /// <summary>반환할 상위 결과 수 (기본 10)</summary>
     public int MaxResults { get; set; } = 10;

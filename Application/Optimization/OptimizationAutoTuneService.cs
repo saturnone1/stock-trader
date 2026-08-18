@@ -94,16 +94,14 @@ public static class OptimizationPromotionPolicy
     private static IOrderedEnumerable<OptimizationPromotionCandidate> Sort(
         IEnumerable<OptimizationPromotionCandidate> results,
         string rankBy,
-        bool useOos) => rankBy.ToLowerInvariant() switch
-        {
-            "totalreturn" => results.OrderByDescending(r => useOos ? r.OosTotalReturn ?? decimal.MinValue : r.TotalReturn),
-            "sharperatio" => results.OrderByDescending(r => useOos ? r.OosSharpeRatio ?? decimal.MinValue : r.SharpeRatio),
-            "calmarratio" => results.OrderByDescending(r => useOos ? r.OosCalmarRatio ?? decimal.MinValue : r.CalmarRatio),
-            "profitfactor" => results.OrderByDescending(r => useOos ? r.OosProfitFactor ?? decimal.MinValue : r.ProfitFactor),
-            "winrate" => results.OrderByDescending(r => useOos ? r.OosWinRate ?? decimal.MinValue : r.WinRate),
-            "annualizedreturn" => results.OrderByDescending(r => useOos ? r.OosAnnualizedReturn ?? decimal.MinValue : r.AnnualizedReturn),
-            _ => results.OrderByDescending(r => useOos ? r.OosSortinoRatio ?? decimal.MinValue : r.SortinoRatio)
-        };
+        bool useOos) => OptimizationRankingPolicy.OrderDescending(results, rankBy, r => new(
+            useOos ? r.OosTotalReturn ?? decimal.MinValue : r.TotalReturn,
+            useOos ? r.OosSortinoRatio ?? decimal.MinValue : r.SortinoRatio,
+            useOos ? r.OosSharpeRatio ?? decimal.MinValue : r.SharpeRatio,
+            useOos ? r.OosCalmarRatio ?? decimal.MinValue : r.CalmarRatio,
+            useOos ? r.OosProfitFactor ?? decimal.MinValue : r.ProfitFactor,
+            useOos ? r.OosWinRate ?? decimal.MinValue : r.WinRate,
+            useOos ? r.OosAnnualizedReturn ?? decimal.MinValue : r.AnnualizedReturn));
 }
 
 public sealed class OptimizationAutoTuneService

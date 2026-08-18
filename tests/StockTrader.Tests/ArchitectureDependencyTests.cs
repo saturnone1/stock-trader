@@ -1659,6 +1659,41 @@ public class ArchitectureDependencyTests
         optimizationForm.Should().NotContain("[['CurrentClose'");
     }
 
+    [Fact]
+    public void OptimizationRankingHasOneCatalogAndOneOrderingPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var catalog = File.ReadAllText(Path.Combine(
+            repository, "Domain/Optimization/OptimizationRankingCatalog.cs"));
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationRankingPolicy.cs"));
+        var ranker = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationResultRanker.cs"));
+        var promotion = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationAutoTuneService.cs"));
+        var metadata = File.ReadAllText(Path.Combine(
+            repository, "Api/Contracts/StrategyBuilderMetadataResponse.cs"));
+        var page = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/pages/Optimization.svelte"));
+        var frontendModel = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/optimization/optimizationModel.js"));
+
+        catalog.Should().Contain("public static class OptimizationRankingCatalog");
+        catalog.Should().Contain("public const string DefaultCode = SortinoRatioCode");
+        policy.Should().Contain("OptimizationRankingCatalog.MetricFor(rankBy)");
+        ranker.Should().Contain("OptimizationRankingPolicy.OrderDescending(");
+        promotion.Should().Contain("OptimizationRankingPolicy.OrderDescending(");
+        ranker.Should().NotContain("ToLowerInvariant() switch");
+        promotion.Should().NotContain("rankBy.ToLowerInvariant() switch");
+        var management = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationJobManagementService.cs"));
+        management.Should().Contain("OptimizationRankingCatalog.Normalize(command.RankBy)");
+        metadata.Should().Contain("OptimizationRankings: OptimizationRankingCatalog.All");
+        page.Should().Contain("projectOptimizationRankingMetadata(metadata)");
+        page.Should().NotContain("['sortinoRatio', '소르티노 비율']");
+        frontendModel.Should().Contain("metadata?.optimizationRankings");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

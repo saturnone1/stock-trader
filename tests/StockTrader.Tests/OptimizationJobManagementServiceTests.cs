@@ -77,7 +77,7 @@ public class OptimizationJobManagementServiceTests
             MaxDurationHours: null,
             MaxTestedCombinations: null,
             TopResultsToKeep: 0,
-            RankBy: "",
+            RankBy: "unsupported",
             ContinuousMode: false,
             AutoApplyBestResult: true,
             AutoApplyMinTrades: 0,

@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildOptimizationJob, estimatedCombinationCount, resultInsights } from './optimizationModel.js'
+import {
+  buildOptimizationJob,
+  estimatedCombinationCount,
+  projectOptimizationRankingMetadata,
+  resultInsights
+} from './optimizationModel.js'
 
 const form = {
   symbolsText: 'spy, QQQ', from: '2025-01-01', to: '2025-12-31', jobName: '',
@@ -32,6 +37,22 @@ test('optimization job payload preserves timing sweep API contract', () => {
   assert.equal(payload.optimizeRequest.optimizeParams.entryLogicOptions, null)
   assert.deepEqual(payload.optimizeRequest.optimizeParams.requireBullRegimeOptions, [true, false])
   assert.equal(payload.optimizeRequest.optimizeParams.atrStopMultiplier, null)
+})
+
+test('optimization ranking choices and default come from server metadata', () => {
+  const projected = projectOptimizationRankingMetadata({
+    optimizationRankings: [
+      { code: 'sortinoRatio', displayName: '소르티노 비율', isDefault: true },
+      { code: 'annualizedReturn', displayName: '연환산 수익률', isDefault: false }
+    ]
+  })
+
+  assert.deepEqual(projected.rankOptions, [
+    ['sortinoRatio', '소르티노 비율'],
+    ['annualizedReturn', '연환산 수익률']
+  ])
+  assert.equal(projected.defaultRankBy, 'sortinoRatio')
+  assert.throws(() => projectOptimizationRankingMetadata({}), /순위 메타데이터가 비어 있습니다/)
 })
 
 test('combination estimate multiplies only enabled timing axes', () => {

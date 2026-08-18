@@ -5,6 +5,19 @@ export function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+export function projectOptimizationRankingMetadata(metadata) {
+  const rankings = metadata?.optimizationRankings ?? []
+  const defaultRankBy = rankings.find((item) => item.isDefault)?.code
+  if (!rankings.length || !defaultRankBy) {
+    throw new Error('서버의 최적화 순위 메타데이터가 비어 있습니다.')
+  }
+
+  return {
+    rankOptions: rankings.map((item) => [item.code, item.displayName]),
+    defaultRankBy
+  }
+}
+
 export function parseSymbols(text) {
   return String(text ?? '').split(',').map((item) => item.trim().toUpperCase()).filter(Boolean)
 }

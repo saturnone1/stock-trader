@@ -1,4 +1,5 @@
 using StockTrader.Application.Optimization;
+using StockTrader.Domain.Optimization;
 
 namespace StockTrader.Api;
 
@@ -28,8 +29,8 @@ public class CreateOptimizeJobRequest
     /// <summary>보존할 상위 결과 수 (기본 50)</summary>
     public int TopResultsToKeep { get; set; } = 50;
 
-    /// <summary>결과 정렬 기준: totalReturn, sortinoRatio, sharpeRatio, calmarRatio, profitFactor, winRate</summary>
-    public string RankBy { get; set; } = "sortinoRatio";
+    /// <summary>결과 정렬 기준. 허용값과 기본값은 OptimizationRankingCatalog가 소유합니다.</summary>
+    public string RankBy { get; set; } = OptimizationRankingCatalog.DefaultCode;
 
     /// <summary>완료 후 동일 조건으로 다음 최적화 Job을 자동 생성합니다.</summary>
     public bool ContinuousMode { get; set; }

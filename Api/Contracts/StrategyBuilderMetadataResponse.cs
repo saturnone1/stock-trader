@@ -2,6 +2,7 @@ using StockTrader.Application.StrategyPreview;
 using StockTrader.Application.Strategies;
 using StockTrader.Domain.Backtesting;
 using StockTrader.Domain.MarketData;
+using StockTrader.Domain.Optimization;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
 
@@ -48,6 +49,10 @@ public sealed record SlippageModelMetadataResponse(
     string DisplayName,
     string Description,
     bool IsDefault);
+public sealed record OptimizationRankMetadataResponse(
+    string Code,
+    string DisplayName,
+    bool IsDefault);
 public sealed record ExitMethodMetadataResponse(
     string Code,
     string DisplayName,
@@ -72,10 +77,11 @@ public sealed record StrategyBuilderMetadataResponse(
     IReadOnlyList<ExitMethodMetadataResponse> StopMethods,
     IReadOnlyList<ExitMethodMetadataResponse> TargetMethods,
     IReadOnlyList<SlippageModelMetadataResponse> SlippageModels,
+    IReadOnlyList<OptimizationRankMetadataResponse> OptimizationRankings,
     LiveStrategyConstraintsMetadataResponse LiveStrategyConstraints)
 {
     public static StrategyBuilderMetadataResponse Create() => new(
-        SchemaVersion: 3,
+        SchemaVersion: 4,
         DocumentVersion: StrategyDocumentVersions.Current,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
@@ -121,6 +127,11 @@ public sealed record StrategyBuilderMetadataResponse(
                 item.Value,
                 item.DisplayName,
                 item.Description,
+                item.IsDefault)).ToArray(),
+        OptimizationRankings: OptimizationRankingCatalog.All.Select(item =>
+            new OptimizationRankMetadataResponse(
+                item.Code,
+                item.DisplayName,
                 item.IsDefault)).ToArray(),
         LiveStrategyConstraints: new(
             LiveStrategyCompatibilityPolicy.SupportedTimeFrames,

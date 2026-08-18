@@ -1,6 +1,7 @@
 using FluentAssertions;
 using StockTrader.Domain.Backtesting;
 using StockTrader.Domain.MarketData;
+using StockTrader.Domain.Optimization;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
 using StockTrader.Api.Contracts;
@@ -79,7 +80,7 @@ public class CentralCatalogTests
     {
         var contract = StrategyBuilderMetadataResponse.Create();
 
-        contract.SchemaVersion.Should().Be(3);
+        contract.SchemaVersion.Should().Be(4);
         contract.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
@@ -95,6 +96,10 @@ public class CentralCatalogTests
             .Should().BeEquivalentTo(Enum.GetValues<SlippageModel>());
         contract.SlippageModels.Should().ContainSingle(item => item.IsDefault)
             .Which.Value.Should().Be(BacktestExecutionCatalog.DefaultSlippageModel);
+        contract.OptimizationRankings.Select(item => item.Code)
+            .Should().Equal(OptimizationRankingCatalog.All.Select(item => item.Code));
+        contract.OptimizationRankings.Should().ContainSingle(item => item.IsDefault)
+            .Which.Code.Should().Be(OptimizationRankingCatalog.DefaultCode);
         contract.TimeFrames.Should().OnlyContain(item =>
             item.Preview.DefaultLookbackDays > 0
             && item.Preview.MaximumRangeDays >= item.Preview.DefaultLookbackDays
@@ -112,9 +117,11 @@ public class CentralCatalogTests
         var yahoo = root.GetProperty("dataProviders").EnumerateArray()
             .Single(item => item.GetProperty("value").GetString() == "Yahoo");
 
-        root.GetProperty("schemaVersion").GetInt32().Should().Be(3);
+        root.GetProperty("schemaVersion").GetInt32().Should().Be(4);
         root.GetProperty("timeFrames")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         yahoo.GetProperty("maximumLookbackDays").GetProperty("OneMinute").GetInt32().Should().Be(7);
         root.GetProperty("slippageModels")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
+        root.GetProperty("optimizationRankings")[0].GetProperty("code").GetString()
+            .Should().Be(OptimizationRankingCatalog.SortinoRatioCode);
     }
 }

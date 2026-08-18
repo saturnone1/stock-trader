@@ -8,17 +8,14 @@ public static class OptimizationResultRanker
     public static List<OptimizeResultItem> RankOptimizeResults(
     List<OptimizeResultItem> items, string rankBy, int maxResults)
     {
-        IEnumerable<OptimizeResultItem> sorted = rankBy.ToLowerInvariant() switch
-        {
-            "totalreturn" => items.OrderByDescending(r => r.TotalReturn),
-            "sharperation" or
-            "sharperatio" => items.OrderByDescending(r => r.SharpeRatio),
-            "calmarratio" => items.OrderByDescending(r => r.CalmarRatio),
-            "profitfactor" => items.OrderByDescending(r => r.ProfitFactor),
-            "winrate" => items.OrderByDescending(r => r.WinRate),
-            "annualizedreturn" => items.OrderByDescending(r => r.AnnualizedReturn),
-            _ => items.OrderByDescending(r => r.SortinoRatio) // 기본: sortinoRatio
-        };
+        var sorted = OptimizationRankingPolicy.OrderDescending(items, rankBy, r => new(
+            r.TotalReturn,
+            r.SortinoRatio,
+            r.SharpeRatio,
+            r.CalmarRatio,
+            r.ProfitFactor,
+            r.WinRate,
+            r.AnnualizedReturn));
 
         var ranked = sorted.Take(maxResults).ToList();
         for (int i = 0; i < ranked.Count; i++)

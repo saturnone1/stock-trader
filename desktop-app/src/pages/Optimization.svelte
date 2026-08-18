@@ -9,18 +9,13 @@
     entryRules,
     exitRules,
     preferredRuleIndex,
+    projectOptimizationRankingMetadata,
     selectableRules,
     toNumber
   } from '../features/optimization/optimizationModel'
 
-  const rankOptions = [
-    ['sortinoRatio', '소르티노 비율'],
-    ['sharpeRatio', '샤프 비율'],
-    ['totalReturn', '총 수익률'],
-    ['calmarRatio', '칼마 비율'],
-    ['profitFactor', '프로핏 팩터'],
-    ['winRate', '승률']
-  ]
+  let rankOptions = []
+  let defaultRankBy = ''
 
   let timeFrameOptions = []
   let dataSourceOptions = [['', '기본 설정']]
@@ -54,7 +49,7 @@
     to: '',
     timeFrame: 'Daily',
     dataSource: '',
-    rankBy: 'sortinoRatio',
+    rankBy: '',
     maxResults: 10,
     maxCombinations: 500,
     oosPercent: 0.25,
@@ -118,6 +113,10 @@
   async function loadMetadata() {
     try {
       const metadata = await metadataApi.getStrategyBuilder()
+      const rankingMetadata = projectOptimizationRankingMetadata(metadata)
+      rankOptions = rankingMetadata.rankOptions
+      defaultRankBy = rankingMetadata.defaultRankBy
+      if (!rankOptions.some(([value]) => value === form.rankBy)) form.rankBy = defaultRankBy
       timeFrameOptions = (metadata?.timeFrames ?? []).map((item) => [item.value, item.displayName])
       dataSourceOptions = [['', '기본 설정'], ...(metadata?.dataProviders ?? []).map((item) => [item.value, item.displayName])]
       entryModeLabelMap = Object.fromEntries((metadata?.entryModes ?? []).map((item) => [item.code, item.displayName]))

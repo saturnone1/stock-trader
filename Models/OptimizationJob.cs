@@ -1,3 +1,5 @@
+using StockTrader.Domain.Optimization;
+
 namespace StockTrader.Models;
 
 public enum OptimizationJobStatus
@@ -39,7 +41,7 @@ public class OptimizationJob
     public long? MaxTestedCombinations { get; set; }
 
     // 결과 설정
-    public string RankBy { get; set; } = "sortinoRatio";
+    public string RankBy { get; set; } = OptimizationRankingCatalog.DefaultCode;
     public int TopResultsToKeep { get; set; } = 50;
     public bool ContinuousMode { get; set; }
     public bool AutoApplyBestResult { get; set; }
