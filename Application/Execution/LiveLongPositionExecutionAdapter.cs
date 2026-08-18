@@ -34,7 +34,9 @@ public static class LiveLongPositionExecutionAdapter
         LongPositionExitPolicy policy,
         bool timeExitReached,
         StrategyExitInstruction? strategyExit = null,
-        decimal? dynamicStopFloor = null)
+        decimal? dynamicStopFloor = null,
+        LongPositionScalingInstruction? scaling = null,
+        IReadOnlyDictionary<int, int>? scalingExecutionCounts = null)
     {
         if (currentPrice <= 0 || state.CurrentQuantity <= 0)
             return new LiveLongPositionExecutionDecision(state);
@@ -45,10 +47,10 @@ public static class LiveLongPositionExecutionAdapter
         var result = LongPositionExecutionSessionPolicy.Evaluate(
             new LongPositionSessionState(
                 state,
-                Math.Max(initialQuantity, state.CurrentQuantity),
+                initialQuantity > 0 ? initialQuantity : state.CurrentQuantity,
                 state.EntryPrice * state.CurrentQuantity,
                 RealizedPnl: 0m,
-                new Dictionary<int, int>()),
+                scalingExecutionCounts ?? new Dictionary<int, int>()),
             new OhlcvBar
             {
                 Open = currentPrice,
@@ -60,11 +62,29 @@ public static class LiveLongPositionExecutionAdapter
             currentAtr,
             policy,
             strategyExit,
-            dynamicStopFloor);
+            dynamicStopFloor,
+            scaling);
 
         var execution = result.Events.FirstOrDefault(item =>
             item.Type is LongPositionSessionEventType.PartialExit
-                or LongPositionSessionEventType.Exit);
+                or LongPositionSessionEventType.Exit
+                or LongPositionSessionEventType.ScaleIn
+                or LongPositionSessionEventType.ScaleOut);
+        var stopUpdate = result.Events.LastOrDefault(item =>
+            item.Type == LongPositionSessionEventType.StopMoved);
+        if (execution?.Type is LongPositionSessionEventType.ScaleIn
+                or LongPositionSessionEventType.ScaleOut
+            && stopUpdate is not null)
+        {
+            var protectiveState = result.State.Execution with
+            {
+                EntryPrice = state.EntryPrice,
+                CurrentQuantity = state.CurrentQuantity,
+            };
+            return new LiveLongPositionExecutionDecision(
+                protectiveState,
+                StopUpdate: stopUpdate);
+        }
         if (execution is not null)
         {
             // 주문이 실제로 체결되기 전에는 수량, 평균단가, 손익분기·부분익절 상태를
@@ -79,15 +99,19 @@ public static class LiveLongPositionExecutionAdapter
                 new LiveLongPositionExecutionIntent(
                     execution.Quantity,
                     execution.Reason,
-                    execution.Type == LongPositionSessionEventType.PartialExit
-                        ? PositionExecutionKind.PartialProfit
-                        : PositionExecutionKind.FullExit,
+                    execution.Type switch
+                    {
+                        LongPositionSessionEventType.PartialExit =>
+                            PositionExecutionKind.PartialProfit,
+                        LongPositionSessionEventType.ScaleIn => PositionExecutionKind.ScaleIn,
+                        LongPositionSessionEventType.ScaleOut => PositionExecutionKind.ScaleOut,
+                        _ => PositionExecutionKind.FullExit,
+                    },
+                    execution.ScalingRuleIndex,
                     MarksPartialProfit:
                         execution.Type == LongPositionSessionEventType.PartialExit));
         }
 
-        var stopUpdate = result.Events.LastOrDefault(item =>
-            item.Type == LongPositionSessionEventType.StopMoved);
         return new LiveLongPositionExecutionDecision(
             result.State.Execution,
             StopUpdate: stopUpdate);

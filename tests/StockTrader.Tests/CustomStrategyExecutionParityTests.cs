@@ -112,7 +112,7 @@ public class CustomStrategyExecutionParityTests
     }
 
     [Fact]
-    public void ScalingStrategy_IsRejectedForLiveUntilBrokerExecutionHasParity()
+    public void ScalingStrategy_IsAcceptedForLiveAfterBrokerExecutionParity()
     {
         var definition = new StrategyDocument
         {
@@ -153,9 +153,9 @@ public class CustomStrategyExecutionParityTests
 
         var compilation = StrategyCompiler.Compile(definition);
 
-        compilation.Strategy.Should().BeNull();
-        compilation.Errors.Should().ContainSingle(error =>
-            error.Contains("추가 매수·분할 매도", StringComparison.Ordinal));
+        compilation.Errors.Should().BeEmpty();
+        compilation.Strategy.Should().NotBeNull();
+        LiveStrategyCompatibilityPolicy.Validate(compilation.Strategy!).Should().BeEmpty();
     }
 
     [Fact]

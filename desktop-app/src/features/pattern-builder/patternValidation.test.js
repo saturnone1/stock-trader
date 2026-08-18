@@ -104,3 +104,35 @@ test('live trading accepts partial profit when the server execution engine suppo
 
   assert.ok(!issues.some((issue) => issue.includes('부분 익절')))
 })
+
+test('live trading accepts scaling when the server execution engine supports it', () => {
+  const workspace = validWorkspace({
+    enableLiveTrading: true,
+    timeFrame: 'Daily',
+    entryMode: 'NextOpen',
+    scalingRules: [{
+      direction: 'SCALE_IN',
+      percent: 50,
+      maxCount: 1,
+      conditions: [{
+        indicator: 'RSI',
+        params: { period: 14 },
+        compareParams: {},
+        withinBars: 0,
+        consecutiveBars: 0,
+        weight: 1
+      }]
+    }]
+  })
+  const issues = collectPatternValidationIssues(workspace, {
+    ...context,
+    liveStrategyConstraints: {
+      supportedTimeFrames: ['Daily'],
+      supportedEntryModes: ['NextOpen'],
+      supportsPartialExit: true,
+      supportsScaling: true
+    }
+  })
+
+  assert.ok(!issues.some((issue) => issue.includes('추가 매수·분할 매도 전략')))
+})

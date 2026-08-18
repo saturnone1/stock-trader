@@ -20,7 +20,9 @@
   preview and backtest. The adapter emits one durable broker intent at a time; quantity and
   partial-profit state change only after a broker-confirmed fill. Built-in and custom partial-profit
   strategies therefore share the same sizing and priority semantics in research and live trading.
-  Custom scaling remains fail-closed until live evaluation and the central capital cap are connected.
+  Custom scaling now uses the same compiled detector, original-entry sizing, persisted execution
+  counts, and central capital cap in live evaluation. Missing broker equity fails scale-in closed
+  without blocking risk-reducing scale-outs.
 - Live protective-stop state is persisted on `Position` in the EF-owned schema; process restarts
   no longer discard initial risk, breakeven, or
   trailing activation. Market-open checks use the injected clock, and daily holding limits count
@@ -282,8 +284,9 @@ remaining orchestration services and extending broker-order parity around the sh
 strategy and execution policies. Current full-strategy goldens cover NextOpen preview/backtest/live
 fill and exit decisions, NextOpen entry-bar custom exits and scale-outs, fractional scale-out
 preview/backtest parity, and multi-symbol indicator cache isolation against per-symbol previews.
-Live scaling remains fail-closed until the live evaluator and central scale-in capital cap are wired
-to the now-durable position execution and reconciliation contract.
+Live scaling now flows through the durable position execution and reconciliation contract. Remaining
+Phase 2 work is narrowing names and boundaries that still describe this generic position workflow as
+exit-only, plus broader broker-capability and operator-status projection.
 
 ## Phase 0 — Guardrails and governance
 

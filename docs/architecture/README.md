@@ -107,8 +107,10 @@ recreating an orchestration component cannot reset a rule's maximum-fill limit.
 Live partial-profit fills use the same common-session share rounding and atomically move the
 remaining stop to breakeven with the quantity reduction. Durable live position execution now also
 stores scaling direction, rule index, weighted cost basis, and per-rule execution counts through
-the same broker-evidence transaction. Custom live scaling remains disabled until the live evaluator
-and the central scale-in capital cap are connected to this foundation.
+the same broker-evidence transaction. Custom live scaling uses the same compiled detector,
+original-entry share rounding, persisted rule counts, and central scale-in capital cap as research.
+If broker account equity is unavailable, scale-in capacity is zero while risk-reducing scale-out
+instructions remain eligible.
 `LivePositionExitEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,
 custom sell-rule evaluation, and translation into the shared decision policy. The 230-line
 `PositionExitManagerService` now owns only scheduling, broker state, persistence, and durable exit

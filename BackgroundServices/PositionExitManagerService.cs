@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
@@ -13,15 +14,7 @@ using StockTrader.Services.Order;
 namespace StockTrader.BackgroundServices;
 
 /// <summary>
-/// 실시간 포지션 청산 관리 서비스.
-///
-/// 미리보기·백테스트와 공유하는 LongPositionExitPolicy를 실거래 판단에 적용:
-/// - 트레일링 스탑 (Chandelier exit)
-/// - 손익분기 스탑 (breakeven)
-/// - 시간 기반 청산 (최대 보유 봉수)
-/// - 목표가 청산
-///
-/// 매 분마다 오픈 포지션을 확인하고, 청산 조건 충족 시 브로커를 통해 포지션을 청산.
+/// 공통 실행 정책으로 오픈 포지션을 평가하고 내구성 있는 브로커 주문을 조정합니다.
 /// </summary>
 public class PositionExitManagerService : BackgroundService
 {
@@ -34,7 +27,6 @@ public class PositionExitManagerService : BackgroundService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<PositionExitManagerService> _logger;
 
-    /// <summary>DB에 저장된 실거래 청산 파라미터 오버라이드 (캐시, 매 체크 시 갱신)</summary>
     private volatile PatternParameterOverrides? _liveExitOverrides;
 
     public PositionExitManagerService(
@@ -90,8 +82,9 @@ public class PositionExitManagerService : BackgroundService
         var strategies = scope.ServiceProvider.GetRequiredService<ICompiledStrategyRepository>();
         var exitCoordinator = scope.ServiceProvider.GetRequiredService<ILivePositionExecutionCoordinator>();
         var exitEvaluator = scope.ServiceProvider.GetRequiredService<LivePositionExitEvaluator>();
+        var tradingSettings = scope.ServiceProvider
+            .GetRequiredService<IOptions<TradingSettings>>().Value;
 
-        // DB에서 저장된 청산 파라미터 오버라이드 로드 (매 체크마다 갱신)
         _liveExitOverrides = await liveParamService.GetLiveOverridesAsync(ct);
 
         var openPositions = await tradeRepo.GetOpenPositionsAsync(ct);
@@ -102,8 +95,9 @@ public class PositionExitManagerService : BackgroundService
 
         var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
         if (brokerService == null) return;
+        var brokerAccount = await brokerService.GetAccountAsync(ct);
+        var currentEquity = brokerAccount?.TotalEquity ?? 0m;
 
-        // 브로커에서 현재 포지션 가져와서 현재가 업데이트
         var brokerPositions = await brokerService.GetPositionsAsync(ct);
         var brokerPriceMap = brokerPositions
             .ToDictionary(p => p.Symbol, p => p.CurrentPrice, StringComparer.OrdinalIgnoreCase);
@@ -134,7 +128,13 @@ public class PositionExitManagerService : BackgroundService
 
                 customPatterns.TryGetValue(position.CustomPatternName ?? string.Empty, out var customStrategy);
                 var exitResult = await exitEvaluator.EvaluateAsync(
-                    position, customStrategy, ohlcvRepo, _liveExitOverrides, ct);
+                    position,
+                    customStrategy,
+                    ohlcvRepo,
+                    _liveExitOverrides,
+                    ct,
+                    currentEquity: currentEquity,
+                    maxTotalPositions: tradingSettings.MaxTotalPositions);
 
                 if (exitResult.ShouldExit)
                 {

@@ -1,10 +1,10 @@
-namespace StockTrader.Application.Backtesting;
+namespace StockTrader.Application.Execution;
 
 /// <summary>
-/// 백테스트 포트폴리오 한도 안에서 한 포지션이 사용할 수 있는 최대 원금을 계산합니다.
-/// 실행 처리기는 포트폴리오와 전략 설정을 원시 값으로 투영하고 이 정책을 공유합니다.
+/// 포트폴리오 한도 안에서 한 롱 포지션이 사용할 수 있는 최대 원금을 계산합니다.
+/// 백테스트와 실시간 어댑터는 자본·전역 보유 한도·전략 비중만 투영합니다.
 /// </summary>
-public static class BacktestScaleInCapacityPolicy
+public static class PositionScaleInCapacityPolicy
 {
     public static decimal CalculateMaxPositionCost(
         decimal currentEquity,

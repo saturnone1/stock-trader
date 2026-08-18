@@ -1,14 +1,14 @@
 using FluentAssertions;
-using StockTrader.Application.Backtesting;
+using StockTrader.Application.Execution;
 
 namespace StockTrader.Tests;
 
-public class BacktestScaleInCapacityPolicyTests
+public class PositionScaleInCapacityPolicyTests
 {
     [Fact]
     public void CalculateMaxPositionCost_UsesTheStricterPortfolioOrStrategyCap()
     {
-        var maxCost = BacktestScaleInCapacityPolicy.CalculateMaxPositionCost(
+        var maxCost = PositionScaleInCapacityPolicy.CalculateMaxPositionCost(
             currentEquity: 100_000m,
             maxTotalPositions: 4,
             strategyMaxSinglePositionPercent: 20m);
@@ -19,7 +19,7 @@ public class BacktestScaleInCapacityPolicyTests
     [Fact]
     public void CalculateMaxPositionCost_FailsClosedForInvalidCapital()
     {
-        BacktestScaleInCapacityPolicy.CalculateMaxPositionCost(
+        PositionScaleInCapacityPolicy.CalculateMaxPositionCost(
                 currentEquity: 0m,
                 maxTotalPositions: 4,
                 strategyMaxSinglePositionPercent: 0m)

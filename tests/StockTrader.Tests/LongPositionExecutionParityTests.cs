@@ -147,6 +147,55 @@ public class LongPositionExecutionParityTests
             "live quantity changes only after the broker fill is reconciled");
     }
 
+    [Theory]
+    [InlineData("SCALE_IN", 5, StockTrader.Models.Enums.PositionExecutionKind.ScaleIn)]
+    [InlineData("SCALE_OUT", 5, StockTrader.Models.Enums.PositionExecutionKind.ScaleOut)]
+    public void CommonSessionAndLiveAdapter_AgreeOnScalingIntent(
+        string direction,
+        int expectedQuantity,
+        StockTrader.Models.Enums.PositionExecutionKind expectedKind)
+    {
+        var holdPolicy = Policy with
+        {
+            EnableTrailingStop = false,
+            EnableTargetExit = false,
+            EnableTimeExit = false,
+        };
+        var state = State();
+        var scaling = new LongPositionScalingInstruction(
+            RuleIndex: 3,
+            direction,
+            Percent: 50m,
+            MaxPositionCost: 2_000m);
+        var session = LongPositionExecutionSessionPolicy.Evaluate(
+            new LongPositionSessionState(
+                state, 10, 1_000m, 0m, new Dictionary<int, int>()),
+            FlatBar(100m),
+            1,
+            2m,
+            holdPolicy,
+            scaling: scaling);
+        var live = LiveLongPositionExecutionAdapter.Evaluate(
+            state,
+            10,
+            100m,
+            2m,
+            holdPolicy,
+            false,
+            scaling: scaling,
+            scalingExecutionCounts: new Dictionary<int, int>());
+
+        var scalingEvent = session.Events.Should().ContainSingle().Subject;
+        scalingEvent.Quantity.Should().Be(expectedQuantity);
+        live.Intent.Should().Be(new LiveLongPositionExecutionIntent(
+            expectedQuantity,
+            scalingEvent.Reason,
+            expectedKind,
+            ScalingRuleIndex: 3));
+        live.State.CurrentQuantity.Should().Be(10,
+            "live quantity changes only after the broker fill is reconciled");
+    }
+
     private static OhlcvBar FlatBar(decimal price) => new()
     {
         Open = price,
