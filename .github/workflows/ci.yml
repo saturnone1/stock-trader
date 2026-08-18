@@ -101,6 +101,10 @@ jobs:
           npm run api:check
           git diff --exit-code -- openapi/stocktrader_desktop.json src/api/generated.ts
 
+      - name: Build desktop production image
+        if: matrix.os == 'ubuntu-latest'
+        run: docker build --file Dockerfile.desktop --tag stock-trader-desktop-ci .
+
       # ── Test ─────────────────────────────────
       - name: Run tests with coverage
         run: >
