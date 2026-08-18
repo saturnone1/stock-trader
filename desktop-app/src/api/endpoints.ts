@@ -2,9 +2,7 @@ import { api } from './client';
 import type { Pattern, CustomPatternDocument, CustomPatternWriteRequest, OptimizationJob, BacktestResult, AuthSession, UniverseMeta, UniverseQueryResult, FinancialFactorMeta, FinancialFactorQueryResult, FinancialPipelineStatus, SettingsResponse, SettingsUpdateRequest, SettingsUpdateResponse } from './types';
 import type { components } from './generated';
 
-type SignalListResponse = components['schemas']['SignalListResponse'];
 type PatternStatisticsListResponse = components['schemas']['PatternStatisticsListResponse'];
-type DashboardResponse = components['schemas']['DashboardResponse'];
 type StrategyBuilderMetadataResponse = components['schemas']['StrategyBuilderMetadataResponse'];
 type TradeRecommendationListResponse = components['schemas']['TradeRecommendationListResponse'];
 type TradeHistoryResponse = components['schemas']['TradeHistoryResponse'];
@@ -188,10 +186,6 @@ export const authApi = {
     api.post('/api/auth/change-password', { currentPassword, newPassword }),
 };
 
-export const dashboardApi = {
-  get: () => api.get<DashboardResponse>('/api/dashboard'),
-};
-
 export const patternApi = {
   list: async () => {
     const [response, metadata] = await Promise.all([
@@ -368,15 +362,6 @@ export const analysisApi = {
     api.get<StockAnalysisResponse>(`/api/analysis/${encodeURIComponent(symbol)}`),
 };
 
-export const signalApi = {
-  list: (params: Record<string, string | number | undefined> = {}) =>
-    api.get<SignalListResponse>('/api/signals', { params }),
-};
-
-export const riskApi = {
-  get: () => api.get('/api/risk'),
-};
-
 export const portfolioApi = {
   get: () => api.get('/api/portfolio'),
   performance: () => api.get('/api/portfolio/performance'),
@@ -395,11 +380,6 @@ export const accountApi = {
   remove: (id: number | string) => api.delete(`/api/accounts/${id}`),
   test: (id: number | string) => api.post(`/api/accounts/${id}/test`, {}),
   activate: (id: number | string) => api.post(`/api/accounts/${id}/activate`, {}),
-};
-
-export const mlApi = {
-  status: () => api.get('/api/ml'),
-  train: () => api.post('/api/ml/train', {}),
 };
 
 export const patternStatsApi = {

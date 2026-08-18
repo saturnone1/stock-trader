@@ -9,7 +9,6 @@
   import Portfolio from './pages/Portfolio.svelte'
   import Optimization from './pages/Optimization.svelte'
   import Backtest from './pages/Backtest.svelte'
-  import Ml from './pages/Ml.svelte'
   import Accounts from './pages/Accounts.svelte'
   import Settings from './pages/Settings.svelte'
   import Account from './pages/Account.svelte'
@@ -179,8 +178,6 @@
         <Optimization />
       {:else if currentPage === 'backtest'}
         <Backtest />
-      {:else if currentPage === 'ml'}
-        <Ml />
       {:else if currentPage === 'accounts'}
         <Accounts />
       {:else if currentPage === 'settings'}
