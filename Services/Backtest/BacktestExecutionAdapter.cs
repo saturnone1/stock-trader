@@ -1,5 +1,6 @@
 using StockTrader.Configuration;
 using StockTrader.Application.Execution;
+using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 
@@ -196,11 +197,8 @@ internal sealed class BacktestExecutionAdapter
             .Select(kv => kv.Value)
             .FirstOrDefault();
 
-        return closest ?? new MarketRegime
-        {
-            SpyAbove200Ma = true,
-            RegimeLabel = "알 수 없음"
-        };
+        return closest ?? MarketRegimeTrendPolicy.Unknown(
+            date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
     }
 
     /// <summary>오픈 포지션 상태 추적 (심볼별 1개)</summary>

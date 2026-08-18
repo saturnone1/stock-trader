@@ -3,21 +3,16 @@ using StockTrader.Application.Backtesting;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
-using StockTrader.Services.Indicators;
 
 namespace StockTrader.Services.Backtest;
 
 /// <summary>벤치마크 일봉에서 과거 시점별 장기 추세 레짐을 준비합니다.</summary>
 public sealed class BacktestRegimeMapBuilder
 {
-    private readonly IIndicatorService _indicators;
     private readonly ILogger<BacktestRegimeMapBuilder> _logger;
 
-    public BacktestRegimeMapBuilder(
-        IIndicatorService indicators,
-        ILogger<BacktestRegimeMapBuilder> logger)
+    public BacktestRegimeMapBuilder(ILogger<BacktestRegimeMapBuilder> logger)
     {
-        _indicators = indicators;
         _logger = logger;
     }
 
@@ -45,42 +40,24 @@ public sealed class BacktestRegimeMapBuilder
         if (indexBars.Count < StrategyEvaluationPolicy.RegimeTrendBars)
         {
             _logger.LogWarning(
-                "{Symbol} 데이터 부족: {Count}개 (최소 {Minimum}개 필요), 기본 강세 레짐 적용",
+                "{Symbol} 데이터 부족: {Count}개 (최소 {Minimum}개 필요), 알 수 없음 레짐 적용",
                 regimeSymbol,
                 indexBars.Count,
                 StrategyEvaluationPolicy.RegimeTrendBars);
-            var fallback = new Dictionary<DateOnly, MarketRegime>();
-            for (var date = from.Date; date <= to.Date; date = date.AddDays(1))
-            {
-                fallback[DateOnly.FromDateTime(date)] = new MarketRegime
-                {
-                    SpyAbove200Ma = true,
-                    SpyPrice = 0,
-                    Spy200Ma = 0,
-                    RegimeLabel = "강세(기본)",
-                    AsOf = date
-                };
-            }
-            return fallback;
         }
 
         var bars = indexBars.OrderBy(bar => bar.Timestamp).ToArray();
-        var closes = IndicatorService.ExtractCloses(bars);
-        var trend = _indicators.SMA(
-            closes, StrategyEvaluationPolicy.RegimeTrendBars);
         var result = new Dictionary<DateOnly, MarketRegime>();
         for (var index = 0; index < bars.Length; index++)
         {
-            var aboveTrend = trend[index] > 0 && bars[index].Close > trend[index];
-            result[DateOnly.FromDateTime(bars[index].Timestamp)] = new MarketRegime
-            {
-                SpyAbove200Ma = aboveTrend,
-                SpyPrice = bars[index].Close,
-                Spy200Ma = trend[index],
-                RegimeLabel = aboveTrend ? "강세" : "약세",
-                AsOf = bars[index].Timestamp
-            };
+            var timestamp = bars[index].Timestamp;
+            result[DateOnly.FromDateTime(timestamp)] =
+                MarketRegimeTrendPolicy.Evaluate(bars[..(index + 1)], timestamp);
         }
+
+        if (result.Count == 0)
+            result[DateOnly.FromDateTime(from)] = MarketRegimeTrendPolicy.Unknown(from);
+
         return result;
     }
 }

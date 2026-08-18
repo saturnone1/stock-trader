@@ -9,5 +9,4 @@ public sealed class StockAnalysisSettings
     public int HistoryLookbackDays { get; set; } = 365;
     public int MinimumHistoryBars { get; set; } = 50;
     public int RegimeLookbackDays { get; set; } = 400;
-    public int MinimumRegimeBars { get; set; } = 200;
 }

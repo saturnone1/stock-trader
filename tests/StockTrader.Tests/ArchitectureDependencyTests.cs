@@ -1844,12 +1844,64 @@ public class ArchitectureDependencyTests
             repository, "Services/Patterns/LiveMarketRegimeEvaluator.cs"));
 
         cycle.Should().Contain("timeProvider.GetUtcNow()");
-        regime.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
+        regime.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
+        regime.Should().NotContain("IIndicatorService");
         cycle.Should().Contain("StrategyEvaluationPolicy.RegimeLookbackCalendarDays");
         cycle.Should().Contain("StrategyEvaluationPolicy.LiveDailySignalLookbackDays");
         cycle.Should().NotContain("DateTime.UtcNow");
         cycle.Should().NotContain("AddDays(-400)");
         regime.Should().NotContain("SMA(closes, 200)");
+    }
+
+    [Fact]
+    public void PreviewBacktestLiveAndMlUseOneMarketRegimeTrendPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var policy = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/MarketRegimeTrendPolicy.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
+        var backtest = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestRegimeMapBuilder.cs"));
+        var backtestService = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestService.cs"));
+        var backtestLookup = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestExecutionAdapter.cs"));
+        var live = File.ReadAllText(Path.Combine(
+            repository, "Services/Patterns/LiveMarketRegimeEvaluator.cs"));
+        var ml = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/MarketRegimeClassifier.cs"));
+        var signalScorer = File.ReadAllText(Path.Combine(
+            repository, "Services/ML/SignalScorer.cs"));
+        var analysis = File.ReadAllText(Path.Combine(
+            repository, "Services/Analysis/StockAnalysisService.cs"));
+        var snapshotFactory = File.ReadAllText(Path.Combine(
+            repository, "Services/Analysis/StockIndicatorSnapshotFactory.cs"));
+        var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
+
+        policy.Should().Contain("bar.Timestamp <= asOf");
+        policy.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
+        policy.Should().Contain("movingAverage > 0 && price > movingAverage");
+        policy.Should().Contain("SpyAbove200Ma = false");
+        policy.Should().NotContain("StockTrader.Services");
+        policy.Should().NotContain("DateTime.UtcNow");
+        preview.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
+        preview.Should().Contain("MarketRegimeTrendPolicy.InsufficientHistoryWarning");
+        preview.Should().NotContain("private static MarketRegime BuildRegime");
+        backtest.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
+        backtest.Should().NotContain("IIndicatorService");
+        backtestService.Should().Contain("MarketRegimeTrendPolicy.InsufficientHistoryWarning");
+        backtestLookup.Should().Contain("MarketRegimeTrendPolicy.Unknown(");
+        live.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
+        live.Should().NotContain("IIndicatorService");
+        ml.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
+        ml.Should().NotContain("private readonly IIndicatorService");
+        signalScorer.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
+        signalScorer.Should().NotContain("TakeLast(200)");
+        analysis.Should().Contain("MarketRegimeTrendPolicy.Evaluate(");
+        analysis.Should().Contain("StrategyEvaluationPolicy.RegimeTrendBars");
+        snapshotFactory.Should().NotContain("CreateLongTrend(");
+        settings.Should().NotContain("MinimumRegimeBars");
     }
 
     [Fact]

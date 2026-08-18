@@ -8,11 +8,6 @@ public sealed record StockIndicatorSnapshot(
     decimal Atr,
     decimal VolumeRatio);
 
-public sealed record MarketTrendSnapshot(
-    decimal Price,
-    decimal MovingAverage,
-    bool IsAboveMovingAverage);
-
 public sealed class StockIndicatorSnapshotFactory(IIndicatorService indicators)
 {
     private const int RsiPeriod = 14;
@@ -20,7 +15,7 @@ public sealed class StockIndicatorSnapshotFactory(IIndicatorService indicators)
     private const int VolumePeriod = 20;
     private const int ShortTrendPeriod = 20;
     private const int MediumTrendPeriod = 50;
-    public const int LongTrendPeriod = 200;
+    private const int LongTrendPeriod = 200;
     private const int FastEmaPeriod = 12;
     private const int SlowEmaPeriod = 26;
     private const int SignalEmaPeriod = 9;
@@ -84,16 +79,5 @@ public sealed class StockIndicatorSnapshotFactory(IIndicatorService indicators)
             totalCount++;
             if (currentPrice > sma) bullishCount++;
         }
-    }
-
-    public MarketTrendSnapshot CreateLongTrend(IReadOnlyList<OhlcvBar> bars)
-    {
-        if (bars.Count < LongTrendPeriod)
-            throw new ArgumentException($"At least {LongTrendPeriod} bars are required.", nameof(bars));
-
-        var closes = bars.Select(bar => bar.Close).ToArray();
-        var movingAverage = indicators.SMA(closes, LongTrendPeriod)[^1];
-        var price = closes[^1];
-        return new MarketTrendSnapshot(price, movingAverage, price > movingAverage);
     }
 }

@@ -25,6 +25,8 @@ infrastructure.
   provider catalog.
 - Market identity, display name, time zone, and regular-session boundaries: one domain market
   catalog shared by provider metadata, calendars, scanning, synchronization, and scheduling.
+- Market-regime trend evidence: one completed-bar policy with an explicit as-of cutoff, central
+  200-day window, strict boundary semantics, and fail-closed insufficient-history behavior.
 - Backtest and preview range policy: dedicated policy catalogs.
 - Backtest period metrics: one unit-explicit application policy using the full evaluation range;
   trade activity dates never define CAGR, Calmar, Sharpe, or Sortino annualization.
@@ -188,6 +190,10 @@ bars, cached benchmark regime, detection, and signal processing through purpose-
 The daily completion marker is written only after detection and signal processing succeed, so a
 transient failure remains retryable while durable signal, recommendation, and entry claims prevent
 duplicate financial effects.
+The benchmark long-trend regime now has one deterministic owner in
+`MarketRegimeTrendPolicy`. Preview, backtest, live scanning, stock analysis, and the ML base regime
+all ignore future bars and use the same strict 200-day boundary. Insufficient benchmark history is
+unknown and non-bullish instead of taking the former optimistic preview/backtest fallback.
 Daily history synchronization follows the same split. `DailyDataSyncService` only starts the
 initial recovery and configured periodic/retry loop; `IDailyMarketDataSyncCycle` selects one
 provider-bound session and evaluates only that provider's typed market date and close window.

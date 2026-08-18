@@ -55,6 +55,11 @@ public sealed class PatternPreviewSimulationEngine
             .Select(pair => $"참조 종목 {pair.Key} 데이터가 부족해 해당 조건은 미리보기에서 제한될 수 있습니다.")
             .Distinct()
             .ToList();
+        if (MarketRegimeTrendPolicy.IsUnknown(
+                MarketRegimeTrendPolicy.Evaluate(input.RegimeBars, visibleBars[0].Timestamp)))
+        {
+            warnings.Add(MarketRegimeTrendPolicy.InsufficientHistoryWarning);
+        }
         var runtimeReferenceData = input.ReferenceBars.ToDictionary(
             pair => pair.Key,
             pair => pair.Value,
@@ -192,7 +197,8 @@ public sealed class PatternPreviewSimulationEngine
                 }
             }
 
-            var regime = BuildRegime(current.Timestamp, input.RegimeBars);
+            var regime = MarketRegimeTrendPolicy.Evaluate(
+                input.RegimeBars, current.Timestamp);
             var signal = await input.Runtime.EvaluateEntryAsync(
                 input.Symbol, window, regime, ct);
             if (signal is null) continue;
@@ -337,25 +343,6 @@ public sealed class PatternPreviewSimulationEngine
                 visibleBars.Length,
                 visibleBars.Length),
             warnings);
-    }
-
-    private static MarketRegime BuildRegime(DateTime timestamp, OhlcvBar[] regimeBars)
-    {
-        var available = regimeBars
-            .Where(bar => bar.Timestamp <= timestamp)
-            .TakeLast(StrategyEvaluationPolicy.RegimeTrendBars)
-            .ToArray();
-        var price = available.LastOrDefault()?.Close ?? 0;
-        var average = available.Length > 0 ? available.Average(bar => bar.Close) : 0;
-        return new MarketRegime
-        {
-            SpyAbove200Ma = available.Length < StrategyEvaluationPolicy.RegimeTrendBars
-                || price >= average,
-            SpyPrice = price,
-            Spy200Ma = average,
-            RegimeLabel = price >= average ? "Bull" : "Bear",
-            AsOf = timestamp
-        };
     }
 
     private sealed class PreviewPosition

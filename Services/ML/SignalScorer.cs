@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Microsoft.ML;
 using Microsoft.ML.Trainers.FastTree;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Models;
 
@@ -201,9 +202,11 @@ public class SignalScorer : ISignalScorer
 
         // 200MA 대비 위치
         double priceVs200Ma = 0;
-        if (bars.Length >= 200)
+        if (bars.Length >= StrategyEvaluationPolicy.RegimeTrendBars)
         {
-            var ma200 = bars.TakeLast(200).Average(b => (double)b.Close);
+            var ma200 = bars
+                .TakeLast(StrategyEvaluationPolicy.RegimeTrendBars)
+                .Average(b => (double)b.Close);
             priceVs200Ma = ma200 > 0 ? ((double)bars[^1].Close - ma200) / ma200 : 0;
         }
 

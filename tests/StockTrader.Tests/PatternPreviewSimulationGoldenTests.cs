@@ -63,6 +63,7 @@ public class PatternPreviewSimulationGoldenTests
         result.Summary.TotalReturnPercent.Should().BeApproximately(
             1000m / 10500m * 100m, 0.0000001m);
         result.Summary.OpenPosition.Should().BeFalse();
+        result.Warnings.Should().Contain(MarketRegimeTrendPolicy.InsufficientHistoryWarning);
         var lastTimestamp = bars[^1].Timestamp;
         runtime.ReferenceAsOf.Should().OnlyContain(
             timestamp => timestamp <= lastTimestamp);

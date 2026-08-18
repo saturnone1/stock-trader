@@ -3,9 +3,9 @@ using Microsoft.Extensions.Options;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using Microsoft.ML.Trainers;
+using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Models;
-using StockTrader.Services.Indicators;
 
 namespace StockTrader.Services.ML;
 
@@ -17,7 +17,6 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
 {
     private readonly MLContext _mlContext;
     private readonly MLSettings _settings;
-    private readonly IIndicatorService _indicators;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<MarketRegimeClassifier> _logger;
 
@@ -38,12 +37,10 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
 
     public MarketRegimeClassifier(
         IOptions<MLSettings> settings,
-        IIndicatorService indicators,
         TimeProvider timeProvider,
         ILogger<MarketRegimeClassifier> logger)
     {
         _settings = settings.Value;
-        _indicators = indicators;
         _timeProvider = timeProvider;
         _logger = logger;
         _mlContext = new MLContext(seed: 42);
@@ -464,27 +461,6 @@ public class MarketRegimeClassifier : IMarketRegimeClassifier
 
     private static MarketRegime ComputeBaseRegime(
         OhlcvBar[] benchmarkBars,
-        DateTime observedAt)
-    {
-        if (benchmarkBars.Length == 0)
-            return new MarketRegime { RegimeLabel = "알 수 없음", AsOf = observedAt };
-
-        var last = benchmarkBars[^1];
-        decimal ma200 = 0;
-
-        if (benchmarkBars.Length >= 200)
-        {
-            ma200 = benchmarkBars.TakeLast(200).Average(b => b.Close);
-        }
-
-        var aboveMa = ma200 > 0 && last.Close > ma200;
-        return new MarketRegime
-        {
-            SpyAbove200Ma = aboveMa,
-            SpyPrice = last.Close,
-            Spy200Ma = ma200,
-            RegimeLabel = aboveMa ? "강세" : "약세",
-            AsOf = last.Timestamp
-        };
-    }
+        DateTime observedAt) =>
+        MarketRegimeTrendPolicy.Evaluate(benchmarkBars, observedAt);
 }
