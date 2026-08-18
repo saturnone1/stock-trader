@@ -116,7 +116,7 @@ public sealed class AccountManagerTests
     }
 
     [Fact]
-    public async Task DisabledAccountBlocksNewOrdersButStillAllowsPendingOrderReconciliation()
+    public async Task DisabledAccountBlocksNewEntriesButAllowsReconciliationAndRiskReducingExit()
     {
         var account = Account() with { IsEnabled = false };
         var store = new Mock<ITradingAccountStore>();
@@ -130,10 +130,15 @@ public sealed class AccountManagerTests
         (await manager.GetBrokerContextAsync(account.Id)).Should().BeNull();
         var reconciliation = await manager
             .GetBrokerContextForReconciliationAsync(account.Id);
+        var positionExit = await manager
+            .GetBrokerContextForPositionExitAsync(account.Id);
 
         reconciliation.Should().NotBeNull();
         reconciliation!.Account.IsEnabled.Should().BeFalse();
         reconciliation.Broker.Should().BeSameAs(broker);
+        positionExit.Should().NotBeNull();
+        positionExit!.Account.IsEnabled.Should().BeFalse();
+        positionExit.Broker.Should().BeSameAs(broker);
     }
 
     private static AccountManager Manager(

@@ -48,6 +48,11 @@ public interface IAccountManager
         int accountId,
         CancellationToken ct = default);
 
+    /// <summary>비활성화된 계좌라도 이미 열린 포지션의 위험 축소 청산을 허용합니다.</summary>
+    Task<AccountBrokerContext?> GetBrokerContextForPositionExitAsync(
+        int accountId,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<AccountConnectionStatus>> GetAllConnectionStatusAsync(
         CancellationToken ct = default);
 

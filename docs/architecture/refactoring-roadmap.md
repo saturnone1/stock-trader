@@ -305,6 +305,11 @@ port for claim, broker evidence, release, and atomic fill commit. Its SQLite ada
 contexts and transaction handling. The remaining broad `ITradeRepository` has also been retired:
 trade history, open positions, recommendations, and signals use separate application ports and
 isolated contexts. Open-position entities are no longer shared through a mutable read cache.
+Operator-triggered full exits and entry/position reconciliation now delegate to
+`ILiveOrderManagement`; the HTTP adapter no longer selects accounts or calls execution stores and
+coordinators directly. Persisted positions route through their owning account, including
+risk-reducing exits for disabled accounts, while legacy account-less positions use an explicit
+active-account fallback.
 
 ## Phase 0 — Guardrails and governance
 

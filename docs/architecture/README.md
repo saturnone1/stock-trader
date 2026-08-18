@@ -162,6 +162,12 @@ call the same use case. Position responses use one contract that
 shows whether an exit is ready, missing a confirmed broker order ID, or awaiting broker resolution,
 including the durable requested quantity;
 the operator can request reconciliation but cannot force-clear an uncertain order.
+Manual full exit, position-order reconciliation, and entry-order reconciliation now cross
+`ILiveOrderManagement`. The use case routes persisted positions to their owning account instead of
+the currently active account, while legacy account-less rows retain an explicit active-account
+fallback. Disabled accounts may perform risk-reducing exits and durable reconciliation without
+regaining permission for new entries. `OrderEndpoints` only binds explicit contracts and maps typed
+outcomes to HTTP responses.
 
 Database schema ownership now crosses a fail-closed EF Core boundary. Empty databases are created
 from generated migrations and databases with EF history apply only their pending migrations. The
@@ -327,4 +333,6 @@ defaults, active-profile selection, and modification time have one application o
   trade repository and commit fills through an isolated atomic persistence adapter.
 - `adr/0035-retire-broad-trade-repository.md`: split remaining trading reads and writes across four
   focused ports, isolate EF contexts, and remove mutable open-position caching.
+- `adr/0036-isolate-live-order-management.md`: move operator exit and reconciliation orchestration
+  behind one use case and route every persisted position through its owning account.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

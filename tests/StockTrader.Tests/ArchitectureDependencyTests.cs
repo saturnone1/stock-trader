@@ -2015,7 +2015,7 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/pages/Portfolio.svelte"));
         orders.Should().Contain("/reconcile-position-order");
         orders.Should().NotContain("/reconcile-position-exit");
-        orders.Should().Contain("executions.ReconcileAsync(");
+        orders.Should().Contain("orders.ReconcilePositionAsync(");
         orders.Should().Contain("ExecuteSignalRequest request");
         orders.Should().Contain("StatusCodes.Status500InternalServerError");
         orders.Should().NotContain("JsonDocument.ParseAsync");
@@ -2080,11 +2080,42 @@ public class ArchitectureDependencyTests
     {
         var repository = FindRepositoryRoot();
         var orders = File.ReadAllText(Path.Combine(repository, "Api/OrderEndpoints.cs"));
+        var management = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/LiveOrderManagement.cs"));
+        var managementContract = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LiveOrderManagementContracts.cs"));
         var portfolio = File.ReadAllText(Path.Combine(repository, "desktop-app/src/pages/Portfolio.svelte"));
         var desktopEndpoints = File.ReadAllText(Path.Combine(repository, "desktop-app/src/api/endpoints.ts"));
 
-        orders.Should().Contain("executions.SubmitFullExitAsync(");
-        orders.Should().Contain("ILivePositionExecutionCoordinator executions");
+        orders.Should().Contain("ILiveOrderManagement orders");
+        orders.Should().Contain("orders.ClosePositionAsync(");
+        orders.Should().Contain(".Produces<LiveOrderResponse>()");
+        orders.Should().NotContain("IAccountManager");
+        orders.Should().NotContain("IOpenPositionStore");
+        orders.Should().NotContain("ILivePositionExecutionCoordinator");
+        orders.Should().NotContain("ILiveEntryExecutionStore");
+        File.ReadAllLines(Path.Combine(repository, "Api/OrderEndpoints.cs"))
+            .Length.Should().BeLessThanOrEqualTo(110);
+        management.Should().Contain("positionExecutions.SubmitFullExitAsync(");
+        management.Should().Contain("GetBrokerContextForPositionExitAsync(position.AccountId");
+        management.Should().Contain("GetBrokerContextForReconciliationAsync(position.AccountId");
+        managementContract.Should().Contain("public interface ILiveOrderManagement");
+        managementContract.Should().NotContain("Microsoft.AspNetCore");
+        managementContract.Should().NotContain("StockTrader.Services");
+        managementContract.Should().NotContain("StockTrader.Models");
+        var exitContextConsumers = Directory
+            .GetFiles(repository, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}tests{Path.DirectorySeparatorChar}",
+                StringComparison.OrdinalIgnoreCase))
+            .Where(path => File.ReadAllText(path).Contains(
+                "GetBrokerContextForPositionExitAsync(", StringComparison.Ordinal))
+            .Select(path => Path.GetFileName(path))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        exitContextConsumers.Should().Equal(
+            "AccountManager.cs",
+            "IAccountManager.cs",
+            "LiveOrderManagement.cs");
         portfolio.Should().Contain("orderApi.closePosition(symbol)");
         desktopEndpoints.Should().Contain("api.post('/api/orders/close-position'");
         orders.Should().NotContain("broker.ClosePositionAsync(");

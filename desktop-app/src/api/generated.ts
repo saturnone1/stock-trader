@@ -1793,14 +1793,38 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PositionSymbolRequest"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderResponse"];
+                    };
+                };
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderErrorResponse"];
+                    };
                 };
             };
         };
@@ -1826,14 +1850,29 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PositionSymbolRequest"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderErrorResponse"];
+                    };
                 };
             };
         };
@@ -1870,7 +1909,36 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderErrorResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderErrorResponse"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LiveOrderErrorResponse"];
+                    };
                 };
             };
         };
@@ -2870,6 +2938,21 @@ export interface components {
             configuredSymbols: string[];
             latestSuccessAt: null | string;
         };
+        LiveOrderErrorResponse: {
+            error: string;
+            status?: null | string;
+        };
+        LiveOrderResponse: {
+            status: string;
+            message: string;
+            requestedAt: null | string;
+            brokerStatus: null | string;
+            /** Format: double */
+            fillPrice: null | number;
+            /** Format: int32 */
+            filledQuantity: null | number;
+            brokerOrderIdPersisted: null | boolean;
+        };
         OptimizeParams: {
             atrStopMultiplier?: null | components["schemas"]["ParamRange"];
             atrTargetMultiplier?: null | components["schemas"]["ParamRange"];
@@ -3229,6 +3312,9 @@ export interface components {
         };
         /** @enum {unknown} */
         PatternType: "GapUpPullback" | "Breakout" | "VwapReversion" | "RsiMeanReversion" | "TrendPullback" | "OpeningRangeBreakout" | "VolumeSpikeContinuation" | "EarningsDrift" | "IndexRegimeFilter" | "VolatilityExpansion" | "MomentumReversal" | "MultiTimeframeTrend" | "MeanReversionChannel" | "Rsi2Bollinger" | "VolatilityBreakout" | "Tqqq200Sma" | "CumulativeRsi2" | "Custom";
+        PositionSymbolRequest: {
+            symbol: null | string;
+        };
         ResearchFacetResponse: {
             name: string;
             /** Format: int32 */
