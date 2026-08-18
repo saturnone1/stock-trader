@@ -449,6 +449,7 @@ public class WalkForwardWindow
     public decimal OutOfSampleReturn { get; set; }
     public decimal OutOfSampleReturnPercent { get; set; }
     public decimal OutOfSampleMaxDrawdown { get; set; }
+    public decimal OutOfSampleSharpe { get; set; }
     public decimal Efficiency { get; set; }
 }
 

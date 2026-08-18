@@ -89,6 +89,7 @@ public static class BacktestEndpoints
                     item.OutOfSampleTrades,
                     item.OutOfSampleReturnPercent,
                     item.OutOfSampleMaxDrawdown,
+                    item.OutOfSampleSharpe,
                     item.Efficiency,
                 }),
             },

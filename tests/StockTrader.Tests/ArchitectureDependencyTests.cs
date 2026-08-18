@@ -151,6 +151,8 @@ public class ArchitectureDependencyTests
         executionInputs.Should().Contain("bind:value={form.timeFrame}");
         riskSettings.Should().Contain("bind:value={form.riskPerTradePercent}");
         riskSettings.Should().Contain("bind:checked={form.useWeightStrategy}");
+        riskSettings.Should().Contain("bind:value={form.walkForwardInSampleMonths}");
+        riskSettings.Should().Contain("min=\"1\" step=\"1\"");
         patternSelection.Should().Contain("onRun");
         patternSelection.Should().Contain("패턴 선택");
         scenarioPlanning.Should().Contain("export function buildScenarioPatterns(");
@@ -938,22 +940,37 @@ public class ArchitectureDependencyTests
         var servicePath = Path.Combine(repository, "Services/Backtest/BacktestService.cs");
         var enginePath = Path.Combine(repository, "Services/Backtest/BacktestSimulationEngine.cs");
         var runnerPath = Path.Combine(repository, "Services/Backtest/BacktestPreparedSimulationRunner.cs");
+        var walkForwardPath = Path.Combine(repository, "Services/Backtest/WalkForwardAnalysisRunner.cs");
         var service = File.ReadAllText(servicePath);
         var engine = File.ReadAllText(enginePath);
         var runner = File.ReadAllText(runnerPath);
+        var walkForward = File.ReadAllText(walkForwardPath);
+        var walkForwardPolicy = File.ReadAllText(Path.Combine(
+            repository, "Application/Backtesting/WalkForwardAnalysisPolicy.cs"));
         var tradeLedger = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestTradeLedger.cs"));
 
         File.ReadAllLines(servicePath).Length.Should().BeLessThanOrEqualTo(500);
         service.Should().Contain("_simulationEngine.RunAsync(");
-        service.Should().Contain("_preparedRunner.RunAsync(");
+        service.Should().Contain("_walkForward.RunAsync(");
+        service.Should().NotContain("new WalkForwardWindow");
+        service.Should().NotContain("WalkForwardEfficiency =");
         service.Should().NotContain("private async Task<BacktestResult> RunSimulationAsync(");
         service.Should().NotContain("volatilityFactor");
         runner.Should().Contain("_dataPreparer.Slice(");
         runner.Should().Contain("_simulation.RunAsync(");
         File.ReadAllLines(runnerPath).Length.Should().BeLessThanOrEqualTo(150);
+        File.ReadAllLines(walkForwardPath).Length.Should().BeLessThanOrEqualTo(150);
         engine.Should().Contain("new BacktestTradeLedger(");
         tradeLedger.Should().Contain("new BacktestExecutionCostLedger(");
+        walkForward.Should().Contain("WalkForwardAnalysisPolicy.BuildPlan(");
+        walkForward.Should().Contain("WalkForwardAnalysisPolicy.Aggregate(windows)");
+        walkForward.Should().Contain("request.WeightStrategy");
+        walkForward.Should().Contain("_simulation.RunAsync(");
+        walkForward.Should().NotContain("while (");
+        walkForwardPolicy.Should().Contain("outOfSampleStart.AddDays(-1)");
+        walkForwardPolicy.Should().Contain("nextWindowStart.AddDays(-1)");
+        walkForwardPolicy.Should().NotContain("StockTrader.Services");
     }
 
     [Fact]

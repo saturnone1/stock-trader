@@ -19,7 +19,7 @@ public class BacktestService : IBacktestService
     private readonly ICustomStrategyDetectorFactory _customDetectors;
     private readonly BacktestDataPreparer _dataPreparer;
     private readonly BacktestSimulationEngine _simulationEngine;
-    private readonly BacktestPreparedSimulationRunner _preparedRunner;
+    private readonly WalkForwardAnalysisRunner _walkForward;
     private readonly BacktestRegimeMapBuilder _regimeMapBuilder;
     private readonly BacktestOptimizationService _optimization;
     private readonly TradingSettings _tradingSettings;
@@ -32,7 +32,7 @@ public class BacktestService : IBacktestService
         ICustomStrategyDetectorFactory customDetectors,
         BacktestDataPreparer dataPreparer,
         BacktestSimulationEngine simulationEngine,
-        BacktestPreparedSimulationRunner preparedRunner,
+        WalkForwardAnalysisRunner walkForward,
         BacktestRegimeMapBuilder regimeMapBuilder,
         BacktestOptimizationService optimization,
         IOptions<TradingSettings> tradingSettings,
@@ -44,7 +44,7 @@ public class BacktestService : IBacktestService
         _customDetectors = customDetectors;
         _dataPreparer = dataPreparer;
         _simulationEngine = simulationEngine;
-        _preparedRunner = preparedRunner;
+        _walkForward = walkForward;
         _regimeMapBuilder = regimeMapBuilder;
         _optimization = optimization;
         _tradingSettings = tradingSettings.Value;
@@ -52,7 +52,7 @@ public class BacktestService : IBacktestService
         _logger = logger;
     }
 
-    internal BacktestRiskParameters DefaultRiskParams => new(
+    private BacktestRiskParameters DefaultRiskParams => new(
         _tradingSettings.RiskPerTradePercent,
         _tradingSettings.DailyLossLimitPercent,
         _tradingSettings.MaxTotalPositions,
@@ -107,8 +107,17 @@ public class BacktestService : IBacktestService
 
         if (request.EnableWalkForward)
         {
-            result.WalkForward = await RunWalkForwardAsync(
-                request, dataFeed, activeDetectors, regimes, risk, ct);
+            var outcome = await _walkForward.RunAsync(
+                request,
+                dataFeed,
+                activeDetectors,
+                regimes,
+                risk,
+                patternSettings,
+                ct);
+            result.WalkForward = outcome.Result;
+            if (outcome.Warning is not null && !result.Warnings.Contains(outcome.Warning))
+                result.Warnings.Add(outcome.Warning);
         }
         if (request.EnableMonteCarlo && result.Trades.Count >= 2)
         {
@@ -126,7 +135,7 @@ public class BacktestService : IBacktestService
         return result;
     }
 
-    internal async Task<BacktestResult> RunCoreAsync(
+    private async Task<BacktestResult> RunCoreAsync(
         List<string> symbols,
         IDataFeedService dataFeed,
         List<IPatternDetector> detectors,
@@ -188,30 +197,7 @@ public class BacktestService : IBacktestService
             ct);
     }
 
-    internal Task<BacktestResult> RunCoreWithPreloadedDataAsync(
-        List<string> symbols,
-        IReadOnlyDictionary<string, PreparedSymbolData> fullDataMap,
-        List<IPatternDetector> detectors,
-        Dictionary<DateOnly, MarketRegime> regimeByDate,
-        DateTime from,
-        DateTime to,
-        decimal initialCapital,
-        decimal slippagePercent,
-        decimal commissionPerTrade,
-        TimeFrame timeFrame,
-        BacktestRiskParameters riskParams,
-        PatternParameterOverrides? exitOverrides,
-        SlippageModel slippageModel,
-        WeightStrategy? weightStrategy = null,
-        PatternSettings? effectivePatternSettings = null,
-        CancellationToken ct = default) =>
-        _preparedRunner.RunAsync(
-            symbols, fullDataMap, detectors, regimeByDate,
-            from, to, initialCapital, slippagePercent, commissionPerTrade,
-            timeFrame, riskParams, exitOverrides, slippageModel,
-            weightStrategy, effectivePatternSettings, ct);
-
-    internal Task<Dictionary<DateOnly, MarketRegime>?> BuildRegimeMapAsync(
+    private Task<Dictionary<DateOnly, MarketRegime>?> BuildRegimeMapAsync(
         IDataFeedService dataFeed,
         DateTime from,
         DateTime to,
@@ -219,7 +205,7 @@ public class BacktestService : IBacktestService
         CancellationToken ct = default) =>
         _regimeMapBuilder.BuildAsync(dataFeed, from, to, regimeSymbol, ct);
 
-    internal List<IPatternDetector> BuildDetectors(
+    private List<IPatternDetector> BuildDetectors(
         List<PatternType> patterns,
         PatternParameterOverrides? overrides,
         List<StrategyDocument>? customPatterns = null)
@@ -244,103 +230,5 @@ public class BacktestService : IBacktestService
         overrides is null
             ? _basePatternSettings
             : PatternOverrideMerger.Merge(_basePatternSettings, overrides);
-
-    private async Task<WalkForwardResult> RunWalkForwardAsync(
-        BacktestRequest request,
-        IDataFeedService dataFeed,
-        List<IPatternDetector> detectors,
-        Dictionary<DateOnly, MarketRegime> regimes,
-        BacktestRiskParameters risk,
-        CancellationToken ct)
-    {
-        _logger.LogInformation(
-            "Walk-Forward 분석 시작 (IS:{InSample}개월, OOS:{OutOfSample}개월)",
-            request.WalkForwardInSampleMonths,
-            request.WalkForwardOutOfSampleMonths);
-        var settings = ResolvePatternSettings(request.ParameterOverrides);
-        var symbols = request.Symbols
-            .Concat(BacktestDetectorMetadata.CollectReferenceSymbols(detectors))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var prepared = await _dataPreparer.PrepareAsync(
-            dataFeed,
-            symbols,
-            request.TimeFrame,
-            request.From,
-            request.To,
-            settings.CumulativeRsi2,
-            settings.Tqqq200Sma,
-            ct);
-        var windows = new List<WalkForwardWindow>();
-        var windowStart = request.From;
-        var totalMonths = request.WalkForwardInSampleMonths
-            + request.WalkForwardOutOfSampleMonths;
-        while (windowStart.AddMonths(totalMonths) <= request.To)
-        {
-            ct.ThrowIfCancellationRequested();
-            var isFrom = windowStart;
-            var isTo = windowStart.AddMonths(request.WalkForwardInSampleMonths);
-            var oosFrom = isTo;
-            var oosTo = isTo.AddMonths(request.WalkForwardOutOfSampleMonths);
-            if (oosTo > request.To) oosTo = request.To;
-            var inSample = await RunCoreWithPreloadedDataAsync(
-                request.Symbols, prepared.Symbols, detectors, regimes,
-                isFrom, isTo, request.InitialCapital,
-                request.SlippagePercent, request.CommissionPerTrade,
-                request.TimeFrame, risk, request.ParameterOverrides,
-                request.SlippageModel, null, settings, ct);
-            var outOfSample = await RunCoreWithPreloadedDataAsync(
-                request.Symbols, prepared.Symbols, detectors, regimes,
-                oosFrom, oosTo, request.InitialCapital,
-                request.SlippagePercent, request.CommissionPerTrade,
-                request.TimeFrame, risk, request.ParameterOverrides,
-                request.SlippageModel, null, settings, ct);
-            windows.Add(new WalkForwardWindow
-            {
-                InSampleFrom = isFrom,
-                InSampleTo = isTo,
-                OutOfSampleFrom = oosFrom,
-                OutOfSampleTo = oosTo,
-                InSampleTrades = inSample.TotalTrades,
-                InSampleReturn = inSample.TotalReturn,
-                InSampleReturnPercent = inSample.TotalReturnPercent,
-                OutOfSampleTrades = outOfSample.TotalTrades,
-                OutOfSampleReturn = outOfSample.TotalReturn,
-                OutOfSampleReturnPercent = outOfSample.TotalReturnPercent,
-                OutOfSampleMaxDrawdown = outOfSample.MaxDrawdown,
-                Efficiency = inSample.TotalReturnPercent > 0
-                    ? outOfSample.TotalReturnPercent / inSample.TotalReturnPercent
-                    : 0
-            });
-            windowStart = oosTo;
-        }
-
-        var totalInSampleReturn = windows.Sum(window => window.InSampleReturnPercent);
-        var totalOutOfSampleReturn = windows.Sum(window => window.OutOfSampleReturnPercent);
-        var result = new WalkForwardResult
-        {
-            Windows = windows,
-            AggregateOosReturn = windows.Sum(window => window.OutOfSampleReturn),
-            AggregateOosReturnPercent = windows.Count > 0
-                ? windows.Average(window => window.OutOfSampleReturnPercent)
-                : 0,
-            AggregateOosMaxDrawdown = windows.Count > 0
-                ? windows.Max(window => window.OutOfSampleMaxDrawdown)
-                : 0,
-            AggregateOosWinRate = windows.Count > 0
-                ? (decimal)windows.Count(window => window.OutOfSampleReturnPercent > 0) / windows.Count
-                : 0,
-            AggregateOosSharpe = 0,
-            WalkForwardEfficiency = totalInSampleReturn > 0
-                ? totalOutOfSampleReturn / totalInSampleReturn
-                : 0
-        };
-        _logger.LogInformation(
-            "Walk-Forward 완료: {Count}개 윈도우, OOS 평균 수익률 {Average:P2}, WF 효율 {Efficiency:P2}",
-            windows.Count,
-            result.AggregateOosReturnPercent,
-            result.WalkForwardEfficiency);
-        return result;
-    }
 
 }

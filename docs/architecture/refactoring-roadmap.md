@@ -246,6 +246,15 @@
   automatic promotion both use one `OptimizationRankingPolicy`, while the desktop obtains the full
   list (including annualized return) from versioned server metadata. Unknown stored or submitted
   values normalize deterministically to Sortino instead of leaking arbitrary strings into jobs.
+- Walk-forward period construction and aggregate metrics now live in deterministic
+  `WalkForwardAnalysisPolicy`, while `WalkForwardAnalysisRunner` owns one-time data preparation and
+  repeated execution through `BacktestPreparedSimulationRunner`. Zero/negative month inputs now
+  fail closed with a warning instead of creating a non-progressing loop. IS/OOS and consecutive
+  windows use disjoint calendar ranges, removing the shared boundary-day look-ahead leak. Every
+  window also receives the request's portfolio weight strategy, and the previously hardcoded zero
+  OOS Sharpe field now reports the explicitly labelled average of window OOS Sharpe values. A date
+  range too short for one complete IS/OOS window is surfaced as a warning rather than a zero-valued
+  analysis.
 
 Remaining Phase 2 work is no longer contract or EF-entity separation. It is primarily narrowing the
 remaining orchestration services and extending broker-order parity around the shared compiled

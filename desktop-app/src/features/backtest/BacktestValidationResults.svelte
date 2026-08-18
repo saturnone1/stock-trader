@@ -11,7 +11,7 @@
       <div class="rounded border border-gray-800 bg-gray-900 p-3 text-sm">OOS 수익률 {formatPercent(result.walkForward.aggregateOosReturnPercent)}</div>
       <div class="rounded border border-gray-800 bg-gray-900 p-3 text-sm">OOS 낙폭 {formatPercent(result.walkForward.aggregateOosMaxDrawdown)}</div>
       <div class="rounded border border-gray-800 bg-gray-900 p-3 text-sm">OOS 승률 {formatPercent(result.walkForward.aggregateOosWinRate, 1)}</div>
-      <div class="rounded border border-gray-800 bg-gray-900 p-3 text-sm">OOS 샤프 {Number(result.walkForward.aggregateOosSharpe ?? 0).toFixed(2)}</div>
+      <div class="rounded border border-gray-800 bg-gray-900 p-3 text-sm">OOS 평균 샤프 {Number(result.walkForward.aggregateOosSharpe ?? 0).toFixed(2)}</div>
       <div class="rounded border border-gray-800 bg-gray-900 p-3 text-sm">효율 {Number(result.walkForward.walkForwardEfficiency ?? 0).toFixed(2)}</div>
     </div>
     <div class="overflow-auto">

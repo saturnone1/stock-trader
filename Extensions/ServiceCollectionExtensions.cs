@@ -88,6 +88,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BacktestSignalEntryProcessor>();
         services.AddScoped<BacktestSimulationEngine>();
         services.AddScoped<BacktestPreparedSimulationRunner>();
+        services.AddScoped<WalkForwardAnalysisRunner>();
         services.AddScoped<IOptimizationCandidateEvaluator, OptimizationCandidateEvaluator>();
         services.AddScoped<BacktestRegimeMapBuilder>();
         services.AddScoped<IOptimizationEvaluationContextPreparer, OptimizationEvaluationContextPreparer>();

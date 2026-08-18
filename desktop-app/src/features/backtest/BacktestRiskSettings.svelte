@@ -8,7 +8,11 @@
     <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <div class="rounded-lg border border-gray-800 bg-gray-950 p-4">
         <label class="mb-3 flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" bind:checked={form.enableWalkForward} />워크포워드 분석</label>
-        <div class="grid grid-cols-2 gap-2"><input type="number" bind:value={form.walkForwardInSampleMonths} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="IS 개월" disabled={!form.enableWalkForward} /><input type="number" bind:value={form.walkForwardOutOfSampleMonths} class="rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="OOS 개월" disabled={!form.enableWalkForward} /></div>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-xs text-gray-500">학습 구간(개월)<input type="number" min="1" step="1" bind:value={form.walkForwardInSampleMonths} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" disabled={!form.enableWalkForward} /></label>
+          <label class="text-xs text-gray-500">검증 구간(개월)<input type="number" min="1" step="1" bind:value={form.walkForwardOutOfSampleMonths} class="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white" disabled={!form.enableWalkForward} /></label>
+        </div>
+        <p class="mt-2 text-xs text-gray-600">학습과 검증 구간은 날짜가 겹치지 않으며, 완전한 구간만 계산합니다.</p>
       </div>
       <div class="rounded-lg border border-gray-800 bg-gray-950 p-4">
         <label class="mb-3 flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" bind:checked={form.enableMonteCarlo} />몬테카를로 시뮬레이션</label>
