@@ -2,7 +2,10 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using StockTrader.Application.Authentication;
 using StockTrader.Configuration;
+using StockTrader.Data.Repositories;
 using StockTrader.Services.Auth;
 
 namespace StockTrader.Extensions;
@@ -19,7 +22,18 @@ public static class SecurityServiceExtensions
         bool persistDataProtectionKeys = true)
     {
         // Bind security settings
-        services.Configure<SecuritySettings>(configuration.GetSection("Security"));
+        services.AddOptions<SecuritySettings>()
+            .Bind(configuration.GetSection("Security"))
+            .Validate(
+                settings => settings.SessionTimeoutMinutes > 0,
+                "SessionTimeoutMinutes must be positive")
+            .Validate(
+                settings => settings.MaxFailedLoginAttempts > 0,
+                "MaxFailedLoginAttempts must be positive")
+            .Validate(
+                settings => settings.LockoutMinutes > 0,
+                "LockoutMinutes must be positive")
+            .ValidateOnStart();
 
         // HttpContextAccessor (needed by AuditService to read client IP)
         services.AddHttpContextAccessor();
@@ -44,7 +58,7 @@ public static class SecurityServiceExtensions
         // Cookie Authentication
         var sessionMinutes = configuration
             .GetSection("Security")
-            .GetValue<int>("SessionTimeoutMinutes", 1440);
+            .GetValue<int>("SessionTimeoutMinutes");
 
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, opts =>
@@ -80,8 +94,20 @@ public static class SecurityServiceExtensions
 
         // Auth + Audit + Crypto services
         services.AddSingleton<ICryptoService, AesCryptoService>();
-        services.AddSingleton<IAuditService, AuditService>();
-        services.AddScoped<IAuthService, AuthService>();
+        services.AddSingleton<ISecurityAuditStore, SecurityAuditStore>();
+        services.AddSingleton<ISecurityAuditSink, AuditService>();
+        services.AddSingleton(serviceProvider =>
+        {
+            var settings = serviceProvider
+                .GetRequiredService<IOptions<SecuritySettings>>()
+                .Value;
+            return new AuthenticationPolicy(
+                settings.MaxFailedLoginAttempts,
+                TimeSpan.FromMinutes(settings.LockoutMinutes),
+                settings.AllowRegistration);
+        });
+        services.AddScoped<IAuthenticationUserStore, AuthenticationUserStore>();
+        services.AddScoped<IUserAuthenticationService, AuthenticationService>();
 
         // Rate limiting
         services.AddRateLimiter(opts =>

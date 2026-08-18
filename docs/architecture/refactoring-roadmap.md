@@ -3,6 +3,11 @@
 ## Current progress
 
 - Central timeframe, indicator, operator, strategy, and provider catalogs are active.
+- Authentication policy now runs in `Application/Authentication` against a purpose-specific user
+  store and injected `TimeProvider`. PBKDF2 verification, lockout boundaries, registration, and
+  password changes no longer depend on EF entities or the system clock. Security audit capture is a
+  best-effort adapter over its own append-only store, so HTTP client-IP lookup and SQLite mapping do
+  not leak into the use case.
 - Trading-account state now crosses an application persistence port, active-account changes are
   transactional, broker clients are constructed behind a focused factory, and explicit API contracts
   keep secrets write-only. The desktop derives broker environments from the central broker catalog.

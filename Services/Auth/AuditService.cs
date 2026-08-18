@@ -1,26 +1,27 @@
-using Microsoft.EntityFrameworkCore;
-using StockTrader.Data;
-using StockTrader.Models;
+using StockTrader.Application.Authentication;
 
 namespace StockTrader.Services.Auth;
 
 /// <summary>
-/// Writes audit log entries to the database.
-/// Uses IDbContextFactory so this Singleton-scoped service creates its own short-lived contexts.
+/// Captures HTTP request context and delegates persistence to the audit store.
+/// Failures remain best effort so auditing cannot change the calling operation.
 /// </summary>
-public sealed class AuditService : IAuditService
+public sealed class AuditService : ISecurityAuditSink
 {
-    private readonly IDbContextFactory<AppDbContext> _dbFactory;
+    private readonly ISecurityAuditStore _store;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<AuditService> _logger;
 
     public AuditService(
-        IDbContextFactory<AppDbContext> dbFactory,
+        ISecurityAuditStore store,
         IHttpContextAccessor httpContextAccessor,
+        TimeProvider timeProvider,
         ILogger<AuditService> logger)
     {
-        _dbFactory           = dbFactory;
+        _store               = store;
         _httpContextAccessor = httpContextAccessor;
+        _timeProvider        = timeProvider;
         _logger              = logger;
     }
 
@@ -33,18 +34,14 @@ public sealed class AuditService : IAuditService
                 ?? _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString()
                 ?? "unknown";
 
-            var entry = new AuditLog
-            {
-                UserId    = userId,
-                Action    = action,
-                Details   = details,
-                IpAddress = ip,
-                Timestamp = DateTime.UtcNow,
-            };
-
-            await using var db = await _dbFactory.CreateDbContextAsync(ct);
-            db.AuditLogs.Add(entry);
-            await db.SaveChangesAsync(ct);
+            await _store.AppendAsync(
+                new(
+                    userId,
+                    action,
+                    details,
+                    ip,
+                    _timeProvider.GetUtcNow().UtcDateTime),
+                ct);
 
             _logger.LogInformation(
                 "AUDIT [{Action}] UserId={UserId} IP={Ip} | {Details}",

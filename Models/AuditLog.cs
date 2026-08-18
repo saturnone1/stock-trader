@@ -19,5 +19,5 @@ public class AuditLog
     /// <summary>Client IP address or "unknown".</summary>
     public string IpAddress { get; set; } = string.Empty;
 
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; set; }
 }
