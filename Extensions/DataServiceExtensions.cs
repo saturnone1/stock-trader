@@ -20,7 +20,6 @@ public static class DataServiceExtensions
         services.AddScoped<IPatternStatsRepository, PatternStatsRepository>();
         services.AddScoped<ITradeRepository, TradeRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
-        services.AddScoped<IOptimizationRepository, OptimizationRepository>();
         services.AddScoped<IOptimizationJobExecutionStore, OptimizationJobExecutionStore>();
         services.AddScoped<IOptimizationJobLifecycle, OptimizationJobLifecycle>();
         services.AddScoped<IOptimizationJobControlStore, OptimizationJobControlStore>();

@@ -42,7 +42,6 @@ public class OptimizationAutoTuneServiceTests
         services.AddLogging();
         services.AddMemoryCache();
         services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
-        services.AddScoped<IOptimizationRepository, OptimizationRepository>();
         services.AddScoped<IOptimizationAutoTuneStore, OptimizationAutoTuneStore>();
         services.AddScoped<ICustomPatternStore, CustomPatternStore>();
         services.AddScoped<CustomPatternManagementService>();
@@ -54,7 +53,6 @@ public class OptimizationAutoTuneServiceTests
         using var seedScope = provider.CreateScope();
         var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.EnsureCreatedAsync();
-        var repo = seedScope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
 
         var pattern = new CustomPatternDefinition
         {
@@ -80,7 +78,7 @@ public class OptimizationAutoTuneServiceTests
             OosPercent = 0.25m
         };
 
-        var job = await repo.CreateJobAsync(new OptimizationJob
+        var job = new OptimizationJob
         {
             Name = "AutoTune Job",
             Status = OptimizationJobStatus.Completed,
@@ -91,9 +89,11 @@ public class OptimizationAutoTuneServiceTests
             AutoApplyMinTrades = 10,
             RequestJson = JsonSerializer.Serialize(request),
             CompletedAt = DateTime.UtcNow
-        });
+        };
+        db.OptimizationJobs.Add(job);
+        await db.SaveChangesAsync();
 
-        await repo.UpsertResultAsync(new OptimizationResult
+        db.OptimizationResults.Add(new OptimizationResult
         {
             JobId = job.Id,
             Rank = 1,
@@ -110,6 +110,7 @@ public class OptimizationAutoTuneServiceTests
             OosSortinoRatio = 0.6m,
             OosTotalTrades = 12
         });
+        await db.SaveChangesAsync();
 
         using (var serviceScope = provider.CreateScope())
         {
@@ -119,14 +120,14 @@ public class OptimizationAutoTuneServiceTests
 
         using var assertScope = provider.CreateScope();
         var assertDb = assertScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var assertRepo = assertScope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
 
         var updatedPattern = await assertDb.CustomPatterns.SingleAsync();
         updatedPattern.AtrStopMultiplier.Should().Be(1.25m);
         updatedPattern.AtrTargetMultiplier.Should().Be(4.5m);
         updatedPattern.MaxHoldingBars.Should().Be(18);
 
-        var savedJob = await assertRepo.GetJobSummaryAsync(job.Id);
+        var savedJob = await assertDb.OptimizationJobs.AsNoTracking()
+            .SingleOrDefaultAsync(saved => saved.Id == job.Id);
         savedJob.Should().NotBeNull();
         savedJob!.LastAutoAppliedResultId.Should().NotBeNull();
         savedJob.LastAutoApplyMessage.Should().Contain("자동 반영 완료");
@@ -145,7 +146,8 @@ public class OptimizationAutoTuneServiceTests
         recycledJob.StartedAt.Should().BeNull();
         recycledJob.CompletedAt.Should().BeNull();
 
-        var recycledResults = await assertRepo.GetResultsAsync(job.Id, 10);
+        var recycledResults = await assertDb.OptimizationResults.AsNoTracking()
+            .Where(result => result.JobId == job.Id).ToListAsync();
         recycledResults.Should().BeEmpty();
 
         var nextRequest = OptimizeRequestJsonCodec.Deserialize(recycledJob.RequestJson);
@@ -168,7 +170,6 @@ public class OptimizationAutoTuneServiceTests
         services.AddLogging();
         services.AddMemoryCache();
         services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
-        services.AddScoped<IOptimizationRepository, OptimizationRepository>();
         services.AddScoped<IOptimizationAutoTuneStore, OptimizationAutoTuneStore>();
         services.AddScoped<ICustomPatternStore, CustomPatternStore>();
         services.AddScoped<CustomPatternManagementService>();
@@ -180,7 +181,6 @@ public class OptimizationAutoTuneServiceTests
         using var seedScope = provider.CreateScope();
         var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.EnsureCreatedAsync();
-        var repo = seedScope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
 
         var pattern = new CustomPatternDefinition
         {
@@ -205,7 +205,7 @@ public class OptimizationAutoTuneServiceTests
             MaxCombinations = 500
         };
 
-        var job = await repo.CreateJobAsync(new OptimizationJob
+        var job = new OptimizationJob
         {
             Name = "Manual Apply Job",
             Status = OptimizationJobStatus.Running,
@@ -213,7 +213,9 @@ public class OptimizationAutoTuneServiceTests
             TopResultsToKeep = 20,
             AutoApplyBestResult = false,
             RequestJson = JsonSerializer.Serialize(request)
-        });
+        };
+        db.OptimizationJobs.Add(job);
+        await db.SaveChangesAsync();
 
         var selectedResult = new OptimizationResult
         {
@@ -229,7 +231,8 @@ public class OptimizationAutoTuneServiceTests
             SortinoRatio = 0.9m,
             TotalTrades = 18
         };
-        await repo.UpsertResultAsync(selectedResult);
+        db.OptimizationResults.Add(selectedResult);
+        await db.SaveChangesAsync();
 
         var invalidResult = new OptimizationResult
         {
@@ -243,7 +246,8 @@ public class OptimizationAutoTuneServiceTests
             SortinoRatio = 1.5m,
             TotalTrades = 20
         };
-        await repo.UpsertResultAsync(invalidResult);
+        db.OptimizationResults.Add(invalidResult);
+        await db.SaveChangesAsync();
 
         using var serviceScope = provider.CreateScope();
         var sut = serviceScope.ServiceProvider.GetRequiredService<OptimizationAutoTuneService>();
@@ -252,7 +256,8 @@ public class OptimizationAutoTuneServiceTests
         rejected.Success.Should().BeFalse();
         rejected.Message.Should().Contain("ATR 손절 배수");
         (await db.CustomPatterns.AsNoTracking().SingleAsync()).AtrStopMultiplier.Should().Be(2m);
-        (await repo.GetJobSummaryAsync(job.Id))!.AppliedResultCount.Should().Be(0);
+        (await db.OptimizationJobs.AsNoTracking().SingleAsync(saved => saved.Id == job.Id))
+            .AppliedResultCount.Should().Be(0);
 
         var outcome = await sut.ApplyResultAsync(job.Id, selectedResult.Id, isAutoApply: false);
 
@@ -262,14 +267,14 @@ public class OptimizationAutoTuneServiceTests
 
         using var assertScope = provider.CreateScope();
         var assertDb = assertScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var assertRepo = assertScope.ServiceProvider.GetRequiredService<IOptimizationRepository>();
 
         var updatedPattern = await assertDb.CustomPatterns.SingleAsync();
         updatedPattern.AtrStopMultiplier.Should().Be(1.5m);
         updatedPattern.AtrTargetMultiplier.Should().Be(4.0m);
         updatedPattern.MaxHoldingBars.Should().Be(14);
 
-        var updatedJob = await assertRepo.GetJobSummaryAsync(job.Id);
+        var updatedJob = await assertDb.OptimizationJobs.AsNoTracking()
+            .SingleOrDefaultAsync(saved => saved.Id == job.Id);
         updatedJob.Should().NotBeNull();
         updatedJob!.AppliedResultCount.Should().Be(1);
         updatedJob.LastAutoAppliedResultId.Should().Be(selectedResult.Id);

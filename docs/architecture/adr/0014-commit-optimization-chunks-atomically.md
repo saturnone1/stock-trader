@@ -17,11 +17,11 @@ longer have a single durable boundary describing completed work.
 
 ## Decision
 
-The SQLite repository claims a candidate with a conditional update whose predicate includes both
+The SQLite lifecycle adapter claims a candidate with a conditional update whose predicate includes both
 the candidate ID and Pending status. Only the worker whose update affects one row receives the
 execution ticket. A losing worker queries the remaining queue again.
 
-`CommitChunkAsync` owns the durable chunk boundary. It loads the existing ranked rows, combines and
+`SaveChunkAsync` owns the durable chunk boundary. It loads the existing ranked rows, combines and
 trims them with the unchanged ranking rules, updates the job's tested count, chunk index, and
 observation timestamp, and saves all changes in one transaction. This operation is used even when a
 chunk produces no ranked result, because advancing the checkpoint remains a durable event.

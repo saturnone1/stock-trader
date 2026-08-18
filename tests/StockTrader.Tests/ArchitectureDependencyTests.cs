@@ -1031,8 +1031,8 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/IOptimizationJobLifecycle.cs"));
         var lifecycle = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/OptimizationJobLifecycle.cs"));
-        var optimizationRepository = File.ReadAllText(Path.Combine(
-            repository, "Data/Repositories/OptimizationRepository.cs"));
+        var resultPersistence = File.ReadAllText(Path.Combine(
+            repository, "Data/Repositories/OptimizationResultPersistence.cs"));
         var controlUseCase = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizationJobControlService.cs"));
         var controlStore = File.ReadAllText(Path.Combine(
@@ -1049,8 +1049,6 @@ public class ArchitectureDependencyTests
             repository, "Api/OptimizationJobApiMapper.cs"));
         var optimizationModels = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizationModels.cs"));
-        var repositoryContract = File.ReadAllText(Path.Combine(
-            repository, "Data/Repositories/IOptimizationRepository.cs"));
         var autoTune = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizationAutoTuneService.cs"));
         var autoTuneStore = File.ReadAllText(Path.Combine(
@@ -1084,21 +1082,22 @@ public class ArchitectureDependencyTests
         executionStorePort.Should().NotContain("StockTrader.Models");
         executionStorePort.Should().NotContain("StockTrader.Data");
         executionStore.Should().Contain("JsonSerializer.Serialize(item.Params)");
-        executionStore.Should().Contain("_repository.CommitChunkAsync(");
-        executionStore.Should().Contain("_repository.UpdateResultOutOfSampleAsync(");
+        executionStore.Should().Contain("OptimizationResultPersistence.MergeRankedAsync(");
+        executionStore.Should().Contain("BeginTransactionAsync()");
+        executionStore.Should().Contain("ExecuteUpdateAsync(");
         lifecyclePort.Should().Contain("OptimizationJobExecutionTicket");
         lifecyclePort.Should().Contain("TryStartNextAsync(");
         lifecyclePort.Should().NotContain("StockTrader.Models");
         lifecyclePort.Should().NotContain("StockTrader.Data");
         lifecycle.Should().Contain("OptimizationJobStatus.Completed");
         lifecycle.Should().Contain("OptimizationJobStatus.Cancelled");
-        lifecycle.Should().Contain("TryClaimNextPendingJobAsync(observedAt)");
-        optimizationRepository.Should().Contain("ExecuteUpdateAsync(update => update");
-        optimizationRepository.Should().Contain("job.Status == OptimizationJobStatus.Pending");
-        optimizationRepository.Should().Contain("OptimizationJobStatus.Running");
-        optimizationRepository.Should().Contain("BeginTransactionAsync()");
-        optimizationRepository.Should().Contain("MergeRankedResultsAsync(");
-        optimizationRepository.Should().Contain("job.TestedCombinations = testedCombinations");
+        lifecycle.Should().Contain("ExecuteUpdateAsync(update => update");
+        lifecycle.Should().Contain("job.Status == OptimizationJobStatus.Pending");
+        lifecycle.Should().Contain("job.Status == OptimizationJobStatus.Running");
+        lifecycle.Should().Contain("OptimizationJobStatus.Running");
+        lifecycle.Should().NotContain("IOptimizationRepository");
+        resultPersistence.Should().Contain("MergeRankedAsync(");
+        resultPersistence.Should().Contain("topResultsToKeep");
         controlUseCase.Should().Contain("OptimizationJobControlPolicy.Resolve(");
         controlUseCase.Should().Contain("IOptimizationJobControlStore");
         controlUseCase.Should().NotContain("StockTrader.Models");
@@ -1136,9 +1135,19 @@ public class ArchitectureDependencyTests
         managementStore.Should().Contain("ExecuteDeleteAsync(");
         jobApiMapper.Should().Contain("OptimizationJobSummaryView");
         optimizationModels.Should().Contain("public int? Id { get; set; }");
-        repositoryContract.Should().NotContain("GetJobAsync(");
-        repositoryContract.Should().NotContain("GetJobsAsync(");
-        repositoryContract.Should().NotContain("DeleteJobAsync(");
+        File.Exists(Path.Combine(repository, "Data/Repositories/OptimizationRepository.cs"))
+            .Should().BeFalse();
+        File.Exists(Path.Combine(repository, "Data/Repositories/IOptimizationRepository.cs"))
+            .Should().BeFalse();
+        File.ReadAllLines(Path.Combine(
+                repository, "Data/Repositories/OptimizationJobExecutionStore.cs"))
+            .Length.Should().BeLessThanOrEqualTo(180);
+        File.ReadAllLines(Path.Combine(
+                repository, "Data/Repositories/OptimizationJobLifecycle.cs"))
+            .Length.Should().BeLessThanOrEqualTo(120);
+        File.ReadAllLines(Path.Combine(
+                repository, "Data/Repositories/OptimizationResultPersistence.cs"))
+            .Length.Should().BeLessThanOrEqualTo(80);
         autoTune.Should().Contain("IOptimizationAutoTuneStore");
         autoTune.Should().Contain("OptimizationPromotionPolicy.SelectCandidate(");
         autoTune.Should().NotContain("StockTrader.Data");

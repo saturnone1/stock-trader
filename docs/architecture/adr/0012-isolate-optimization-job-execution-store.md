@@ -21,10 +21,10 @@ progress checkpoints, chunk results, stored candidate parameters, and OOS metric
 
 `OptimizationJobExecutionStore` is the infrastructure adapter. It translates application results
 to `OptimizationResult`, owns parameter JSON compatibility, maps persisted pause/cancel states, and
-delegates database operations to `IOptimizationRepository`. Malformed historical parameter JSON is
-skipped as before.
+persists only its owned columns through `IDbContextFactory`. Malformed historical parameter JSON is
+skipped as before. ADR 0018 removed the temporary broad repository delegation.
 
-OOS persistence now uses `UpdateResultOutOfSampleAsync`, which updates only the nine OOS columns.
+OOS persistence uses a targeted database update for only the nine OOS columns.
 The executor no longer loads and writes a complete persistence entity merely to attach validation
 metrics. Coarse and fine stages call the same `SaveChunkAsync` contract with their next restart
 checkpoint.

@@ -91,12 +91,12 @@ public class OptimizationJobControlServiceTests
     {
         await using var database = await OpenSharedDatabaseAsync();
         var factory = database.Factory;
-        var repository = new OptimizationRepository(factory);
-        var job = await repository.CreateJobAsync(new OptimizationJob
+        var job = new OptimizationJob
         {
             Name = "control-race",
             Status = OptimizationJobStatus.Running
-        });
+        };
+        await AddJobsAsync(factory, job);
         var store = new OptimizationJobControlStore(factory);
         var observedAt = new DateTime(2026, 8, 18, 5, 0, 0, DateTimeKind.Utc);
 
@@ -125,28 +125,31 @@ public class OptimizationJobControlServiceTests
     public async Task SqliteStore_RecoveryRequeuesOnlyRunningJobsAndRewindsTheirChunk()
     {
         await using var database = await OpenSharedDatabaseAsync();
-        var repository = new OptimizationRepository(database.Factory);
-        var running = await repository.CreateJobAsync(new OptimizationJob
+        var running = new OptimizationJob
         {
             Name = "recover-running",
             Status = OptimizationJobStatus.Running,
             CurrentChunkIndex = 3
-        });
-        var paused = await repository.CreateJobAsync(new OptimizationJob
+        };
+        var paused = new OptimizationJob
         {
             Name = "preserve-paused",
             Status = OptimizationJobStatus.Paused,
             CurrentChunkIndex = 2
-        });
+        };
+        await AddJobsAsync(database.Factory, running, paused);
         var store = new OptimizationJobControlStore(database.Factory);
 
         var recovered = await store.RecoverInterruptedAsync();
 
         recovered.Should().Be(1);
-        var savedRunning = await repository.GetJobSummaryAsync(running.Id);
+        await using var verify = database.Factory.CreateDbContext();
+        var savedRunning = await verify.OptimizationJobs.AsNoTracking()
+            .SingleAsync(job => job.Id == running.Id);
         savedRunning!.Status.Should().Be(OptimizationJobStatus.Pending);
         savedRunning.CurrentChunkIndex.Should().Be(2);
-        var savedPaused = await repository.GetJobSummaryAsync(paused.Id);
+        var savedPaused = await verify.OptimizationJobs.AsNoTracking()
+            .SingleAsync(job => job.Id == paused.Id);
         savedPaused!.Status.Should().Be(OptimizationJobStatus.Paused);
         savedPaused.CurrentChunkIndex.Should().Be(2);
     }
@@ -164,6 +167,15 @@ public class OptimizationJobControlServiceTests
         await using var setup = factory.CreateDbContext();
         await setup.Database.EnsureCreatedAsync();
         return new SharedDatabase(keeper, factory);
+    }
+
+    private static async Task AddJobsAsync(
+        IDbContextFactory<AppDbContext> factory,
+        params OptimizationJob[] jobs)
+    {
+        await using var db = await factory.CreateDbContextAsync();
+        db.OptimizationJobs.AddRange(jobs);
+        await db.SaveChangesAsync();
     }
 
     private sealed class SharedDatabase : IAsyncDisposable

@@ -13,82 +13,6 @@ namespace StockTrader.Tests;
 public class OptimizationJobExecutionTests
 {
     [Fact]
-    public async Task TryClaimNextPendingJobAsync_AllowsOnlyOneWorkerToClaimOneJob()
-    {
-        var databaseName = $"optimization-claim-{Guid.NewGuid():N}";
-        var connectionString = $"Data Source={databaseName};Mode=Memory;Cache=Shared";
-        await using var keeper = new SqliteConnection(connectionString);
-        await keeper.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connectionString)
-            .Options;
-        var factory = new TestDbContextFactory(options);
-        await using (var setup = factory.CreateDbContext())
-            await setup.Database.EnsureCreatedAsync();
-        var repo = new OptimizationRepository(factory);
-        var job = await repo.CreateJobAsync(new OptimizationJob
-        {
-            Name = "single-claim",
-            Status = OptimizationJobStatus.Pending,
-            Priority = 10
-        });
-        var observedAt = new DateTime(2026, 8, 18, 2, 30, 0, DateTimeKind.Utc);
-
-        var claims = await Task.WhenAll(
-            repo.TryClaimNextPendingJobAsync(observedAt),
-            repo.TryClaimNextPendingJobAsync(observedAt));
-
-        var successfulClaims = claims.Where(claim => claim is not null).ToList();
-        successfulClaims.Should().ContainSingle();
-        successfulClaims[0]!.Id.Should().Be(job.Id);
-        var saved = await repo.GetJobSummaryAsync(job.Id);
-        saved!.Status.Should().Be(OptimizationJobStatus.Running);
-        saved.StartedAt.Should().Be(observedAt);
-    }
-
-    [Fact]
-    public async Task CommitChunkAsync_PersistsRankedResultsAndCheckpointTogether()
-    {
-        await using var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
-        var factory = new TestDbContextFactory(options);
-        await using (var setup = factory.CreateDbContext())
-            await setup.Database.EnsureCreatedAsync();
-        var repo = new OptimizationRepository(factory);
-        var job = await repo.CreateJobAsync(new OptimizationJob
-        {
-            Name = "atomic-chunk-success",
-            TestedCombinations = 10,
-            CurrentChunkIndex = 1
-        });
-        var observedAt = new DateTime(2026, 8, 18, 2, 0, 0, DateTimeKind.Utc);
-
-        await repo.CommitChunkAsync(
-            job.Id,
-            [
-                new OptimizationResult { SortinoRatio = 1.2m, ParamsJson = "{\"id\":1}" },
-                new OptimizationResult { SortinoRatio = 2.4m, ParamsJson = "{\"id\":2}" }
-            ],
-            topResultsToKeep: 1,
-            rankBy: "sortinoRatio",
-            testedCombinations: 12,
-            currentChunkIndex: 2,
-            observedAt);
-
-        var savedJob = await repo.GetJobSummaryAsync(job.Id);
-        var savedResults = await repo.GetResultsAsync(job.Id);
-        savedJob!.TestedCombinations.Should().Be(12);
-        savedJob.CurrentChunkIndex.Should().Be(2);
-        savedJob.LastProgressAt.Should().Be(observedAt);
-        savedResults.Should().ContainSingle();
-        savedResults[0].SortinoRatio.Should().Be(2.4m);
-        savedResults[0].Rank.Should().Be(1);
-    }
-
-    [Fact]
     public async Task CommitChunkAsync_RollsBackCheckpointWhenResultPersistenceFails()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -108,51 +32,65 @@ public class OptimizationJobExecutionTests
                 END;
                 """);
         }
-        var repo = new OptimizationRepository(factory);
         var previousProgressAt = new DateTime(2026, 8, 18, 1, 0, 0, DateTimeKind.Utc);
-        var job = await repo.CreateJobAsync(new OptimizationJob
+        var job = new OptimizationJob
         {
             Name = "atomic-chunk-rollback",
             TestedCombinations = 10,
             CurrentChunkIndex = 1,
             LastProgressAt = previousProgressAt
-        });
+        };
+        await using (var seed = factory.CreateDbContext())
+        {
+            seed.OptimizationJobs.Add(job);
+            await seed.SaveChangesAsync();
+        }
+        var store = new OptimizationJobExecutionStore(factory);
 
-        var act = () => repo.CommitChunkAsync(
+        var act = () => store.SaveChunkAsync(
             job.Id,
-            [new OptimizationResult { SortinoRatio = 2.4m, ParamsJson = "{}" }],
-            topResultsToKeep: 10,
-            rankBy: "sortinoRatio",
+            [new OptimizeResultItem { SortinoRatio = 2.4m }],
+            testedAtStart: 10,
             testedCombinations: 11,
             currentChunkIndex: 2,
-            new DateTime(2026, 8, 18, 2, 0, 0, DateTimeKind.Utc));
+            new DateTime(2026, 8, 18, 2, 0, 0, DateTimeKind.Utc),
+            topResultsToKeep: 10,
+            rankBy: "sortinoRatio");
 
         await act.Should().ThrowAsync<DbUpdateException>();
-        var savedJob = await repo.GetJobSummaryAsync(job.Id);
+        await using var verify = factory.CreateDbContext();
+        var savedJob = await verify.OptimizationJobs.AsNoTracking().SingleAsync();
         savedJob!.TestedCombinations.Should().Be(10);
         savedJob.CurrentChunkIndex.Should().Be(1);
         savedJob.LastProgressAt.Should().Be(previousProgressAt);
-        (await repo.GetResultsAsync(job.Id)).Should().BeEmpty();
+        (await verify.OptimizationResults.AsNoTracking().ToListAsync()).Should().BeEmpty();
     }
 
     [Fact]
     public async Task UpdateJobProgressAsync_PreservesExternalStatusChanges()
     {
-        var factory = CreateDbFactory();
-        var repo = new OptimizationRepository(factory);
-
-        var created = await repo.CreateJobAsync(new OptimizationJob
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var factory = new TestDbContextFactory(new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(connection).Options);
+        await using var seed = factory.CreateDbContext();
+        await seed.Database.EnsureCreatedAsync();
+        var created = new OptimizationJob
         {
             Name = "resume-test",
             Status = OptimizationJobStatus.Paused,
             CompletedAt = new DateTime(2026, 4, 29, 12, 0, 0, DateTimeKind.Utc),
             ErrorMessage = "paused externally"
-        });
+        };
+        seed.OptimizationJobs.Add(created);
+        await seed.SaveChangesAsync();
 
         var progressAt = new DateTime(2026, 4, 29, 12, 5, 0, DateTimeKind.Utc);
-        await repo.UpdateJobProgressAsync(created.Id, 320, 4, progressAt, 1200);
+        await new OptimizationJobExecutionStore(factory)
+            .SaveProgressAsync(created.Id, 320, 4, progressAt, 1200);
 
-        var saved = await repo.GetJobSummaryAsync(created.Id);
+        await using var verify = factory.CreateDbContext();
+        var saved = await verify.OptimizationJobs.AsNoTracking().SingleAsync();
         saved.Should().NotBeNull();
         saved!.Status.Should().Be(OptimizationJobStatus.Paused);
         saved.CompletedAt.Should().Be(new DateTime(2026, 4, 29, 12, 0, 0, DateTimeKind.Utc));
@@ -166,9 +104,15 @@ public class OptimizationJobExecutionTests
     [Fact]
     public async Task UpdateResultOutOfSampleAsync_ChangesOnlyProjectedOosMetrics()
     {
-        var factory = CreateDbFactory();
-        var repo = new OptimizationRepository(factory);
-        var job = await repo.CreateJobAsync(new OptimizationJob { Name = "oos-update" });
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var factory = new TestDbContextFactory(new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(connection).Options);
+        await using var seed = factory.CreateDbContext();
+        await seed.Database.EnsureCreatedAsync();
+        var job = new OptimizationJob { Name = "oos-update" };
+        seed.OptimizationJobs.Add(job);
+        await seed.SaveChangesAsync();
         var result = new OptimizationResult
         {
             JobId = job.Id,
@@ -176,13 +120,15 @@ public class OptimizationJobExecutionTests
             TotalReturn = 9m,
             SortinoRatio = 1.1m
         };
-        await repo.UpsertResultAsync(result);
+        seed.OptimizationResults.Add(result);
+        await seed.SaveChangesAsync();
         var metrics = new OptimizationPerformanceMetrics(
             4m, 0.9m, 0.7m, 6m, 55m, 12, 1.3m, 0.8m, 0.15m);
 
-        await repo.UpdateResultOutOfSampleAsync(result.Id, metrics);
+        await new OptimizationJobExecutionStore(factory).SaveOutOfSampleAsync(result.Id, metrics);
 
-        var saved = (await repo.GetResultsAsync(job.Id)).Single();
+        await using var verify = factory.CreateDbContext();
+        var saved = await verify.OptimizationResults.AsNoTracking().SingleAsync();
         saved.TotalReturn.Should().Be(9m);
         saved.SortinoRatio.Should().Be(1.1m);
         saved.OosTotalReturn.Should().Be(metrics.TotalReturn);
@@ -373,14 +319,6 @@ public class OptimizationJobExecutionTests
             RuleOverrides = new(),
             RuleFieldOverrides = new()
         };
-
-    private static IDbContextFactory<AppDbContext> CreateDbFactory()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        return new TestDbContextFactory(options);
-    }
 
     private sealed class TestDbContextFactory : IDbContextFactory<AppDbContext>
     {

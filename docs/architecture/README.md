@@ -196,6 +196,9 @@ Manual and automatic result promotion now cross the scoped `OptimizationAutoTune
 `IOptimizationAutoTuneStore`. Candidate eligibility and IS/OOS ranking are pure application policy;
 persisted request/parameter JSON remains in the SQLite adapter. Apply counts use an atomic database
 increment, and continuous-job result deletion plus reset commit in one transaction.
+The former `IOptimizationRepository` pass-through has been removed. Execution checkpoints, queue
+lifecycle, operator controls, administration, and promotion now each terminate at their own SQLite
+adapter; no production component can reach a catch-all optimization persistence API.
 
 ## Decision records
 
@@ -232,4 +235,6 @@ increment, and continuous-job result deletion plus reset commit in one transacti
   from EF entities and preserve result identity across the HTTP boundary.
 - `adr/0017-isolate-optimization-auto-tune.md`: keep result-promotion policy independent from
   persistence and make apply metadata and continuous recycling atomic.
+- `adr/0018-remove-broad-optimization-repository.md`: make each purpose-specific optimization
+  adapter own its EF queries and transactions, then remove the catch-all repository.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

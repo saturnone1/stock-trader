@@ -1,32 +1,50 @@
+using Microsoft.EntityFrameworkCore;
 using StockTrader.Application.Optimization;
 using StockTrader.Models;
 
 namespace StockTrader.Data.Repositories;
 
-/// <summary>최적화 큐와 상태 전이를 SQLite 작업 엔티티에 적용합니다.</summary>
+/// <summary>최적화 큐 선점과 실행 상태 전이를 SQLite 행에 직접 적용합니다.</summary>
 public sealed class OptimizationJobLifecycle : IOptimizationJobLifecycle
 {
-    private readonly IOptimizationRepository _repository;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
 
-    public OptimizationJobLifecycle(IOptimizationRepository repository)
-    {
-        _repository = repository;
-    }
+    public OptimizationJobLifecycle(IDbContextFactory<AppDbContext> dbFactory) =>
+        _dbFactory = dbFactory;
 
     public async Task<OptimizationJobExecutionTicket?> TryStartNextAsync(DateTime observedAt)
     {
-        var job = await _repository.TryClaimNextPendingJobAsync(observedAt);
-        if (job is null) return null;
-        return ToTicket(job);
+        while (true)
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var candidateId = await db.OptimizationJobs.AsNoTracking()
+                .Where(job => job.Status == OptimizationJobStatus.Pending)
+                .OrderByDescending(job => job.Priority)
+                .ThenBy(job => job.CreatedAt)
+                .Select(job => (int?)job.Id)
+                .FirstOrDefaultAsync();
+            if (!candidateId.HasValue) return null;
+
+            var claimed = await db.OptimizationJobs
+                .Where(job => job.Id == candidateId && job.Status == OptimizationJobStatus.Pending)
+                .ExecuteUpdateAsync(update => update
+                    .SetProperty(job => job.Status, OptimizationJobStatus.Running)
+                    .SetProperty(job => job.StartedAt, job => job.StartedAt ?? observedAt));
+            if (claimed == 0) continue;
+
+            var job = await db.OptimizationJobs.AsNoTracking()
+                .SingleAsync(item => item.Id == candidateId.Value);
+            return ToTicket(job);
+        }
     }
 
-    public async Task ApplyDispositionAsync(
+    public Task ApplyDispositionAsync(
         int jobId,
         OptimizationJobExecutionDisposition disposition,
         DateTime observedAt)
     {
         if (disposition == OptimizationJobExecutionDisposition.Paused)
-            return;
+            return Task.CompletedTask;
 
         var status = disposition switch
         {
@@ -34,18 +52,14 @@ public sealed class OptimizationJobLifecycle : IOptimizationJobLifecycle
             OptimizationJobExecutionDisposition.Cancelled => OptimizationJobStatus.Cancelled,
             _ => throw new ArgumentOutOfRangeException(nameof(disposition))
         };
-        await UpdateStateAsync(jobId, status, observedAt, null);
+        return UpdateStateAsync(jobId, status, observedAt, null);
     }
 
     public Task ReturnToPendingAsync(int jobId) =>
         UpdateStateAsync(jobId, OptimizationJobStatus.Pending, null, null);
 
-    public Task MarkFailedAsync(
-        int jobId,
-        DateTime failedAt,
-        string errorMessage) =>
-        UpdateStateAsync(
-            jobId, OptimizationJobStatus.Failed, failedAt, errorMessage);
+    public Task MarkFailedAsync(int jobId, DateTime failedAt, string errorMessage) =>
+        UpdateStateAsync(jobId, OptimizationJobStatus.Failed, failedAt, errorMessage);
 
     private async Task UpdateStateAsync(
         int jobId,
@@ -53,13 +67,13 @@ public sealed class OptimizationJobLifecycle : IOptimizationJobLifecycle
         DateTime? completedAt,
         string? errorMessage)
     {
-        var job = await _repository.GetJobSummaryAsync(jobId);
-        if (job is null) return;
-
-        job.Status = status;
-        job.CompletedAt = completedAt;
-        job.ErrorMessage = errorMessage;
-        await _repository.UpdateJobAsync(job);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        await db.OptimizationJobs.Where(job =>
+                job.Id == jobId && job.Status == OptimizationJobStatus.Running)
+            .ExecuteUpdateAsync(update => update
+                .SetProperty(job => job.Status, status)
+                .SetProperty(job => job.CompletedAt, completedAt)
+                .SetProperty(job => job.ErrorMessage, errorMessage));
     }
 
     private static OptimizationJobExecutionTicket ToTicket(OptimizationJob job) => new()
