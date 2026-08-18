@@ -43,10 +43,7 @@ public sealed class BacktestDataPreparer
         var warmupCalendarDays = ResolveWarmupCalendarDays(timeFrame, tqqq200Sma);
         var fetchFrom = from.AddDays(-warmupCalendarDays);
 
-        foreach (var symbol in symbols
-                     .Select(symbol => symbol.Trim().ToUpperInvariant())
-                     .Where(symbol => !string.IsNullOrWhiteSpace(symbol))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var symbol in MarketSymbolPolicy.NormalizeMany(symbols))
         {
             ct.ThrowIfCancellationRequested();
             try

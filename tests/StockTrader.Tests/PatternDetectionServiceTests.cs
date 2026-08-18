@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using StockTrader.Application.SymbolProfiles;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -36,7 +37,8 @@ public class PatternDetectionServiceTests
     /// </summary>
     private PatternDetectionService CreateSut(
         IEnumerable<IPatternDetector>? detectors = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ISymbolProfileStore? symbolProfileStore = null)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")
@@ -45,6 +47,10 @@ public class PatternDetectionServiceTests
         var strategies = new CompiledStrategyRepository(
             db,
             NullLogger<CompiledStrategyRepository>.Instance);
+        var clock = timeProvider ?? TimeProvider.System;
+        var symbolProfiles = new SymbolProfileManagementService(
+            symbolProfileStore ?? new SymbolProfileStore(db),
+            clock);
         return new PatternDetectionService(
             detectors ?? Enumerable.Empty<IPatternDetector>(),
             _settingsRepoMock.Object,
@@ -54,8 +60,8 @@ public class PatternDetectionServiceTests
             Mock.Of<ICustomStrategyDetectorFactory>(),
             Mock.Of<IOhlcvRepository>(),
             strategies,
-            db,
-            timeProvider ?? TimeProvider.System,
+            symbolProfiles,
+            clock,
             NullLogger<PatternDetectionService>.Instance);
     }
 
@@ -137,6 +143,37 @@ public class PatternDetectionServiceTests
     // ────────────────────────────────────────────────────────────
     // ScanSymbolAsync Tests
     // ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ScanSymbol_UsesTheActiveSymbolProfileAsTheStrategyAssignmentSource()
+    {
+        SetupSettings(PatternType.GapUpPullback);
+        var profileStore = new Mock<ISymbolProfileStore>();
+        profileStore.Setup(store => store.GetActiveAsync(
+                "TQQQ", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManagedSymbolProfile
+            {
+                Id = 1,
+                Symbol = "TQQQ",
+                Name = "실시간",
+                IsActive = true,
+                EnabledPatterns = [PatternType.Breakout]
+            });
+        var gap = MakeDetector(
+            PatternType.GapUpPullback,
+            MakeSignal("TQQQ", PatternType.GapUpPullback));
+        var breakout = MakeDetector(
+            PatternType.Breakout,
+            MakeSignal("TQQQ", PatternType.Breakout));
+        var sut = CreateSut([gap.Object, breakout.Object], symbolProfileStore: profileStore.Object);
+
+        var signals = await sut.ScanSymbolAsync("tqqq", MakeBars(), MakeRegime());
+
+        signals.Should().ContainSingle().Which.PatternType.Should().Be(PatternType.Breakout);
+        gap.Verify(detector => detector.DetectAsync(
+            It.IsAny<string>(), It.IsAny<OhlcvBar[]>(), It.IsAny<MarketRegime>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
 
     [Fact]
     public async Task ScanSymbol_StampsObservationAndSignalBarTimesSeparately()

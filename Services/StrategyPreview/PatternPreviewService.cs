@@ -45,7 +45,7 @@ public sealed class PatternPreviewService : IPatternPreviewService
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(query);
-        var symbol = (query.Symbol ?? string.Empty).Trim().ToUpperInvariant();
+        var symbol = MarketSymbolPolicy.Normalize(query.Symbol);
         if (string.IsNullOrWhiteSpace(symbol))
             return PatternPreviewOutcome.Invalid("미리보기 종목을 입력하세요.");
         if (query.Pattern is null)

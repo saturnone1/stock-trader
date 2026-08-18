@@ -40,6 +40,9 @@ public static class PatternCatalog
     public static PatternDescriptor Get(PatternType patternType) =>
         All.Single(item => item.Value == patternType);
 
+    public static bool IsBuiltIn(PatternType patternType) =>
+        BuiltIn.Any(item => item.Value == patternType);
+
     public static string DisplayName(PatternType patternType, string? customPatternName = null) =>
         patternType == PatternType.Custom && !string.IsNullOrWhiteSpace(customPatternName)
             ? customPatternName.Trim()

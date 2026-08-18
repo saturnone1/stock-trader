@@ -28,6 +28,7 @@ infrastructure.
   warmup, and supported timeframes.
 - Strategy definitions: one typed aggregate compiled for preview, backtest, and live execution.
 - Pattern identity, stable codes, investor-facing names, and built-in support: one domain catalog.
+- Market symbol normalization and validation: one domain policy shared by research and live paths.
 - Order execution modes and their operator-facing meaning: one domain catalog.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
@@ -242,6 +243,12 @@ are owned by `Domain.Strategies.PatternCatalog`. Stable enum names and numeric v
 persistence/API contract; notifications and strategy-builder metadata consume the central display
 metadata instead of maintaining channel-specific labels. Custom recommendations display their
 actual stored strategy name when one is available.
+Signal timestamps now distinguish the evaluated market bar from the live observation time. Pattern
+detectors are deterministic; the live scan boundary alone owns the observation clock, and persisted
+signals are idempotent per strategy and bar.
+Symbol-profile assignment now crosses `SymbolProfileManagementService` and
+`ISymbolProfileStore`. The API and live scanner no longer read EF profiles directly; validation,
+defaults, active-profile selection, and modification time have one application owner.
 
 ## Decision records
 
@@ -292,4 +299,8 @@ actual stored strategy name when one is available.
   while centralizing investor-facing names and built-in support metadata in Domain.
 - `adr/0024-isolate-settings-management.md`: move settings validation and mutation behind an
   application use case, keep secrets write-only, and drive desktop choices from domain catalogs.
+- `adr/0025-separate-signal-event-and-observation-time.md`: keep research signals deterministic
+  while preserving live freshness and per-bar persistence identity.
+- `adr/0026-isolate-symbol-profile-assignment.md`: route profile validation, activation, API
+  contracts, and live selection through one application boundary.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
