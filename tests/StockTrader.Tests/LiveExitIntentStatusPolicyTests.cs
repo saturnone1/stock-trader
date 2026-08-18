@@ -22,10 +22,10 @@ public class LiveExitIntentStatusPolicyTests
         var position = new Position
         {
             Quantity = 10,
-            ExitRequestedAt = Now.AddMinutes(-2),
-            ExitRequestReason = "목표 도달",
-            ExitRequestQuantity = 4,
-            ExitRequestMarksPartialProfit = true,
+            ExecutionRequestedAt = Now.AddMinutes(-2),
+            ExecutionRequestReason = "목표 도달",
+            ExecutionRequestQuantity = 4,
+            ExecutionRequestMarksPartialProfit = true,
         };
 
         var unconfirmed = LiveExitIntentStatusPolicy.Evaluate(position, Now);
@@ -34,7 +34,7 @@ public class LiveExitIntentStatusPolicyTests
         unconfirmed.RequestedQuantity.Should().Be(4);
         unconfirmed.MarksPartialProfit.Should().BeTrue();
 
-        position.ExitOrderId = "exit-1";
+        position.ExecutionOrderId = "exit-1";
         var pending = LiveExitIntentStatusPolicy.Evaluate(position, Now);
         pending.State.Should().Be(LiveExitIntentState.AwaitingBroker);
         pending.HasBrokerOrderId.Should().BeTrue();

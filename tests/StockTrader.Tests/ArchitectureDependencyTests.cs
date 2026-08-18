@@ -1626,9 +1626,9 @@ public class ArchitectureDependencyTests
         liveManager.Should().Contain("exitCoordinator.SubmitAsync(");
         liveManager.Should().Contain("exitCoordinator.ReconcileAsync(");
         liveManager.Should().NotContain("brokerService.ClosePositionAsync(");
-        liveManager.Should().NotContain("ExitOrderReconciliationPolicy.Resolve(");
-        liveManager.Should().NotContain("ReleasePositionExitClaimAsync(");
-        liveManager.Should().NotContain("TryApplyPositionExitFillAsync(");
+        liveManager.Should().NotContain("PositionOrderReconciliationPolicy.Resolve(");
+        liveManager.Should().NotContain("ReleasePositionExecutionClaimAsync(");
+        liveManager.Should().NotContain("TryApplyPositionExecutionFillAsync(");
         evaluator.Should().Contain("StrategyEvaluationPolicy.EntryAtrPeriod");
         evaluator.Should().Contain("StrategyEvaluationPolicy.LiveExitIndicatorLookbackDays");
     }
@@ -1653,7 +1653,7 @@ public class ArchitectureDependencyTests
 
         var orders = File.ReadAllText(Path.Combine(repository, "Api/OrderEndpoints.cs"));
         orders.Should().Contain("/reconcile-position-exit");
-        orders.Should().Contain("exits.ReconcileAsync(");
+        orders.Should().Contain("executions.ReconcileAsync(");
     }
 
     [Fact]
@@ -1664,7 +1664,8 @@ public class ArchitectureDependencyTests
         var portfolio = File.ReadAllText(Path.Combine(repository, "desktop-app/src/pages/Portfolio.svelte"));
         var desktopEndpoints = File.ReadAllText(Path.Combine(repository, "desktop-app/src/api/endpoints.ts"));
 
-        orders.Should().Contain("exits.SubmitAsync(");
+        orders.Should().Contain("executions.SubmitFullExitAsync(");
+        orders.Should().Contain("ILivePositionExecutionCoordinator executions");
         portfolio.Should().Contain("orderApi.closePosition(symbol)");
         desktopEndpoints.Should().Contain("api.post('/api/orders/close-position'");
         orders.Should().NotContain("broker.ClosePositionAsync(");

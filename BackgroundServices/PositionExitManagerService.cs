@@ -88,7 +88,7 @@ public class PositionExitManagerService : BackgroundService
         var ohlcvRepo = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
         var liveParamService = scope.ServiceProvider.GetRequiredService<ILiveParameterService>();
         var strategies = scope.ServiceProvider.GetRequiredService<ICompiledStrategyRepository>();
-        var exitCoordinator = scope.ServiceProvider.GetRequiredService<ILivePositionExitCoordinator>();
+        var exitCoordinator = scope.ServiceProvider.GetRequiredService<ILivePositionExecutionCoordinator>();
         var exitEvaluator = scope.ServiceProvider.GetRequiredService<LivePositionExitEvaluator>();
 
         // DB에서 저장된 청산 파라미터 오버라이드 로드 (매 체크마다 갱신)
@@ -112,7 +112,7 @@ public class PositionExitManagerService : BackgroundService
         {
             try
             {
-                if (position.ExitRequestedAt.HasValue)
+                if (position.ExecutionRequestedAt.HasValue)
                 {
                     var reconciliation = await exitCoordinator.ReconcileAsync(
                         position, brokerService, ct: ct);
@@ -145,20 +145,22 @@ public class PositionExitManagerService : BackgroundService
 
                     var submission = await exitCoordinator.SubmitAsync(
                         position,
-                        new LivePositionExitRequest(
+                        new LivePositionExecutionRequest(
                             exitResult.Intent!.Quantity,
                             exitResult.Intent.Reason,
+                            exitResult.Intent.Kind,
+                            exitResult.Intent.ScalingRuleIndex,
                             exitResult.Intent.MarksPartialProfit),
                         brokerService,
                         ct);
-                    if (submission.Status != LiveExitSubmissionStatus.Accepted
+                    if (submission.Status != LivePositionExecutionSubmissionStatus.Accepted
                         || submission.Order is null
                         || !submission.RequestedAt.HasValue)
                         continue;
 
                     var reconciliation = await exitCoordinator.ReconcileAsync(
                         position, brokerService, [submission.Order], ct);
-                    if (reconciliation.Status == LiveExitReconciliationStatus.AwaitingBroker)
+                    if (reconciliation.Status == LivePositionExecutionReconciliationStatus.AwaitingBroker)
                     {
                         reconciliation = await WaitForExitResolutionAsync(
                             position, brokerService, exitCoordinator, ct);
@@ -187,10 +189,10 @@ public class PositionExitManagerService : BackgroundService
         }
     }
 
-    private static async Task<LiveExitReconciliationResult> WaitForExitResolutionAsync(
+    private static async Task<LivePositionExecutionReconciliationResult> WaitForExitResolutionAsync(
         Position position,
         IBrokerService broker,
-        ILivePositionExitCoordinator exitCoordinator,
+        ILivePositionExecutionCoordinator exitCoordinator,
         CancellationToken ct)
     {
         const int maxAttempts = 10;
@@ -198,37 +200,38 @@ public class PositionExitManagerService : BackgroundService
         {
             await Task.Delay(500, ct);
             var reconciliation = await exitCoordinator.ReconcileAsync(position, broker, ct: ct);
-            if (reconciliation.Status != LiveExitReconciliationStatus.AwaitingBroker)
+            if (reconciliation.Status != LivePositionExecutionReconciliationStatus.AwaitingBroker)
                 return reconciliation;
         }
-        return new LiveExitReconciliationResult(LiveExitReconciliationStatus.AwaitingBroker);
+        return new LivePositionExecutionReconciliationResult(
+            LivePositionExecutionReconciliationStatus.AwaitingBroker);
     }
 
     private void HandleExitReconciliation(
         Position position,
-        LiveExitReconciliationResult reconciliation)
+        LivePositionExecutionReconciliationResult reconciliation)
     {
-        if (reconciliation.Status == LiveExitReconciliationStatus.ReleasedForRetry)
+        if (reconciliation.Status == LivePositionExecutionReconciliationStatus.ReleasedForRetry)
         {
             _logger.LogWarning("[EXIT] {Symbol}: 청산 주문 {OrderId}가 {Status} 상태여서 재평가를 허용합니다.",
                 position.Symbol, reconciliation.Order?.OrderId, reconciliation.Order?.Status);
             return;
         }
 
-        if (reconciliation.Status == LiveExitReconciliationStatus.BrokerFillMismatch)
+        if (reconciliation.Status == LivePositionExecutionReconciliationStatus.BrokerFillMismatch)
         {
             _logger.LogError(
                 "[EXIT] {Symbol}: 요청 수량 {RequestedQuantity}주와 브로커 체결 수량 {FilledQuantity}주가 다릅니다. 자동 반영을 중단합니다.",
                 position.Symbol,
-                position.ExitRequestQuantity ?? position.Quantity,
+                position.ExecutionRequestQuantity ?? position.Quantity,
                 reconciliation.FilledQuantity);
             return;
         }
 
-        if (reconciliation.Status != LiveExitReconciliationStatus.Completed)
+        if (reconciliation.Status != LivePositionExecutionReconciliationStatus.Completed)
         {
             _logger.LogDebug("[EXIT] {Symbol}: 청산 주문 {OrderId}의 확정 상태를 기다립니다.",
-                position.Symbol, position.ExitOrderId);
+                position.Symbol, position.ExecutionOrderId);
             return;
         }
 

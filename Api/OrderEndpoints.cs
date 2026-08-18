@@ -38,7 +38,7 @@ public static class OrderEndpoints
         HttpContext context,
         IAccountManager accounts,
         ITradeRepository trades,
-        ILivePositionExitCoordinator exits)
+        ILivePositionExecutionCoordinator executions)
     {
         if (!context.User.Identity?.IsAuthenticated ?? true)
             return Results.Unauthorized();
@@ -69,11 +69,11 @@ public static class OrderEndpoints
         if (positions.Length > 1)
             return Results.BadRequest(new { error = $"{symbol} 포지션이 여러 계좌에 있어 계좌별 청산 기능이 필요합니다." });
 
-        var submission = await exits.SubmitAsync(
+        var submission = await executions.SubmitFullExitAsync(
             positions[0], "사용자 수동 청산", broker, context.RequestAborted);
         return submission.Status switch
         {
-            LiveExitSubmissionStatus.Accepted => Results.Accepted(value: new
+            LivePositionExecutionSubmissionStatus.Accepted => Results.Accepted(value: new
             {
                 status = submission.Status.ToString(),
                 message = $"{symbol} 청산 주문이 브로커에 접수되었습니다.",
@@ -81,7 +81,7 @@ public static class OrderEndpoints
                 brokerStatus = submission.Order?.Status.ToString(),
                 brokerOrderIdPersisted = submission.BrokerOrderIdPersisted
             }),
-            LiveExitSubmissionStatus.AlreadyPending => Results.Ok(new
+            LivePositionExecutionSubmissionStatus.AlreadyPending => Results.Ok(new
             {
                 status = submission.Status.ToString(),
                 message = $"{symbol} 청산 주문의 확정 상태를 기다리고 있습니다.",
@@ -99,7 +99,7 @@ public static class OrderEndpoints
         HttpContext context,
         IAccountManager accounts,
         ITradeRepository trades,
-        ILivePositionExitCoordinator exits)
+        ILivePositionExecutionCoordinator executions)
     {
         if (!context.User.Identity?.IsAuthenticated ?? true)
             return Results.Unauthorized();
@@ -131,11 +131,11 @@ public static class OrderEndpoints
             });
 
         var position = positions[0];
-        if (!position.ExitRequestedAt.HasValue)
+        if (!position.ExecutionRequestedAt.HasValue)
         {
             return Results.Ok(new
             {
-                status = LiveExitReconciliationStatus.NotPending.ToString(),
+                status = LivePositionExecutionReconciliationStatus.NotPending.ToString(),
                 message = $"{symbol}에는 확인할 청산 주문이 없습니다."
             });
         }
@@ -144,15 +144,15 @@ public static class OrderEndpoints
         if (broker == null)
             return Results.BadRequest(new { error = "활성 브로커 계좌가 없습니다. 계좌 관리에서 계좌를 설정하세요." });
 
-        var reconciliation = await exits.ReconcileAsync(
+        var reconciliation = await executions.ReconcileAsync(
             position, broker, ct: context.RequestAborted);
         var message = reconciliation.Status switch
         {
-            LiveExitReconciliationStatus.Completed => $"{symbol} 청산 체결을 확인하고 거래 기록을 완료했습니다.",
-            LiveExitReconciliationStatus.ReleasedForRetry => $"{symbol} 청산 주문의 실패가 확인되어 다시 청산할 수 있습니다.",
-            LiveExitReconciliationStatus.AwaitingBroker => $"{symbol} 청산 주문은 아직 브로커 확정 상태를 기다리고 있습니다.",
-            LiveExitReconciliationStatus.ConcurrentChange => $"{symbol} 상태가 다른 작업에서 변경되어 최신 목록을 다시 불러옵니다.",
-            LiveExitReconciliationStatus.BrokerFillMismatch =>
+            LivePositionExecutionReconciliationStatus.Completed => $"{symbol} 청산 체결을 확인하고 거래 기록을 완료했습니다.",
+            LivePositionExecutionReconciliationStatus.ReleasedForRetry => $"{symbol} 청산 주문의 실패가 확인되어 다시 청산할 수 있습니다.",
+            LivePositionExecutionReconciliationStatus.AwaitingBroker => $"{symbol} 청산 주문은 아직 브로커 확정 상태를 기다리고 있습니다.",
+            LivePositionExecutionReconciliationStatus.ConcurrentChange => $"{symbol} 상태가 다른 작업에서 변경되어 최신 목록을 다시 불러옵니다.",
+            LivePositionExecutionReconciliationStatus.BrokerFillMismatch =>
                 $"{symbol} 청산 요청 수량과 브로커 체결 수량이 달라 자동 반영을 중단했습니다. 브로커 주문 내역을 확인하세요.",
             _ => $"{symbol}에는 확인할 청산 주문이 없습니다."
         };

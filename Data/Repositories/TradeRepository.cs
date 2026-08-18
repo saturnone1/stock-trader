@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using StockTrader.Application.Execution;
 using StockTrader.Models;
+using StockTrader.Models.Enums;
 
 namespace StockTrader.Data.Repositories;
 
@@ -90,6 +91,7 @@ public class TradeRepository : ITradeRepository
 
         var positions = await _db.Positions
             .AsNoTracking()
+            .Include(position => position.ScalingExecutions)
             .Where(p => p.ClosedAt == null)
             .OrderByDescending(p => p.OpenedAt)
             .ToListAsync(ct);
@@ -113,33 +115,44 @@ public class TradeRepository : ITradeRepository
         _cache.Remove(OpenPositionsCacheKey);
     }
 
-    public async Task<bool> TryClaimPositionExitAsync(
-        PositionExitClaim claim,
+    public async Task<bool> TryClaimPositionExecutionAsync(
+        PositionExecutionClaim claim,
         CancellationToken ct = default)
     {
         if (claim.PositionId <= 0
             || claim.ExpectedPositionQuantity <= 0
             || claim.Quantity <= 0
-            || claim.Quantity > claim.ExpectedPositionQuantity
+            || !Enum.IsDefined(claim.Kind)
+            || (claim.Kind == PositionExecutionKind.FullExit
+                && claim.Quantity != claim.ExpectedPositionQuantity)
+            || (claim.Kind is PositionExecutionKind.PartialProfit
+                    or PositionExecutionKind.ScaleOut
+                && claim.Quantity >= claim.ExpectedPositionQuantity)
+            || (claim.Kind is PositionExecutionKind.ScaleIn or PositionExecutionKind.ScaleOut)
+                != (claim.ScalingRuleIndex is >= 0)
+            || (claim.MarksPartialProfit
+                && claim.Kind != PositionExecutionKind.PartialProfit)
             || string.IsNullOrWhiteSpace(claim.Reason))
             return false;
 
         var updated = await _db.Positions
             .Where(position => position.Id == claim.PositionId
                 && position.ClosedAt == null
-                && position.ExitRequestedAt == null
+                && position.ExecutionRequestedAt == null
                 && position.Quantity == claim.ExpectedPositionQuantity)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(position => position.ExitRequestedAt, claim.RequestedAt)
-                .SetProperty(position => position.ExitRequestReason, claim.Reason)
-                .SetProperty(position => position.ExitRequestQuantity, claim.Quantity)
-                .SetProperty(position => position.ExitRequestMarksPartialProfit, claim.MarksPartialProfit)
-                .SetProperty(position => position.ExitOrderId, (string?)null), ct);
+                .SetProperty(position => position.ExecutionRequestedAt, claim.RequestedAt)
+                .SetProperty(position => position.ExecutionRequestReason, claim.Reason)
+                .SetProperty(position => position.ExecutionRequestQuantity, claim.Quantity)
+                .SetProperty(position => position.ExecutionRequestMarksPartialProfit, claim.MarksPartialProfit)
+                .SetProperty(position => position.ExecutionRequestKind, claim.Kind)
+                .SetProperty(position => position.ExecutionRequestRuleIndex, claim.ScalingRuleIndex)
+                .SetProperty(position => position.ExecutionOrderId, (string?)null), ct);
         _cache.Remove(OpenPositionsCacheKey);
         return updated == 1;
     }
 
-    public async Task<bool> SetPositionExitOrderIdAsync(
+    public async Task<bool> SetPositionExecutionOrderIdAsync(
         long positionId,
         DateTime requestedAt,
         string? orderId,
@@ -148,14 +161,14 @@ public class TradeRepository : ITradeRepository
         var updated = await _db.Positions
             .Where(position => position.Id == positionId
                 && position.ClosedAt == null
-                && position.ExitRequestedAt == requestedAt)
+                && position.ExecutionRequestedAt == requestedAt)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(position => position.ExitOrderId, orderId), ct);
+                .SetProperty(position => position.ExecutionOrderId, orderId), ct);
         _cache.Remove(OpenPositionsCacheKey);
         return updated == 1;
     }
 
-    public async Task<bool> ReleasePositionExitClaimAsync(
+    public async Task<bool> ReleasePositionExecutionClaimAsync(
         long positionId,
         DateTime requestedAt,
         CancellationToken ct = default)
@@ -163,26 +176,39 @@ public class TradeRepository : ITradeRepository
         var updated = await _db.Positions
             .Where(position => position.Id == positionId
                 && position.ClosedAt == null
-                && position.ExitRequestedAt == requestedAt)
+                && position.ExecutionRequestedAt == requestedAt)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(position => position.ExitRequestedAt, (DateTime?)null)
-                .SetProperty(position => position.ExitRequestReason, (string?)null)
-                .SetProperty(position => position.ExitRequestQuantity, (int?)null)
-                .SetProperty(position => position.ExitRequestMarksPartialProfit, false)
-                .SetProperty(position => position.ExitOrderId, (string?)null), ct);
+                .SetProperty(position => position.ExecutionRequestedAt, (DateTime?)null)
+                .SetProperty(position => position.ExecutionRequestReason, (string?)null)
+                .SetProperty(position => position.ExecutionRequestQuantity, (int?)null)
+                .SetProperty(position => position.ExecutionRequestMarksPartialProfit, false)
+                .SetProperty(position => position.ExecutionRequestKind,
+                    (PositionExecutionKind?)null)
+                .SetProperty(position => position.ExecutionRequestRuleIndex, (int?)null)
+                .SetProperty(position => position.ExecutionOrderId, (string?)null), ct);
         _cache.Remove(OpenPositionsCacheKey);
         return updated == 1;
     }
 
-    public async Task<bool> TryApplyPositionExitFillAsync(
-        PositionExitFill fill,
-        TradeRecord trade,
+    public async Task<bool> TryApplyPositionExecutionFillAsync(
+        PositionExecutionFill fill,
+        TradeRecord? trade,
         CancellationToken ct = default)
     {
         if (fill.PositionId <= 0
             || fill.ExpectedPositionQuantity <= 0
             || fill.FilledQuantity <= 0
-            || fill.FilledQuantity > fill.ExpectedPositionQuantity
+            || !Enum.IsDefined(fill.Kind)
+            || (fill.Kind == PositionExecutionKind.FullExit
+                && fill.FilledQuantity != fill.ExpectedPositionQuantity)
+            || (fill.Kind is PositionExecutionKind.PartialProfit or PositionExecutionKind.ScaleOut
+                && fill.FilledQuantity >= fill.ExpectedPositionQuantity)
+            || (fill.Kind is PositionExecutionKind.ScaleIn or PositionExecutionKind.ScaleOut)
+                != (fill.ScalingRuleIndex is >= 0)
+            || (fill.MarksPartialProfit
+                && fill.Kind != PositionExecutionKind.PartialProfit)
+            || (fill.Kind == PositionExecutionKind.ScaleIn && trade is not null)
+            || (fill.Kind != PositionExecutionKind.ScaleIn && trade is null)
             || fill.FillPrice <= 0)
             return false;
 
@@ -192,17 +218,42 @@ public class TradeRepository : ITradeRepository
             var query = _db.Positions
                 .Where(stored => stored.Id == fill.PositionId
                     && stored.ClosedAt == null
-                    && stored.ExitRequestedAt == fill.RequestedAt
-                    && stored.ExitRequestQuantity == fill.FilledQuantity
+                    && stored.ExecutionRequestedAt == fill.RequestedAt
+                    && stored.ExecutionRequestQuantity == fill.FilledQuantity
+                    && stored.ExecutionRequestKind == fill.Kind
+                    && stored.ExecutionRequestRuleIndex == fill.ScalingRuleIndex
+                    && stored.ExecutionRequestMarksPartialProfit == fill.MarksPartialProfit
                     && stored.Quantity == fill.ExpectedPositionQuantity);
 
-            var isFullExit = fill.FilledQuantity == fill.ExpectedPositionQuantity;
-            var updated = isFullExit
-                ? await query.ExecuteUpdateAsync(setters => setters
+            int updated;
+            if (fill.Kind == PositionExecutionKind.FullExit)
+            {
+                updated = await query.ExecuteUpdateAsync(setters => setters
                     .SetProperty(stored => stored.ClosedAt, fill.FilledAt)
                     .SetProperty(stored => stored.ExitPrice, fill.FillPrice)
-                    .SetProperty(stored => stored.ExitOrderId, fill.OrderId), ct)
-                : await query.ExecuteUpdateAsync(setters => setters
+                    .SetProperty(stored => stored.ExecutionOrderId, fill.OrderId), ct);
+            }
+            else if (fill.Kind == PositionExecutionKind.ScaleIn)
+            {
+                var nextQuantity = fill.ExpectedPositionQuantity + fill.FilledQuantity;
+                updated = await query.ExecuteUpdateAsync(setters => setters
+                    .SetProperty(stored => stored.EntryPrice,
+                        stored => (stored.EntryPrice * fill.ExpectedPositionQuantity
+                            + fill.FillPrice * fill.FilledQuantity) / nextQuantity)
+                    .SetProperty(stored => stored.Quantity, nextQuantity)
+                    .SetProperty(stored => stored.CurrentPrice, fill.FillPrice)
+                    .SetProperty(stored => stored.ExecutionRequestedAt, (DateTime?)null)
+                    .SetProperty(stored => stored.ExecutionRequestReason, (string?)null)
+                    .SetProperty(stored => stored.ExecutionRequestQuantity, (int?)null)
+                    .SetProperty(stored => stored.ExecutionRequestMarksPartialProfit, false)
+                    .SetProperty(stored => stored.ExecutionRequestKind,
+                        (PositionExecutionKind?)null)
+                    .SetProperty(stored => stored.ExecutionRequestRuleIndex, (int?)null)
+                    .SetProperty(stored => stored.ExecutionOrderId, (string?)null), ct);
+            }
+            else
+            {
+                updated = await query.ExecuteUpdateAsync(setters => setters
                     .SetProperty(stored => stored.Quantity,
                         fill.ExpectedPositionQuantity - fill.FilledQuantity)
                     .SetProperty(stored => stored.CurrentPrice, fill.FillPrice)
@@ -214,18 +265,42 @@ public class TradeRepository : ITradeRepository
                             : stored.StopLossPrice)
                     .SetProperty(stored => stored.BreakevenApplied,
                         stored => stored.BreakevenApplied || fill.MarksPartialProfit)
-                    .SetProperty(stored => stored.ExitRequestedAt, (DateTime?)null)
-                    .SetProperty(stored => stored.ExitRequestReason, (string?)null)
-                    .SetProperty(stored => stored.ExitRequestQuantity, (int?)null)
-                    .SetProperty(stored => stored.ExitRequestMarksPartialProfit, false)
-                    .SetProperty(stored => stored.ExitOrderId, (string?)null), ct);
+                    .SetProperty(stored => stored.ExecutionRequestedAt, (DateTime?)null)
+                    .SetProperty(stored => stored.ExecutionRequestReason, (string?)null)
+                    .SetProperty(stored => stored.ExecutionRequestQuantity, (int?)null)
+                    .SetProperty(stored => stored.ExecutionRequestMarksPartialProfit, false)
+                    .SetProperty(stored => stored.ExecutionRequestKind,
+                        (PositionExecutionKind?)null)
+                    .SetProperty(stored => stored.ExecutionRequestRuleIndex, (int?)null)
+                    .SetProperty(stored => stored.ExecutionOrderId, (string?)null), ct);
+            }
             if (updated != 1)
             {
                 await transaction.RollbackAsync(ct);
                 return false;
             }
 
-            _db.TradeRecords.Add(trade);
+            if (fill.Kind is PositionExecutionKind.ScaleIn or PositionExecutionKind.ScaleOut)
+            {
+                var ruleIndex = fill.ScalingRuleIndex!.Value;
+                var counter = await _db.PositionScalingExecutions.SingleOrDefaultAsync(item =>
+                    item.PositionId == fill.PositionId && item.RuleIndex == ruleIndex, ct);
+                if (counter is null)
+                {
+                    _db.PositionScalingExecutions.Add(new PositionScalingExecution
+                    {
+                        PositionId = fill.PositionId,
+                        RuleIndex = ruleIndex,
+                        ExecutionCount = 1,
+                    });
+                }
+                else
+                {
+                    counter.ExecutionCount++;
+                }
+            }
+            if (trade is not null)
+                _db.TradeRecords.Add(trade);
             await _db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
             _cache.Remove(OpenPositionsCacheKey);
@@ -234,7 +309,8 @@ public class TradeRepository : ITradeRepository
         catch
         {
             await transaction.RollbackAsync(CancellationToken.None);
-            _db.Entry(trade).State = EntityState.Detached;
+            if (trade is not null)
+                _db.Entry(trade).State = EntityState.Detached;
             throw;
         }
     }

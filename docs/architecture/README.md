@@ -105,9 +105,10 @@ silently use different exit or scaling rules.
 Backtest scaling counts travel with each open position rather than living in processor memory, so
 recreating an orchestration component cannot reset a rule's maximum-fill limit.
 Live partial-profit fills use the same common-session share rounding and atomically move the
-remaining stop to breakeven with the quantity reduction. Live trading still fails closed for
-custom scaling strategies until cost basis and per-rule execution counts can be persisted and
-reconciled with broker fills.
+remaining stop to breakeven with the quantity reduction. Durable live position execution now also
+stores scaling direction, rule index, weighted cost basis, and per-rule execution counts through
+the same broker-evidence transaction. Custom live scaling remains disabled until the live evaluator
+and the central scale-in capital cap are connected to this foundation.
 `LivePositionExitEvaluator` owns live bar loading, ATR preparation, built-in indicator snapshots,
 custom sell-rule evaluation, and translation into the shared decision policy. The 230-line
 `PositionExitManagerService` now owns only scheduling, broker state, persistence, and durable exit
@@ -140,8 +141,10 @@ are never blindly resubmitted. The intent also persists its requested quantity a
 meaning. A proven fill either reduces the remaining position or closes it, and the position update
 plus its quantity-matched trade record commit atomically. A broker-reported quantity mismatch fails
 closed for operator review instead of guessing.
-`LivePositionExitCoordinator` owns both submission and evidence-based reconciliation. Background
-monitoring and the operator API call the same use case. Position responses use one contract that
+`LivePositionExecutionCoordinator` owns submission and evidence-based reconciliation for full exits,
+partial profit, scale-in, and scale-out orders. It rejects broker acknowledgements whose symbol,
+direction, or quantity differs from the claimed intent. Background monitoring and the operator API
+call the same use case. Position responses use one contract that
 shows whether an exit is ready, missing a confirmed broker order ID, or awaiting broker resolution,
 including the durable requested quantity;
 the operator can request reconciliation but cannot force-clear an uncertain order.

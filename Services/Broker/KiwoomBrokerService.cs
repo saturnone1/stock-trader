@@ -40,6 +40,16 @@ public class KiwoomBrokerService : IBrokerService
         return Task.FromResult<BrokerOrder?>(null);
     }
 
+    public Task<BrokerOrder?> IncreasePositionAsync(
+        string symbol,
+        int quantity,
+        CancellationToken ct = default)
+    {
+        _logger.LogWarning("[Kiwoom] Position increase is not implemented: {Symbol} {Quantity}",
+            symbol, quantity);
+        return Task.FromResult<BrokerOrder?>(null);
+    }
+
     public Task<BrokerOrder?> ClosePositionAsync(
         string symbol,
         int quantity,

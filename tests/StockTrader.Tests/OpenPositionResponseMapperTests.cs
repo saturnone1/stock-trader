@@ -16,9 +16,9 @@ public class OpenPositionResponseMapperTests
             Symbol = "TQQQ",
             OpenedAt = now.AddDays(-3),
             Quantity = 10,
-            ExitRequestedAt = now.AddMinutes(-2),
-            ExitRequestReason = "사용자 수동 청산",
-            ExitRequestQuantity = 10,
+            ExecutionRequestedAt = now.AddMinutes(-2),
+            ExecutionRequestReason = "사용자 수동 청산",
+            ExecutionRequestQuantity = 10,
         };
 
         var response = OpenPositionResponseMapper.Map(position, now);

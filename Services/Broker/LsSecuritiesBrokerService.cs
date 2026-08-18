@@ -82,6 +82,13 @@ public class LsSecuritiesBrokerService : IBrokerService
     }
 
     /// <inheritdoc />
+    public Task<BrokerOrder?> IncreasePositionAsync(
+        string symbol,
+        int quantity,
+        CancellationToken ct = default) =>
+        SubmitMarketPositionOrderAsync(symbol, quantity, "2", ct);
+
+    /// <inheritdoc />
     public Task<BrokerOrder?> ClosePositionAsync(string symbol, CancellationToken ct = default) =>
         ClosePositionCoreAsync(symbol, null, ct);
 
@@ -119,16 +126,36 @@ public class LsSecuritiesBrokerService : IBrokerService
                 return null;
             }
 
-            var sellBody = new Dictionary<string, object>
+            return await SubmitMarketPositionOrderAsync(symbol, sellQuantity, "1", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
+            return null;
+        }
+    }
+
+    private async Task<BrokerOrder?> SubmitMarketPositionOrderAsync(
+        string symbol,
+        int quantity,
+        string sideCode,
+        CancellationToken ct)
+    {
+        if (quantity <= 0 || string.IsNullOrWhiteSpace(symbol))
+            return null;
+
+        try
+        {
+            var orderBody = new Dictionary<string, object>
             {
                 ["CSPAT00600InBlock1"] = new Dictionary<string, object>
                 {
                     ["AcntNo"] = _auth.Settings.AccountNo,
                     ["InptPwd"] = _auth.Settings.AccountPassword,
                     ["IsuNo"] = $"A{symbol}",
-                    ["OrdQty"] = sellQuantity,
+                    ["OrdQty"] = quantity,
                     ["OrdPrc"] = 0,       // 시장가
-                    ["BnsTpCode"] = "1",  // 매도
+                    ["BnsTpCode"] = sideCode,
                     ["OrdprcPtnCode"] = "03", // 시장가
                     ["MgntrnCode"] = "000",
                     ["LoanDt"] = "",
@@ -137,13 +164,13 @@ public class LsSecuritiesBrokerService : IBrokerService
             };
 
             var request = await _auth.CreateRequestAsync(_http, HttpMethod.Post, "/stock/order",
-                "CSPAT00600", sellBody, ct: ct);
+                "CSPAT00600", orderBody, ct: ct);
             var response = await _http.SendAsync(request, ct);
             var json = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("[LS] 포지션 청산 실패: {Symbol} {Status} {Body}",
+                _logger.LogError("[LS] 포지션 조정 실패: {Symbol} {Status} {Body}",
                     symbol, response.StatusCode, json);
                 return null;
             }
@@ -160,17 +187,18 @@ public class LsSecuritiesBrokerService : IBrokerService
             {
                 // HTTP 주문 접수는 성공했다. 주문번호 파싱 실패를 제출 실패로 바꾸면
                 // 재시도 시 중복 매도가 될 수 있으므로 ID 미상 접수로 유지한다.
-                _logger.LogWarning(ex, "[LS] 청산 주문은 접수됐으나 주문번호를 읽지 못함: {Symbol}", symbol);
+                _logger.LogWarning(ex, "[LS] 포지션 조정 주문번호를 읽지 못함: {Symbol}", symbol);
             }
 
-            _logger.LogInformation("[LS] 포지션 청산 성공: {Symbol} {Qty}주",
-                symbol, sellQuantity);
+            var direction = sideCode == "2" ? TradeDirection.Long : TradeDirection.Short;
+            _logger.LogInformation("[LS] 포지션 조정 접수: {Direction} {Symbol} {Qty}주",
+                direction, symbol, quantity);
             return new BrokerOrder
             {
                 OrderId = orderId,
                 Symbol = symbol,
-                Direction = TradeDirection.Short,
-                Quantity = sellQuantity,
+                Direction = direction,
+                Quantity = quantity,
                 Status = BrokerOrderStatus.Accepted,
                 OrderType = BrokerOrderType.Market,
                 SubmittedAt = DateTime.UtcNow,
@@ -178,7 +206,7 @@ public class LsSecuritiesBrokerService : IBrokerService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LS] 포지션 청산 중 예외: {Symbol}", symbol);
+            _logger.LogError(ex, "[LS] 포지션 조정 중 예외: {Symbol}", symbol);
             return null;
         }
     }

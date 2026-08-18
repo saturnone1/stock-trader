@@ -19,12 +19,13 @@ public interface ITradeRepository
     Task<List<Position>> GetOpenPositionsAsync(CancellationToken ct = default);
     Task<Position?> GetPositionAsync(long id, CancellationToken ct = default);
     Task SavePositionAsync(Position position, CancellationToken ct = default);
-    Task<bool> TryClaimPositionExitAsync(PositionExitClaim claim, CancellationToken ct = default);
-    Task<bool> SetPositionExitOrderIdAsync(long positionId, DateTime requestedAt, string? orderId,
+    Task<bool> TryClaimPositionExecutionAsync(
+        PositionExecutionClaim claim, CancellationToken ct = default);
+    Task<bool> SetPositionExecutionOrderIdAsync(long positionId, DateTime requestedAt, string? orderId,
         CancellationToken ct = default);
-    Task<bool> ReleasePositionExitClaimAsync(long positionId, DateTime requestedAt,
+    Task<bool> ReleasePositionExecutionClaimAsync(long positionId, DateTime requestedAt,
         CancellationToken ct = default);
-    Task<bool> TryApplyPositionExitFillAsync(PositionExitFill fill, TradeRecord trade,
+    Task<bool> TryApplyPositionExecutionFillAsync(PositionExecutionFill fill, TradeRecord? trade,
         CancellationToken ct = default);
     Task<List<TradeRecommendation>> GetRecentRecommendationsAsync(int count = 20,
         CancellationToken ct = default);
