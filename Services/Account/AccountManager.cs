@@ -156,27 +156,28 @@ public sealed class AccountManager : IAccountManager
     }
 
     public async Task<IBrokerService?> GetActiveBrokerServiceAsync(
-        CancellationToken ct = default)
-    {
-        var activeId = Volatile.Read(ref _activeAccountId);
-        if (activeId != NoActiveAccount
-            && _brokerCache.TryGetValue(activeId, out var cached))
-        {
-            return cached;
-        }
-
-        var account = await GetActiveAccountAsync(ct);
-        return account is null ? null : GetOrCreateBrokerService(account);
-    }
+        CancellationToken ct = default) =>
+        (await GetBrokerContextAsync(ct: ct))?.Broker;
 
     public async Task<IBrokerService?> GetBrokerServiceForAccountAsync(
         int accountId,
+        CancellationToken ct = default) =>
+        (await GetBrokerContextAsync(accountId, ct))?.Broker;
+
+    public async Task<AccountBrokerContext?> GetBrokerContextAsync(
+        int? accountId = null,
         CancellationToken ct = default)
     {
-        if (_brokerCache.TryGetValue(accountId, out var cached))
-            return cached;
-        var account = await _store.LoadByIdAsync(accountId, ct);
-        return account is null ? null : GetOrCreateBrokerService(account);
+        var account = accountId.HasValue
+            ? await _store.LoadByIdAsync(accountId.Value, ct)
+            : await GetActiveAccountAsync(ct);
+        if (account is not { IsEnabled: true })
+            return null;
+
+        if (_brokerCache.TryGetValue(account.Id, out var cached))
+            return new AccountBrokerContext(account, cached);
+        var broker = GetOrCreateBrokerService(account);
+        return broker is null ? null : new AccountBrokerContext(account, broker);
     }
 
     public async Task<IReadOnlyList<AccountConnectionStatus>>

@@ -92,6 +92,29 @@ public sealed class AccountManagerTests
         (await manager.GetActiveAccountAsync())!.Id.Should().Be(fallback.Id);
     }
 
+    [Fact]
+    public async Task BrokerContextBindsBrokerAndAccountToOneResolvedSnapshot()
+    {
+        var account = Account() with { Id = 31, IsActive = true };
+        var store = new Mock<ITradingAccountStore>();
+        var factory = new Mock<IAccountBrokerServiceFactory>();
+        var broker = new Mock<IBrokerService>().Object;
+        store.Setup(item => item.LoadActiveAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(account);
+        factory.Setup(item => item.Create(account)).Returns(broker);
+        var manager = Manager(store, factory);
+
+        var context = await manager.GetBrokerContextAsync();
+
+        context.Should().NotBeNull();
+        context!.Account.Should().BeSameAs(account);
+        context.Broker.Should().BeSameAs(broker);
+        store.Verify(item => item.LoadActiveAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
+        store.Verify(item => item.LoadByIdAsync(
+            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static AccountManager Manager(
         Mock<ITradingAccountStore> store,
         Mock<IAccountBrokerServiceFactory> factory) => new(

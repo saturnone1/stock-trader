@@ -21,11 +21,11 @@ public class KiwoomBrokerService : IBrokerService
         _logger = logger;
     }
 
-    public Task<bool> PlaceOrderAsync(TradeRecommendation recommendation,
+    public Task<BrokerOrder?> SubmitEntryOrderAsync(TradeRecommendation recommendation,
         CancellationToken ct = default)
     {
-        _logger.LogWarning("[Kiwoom] PlaceOrderAsync: 키움증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 주문이 실행되지 않습니다.");
-        return Task.FromResult(false);
+        _logger.LogWarning("[Kiwoom] SubmitEntryOrderAsync: 키움증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 주문이 실행되지 않습니다.");
+        return Task.FromResult<BrokerOrder?>(null);
     }
 
     public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)

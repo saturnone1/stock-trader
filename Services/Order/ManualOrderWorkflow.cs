@@ -1,5 +1,4 @@
 using StockTrader.Application.Execution;
-using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -24,7 +23,8 @@ public sealed class ManualOrderWorkflow
     private readonly IMarketCalendar _marketCalendar;
     private readonly ISignalService _signals;
     private readonly TimeProvider _timeProvider;
-    private readonly AppDbContext _db;
+    private readonly IManualOrderSignalStore _signalStore;
+    private readonly ILiveEntryExecutionCoordinator _entryExecutions;
     private readonly ILogger<ManualOrderWorkflow> _logger;
 
     public ManualOrderWorkflow(
@@ -34,7 +34,8 @@ public sealed class ManualOrderWorkflow
         IMarketCalendar marketCalendar,
         ISignalService signals,
         TimeProvider timeProvider,
-        AppDbContext db,
+        IManualOrderSignalStore signalStore,
+        ILiveEntryExecutionCoordinator entryExecutions,
         ILogger<ManualOrderWorkflow> logger)
     {
         _accounts = accounts;
@@ -43,7 +44,8 @@ public sealed class ManualOrderWorkflow
         _marketCalendar = marketCalendar;
         _signals = signals;
         _timeProvider = timeProvider;
-        _db = db;
+        _signalStore = signalStore;
+        _entryExecutions = entryExecutions;
         _logger = logger;
     }
 
@@ -51,7 +53,7 @@ public sealed class ManualOrderWorkflow
         long signalId,
         CancellationToken ct = default)
     {
-        var signal = await _db.PatternSignals.FindAsync([signalId], ct);
+        var signal = await _signalStore.LoadAsync(signalId, ct);
         if (signal is null)
         {
             _logger.LogWarning("[MANUAL ORDER] Signal {SignalId} not found", signalId);
@@ -63,42 +65,50 @@ public sealed class ManualOrderWorkflow
         if (validationError is not null)
             return (false, validationError);
 
-        var broker = await _accounts.GetActiveBrokerServiceAsync(ct);
-        if (broker is null)
+        var account = await _accounts.GetBrokerContextAsync(ct: ct);
+        if (account is null)
         {
             _logger.LogWarning("[MANUAL ORDER] No active broker service for {Symbol}", signal.Symbol);
             return (false, "활성 브로커 계좌가 없습니다. 계좌 관리에서 계좌를 설정하세요.");
         }
 
+        await _trades.AddRecommendationAsync(recommendation, ct);
+        var execution = await _entryExecutions.ExecuteAsync(recommendation, account, ct);
+        if (!execution.BrokerAccepted)
+        {
+            _logger.LogWarning(
+                "[MANUAL ORDER FAILED] {Symbol}: 브로커가 주문을 거부했습니다", signal.Symbol);
+            var reason = string.IsNullOrWhiteSpace(execution.Error)
+                ? "브로커가 주문을 거부했습니다."
+                : execution.Error;
+            return (false, $"{signal.Symbol} 주문 실패: {reason}");
+        }
+
         try
         {
-            if (!await broker.PlaceOrderAsync(recommendation, ct))
-            {
-                _logger.LogWarning(
-                    "[MANUAL ORDER FAILED] {Symbol}: 브로커가 주문을 거부했습니다", signal.Symbol);
-                return (false, $"{signal.Symbol} 주문 실패: 브로커가 주문을 거부했습니다.");
-            }
+            _notifications.Notify(recommendation);
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            _logger.LogError(ex, "[MANUAL ORDER FAILED] {Symbol}: 브로커 주문 실패", signal.Symbol);
-            return (false, $"{signal.Symbol} 주문 실패: {ex.Message}");
+            // 이미 접수된 주문을 알림 실패 때문에 실패로 응답하면 사용자가 재주문할 수 있다.
+            _logger.LogWarning(exception,
+                "[MANUAL ORDER] Notification failed after broker acceptance: {Symbol}",
+                signal.Symbol);
+        }
+        if (!execution.IsTracked)
+        {
+            _logger.LogCritical(
+                "[MANUAL ORDER ACCEPTED, TRACKING FAILED] {Symbol}: "
+                + "Account={AccountId} OrderId={OrderId}",
+                signal.Symbol,
+                account.Account.Id,
+                execution.Order?.OrderId);
+            return (true,
+                $"{signal.Symbol} 주문은 브로커에 접수됐지만 로컬 포지션 기록에 실패했습니다. "
+                + "재주문하지 말고 브로커 주문 내역을 확인하세요.");
         }
 
-        await _trades.AddRecommendationAsync(recommendation, ct);
-        _notifications.Notify(recommendation);
-        recommendation.WasExecuted = true;
-        await _trades.UpdateRecommendationAsync(recommendation, ct);
-
-        var brokerPosition = await BrokerPositionConfirmation.WaitForAsync(
-            broker, recommendation.Symbol, ct);
-        var accountId = (await _accounts.GetActiveAccountAsync(ct))?.Id ?? 0;
-        var position = LiveEntryPositionFactory.Create(
-            recommendation,
-            brokerPosition,
-            accountId,
-            UtcNow);
-        await _trades.SavePositionAsync(position, ct);
+        var position = execution.Position!;
 
         _logger.LogInformation(
             "[MANUAL ORDER PLACED] {Symbol}: Qty={Qty}, Entry=${Entry:F2}, Pattern={Pattern}",

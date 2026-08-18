@@ -313,4 +313,6 @@ defaults, active-profile selection, and modification time have one application o
   behind an application port and make SEC interpretation and financial arithmetic deterministic.
 - `adr/0030-isolate-trading-account-boundary.md`: centralize broker metadata, isolate account
   persistence and broker construction, and keep credentials out of account responses.
+- `adr/0031-unify-live-entry-execution.md`: bind account and broker selection, retain entry-order
+  evidence, and route automatic and manual entries through one atomic local execution boundary.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

@@ -20,11 +20,11 @@ public class KoreaInvestmentBrokerService : IBrokerService
         _logger = logger;
     }
 
-    public Task<bool> PlaceOrderAsync(TradeRecommendation recommendation,
+    public Task<BrokerOrder?> SubmitEntryOrderAsync(TradeRecommendation recommendation,
         CancellationToken ct = default)
     {
-        _logger.LogWarning("[KIS] PlaceOrderAsync: 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 주문이 실행되지 않습니다.");
-        return Task.FromResult(false);
+        _logger.LogWarning("[KIS] SubmitEntryOrderAsync: 한국투자증권 브로커 서비스는 Phase 3.1에서 구현 예정입니다. 주문이 실행되지 않습니다.");
+        return Task.FromResult<BrokerOrder?>(null);
     }
 
     public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default)

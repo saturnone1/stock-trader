@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using StockTrader.Application.Accounts;
+using StockTrader.Application.Execution;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -35,6 +36,29 @@ public class OrderServiceTests
         _brokerServiceMock = new Mock<IBrokerService>();
         _marketCalendarMock = new Mock<IMarketCalendar>();
         _signalServiceMock = new Mock<ISignalService>();
+
+        _accountManagerMock
+            .Setup(manager => manager.GetBrokerContextAsync(
+                It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int? accountId, CancellationToken ct) =>
+            {
+                var broker = accountId.HasValue
+                    ? await _accountManagerMock.Object.GetBrokerServiceForAccountAsync(
+                        accountId.Value, ct)
+                    : await _accountManagerMock.Object.GetActiveBrokerServiceAsync(ct);
+                if (broker is null)
+                    return null;
+                var account = accountId.HasValue
+                    ? await _accountManagerMock.Object.GetAccountByIdAsync(accountId.Value, ct)
+                    : await _accountManagerMock.Object.GetActiveAccountAsync(ct);
+                account ??= new ManagedTradingAccount
+                {
+                    Id = accountId ?? 0,
+                    IsActive = true,
+                    IsEnabled = true
+                };
+                return new AccountBrokerContext(account, broker);
+            });
     }
 
     /// <summary>
@@ -56,6 +80,10 @@ public class OrderServiceTests
     {
         var effectiveDb = db ?? CreateInMemoryDb();
         var clock = timeProvider ?? TimeProvider.System;
+        var entryExecutions = new LiveEntryExecutionCoordinator(
+            new RepositoryBackedEntryStore(_tradeRepoMock.Object),
+            clock,
+            NullLogger<LiveEntryExecutionCoordinator>.Instance);
         var manualOrders = new ManualOrderWorkflow(
             _accountManagerMock.Object,
             _tradeRepoMock.Object,
@@ -63,7 +91,8 @@ public class OrderServiceTests
             _marketCalendarMock.Object,
             _signalServiceMock.Object,
             clock,
-            effectiveDb,
+            new DbManualOrderSignalStore(effectiveDb),
+            entryExecutions,
             NullLogger<ManualOrderWorkflow>.Instance);
         return new OrderService(
             _accountManagerMock.Object,
@@ -72,7 +101,7 @@ public class OrderServiceTests
             _notificationServiceMock.Object,
             _marketCalendarMock.Object,
             manualOrders,
-            clock,
+            entryExecutions,
             NullLogger<OrderService>.Instance);
     }
 
@@ -300,9 +329,7 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        SetupEntryAccepted();
 
         var rec = CreateRecommendation(shareQuantity: 10, entryPrice: 150m, stopLossPrice: 145m, targetPrice: 165m);
         var sut = CreateSut();
@@ -332,9 +359,7 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        SetupEntryAccepted();
 
         var rec = CreateRecommendation(shareQuantity: 10);
         var sut = CreateSut();
@@ -358,9 +383,7 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        SetupEntryAccepted();
 
         var rec = CreateRecommendation(
             symbol: "TSLA",
@@ -390,6 +413,46 @@ public class OrderServiceTests
         savedPosition.PatternType.Should().Be(PatternType.GapUpPullback);
     }
 
+    private static BrokerOrder AcceptedOrder(TradeRecommendation recommendation) => new()
+    {
+        OrderId = "entry-order",
+        Symbol = recommendation.Symbol,
+        Direction = TradeDirection.Long,
+        Quantity = recommendation.ShareQuantity,
+        Status = BrokerOrderStatus.Accepted,
+        OrderType = BrokerOrderType.BracketOrder,
+        SubmittedAt = recommendation.GeneratedAt
+    };
+
+    private AccountBrokerContext BrokerContext(int accountId) => new(
+        new ManagedTradingAccount
+        {
+            Id = accountId,
+            AccountName = "Test",
+            IsActive = true,
+            IsEnabled = true
+        },
+        _brokerServiceMock.Object);
+
+    private void SetupEntryAccepted() =>
+        _brokerServiceMock
+            .Setup(broker => broker.SubmitEntryOrderAsync(
+                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TradeRecommendation recommendation, CancellationToken _) =>
+                AcceptedOrder(recommendation));
+
+    private void SetupEntryAccepted(TradeRecommendation recommendation) =>
+        _brokerServiceMock
+            .Setup(broker => broker.SubmitEntryOrderAsync(
+                recommendation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AcceptedOrder(recommendation));
+
+    private void SetupEntryRejected() =>
+        _brokerServiceMock
+            .Setup(broker => broker.SubmitEntryOrderAsync(
+                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BrokerOrder?)null);
+
     [Fact]
     public async Task PlaceOrder_BrokerFill_ReanchorsStopAndTargetWithSharedFillPolicy()
     {
@@ -398,10 +461,7 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(manager => manager.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(broker => broker.PlaceOrderAsync(
-                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        SetupEntryAccepted();
         _brokerServiceMock
             .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new Position
@@ -434,13 +494,10 @@ public class OrderServiceTests
         SetupSettingsWithMode(OrderMode.AutoOrder);
         SetupMarketOpen();
         _accountManagerMock
-            .Setup(manager => manager.GetBrokerServiceForAccountAsync(
+            .Setup(manager => manager.GetBrokerContextAsync(
                 42, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(broker => broker.PlaceOrderAsync(
-                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(BrokerContext(42));
+        SetupEntryAccepted();
         Position? savedPosition = null;
         _tradeRepoMock
             .Setup(repository => repository.SavePositionAsync(
@@ -489,10 +546,7 @@ public class OrderServiceTests
             .Setup(manager => manager.GetActiveAccountAsync(
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManagedTradingAccount { Id = 9, IsActive = true, IsEnabled = true });
-        _brokerServiceMock
-            .Setup(broker => broker.PlaceOrderAsync(
-                recommendation, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        SetupEntryAccepted(recommendation);
         _brokerServiceMock
             .Setup(broker => broker.GetPositionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new Position
@@ -555,12 +609,12 @@ public class OrderServiceTests
         result.Message.Should().Contain("24시간 초과");
         _accountManagerMock.Verify(manager => manager.GetActiveBrokerServiceAsync(
             It.IsAny<CancellationToken>()), Times.Never);
-        _brokerServiceMock.Verify(broker => broker.PlaceOrderAsync(
+        _brokerServiceMock.Verify(broker => broker.SubmitEntryOrderAsync(
             It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task PlaceManualOrder_BrokerRejects_DoesNotPersistFalseExecution()
+    public async Task PlaceManualOrder_BrokerRejects_PreservesUnexecutedAuditRecord()
     {
         var now = new DateTimeOffset(2026, 8, 18, 14, 30, 0, TimeSpan.Zero);
         SetupMarketOpen();
@@ -585,10 +639,7 @@ public class OrderServiceTests
             .Setup(manager => manager.GetActiveBrokerServiceAsync(
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(broker => broker.PlaceOrderAsync(
-                It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupEntryRejected();
 
         var result = await CreateSut(db, new FixedTimeProvider(now))
             .PlaceManualOrderAsync(signal.Id);
@@ -596,6 +647,9 @@ public class OrderServiceTests
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("브로커가 주문을 거부");
         _tradeRepoMock.Verify(repository => repository.AddRecommendationAsync(
+            It.Is<TradeRecommendation>(item => !item.WasExecuted),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _tradeRepoMock.Verify(repository => repository.UpdateRecommendationAsync(
             It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()), Times.Never);
         _tradeRepoMock.Verify(repository => repository.SavePositionAsync(
             It.IsAny<Position>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -617,9 +671,7 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupEntryRejected();
 
         var rec = CreateRecommendation(shareQuantity: 10);
         var sut = CreateSut();
@@ -643,9 +695,7 @@ public class OrderServiceTests
         _accountManagerMock
             .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        SetupEntryRejected();
 
         var rec = CreateRecommendation(shareQuantity: 10);
         var sut = CreateSut();
@@ -673,11 +723,10 @@ public class OrderServiceTests
         SetupMarketOpen();
         const int targetAccountId = 42;
         _accountManagerMock
-            .Setup(m => m.GetBrokerServiceForAccountAsync(targetAccountId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .Setup(m => m.GetBrokerContextAsync(
+                targetAccountId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BrokerContext(targetAccountId));
+        SetupEntryAccepted();
 
         var rec = CreateRecommendation(shareQuantity: 10);
         var sut = CreateSut();
@@ -687,7 +736,10 @@ public class OrderServiceTests
 
         // Assert
         result.Should().BeTrue();
-        _accountManagerMock.Verify(m => m.GetBrokerServiceForAccountAsync(targetAccountId, It.IsAny<CancellationToken>()), Times.Once);
+        _accountManagerMock.Verify(m => m.GetBrokerContextAsync(
+            targetAccountId, It.IsAny<CancellationToken>()), Times.Once);
+        _accountManagerMock.Verify(m => m.GetBrokerServiceForAccountAsync(
+            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
         _accountManagerMock.Verify(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -701,11 +753,10 @@ public class OrderServiceTests
         SetupSettingsWithMode(OrderMode.AutoOrder);
         SetupMarketOpen();
         _accountManagerMock
-            .Setup(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_brokerServiceMock.Object);
-        _brokerServiceMock
-            .Setup(b => b.PlaceOrderAsync(It.IsAny<TradeRecommendation>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .Setup(m => m.GetBrokerContextAsync(
+                null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BrokerContext(9));
+        SetupEntryAccepted();
 
         var rec = CreateRecommendation(shareQuantity: 10);
         var sut = CreateSut();
@@ -714,7 +765,10 @@ public class OrderServiceTests
         await sut.PlaceOrderAsync(rec, accountId: null);
 
         // Assert
-        _accountManagerMock.Verify(m => m.GetActiveBrokerServiceAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _accountManagerMock.Verify(m => m.GetBrokerContextAsync(
+            null, It.IsAny<CancellationToken>()), Times.Once);
+        _accountManagerMock.Verify(m => m.GetActiveBrokerServiceAsync(
+            It.IsAny<CancellationToken>()), Times.Never);
         _accountManagerMock.Verify(
             m => m.GetBrokerServiceForAccountAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -989,6 +1043,29 @@ public class OrderServiceTests
         // Assert
         result.Should().HaveCount(1);
         result[0].Symbol.Should().Be("GOOG");
+    }
+
+    private sealed class DbManualOrderSignalStore(AppDbContext db)
+        : IManualOrderSignalStore
+    {
+        public async Task<PatternSignal?> LoadAsync(
+            long signalId,
+            CancellationToken ct = default) =>
+            await db.PatternSignals.FindAsync([signalId], ct);
+    }
+
+    private sealed class RepositoryBackedEntryStore(ITradeRepository repository)
+        : ILiveEntryExecutionStore
+    {
+        public async Task CommitAcceptedEntryAsync(
+            TradeRecommendation recommendation,
+            Position position,
+            CancellationToken ct = default)
+        {
+            recommendation.WasExecuted = true;
+            await repository.UpdateRecommendationAsync(recommendation, ct);
+            await repository.SavePositionAsync(position, ct);
+        }
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
