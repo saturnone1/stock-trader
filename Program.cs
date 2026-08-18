@@ -28,7 +28,9 @@ try
     builder.Services.AddStockTraderServices(
         builder.Configuration,
         includeHostedServices: !isOpenApiGeneration);
-    builder.Services.AddSecurityServices(builder.Configuration);
+    builder.Services.AddSecurityServices(
+        builder.Configuration,
+        persistDataProtectionKeys: !isOpenApiGeneration);
     builder.Services.AddCors(options => options.AddPolicy("DesktopUi", policy => policy
         .WithOrigins(
             "http://stock-desktop.taewon",

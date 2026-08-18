@@ -43,6 +43,20 @@ public class CentralCatalogTests
             .Should().OnlyContain(parameter => parameter.Step > 0 && parameter.DefaultValue > 0);
     }
 
+    [Fact]
+    public void PatternCatalogPreservesStableIdentityAndCoversEveryPattern()
+    {
+        PatternCatalog.All.Select(item => item.Value)
+            .Should().BeEquivalentTo(Enum.GetValues<PatternType>());
+        PatternCatalog.All.Select(item => item.Code)
+            .Should().Equal(PatternCatalog.All.Select(item => item.Value.ToString()));
+        PatternCatalog.All.Select(item => item.Code).Should().OnlyHaveUniqueItems();
+        PatternCatalog.All.Should().OnlyContain(item => !string.IsNullOrWhiteSpace(item.DisplayName));
+        PatternCatalog.BuiltIn.Select(item => item.Value)
+            .Should().BeEquivalentTo(Enum.GetValues<PatternType>().Where(item => item != PatternType.Custom));
+        PatternCatalog.DisplayName(PatternType.Custom, "  내 전략  ").Should().Be("내 전략");
+    }
+
     [Theory]
     [InlineData("RSI", 16)]
     [InlineData("CUMULATIVE_RSI", 6)]
@@ -92,7 +106,7 @@ public class CentralCatalogTests
     {
         var contract = StrategyBuilderMetadataResponse.Create();
 
-        contract.SchemaVersion.Should().Be(4);
+        contract.SchemaVersion.Should().Be(5);
         contract.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
@@ -104,6 +118,8 @@ public class CentralCatalogTests
             .Should().BeEquivalentTo(TimeFrameCatalog.All.Select(item => item.Value));
         contract.DataProviders.Select(item => item.Value)
             .Should().BeEquivalentTo(DataProviderCatalog.Implemented.Select(item => item.Value));
+        contract.Patterns.Select(item => item.Value)
+            .Should().Equal(PatternCatalog.All.Select(item => item.Value));
         contract.RuleOperators.Should().Contain(["crosses_above", "crosses_below"]);
         contract.SlippageModels.Select(item => item.Value)
             .Should().BeEquivalentTo(Enum.GetValues<SlippageModel>());
@@ -130,10 +146,11 @@ public class CentralCatalogTests
         var yahoo = root.GetProperty("dataProviders").EnumerateArray()
             .Single(item => item.GetProperty("value").GetString() == "Yahoo");
 
-        root.GetProperty("schemaVersion").GetInt32().Should().Be(4);
+        root.GetProperty("schemaVersion").GetInt32().Should().Be(5);
         root.GetProperty("timeFrames")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         yahoo.GetProperty("maximumLookbackDays").GetProperty("OneMinute").GetInt32().Should().Be(7);
         root.GetProperty("slippageModels")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
+        root.GetProperty("patterns")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         root.GetProperty("optimizationRankings")[0].GetProperty("code").GetString()
             .Should().Be(OptimizationRankingCatalog.SortinoRatioCode);
     }

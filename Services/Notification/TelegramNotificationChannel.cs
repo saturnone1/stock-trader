@@ -62,7 +62,7 @@ public sealed class TelegramNotificationChannel : INotificationChannel
         var text = $"""
             <b>새 시그널: {recommendation.Symbol}</b> {direction}
 
-            패턴: <code>{GetPatternKorean(recommendation.PatternType)}</code>
+            패턴: <code>{PatternCatalog.DisplayName(recommendation.PatternType, recommendation.CustomPatternName)}</code>
             진입가: <b>${recommendation.EntryPrice:F2}</b>
             손절가: <b>${recommendation.StopLossPrice:F2}</b> (-{stopPct}%)
             목표가: <b>${recommendation.TargetPrice:F2}</b>
@@ -168,25 +168,6 @@ public sealed class TelegramNotificationChannel : INotificationChannel
         // 목표가가 진입가보다 높으면 롱, 낮으면 숏
         return rec.TargetPrice >= rec.EntryPrice ? "[매수 롱]" : "[매도 숏]";
     }
-
-    private static string GetPatternKorean(PatternType pattern) => pattern switch
-    {
-        PatternType.GapUpPullback => "갭 업 풀백",
-        PatternType.Breakout => "돌파 매수",
-        PatternType.VwapReversion => "VWAP 반등",
-        PatternType.RsiMeanReversion => "RSI 평균 회귀",
-        PatternType.TrendPullback => "트렌드 풀백",
-        PatternType.OpeningRangeBreakout => "오프닝 레인지 돌파",
-        PatternType.VolumeSpikeContinuation => "거래량 급증 지속",
-        PatternType.EarningsDrift => "어닝 드리프트",
-        PatternType.IndexRegimeFilter => "지수 레짐 필터",
-        PatternType.VolatilityExpansion => "변동성 확장",
-        PatternType.MomentumReversal => "모멘텀 반전",
-        PatternType.MultiTimeframeTrend => "멀티 타임프레임 트렌드",
-        PatternType.MeanReversionChannel => "평균 회귀 채널",
-        PatternType.CumulativeRsi2 => "누적 RSI(2)",
-        _ => pattern.ToString()
-    };
 
     private static string EscapeHtml(string text) =>
         text.Replace("&", "&amp;")
