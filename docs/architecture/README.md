@@ -32,6 +32,8 @@ infrastructure.
 - Financial collection state: one application port; SEC symbol, interval, parsing, and ratio rules
   are deterministic policies outside workers and persistence adapters.
 - Order execution modes and their operator-facing meaning: one domain catalog.
+- Broker identity and operation-specific capabilities: one domain catalog used by account metadata,
+  adapters, workers, and live execution guards.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.
@@ -315,4 +317,8 @@ defaults, active-profile selection, and modification time have one application o
   persistence and broker construction, and keep credentials out of account responses.
 - `adr/0031-unify-live-entry-execution.md`: bind account and broker selection, retain entry-order
   evidence, and route automatic and manual entries through one atomic local execution boundary.
+- `adr/0032-durable-entry-execution-lifecycle.md`: claim entries before broker submission and
+  reconcile uncertain outcomes without permitting duplicate retries.
+- `adr/0033-centralize-broker-capabilities.md`: expose operation-specific broker support and reject
+  unsupported live actions before they mutate durable execution state.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

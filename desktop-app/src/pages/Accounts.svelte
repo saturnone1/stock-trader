@@ -3,6 +3,7 @@
   import { accountApi } from '../api/endpoints'
   import {
     brokerOptionsFromMetadata,
+    brokerCapabilityLabels,
     createAccountForm,
     normalizeAccountsResponse,
     projectAccountError,
@@ -17,6 +18,10 @@
   let showForm = false
   let form = createAccountForm()
   $: selectedBroker = brokerOptions.find((item) => item.type === form.brokerType)
+
+  function brokerFor(type) {
+    return brokerOptions.find((item) => item.type === type)
+  }
 
   onMount(load)
 
@@ -118,6 +123,20 @@
         {/if}
         <textarea bind:value={form.notes} placeholder="메모" class="col-span-2 rounded border border-gray-700 bg-gray-900 px-3 py-2 text-white"></textarea>
       </div>
+      {#if selectedBroker}
+        <div class="mt-4 rounded border border-gray-700 bg-gray-900/60 p-3 text-sm">
+          <div class="mb-2 font-medium text-gray-200">실거래 지원 기능</div>
+          {#if brokerCapabilityLabels(selectedBroker).length > 0}
+            <div class="flex flex-wrap gap-2">
+              {#each brokerCapabilityLabels(selectedBroker) as label}
+                <span class="rounded-full bg-emerald-900/50 px-2 py-1 text-xs text-emerald-300">{label}</span>
+              {/each}
+            </div>
+          {:else}
+            <div class="text-amber-300">아직 연결 및 주문 기능을 사용할 수 없습니다.</div>
+          {/if}
+        </div>
+      {/if}
       <div class="mt-4 flex gap-3">
         <button on:click={create} class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition text-sm">저장</button>
       </div>
@@ -143,14 +162,17 @@
           {#each rows as row}
             <tr class="border-t border-gray-700">
               <td class="px-4 py-3">{row.accountName}</td>
-              <td class="px-4 py-3">{row.brokerType}</td>
+              <td class="px-4 py-3">
+                <div>{brokerFor(row.brokerType)?.displayName ?? row.brokerType}</div>
+                <div class="mt-1 text-xs text-gray-400">{brokerCapabilityLabels(brokerFor(row.brokerType)).join(' · ') || '준비 중'}</div>
+              </td>
               <td class="px-4 py-3">{row.environment}</td>
               <td class="px-4 py-3 font-mono text-xs">{row.apiKey}</td>
               <td class="px-4 py-3">{row.isActive ? 'Active' : row.isEnabled ? 'Enabled' : 'Disabled'}</td>
               <td class="px-4 py-3 text-right">
                 <div class="flex justify-end gap-2">
-                  <button on:click={() => testConnection(row.id)} class="rounded bg-gray-700 px-3 py-1 text-xs hover:bg-gray-600">Test</button>
-                  <button on:click={() => activate(row.id)} disabled={!row.isEnabled || row.isActive} class="rounded bg-blue-700 px-3 py-1 text-xs hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40">Activate</button>
+                  <button on:click={() => testConnection(row.id)} disabled={!row.isEnabled || !brokerFor(row.brokerType)?.capabilities?.canReadAccount} class="rounded bg-gray-700 px-3 py-1 text-xs hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-40">연결 확인</button>
+                  <button on:click={() => activate(row.id)} disabled={!row.isEnabled || row.isActive || !brokerFor(row.brokerType)?.isImplemented} class="rounded bg-blue-700 px-3 py-1 text-xs hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40">사용 계좌로 지정</button>
                   <button on:click={() => remove(row.id)} class="rounded bg-red-700 px-3 py-1 text-xs hover:bg-red-600">Delete</button>
                 </div>
               </td>

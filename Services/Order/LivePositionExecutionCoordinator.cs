@@ -11,6 +11,7 @@ public enum LivePositionExecutionSubmissionStatus
     Accepted,
     AlreadyPending,
     Failed,
+    Unsupported,
 }
 
 public sealed record LivePositionExecutionSubmission(
@@ -34,6 +35,7 @@ public enum LivePositionExecutionReconciliationStatus
     Completed,
     ConcurrentChange,
     BrokerFillMismatch,
+    Unsupported,
 }
 
 public sealed record LivePositionExecutionReconciliationResult(
@@ -102,6 +104,8 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
         }
         if (!IsValid(position, request))
             return new LivePositionExecutionSubmission(LivePositionExecutionSubmissionStatus.Failed);
+        if (!SupportsSubmission(broker.BrokerType, request.Kind))
+            return new LivePositionExecutionSubmission(LivePositionExecutionSubmissionStatus.Unsupported);
 
         var requestedAt = _timeProvider.GetUtcNow().UtcDateTime;
         var claim = new PositionExecutionClaim(
@@ -154,6 +158,12 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
         }
 
         var requestedAt = position.ExecutionRequestedAt.Value;
+        if (knownOrders is null
+            && !BrokerCatalog.Get(broker.BrokerType).Capabilities.CanReadOrderHistory)
+        {
+            return new LivePositionExecutionReconciliationResult(
+                LivePositionExecutionReconciliationStatus.Unsupported);
+        }
         var kind = position.ExecutionRequestKind ?? PositionExecutionKind.FullExit;
         var orders = knownOrders ?? await broker.GetOrderHistoryAsync(
             requestedAt.AddSeconds(-2),
@@ -260,6 +270,17 @@ public sealed class LivePositionExecutionCoordinator : ILivePositionExecutionCoo
             PositionExecutionKind.FullExit => broker.ClosePositionAsync(position.Symbol, ct),
             _ => broker.ClosePositionAsync(position.Symbol, request.Quantity, ct),
         };
+
+    private static bool SupportsSubmission(BrokerType brokerType, PositionExecutionKind kind)
+    {
+        var capabilities = BrokerCatalog.Get(brokerType).Capabilities;
+        return kind switch
+        {
+            PositionExecutionKind.ScaleIn => capabilities.CanScaleIn,
+            PositionExecutionKind.FullExit => capabilities.CanCloseFullPosition,
+            _ => capabilities.CanClosePartialPosition,
+        };
+    }
 
     private static bool IsSubmittedOrderConsistent(
         Position position,

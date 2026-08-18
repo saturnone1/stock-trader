@@ -155,6 +155,13 @@ public class OrderService : IOrderService
             _logger.LogWarning("[ORDER CANCEL] No active broker service to cancel order {OrderId}", orderId);
             return false;
         }
+        if (!BrokerCatalog.Get(brokerService.BrokerType).Capabilities.CanCancelOrder)
+        {
+            _logger.LogWarning(
+                "[ORDER CANCEL] Broker {BrokerType} does not support order cancellation",
+                brokerService.BrokerType);
+            return false;
+        }
 
         var success = await brokerService.CancelOrderAsync(orderId, ct);
 
@@ -173,9 +180,12 @@ public class OrderService : IOrderService
 
         if (brokerService != null)
         {
-            var positions = await brokerService.GetPositionsAsync(ct);
-            if (positions.Count > 0)
-                return positions;
+            if (BrokerCatalog.Get(brokerService.BrokerType).Capabilities.CanReadPositions)
+            {
+                var positions = await brokerService.GetPositionsAsync(ct);
+                if (positions.Count > 0)
+                    return positions;
+            }
         }
 
         // 브로커에서 포지션을 가져오지 못한 경우 DB 폴백

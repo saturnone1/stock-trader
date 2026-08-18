@@ -94,7 +94,7 @@ public class PositionExecutionManagerService : BackgroundService
         if (openPositions.Count == 0) return;
 
         var brokerService = await _accountManager.GetActiveBrokerServiceAsync(ct);
-        if (brokerService == null) return;
+        if (brokerService is null || !BrokerCatalog.CanMonitorPositions(brokerService.BrokerType)) return;
         var brokerAccount = await brokerService.GetAccountAsync(ct);
         var currentEquity = brokerAccount?.TotalEquity ?? 0m;
 

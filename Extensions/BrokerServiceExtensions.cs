@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Options;
-using StockTrader.Configuration;
-using StockTrader.Models.Enums;
 using StockTrader.Services.Account;
 using StockTrader.Services.Broker;
 using StockTrader.Services.LsSecurities;
@@ -12,21 +9,7 @@ public static class BrokerServiceExtensions
     public static IServiceCollection AddBrokerServices(this IServiceCollection services)
     {
         // HttpClient for LS Securities Broker
-        services.AddHttpClient<LsSecuritiesBrokerService>();
-
-        // Broker Services - Keyed DI (non-keyed 제거: AccountManager가 직접 생성)
-        services.AddKeyedScoped<IBrokerService, AlpacaBrokerService>(BrokerType.Alpaca);
-        services.AddKeyedScoped<IBrokerService, KoreaInvestmentBrokerService>(BrokerType.KoreaInvestment);
-        services.AddKeyedScoped<IBrokerService, KiwoomBrokerService>(BrokerType.Kiwoom);
-        services.AddKeyedScoped<IBrokerService>(BrokerType.LsSecurities,
-            (sp, _) => sp.GetRequiredService<LsSecuritiesBrokerService>());
-
-        // BrokerServiceFactory
-        services.AddScoped<IBrokerServiceFactory>(sp =>
-        {
-            var brokerSettings = sp.GetRequiredService<IOptions<BrokerSettings>>().Value;
-            return new BrokerServiceFactory(sp, brokerSettings.DefaultBrokerType);
-        });
+        services.AddHttpClient(nameof(LsSecuritiesBrokerService));
 
         services.AddSingleton<IAccountBrokerServiceFactory, AccountBrokerServiceFactory>();
 

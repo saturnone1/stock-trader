@@ -15,6 +15,8 @@ namespace StockTrader.Services.Broker;
 /// </summary>
 public sealed class DynamicAlpacaBrokerService : IBrokerService
 {
+    public BrokerType BrokerType => BrokerType.Alpaca;
+
     private readonly IAlpacaTradingClient _tradingClient;
     private readonly ILogger<AlpacaBrokerService> _logger;
 

@@ -31,6 +31,23 @@ export function selectBroker(form, options, brokerType) {
   }
 }
 
+const capabilityLabels = [
+  ['canReadAccount', '계좌 조회'],
+  ['canReadPositions', '보유 조회'],
+  ['canReadOrderHistory', '주문 확인'],
+  ['canSubmitProtectedEntry', '보호 주문 포함 신규 매수'],
+  ['canScaleIn', '추가 매수'],
+  ['canCloseFullPosition', '전량 매도'],
+  ['canClosePartialPosition', '부분 매도'],
+  ['canCancelOrder', '주문 취소'],
+]
+
+export function brokerCapabilityLabels(broker) {
+  return capabilityLabels
+    .filter(([key]) => broker?.capabilities?.[key])
+    .map(([, label]) => label)
+}
+
 export function projectAccountError(error, fallback) {
   const payload = error?.response?.data
   if (Array.isArray(payload?.errors) && payload.errors.length > 0)

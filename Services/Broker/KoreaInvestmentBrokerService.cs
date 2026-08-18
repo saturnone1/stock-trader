@@ -13,6 +13,8 @@ namespace StockTrader.Services.Broker;
 /// </summary>
 public class KoreaInvestmentBrokerService : IBrokerService
 {
+    public BrokerType BrokerType => BrokerType.KoreaInvestment;
+
     private readonly ILogger<KoreaInvestmentBrokerService> _logger;
 
     public KoreaInvestmentBrokerService(ILogger<KoreaInvestmentBrokerService> logger)

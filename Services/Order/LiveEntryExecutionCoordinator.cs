@@ -28,6 +28,12 @@ public sealed class LiveEntryExecutionCoordinator(
             return new LiveEntryExecutionResult(LiveEntryExecutionStatus.AlreadyCompleted);
         if (recommendation.EntryRequestedAt.HasValue)
             return new LiveEntryExecutionResult(LiveEntryExecutionStatus.AlreadyPending);
+        if (!BrokerCatalog.Get(account.Account.BrokerType).Capabilities.CanSubmitProtectedEntry)
+        {
+            return new LiveEntryExecutionResult(
+                LiveEntryExecutionStatus.Unsupported,
+                Error: "선택한 브로커는 손절·익절 보호 주문을 포함한 신규 진입을 지원하지 않습니다.");
+        }
 
         var requestedAt = timeProvider.GetUtcNow().UtcDateTime;
         if (!await store.TryClaimAsync(
@@ -149,6 +155,14 @@ public sealed class LiveEntryExecutionCoordinator(
             return new LiveEntryExecutionResult(
                 LiveEntryExecutionStatus.EvidenceMismatch,
                 Error: "The pending entry belongs to a different trading account.");
+        }
+
+        if (knownOrders is null
+            && !BrokerCatalog.Get(account.Account.BrokerType).Capabilities.CanReadOrderHistory)
+        {
+            return new LiveEntryExecutionResult(
+                LiveEntryExecutionStatus.Unsupported,
+                Error: "선택한 브로커는 주문 내역 조회를 지원하지 않습니다.");
         }
 
         var requestedAt = recommendation.EntryRequestedAt.Value;

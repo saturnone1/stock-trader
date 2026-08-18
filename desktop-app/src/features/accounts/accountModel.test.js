@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   brokerOptionsFromMetadata,
+  brokerCapabilityLabels,
   createAccountForm,
   normalizeAccountsResponse,
   projectAccountError,
@@ -47,4 +48,11 @@ test('account API errors retain server validation details', () => {
     'one two',
   )
   assert.equal(projectAccountError({}, 'fallback'), 'fallback')
+})
+
+test('broker capability labels are projected from server metadata', () => {
+  assert.deepEqual(brokerCapabilityLabels({
+    capabilities: { canReadAccount: true, canSubmitProtectedEntry: true, canCancelOrder: false },
+  }), ['계좌 조회', '보호 주문 포함 신규 매수'])
+  assert.deepEqual(brokerCapabilityLabels(), [])
 })

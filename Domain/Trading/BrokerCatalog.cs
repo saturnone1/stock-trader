@@ -9,6 +9,25 @@ public enum BrokerType
     LsSecurities = 12
 }
 
+public sealed record BrokerCapabilities(
+    bool CanReadAccount,
+    bool CanReadPositions,
+    bool CanReadOrderHistory,
+    bool CanSubmitProtectedEntry,
+    bool CanScaleIn,
+    bool CanCloseFullPosition,
+    bool CanClosePartialPosition,
+    bool CanCancelOrder)
+{
+    public static BrokerCapabilities Full { get; } = new(true, true, true, true, true, true, true, true);
+    public static BrokerCapabilities LsSecurities { get; } = new(true, true, true, false, true, true, true, true);
+    public static BrokerCapabilities None { get; } = new(false, false, false, false, false, false, false, false);
+
+    public bool IsImplemented => CanReadAccount || CanReadPositions || CanReadOrderHistory
+        || CanSubmitProtectedEntry || CanScaleIn || CanCloseFullPosition
+        || CanClosePartialPosition || CanCancelOrder;
+}
+
 public sealed record BrokerDescriptor(
     BrokerType Type,
     string Code,
@@ -17,7 +36,10 @@ public sealed record BrokerDescriptor(
     IReadOnlyList<string> Environments,
     string DefaultEnvironment,
     bool RequiresAccountCredentials,
-    bool IsImplemented);
+    BrokerCapabilities Capabilities)
+{
+    public bool IsImplemented => Capabilities.IsImplemented;
+}
 
 /// <summary>계좌 화면과 런타임 브로커 생성이 공유하는 단일 브로커 카탈로그입니다.</summary>
 public static class BrokerCatalog
@@ -32,7 +54,7 @@ public static class BrokerCatalog
             ["Paper", "Live"],
             "Paper",
             RequiresAccountCredentials: true,
-            IsImplemented: true),
+            BrokerCapabilities.Full),
         new(
             BrokerType.KoreaInvestment,
             nameof(BrokerType.KoreaInvestment),
@@ -41,7 +63,7 @@ public static class BrokerCatalog
             ["Virtual", "Real"],
             "Virtual",
             RequiresAccountCredentials: false,
-            IsImplemented: false),
+            BrokerCapabilities.None),
         new(
             BrokerType.Kiwoom,
             nameof(BrokerType.Kiwoom),
@@ -50,7 +72,7 @@ public static class BrokerCatalog
             ["Real"],
             "Real",
             RequiresAccountCredentials: false,
-            IsImplemented: false),
+            BrokerCapabilities.None),
         new(
             BrokerType.LsSecurities,
             nameof(BrokerType.LsSecurities),
@@ -59,7 +81,7 @@ public static class BrokerCatalog
             ["Virtual", "Real"],
             "Virtual",
             RequiresAccountCredentials: false,
-            IsImplemented: true)
+            BrokerCapabilities.LsSecurities)
     ];
 
     public static BrokerDescriptor Get(BrokerType type) =>
@@ -69,4 +91,10 @@ public static class BrokerCatalog
 
     public static bool IsDefined(BrokerType type) =>
         All.Any(item => item.Type == type);
+
+    public static bool CanMonitorPositions(BrokerType type)
+    {
+        var capabilities = Get(type).Capabilities;
+        return capabilities.CanReadAccount && capabilities.CanReadPositions;
+    }
 }

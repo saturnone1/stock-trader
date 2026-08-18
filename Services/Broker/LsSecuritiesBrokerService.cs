@@ -13,6 +13,8 @@ namespace StockTrader.Services.Broker;
 /// </summary>
 public class LsSecuritiesBrokerService : IBrokerService
 {
+    public BrokerType BrokerType => BrokerType.LsSecurities;
+
     private readonly HttpClient _http;
     private readonly LsAuthService _auth;
     private readonly ILogger<LsSecuritiesBrokerService> _logger;
