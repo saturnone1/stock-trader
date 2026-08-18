@@ -2,7 +2,8 @@ function options(items) {
   return (items ?? []).map((item) => ({
     code: item.code,
     label: item.displayName,
-    description: item.description ?? ''
+    description: item.description ?? '',
+    available: item.isAvailable !== false
   }))
 }
 
@@ -32,7 +33,8 @@ export function createSettingsForm(source) {
   return {
     orderMode,
     preferredDataSource,
-    enabledPatterns: [...(source?.enabledPatterns ?? [])],
+    enabledPatterns: [...(source?.enabledPatterns ?? [])]
+      .filter((code) => patterns.some((item) => item.code === code && item.available)),
     watchlistText: (source?.watchlistSymbols ?? []).join(', '),
     soundAlerts: !!source?.soundAlerts,
     accountSize: source?.accountSize ?? 100000,
@@ -48,6 +50,7 @@ export function createSettingsForm(source) {
 }
 
 export function setPatternEnabled(form, code, enabled) {
+  if (!form.patterns.some((item) => item.code === code && item.available)) return form
   const selected = new Set(form.enabledPatterns)
   if (enabled) selected.add(code)
   else selected.delete(code)

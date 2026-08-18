@@ -5,7 +5,8 @@ namespace StockTrader.Api.Contracts;
 public sealed record SettingsOptionResponse(
     string Code,
     string DisplayName,
-    string? Description = null);
+    string? Description = null,
+    bool IsAvailable = true);
 
 public sealed record SettingsResponse(
     long Id,
@@ -45,7 +46,7 @@ public sealed record SettingsResponse(
         value.Id,
         value.OrderMode,
         value.PreferredDataSource,
-        value.EnabledPatterns,
+        value.EnabledPatterns.Where(PatternCatalog.IsOperationalBuiltIn).ToArray(),
         value.WatchlistSymbols,
         value.SoundAlerts,
         value.AccountSize,
@@ -76,7 +77,10 @@ public sealed record SettingsResponse(
         DataProviderCatalog.Implemented.Select(item => new SettingsOptionResponse(
             item.Value.ToString(), item.DisplayName, $"{item.Market} 시장 데이터")).ToArray(),
         PatternCatalog.BuiltIn.Select(item => new SettingsOptionResponse(
-            item.Code, item.DisplayName)).ToArray());
+            item.Code,
+            item.DisplayName,
+            item.UnavailableReason,
+            item.IsOperational)).ToArray());
 }
 
 public sealed record SettingsUpdateRequest

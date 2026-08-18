@@ -18,9 +18,7 @@ public static class BuiltInPatternDetectorCatalog
         D<VwapReversionDetector>(PatternType.VwapReversion),
         D<RsiMeanReversionDetector>(PatternType.RsiMeanReversion),
         D<TrendPullbackDetector>(PatternType.TrendPullback),
-        D<OrbDetector>(PatternType.OpeningRangeBreakout),
         D<VolumeSpikeContinuationDetector>(PatternType.VolumeSpikeContinuation),
-        D<EarningsDriftDetector>(PatternType.EarningsDrift),
         D<IndexRegimeFilterDetector>(PatternType.IndexRegimeFilter),
         D<VolatilityExpansionDetector>(PatternType.VolatilityExpansion),
         D<MomentumReversalDetector>(PatternType.MomentumReversal),
@@ -32,8 +30,18 @@ public static class BuiltInPatternDetectorCatalog
         D<CumulativeRsi2Detector>(PatternType.CumulativeRsi2)
     ];
 
-    public static BuiltInPatternDetectorDescriptor Get(PatternType patternType) =>
-        All.Single(descriptor => descriptor.PatternType == patternType);
+    public static BuiltInPatternDetectorDescriptor Get(PatternType patternType)
+    {
+        var detector = All.SingleOrDefault(item => item.PatternType == patternType);
+        if (detector is not null)
+            return detector;
+
+        if (!PatternCatalog.TryGet(patternType, out var descriptor))
+            throw new NotSupportedException($"알 수 없는 전략 코드({(int)patternType})입니다.");
+        throw new NotSupportedException(
+            descriptor.UnavailableReason
+            ?? $"{descriptor.DisplayName} 내장 전략은 실행할 수 없습니다.");
+    }
 
     private static BuiltInPatternDetectorDescriptor D<T>(PatternType patternType)
         where T : class, IPatternDetector => new(patternType, typeof(T));

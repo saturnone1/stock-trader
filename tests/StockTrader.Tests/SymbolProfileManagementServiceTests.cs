@@ -113,6 +113,25 @@ public class SymbolProfileManagementServiceTests
         outcome.Errors.Should().HaveCount(9);
     }
 
+    [Theory]
+    [InlineData(PatternType.OpeningRangeBreakout)]
+    [InlineData(PatternType.EarningsDrift)]
+    public async Task UpsertAsync_RejectsBuiltInPatternsWithoutOperationalSemantics(
+        PatternType patternType)
+    {
+        var store = new Mock<ISymbolProfileStore>(MockBehavior.Strict);
+        var service = CreateService(store.Object);
+
+        var outcome = await service.UpsertAsync(new SymbolProfileUpsertCommand
+        {
+            Symbol = "TQQQ",
+            EnabledPatterns = [patternType]
+        });
+
+        outcome.Succeeded.Should().BeFalse();
+        outcome.Errors.Should().ContainSingle(error => error.Contains("지원되는 내장 전략"));
+    }
+
     [Fact]
     public async Task SetActiveAsync_LeavesOnlyOneActiveProfilePerSymbol()
     {

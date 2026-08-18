@@ -8,7 +8,8 @@ public static class MetadataEndpoints
     {
         var group = api.MapGroup("/metadata").RequireAuthorization();
 
-        group.MapGet("/strategy-builder", () => Results.Ok(StrategyBuilderMetadataResponse.Create()));
+        group.MapGet("/strategy-builder", () => Results.Ok(StrategyBuilderMetadataResponse.Create()))
+            .Produces<StrategyBuilderMetadataResponse>();
 
         return api;
     }

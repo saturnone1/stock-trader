@@ -69,7 +69,7 @@ public sealed class SettingsManagementService(
         if (!DataProviderCatalog.All.Any(item => item.Value == command.PreferredDataSource && item.IsImplemented))
             errors.Add("현재 연결할 수 없는 시세 공급자입니다.");
 
-        var builtIn = PatternCatalog.BuiltIn.Select(item => item.Value).ToHashSet();
+        var builtIn = PatternCatalog.OperationalBuiltIn.Select(item => item.Value).ToHashSet();
         if (command.EnabledPatterns is null)
             errors.Add("실시간 감시 전략 목록이 필요합니다.");
         else if (command.EnabledPatterns.Any(item => !builtIn.Contains(item)))

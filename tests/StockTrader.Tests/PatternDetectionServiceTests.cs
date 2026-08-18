@@ -2,6 +2,9 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Microsoft.Extensions.Options;
+using StockTrader.Application.Settings;
+using StockTrader.Configuration;
 using StockTrader.Application.Statistics;
 using StockTrader.Application.SymbolProfiles;
 using StockTrader.Data;
@@ -16,14 +19,14 @@ namespace StockTrader.Tests;
 
 public class PatternDetectionServiceTests
 {
-    private readonly Mock<ISettingsRepository> _settingsRepoMock;
+    private readonly Mock<ILiveParameterService> _liveParametersMock;
     private readonly Mock<IPatternStatisticsQuery> _patternStatisticsMock;
     private readonly Mock<ISignalScorer> _signalScorerMock;
     private readonly Mock<IMarketRegimeClassifier> _regimeClassifierMock;
 
     public PatternDetectionServiceTests()
     {
-        _settingsRepoMock = new Mock<ISettingsRepository>();
+        _liveParametersMock = new Mock<ILiveParameterService>();
         _patternStatisticsMock = new Mock<IPatternStatisticsQuery>();
         _signalScorerMock = new Mock<ISignalScorer>();
         _regimeClassifierMock = new Mock<IMarketRegimeClassifier>();
@@ -39,7 +42,9 @@ public class PatternDetectionServiceTests
     private PatternDetectionService CreateSut(
         IEnumerable<IPatternDetector>? detectors = null,
         TimeProvider? timeProvider = null,
-        ISymbolProfileStore? symbolProfileStore = null)
+        ISymbolProfileStore? symbolProfileStore = null,
+        PatternSettings? basePatternSettings = null,
+        Action<PatternSettings>? onCreateDetectors = null)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")
@@ -52,9 +57,17 @@ public class PatternDetectionServiceTests
         var symbolProfiles = new SymbolProfileManagementService(
             symbolProfileStore ?? new SymbolProfileStore(db),
             clock);
+        var detectorFactory = new Mock<IBuiltInPatternDetectorFactory>();
+        detectorFactory.Setup(factory => factory.CreateAll(It.IsAny<PatternSettings>()))
+            .Returns((PatternSettings settings) =>
+            {
+                onCreateDetectors?.Invoke(settings);
+                return (detectors ?? Enumerable.Empty<IPatternDetector>()).ToArray();
+            });
         return new PatternDetectionService(
-            detectors ?? Enumerable.Empty<IPatternDetector>(),
-            _settingsRepoMock.Object,
+            detectorFactory.Object,
+            _liveParametersMock.Object,
+            Options.Create(basePatternSettings ?? new PatternSettings()),
             _patternStatisticsMock.Object,
             _signalScorerMock.Object,
             _regimeClassifierMock.Object,
@@ -89,13 +102,9 @@ public class PatternDetectionServiceTests
     /// </summary>
     private void SetupSettings(params PatternType[] enabledPatterns)
     {
-        var settings = new UserSettings
-        {
-            EnabledPatterns = enabledPatterns.ToList()
-        };
-        _settingsRepoMock
-            .Setup(r => r.GetAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(settings);
+        _liveParametersMock
+            .Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LiveParameterSnapshot(enabledPatterns, null));
     }
 
     private static OhlcvBar[] MakeBars(int count = 10, TimeFrame timeFrame = TimeFrame.Daily)
@@ -569,5 +578,24 @@ public class PatternDetectionServiceTests
             d => d.DetectAsync(It.IsAny<string>(), It.IsAny<OhlcvBar[]>(),
                                It.IsAny<MarketRegime>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task ScanSymbol_ResolvesEntryDetectorsFromThePersistedLiveOverrides()
+    {
+        var overrides = new PatternParameterOverrides { Breakout_LookbackDays = 37 };
+        _liveParametersMock
+            .Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LiveParameterSnapshot([PatternType.Breakout], overrides));
+        PatternSettings? resolved = null;
+        var detector = MakeDetector(PatternType.Breakout, signal: null);
+        var sut = CreateSut(
+            [detector.Object],
+            onCreateDetectors: settings => resolved = settings);
+
+        await sut.ScanSymbolAsync("AAPL", MakeBars(), MakeRegime());
+
+        resolved.Should().NotBeNull();
+        resolved!.Breakout.LookbackDays.Should().Be(37);
     }
 }

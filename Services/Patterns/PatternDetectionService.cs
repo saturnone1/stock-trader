@@ -1,19 +1,24 @@
 using StockTrader.Application.Strategies;
+using StockTrader.Application.Settings;
 using StockTrader.Application.Statistics;
 using StockTrader.Application.SymbolProfiles;
+using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Domain.MarketData;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.ML;
+using StockTrader.Services.Backtest;
+using Microsoft.Extensions.Options;
 
 namespace StockTrader.Services.Patterns;
 
 public class PatternDetectionService
 {
-    private readonly IEnumerable<IPatternDetector> _detectors;
-    private readonly ISettingsRepository _settingsRepo;
+    private readonly IBuiltInPatternDetectorFactory _builtInDetectors;
+    private readonly ILiveParameterService _liveParameters;
+    private readonly PatternSettings _basePatternSettings;
     private readonly IPatternStatisticsQuery _patternStatistics;
     private readonly ISignalScorer _signalScorer;
     private readonly IMarketRegimeClassifier _regimeClassifier;
@@ -25,8 +30,9 @@ public class PatternDetectionService
     private readonly ILogger<PatternDetectionService> _logger;
 
     public PatternDetectionService(
-        IEnumerable<IPatternDetector> detectors,
-        ISettingsRepository settingsRepo,
+        IBuiltInPatternDetectorFactory builtInDetectors,
+        ILiveParameterService liveParameters,
+        IOptions<PatternSettings> patternSettings,
         IPatternStatisticsQuery patternStatistics,
         ISignalScorer signalScorer,
         IMarketRegimeClassifier regimeClassifier,
@@ -37,8 +43,9 @@ public class PatternDetectionService
         TimeProvider timeProvider,
         ILogger<PatternDetectionService> logger)
     {
-        _detectors = detectors;
-        _settingsRepo = settingsRepo;
+        _builtInDetectors = builtInDetectors;
+        _liveParameters = liveParameters;
+        _basePatternSettings = patternSettings.Value;
         _patternStatistics = patternStatistics;
         _signalScorer = signalScorer;
         _regimeClassifier = regimeClassifier;
@@ -54,12 +61,16 @@ public class PatternDetectionService
         string symbol, OhlcvBar[] bars, MarketRegime regime, CancellationToken ct = default)
     {
         symbol = MarketSymbolPolicy.Normalize(symbol);
-        var settings = await _settingsRepo.GetAsync(ct);
+        var liveConfiguration = await _liveParameters.GetAsync(ct);
+        var patternSettings = liveConfiguration.Overrides is null
+            ? _basePatternSettings
+            : PatternOverrideMerger.Merge(_basePatternSettings, liveConfiguration.Overrides);
+        var detectors = _builtInDetectors.CreateAll(patternSettings);
 
         // 종목별 활성 프로파일이 있으면 해당 프로파일의 패턴 목록 사용
         var profile = await _symbolProfiles.GetActiveAsync(symbol, ct);
 
-        var enabledPatterns = profile?.EnabledPatterns ?? settings.EnabledPatterns;
+        var enabledPatterns = profile?.EnabledPatterns ?? liveConfiguration.EnabledPatterns;
 
         if (profile != null)
         {
@@ -79,7 +90,7 @@ public class PatternDetectionService
 
         var signals = new List<PatternSignal>();
 
-        foreach (var detector in _detectors
+        foreach (var detector in detectors
             .Where(d => enabledPatterns.Contains(d.PatternType)))
         {
             try

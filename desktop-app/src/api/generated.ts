@@ -101,7 +101,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ApplyLiveResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettingsErrorResponse"];
+                    };
                 };
             };
         };
@@ -2556,7 +2567,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["StrategyBuilderMetadataResponse"];
+                    };
                 };
             };
         };
@@ -2590,15 +2603,20 @@ export interface components {
         };
         ApplyLiveRequest: {
             parameterOverrides: null | components["schemas"]["PatternParameterOverrides"];
-            enabledPatterns: null | string[];
+            enabledPatterns: components["schemas"]["PatternType"][];
             /** Format: double */
-            riskPerTradePercent: null | number;
+            riskPerTradePercent: number;
             /** Format: double */
-            dailyLossLimitPercent: null | number;
+            dailyLossLimitPercent: number;
             /** Format: int32 */
-            maxTotalPositions: null | number;
+            maxTotalPositions: number;
             /** Format: int32 */
-            maxPositionsPerSector: null | number;
+            maxPositionsPerSector: number;
+        };
+        ApplyLiveResponse: {
+            message: string;
+            /** Format: date-time */
+            lastModified: string;
         };
         ApplyOptimizeJobResultRequest: {
             /** Format: int32 */
@@ -2843,6 +2861,15 @@ export interface components {
             };
             lastUpdated: string;
         };
+        DataProviderMetadataResponse: {
+            value: components["schemas"]["DataSource"];
+            displayName: string;
+            market: string;
+            supportedTimeFrames: components["schemas"]["TimeFrame"][];
+            maximumLookbackDays: {
+                [key: string]: number;
+            };
+        };
         /** @enum {unknown} */
         DataSource: "Alpaca" | "Polygon" | "Yahoo" | "LsSecurities" | null;
         EntryRecommendationRequest: {
@@ -2852,6 +2879,11 @@ export interface components {
         ExecuteSignalRequest: {
             /** Format: int64 */
             signalId: number;
+        };
+        ExitMethodMetadataResponse: {
+            code: string;
+            displayName: string;
+            parameters: components["schemas"]["IndicatorParameterMetadataResponse"][];
         };
         FinancialFactorComparisonResponse: {
             overall: components["schemas"]["FinancialFactorSummaryResponse"];
@@ -3013,6 +3045,25 @@ export interface components {
             configuredSymbols: string[];
             latestSuccessAt: null | string;
         };
+        IndicatorMetadataResponse: {
+            code: string;
+            displayName: string;
+            category: string;
+            defaultOperator: string;
+            /** Format: double */
+            defaultThreshold: number;
+            valueGuide: null | string;
+            parameters: components["schemas"]["IndicatorParameterMetadataResponse"][];
+        };
+        IndicatorParameterMetadataResponse: {
+            key: string;
+            displayName: string;
+            /** Format: double */
+            defaultValue: number;
+            /** Format: double */
+            step: number;
+            mustBePositive: boolean;
+        };
         LiveOrderErrorResponse: {
             error: string;
             status?: null | string;
@@ -3027,6 +3078,12 @@ export interface components {
             /** Format: int32 */
             filledQuantity: null | number;
             brokerOrderIdPersisted: null | boolean;
+        };
+        LiveStrategyConstraintsMetadataResponse: {
+            supportedTimeFrames: components["schemas"]["TimeFrame"][];
+            supportedEntryModes: string[];
+            supportsPartialExit: boolean;
+            supportsScaling: boolean;
         };
         OpenPositionResponse: {
             /** Format: int64 */
@@ -3072,6 +3129,11 @@ export interface components {
             /** Format: int32 */
             count: number;
             positions: components["schemas"]["OpenPositionResponse"][];
+        };
+        OptimizationRankMetadataResponse: {
+            code: string;
+            displayName: string;
+            isDefault: boolean;
         };
         OptimizeParams: {
             atrStopMultiplier?: null | components["schemas"]["ParamRange"];
@@ -3133,6 +3195,14 @@ export interface components {
             /** Format: double */
             step?: null | number;
             values?: null | number[];
+        };
+        PatternMetadataResponse: {
+            value: components["schemas"]["PatternType"];
+            code: string;
+            displayName: string;
+            isBuiltIn: boolean;
+            isOperational: boolean;
+            unavailableReason: null | string;
         };
         PatternParameterOverrides: {
             /** Format: double */
@@ -3509,6 +3579,13 @@ export interface components {
         PositionSymbolRequest: {
             symbol: null | string;
         };
+        PreviewTimeFrameMetadataResponse: {
+            /** Format: int32 */
+            defaultLookbackDays: number;
+            /** Format: int32 */
+            maximumRangeDays: number;
+            suggestedRangeDays: number[];
+        };
         ResearchFacetResponse: {
             name: string;
             /** Format: int32 */
@@ -3598,6 +3675,8 @@ export interface components {
             code: string;
             displayName: string;
             description?: null | string;
+            /** @default true */
+            isAvailable: boolean;
         };
         SettingsResponse: {
             /** Format: int64 */
@@ -3712,6 +3791,32 @@ export interface components {
         };
         /** @enum {unknown} */
         SlippageModel: "Fixed" | "Adaptive";
+        SlippageModelMetadataResponse: {
+            value: components["schemas"]["SlippageModel"];
+            displayName: string;
+            description: string;
+            isDefault: boolean;
+        };
+        StrategyBuilderMetadataResponse: {
+            /** Format: int32 */
+            schemaVersion: number;
+            /** Format: int32 */
+            documentVersion: number;
+            indicators: components["schemas"]["IndicatorMetadataResponse"][];
+            timeFrames: components["schemas"]["TimeFrameMetadataResponse"][];
+            dataProviders: components["schemas"]["DataProviderMetadataResponse"][];
+            patterns: components["schemas"]["PatternMetadataResponse"][];
+            ruleOperators: string[];
+            entryModes: components["schemas"]["StrategyOptionMetadataResponse"][];
+            sizingModes: components["schemas"]["StrategyOptionMetadataResponse"][];
+            logicModes: components["schemas"]["StrategyOptionMetadataResponse"][];
+            scalingDirections: components["schemas"]["StrategyOptionMetadataResponse"][];
+            stopMethods: components["schemas"]["ExitMethodMetadataResponse"][];
+            targetMethods: components["schemas"]["ExitMethodMetadataResponse"][];
+            slippageModels: components["schemas"]["SlippageModelMetadataResponse"][];
+            optimizationRankings: components["schemas"]["OptimizationRankMetadataResponse"][];
+            liveStrategyConstraints: components["schemas"]["LiveStrategyConstraintsMetadataResponse"];
+        };
         StrategyDocument: {
             /** Format: int32 */
             storedStrategyId?: null | number;
@@ -3753,6 +3858,10 @@ export interface components {
             sizingMode?: string;
             isActive?: boolean;
             enableLiveTrading?: boolean;
+        };
+        StrategyOptionMetadataResponse: {
+            code: string;
+            displayName: string;
         };
         SymbolProfileActionResponse: {
             message: string;
@@ -3815,6 +3924,14 @@ export interface components {
         };
         /** @enum {unknown} */
         TimeFrame: "OneMinute" | "FiveMinute" | "FifteenMinute" | "Daily" | "Weekly";
+        TimeFrameMetadataResponse: {
+            value: components["schemas"]["TimeFrame"];
+            displayName: string;
+            isIntraday: boolean;
+            /** Format: double */
+            annualizationPeriods: number;
+            preview: components["schemas"]["PreviewTimeFrameMetadataResponse"];
+        };
         TradingAccountCreateRequest: {
             accountName?: string;
             brokerType?: components["schemas"]["BrokerType"];

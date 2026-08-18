@@ -48,7 +48,9 @@ public sealed record PatternMetadataResponse(
     PatternType Value,
     string Code,
     string DisplayName,
-    bool IsBuiltIn);
+    bool IsBuiltIn,
+    bool IsOperational,
+    string? UnavailableReason);
 public sealed record SlippageModelMetadataResponse(
     SlippageModel Value,
     string DisplayName,
@@ -87,7 +89,7 @@ public sealed record StrategyBuilderMetadataResponse(
     LiveStrategyConstraintsMetadataResponse LiveStrategyConstraints)
 {
     public static StrategyBuilderMetadataResponse Create() => new(
-        SchemaVersion: 5,
+        SchemaVersion: 6,
         DocumentVersion: StrategyDocumentVersions.Current,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
@@ -125,7 +127,9 @@ public sealed record StrategyBuilderMetadataResponse(
             item.Value,
             item.Code,
             item.DisplayName,
-            item.IsBuiltIn)).ToArray(),
+            item.IsBuiltIn,
+            item.IsOperational,
+            item.UnavailableReason)).ToArray(),
         RuleOperators: RuleOperatorCatalog.All,
         EntryModes: StrategyCatalog.EntryModes.Select(ToResponse).ToArray(),
         SizingModes: StrategyCatalog.SizingModes.Select(ToResponse).ToArray(),

@@ -45,5 +45,21 @@ public sealed class SettingsContractTests
             .Should().Equal(PatternCatalog.BuiltIn.Select(item => item.Code));
         response.DataProviders.Should().NotContain(item => item.Code == DataSource.Polygon.ToString());
         response.Patterns.Should().NotContain(item => item.Code == PatternType.Custom.ToString());
+        response.Patterns.Where(item => !item.IsAvailable).Select(item => item.Code).Should().Equal(
+            PatternType.OpeningRangeBreakout.ToString(),
+            PatternType.EarningsDrift.ToString());
+        response.Patterns.Where(item => !item.IsAvailable)
+            .Should().OnlyContain(item => !string.IsNullOrWhiteSpace(item.Description));
+    }
+
+    [Fact]
+    public void ResponseDoesNotPresentLegacyUnavailablePatternsAsEnabled()
+    {
+        var response = SettingsResponse.Create(new ManagedSettings
+        {
+            EnabledPatterns = [PatternType.Breakout, PatternType.OpeningRangeBreakout]
+        });
+
+        response.EnabledPatterns.Should().Equal(PatternType.Breakout);
     }
 }

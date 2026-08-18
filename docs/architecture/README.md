@@ -27,7 +27,8 @@ infrastructure.
 - Indicator definitions: one registry that supplies calculation, validation, units, parameters,
   warmup, and supported timeframes.
 - Strategy definitions: one typed aggregate compiled for preview, backtest, and live execution.
-- Pattern identity, stable codes, investor-facing names, and built-in support: one domain catalog.
+- Pattern identity, stable codes, investor-facing names, operational availability, and unavailable
+  reasons: one domain catalog.
 - Market symbol normalization and validation: one domain policy shared by research and live paths.
 - Financial collection state: one application port; SEC symbol, interval, parsing, and ratio rules
   are deterministic policies outside workers and persistence adapters.
@@ -44,6 +45,8 @@ infrastructure.
   isolated account-equity and notification adapters.
 - Dashboard reads: one storage-independent query reusing the risk/position observation, one focused
   activity store, one active-account projection, and an explicit generated desktop contract.
+- Live built-in configuration: one database-backed application service; entry detection and exit
+  evaluation resolve the same persisted override snapshot and never rewrite application files.
 - API contracts: explicit DTOs, later used to generate TypeScript types.
 - Database shape: EF Core migrations; frozen legacy readers only adopt pre-migration databases.
 - UI delivery: Svelte assets in the Desktop container; the API never serves application pages.

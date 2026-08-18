@@ -146,14 +146,20 @@
         </div>
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {#each form.patterns as pattern}
-            <label class="flex items-center gap-3 rounded border border-gray-700 bg-gray-900/60 px-4 py-3 text-sm text-gray-200">
+            <label class:opacity-50={!pattern.available} class="flex items-start gap-3 rounded border border-gray-700 bg-gray-900/60 px-4 py-3 text-sm text-gray-200">
               <input
                 type="checkbox"
                 checked={form.enabledPatterns.includes(pattern.code)}
+                disabled={!pattern.available}
                 on:change={(event) => togglePattern(pattern.code, event.currentTarget.checked)}
-                class="h-4 w-4"
+                class="mt-0.5 h-4 w-4"
               />
-              <span>{pattern.label}</span>
+              <span>
+                <span class="block">{pattern.label}</span>
+                {#if pattern.description}
+                  <span class="mt-1 block text-xs text-gray-500">{pattern.description}</span>
+                {/if}
+              </span>
             </label>
           {/each}
         </div>

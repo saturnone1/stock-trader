@@ -62,6 +62,12 @@ public class BacktestService : IBacktestService
         BacktestRequest request,
         CancellationToken ct = default)
     {
+        var selectionErrors = BacktestPatternSelectionPolicy.Validate(
+            request.Patterns,
+            request.CustomPatterns);
+        if (selectionErrors.Count > 0)
+            return new BacktestResult { ErrorMessage = string.Join(' ', selectionErrors) };
+
         _logger.LogInformation(
             "백테스트 시작: {Symbols} ({From:d} ~ {To:d}) [타임프레임: {TimeFrame}]",
             string.Join(", ", request.Symbols), request.From, request.To, request.TimeFrame);
