@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stocktrader-direct-catchall
+  namespace: stocktrader
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: stocktrader-direct
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: stocktrader-api
+                port:
+                  number: 3000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: stocktrader-desktop
+                port:
+                  number: 8000
