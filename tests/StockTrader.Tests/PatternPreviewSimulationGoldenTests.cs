@@ -181,27 +181,117 @@ public class PatternPreviewSimulationGoldenTests
                 new AlwaysSignalRuntime(strategy)));
 
         result.Should().NotBeNull();
-        // 요청 시작일이 bars[49] 이지만 첫 평가 봉은 bars[50] 이다. 백테스트가
-        // barIndex < MinimumWarmupBars 인 봉을 평가하지 않으므로 미리보기도 같은
-        // 경계를 쓴다. 이전에는 미리보기만 bars[49] 를 평가해 백테스트에 없는
-        // 진입을 한 건 더 보여 주었고, 그 여파로 이후 쿨다운 일정 전체가 밀렸다.
         result!.Markers.Where(marker => marker.Type == "ENTRY")
             .Select(marker => marker.Date)
             .Should().Equal(
-                bars[50].Timestamp,
-                bars[54].Timestamp);
+                bars[49].Timestamp,
+                bars[53].Timestamp,
+                bars[58].Timestamp);
         result.Markers.Where(marker => marker.Type == "EXIT")
             .Select(marker => marker.Date)
-            .Should().Equal(bars[51].Timestamp, bars[55].Timestamp);
-        // 두 진입이 모두 청산되고, 세 번째 진입은 연속손실 차단이 풀리기 전에
-        // 평가 구간이 끝나므로 열린 포지션이 남지 않는다.
-        result.Summary.OpenPosition.Should().BeFalse();
+            .Should().Equal(bars[50].Timestamp, bars[54].Timestamp);
+        result.Summary.SafetyBlockedEntries.Should().Be(7);
+        result.Summary.OpenPosition.Should().BeTrue();
     }
 
     [Fact]
-    public async Task RunAsync_DoesNotEvaluateBarsBelowTheSharedWarmupBoundary()
+    public async Task RunAsync_ObservesDrawdownOnPartialRealizationsNotOnlyAtFullClose()
     {
-        // 백테스트의 첫 평가 봉과 같은 경계를 쓰는지 직접 고정한다.
+        // 부분청산으로 손실이 실현되면 백테스트는 그 시점에 드로다운을 관측해
+        // 서킷브레이커를 발동시킨다. 미리보기가 전량 청산까지 기다리면 같은 전략이
+        // 미리보기에서만 차단 없이 계속 진입한다.
+        var bars = Bars(70);
+        foreach (var bar in bars)
+            bar.Low = 90m;
+
+        var strategy = Compile(new StrategyDocument
+        {
+            Name = "partial-realization-drawdown",
+            EntryMode = StrategyCatalog.CurrentCloseEntryMode,
+            EntryRulesJson =
+                """[{"indicator":"PRICE_CHANGE","operator":">=","value":-100,"params":{"bars":1}}]""",
+            CircuitBreakerJson =
+                """{"consecutiveLossLimit":0,"cooldownBars":0,"maxDrawdownPercent":1}""",
+            AtrStopMultiplier = 1m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0
+        });
+
+        var result = await new PatternPreviewSimulationEngine().RunAsync(
+            new PatternPreviewSimulationInput(
+                "AAA",
+                TimeFrame.Daily,
+                bars[49].Timestamp,
+                bars[69].Timestamp,
+                bars,
+                Enumerable.Repeat(5m, bars.Length).ToArray(),
+                new Dictionary<string, OhlcvBar[]>(),
+                [],
+                new AlwaysSignalRuntime(strategy)));
+
+        result.Should().NotBeNull();
+        // 손실이 실현되어 최대낙폭 한도를 넘으면 이후 진입은 영구 차단된다.
+        result!.Summary.SafetyBlockedEntries.Should().BeGreaterThan(0);
+        result.Markers.Count(marker => marker.Type == "ENTRY")
+            .Should().BeLessThan(bars.Length - 49);
+    }
+
+    [Fact]
+    public async Task RunAsync_RechecksNextOpenEligibilityAtTheFillBarNotTheSignalBar()
+    {
+        // 손절이 매 봉 걸리도록 저가를 낮춰 연속 손실을 만든다. 차기봉 진입 전략에서
+        // 신호 봉과 체결 봉 사이에 연속손실 차단이 걸리면, 신호 시점에 확정해 버린
+        // 진입은 그 차단을 무시한 채 체결된다. 백테스트는 체결 봉에서 자격을 다시
+        // 확인하므로 미리보기도 같은 시점에 확인해야 한다.
+        var bars = Bars(60);
+        foreach (var bar in bars)
+            bar.Low = 90m;
+        var strategy = Compile(new StrategyDocument
+        {
+            Name = "next-open-refill-eligibility",
+            EntryMode = StrategyCatalog.NextOpenEntryMode,
+            EntryRulesJson =
+                """[{"indicator":"PRICE_CHANGE","operator":">=","value":-100,"params":{"bars":1}}]""",
+            CircuitBreakerJson =
+                """{"consecutiveLossLimit":2,"cooldownBars":5,"maxDrawdownPercent":0}""",
+            AtrStopMultiplier = 1m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0
+        });
+
+        var result = await new PatternPreviewSimulationEngine().RunAsync(
+            new PatternPreviewSimulationInput(
+                "AAA",
+                TimeFrame.Daily,
+                bars[49].Timestamp,
+                bars[59].Timestamp,
+                bars,
+                Enumerable.Repeat(5m, bars.Length).ToArray(),
+                new Dictionary<string, OhlcvBar[]>(),
+                [],
+                new AlwaysSignalRuntime(strategy)));
+
+        result.Should().NotBeNull();
+        var entries = result!.Markers.Where(marker => marker.Type == "ENTRY").ToArray();
+
+        // 진입은 항상 신호 봉 다음 봉의 시가에 체결된다.
+        foreach (var entry in entries)
+        {
+            var entryBar = bars.Single(bar => bar.Timestamp == entry.Date);
+            entry.Price.Should().Be(entryBar.Open);
+        }
+
+        // 연속손실 차단이 걸린 구간에서는 신호가 계속 나더라도 체결되지 않는다.
+        // 차단 없이 신호마다 체결했다면 평가 구간의 거의 모든 봉에 진입이 생겼을 것이다.
+        entries.Length.Should().BeLessThan(5);
+        result.Summary.SafetyBlockedEntries.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_EvaluatesTheFirstBarThatHasTheRequiredWarmupHistory()
+    {
+        // 인덱스 49 인 봉의 이력은 bars[0..49], 곧 50 개다. 최소 봉 수를 충족하므로
+        // 평가되어야 하며, 백테스트도 같은 인덱스부터 평가한다.
         var bars = Bars(60);
         var strategy = Compile(new StrategyDocument
         {
@@ -227,10 +317,13 @@ public class PatternPreviewSimulationGoldenTests
                 new AlwaysSignalRuntime(strategy)));
 
         result.Should().NotBeNull();
+        StrategyEvaluationPolicy.FirstEvaluableBarIndex.Should().Be(49);
         result!.Markers.Where(marker => marker.Type == "ENTRY")
             .Select(marker => marker.Date)
-            .Should().NotContain(bars[49].Timestamp)
-            .And.Contain(bars[StrategyEvaluationPolicy.MinimumWarmupBars].Timestamp);
+            .Should().Contain(
+                bars[StrategyEvaluationPolicy.FirstEvaluableBarIndex].Timestamp)
+            .And.NotContain(
+                bars[StrategyEvaluationPolicy.FirstEvaluableBarIndex - 1].Timestamp);
     }
 
     private static CompiledStrategy Compile(StrategyDocument definition)

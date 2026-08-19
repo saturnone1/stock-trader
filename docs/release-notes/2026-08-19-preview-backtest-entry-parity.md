@@ -27,8 +27,8 @@ warmup rather than less, and it leaves every existing backtest result unchanged.
 golden previously recorded three entries and one open position; it now records two entries, both
 closed, and a new golden pins the shared boundary directly.
 
-Note that the boundary is deliberately aligned rather than re-derived. `MinimumWarmupBars = 50`
-could be read as making index 49 the first bar with fifty bars of history, which would mean the
-backtest is one bar too strict. Loosening the backtest instead would have changed every stored
-backtest result, so the engines were aligned on the stricter existing behavior. Revisiting which
-index is semantically correct is a separate decision.
+**Superseded.** The warmup direction described above was reversed in
+`2026-08-19-preview-backtest-bar-step-parity.md`. The backtest was the engine that was wrong: index
+49 is the first bar with fifty bars of history, so the backtest had been one bar too strict. It was
+loosened rather than the preview tightened, and `StrategyEvaluationPolicy.FirstEvaluableBarIndex`
+now owns the boundary for both. The fallback-target correction above is unaffected.

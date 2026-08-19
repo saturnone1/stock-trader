@@ -1,3 +1,4 @@
+using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
 using StockTrader.Application.Strategies;
 using StockTrader.Domain.MarketData;
@@ -64,12 +65,11 @@ public sealed class PatternPreviewSimulationEngine
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
-        // 백테스트는 barIndex < MinimumWarmupBars 인 봉을 평가하지 않는다. preview 가
-        // 한 봉 앞서 평가하면 같은 전략·같은 데이터에서 백테스트에 없는 진입이 미리보기에만
-        // 나타난다. 더 많은 워밍업을 요구하는 쪽으로 맞춰 두 엔진의 첫 평가 봉을 일치시킨다.
         var evaluationStartIndex = Math.Max(
-            StrategyEvaluationPolicy.MinimumWarmupBars,
+            StrategyEvaluationPolicy.FirstEvaluableBarIndex,
             requestedStartIndex);
+        var evaluationWindowBars =
+            BacktestTimeFramePolicy.Get(input.TimeFrame).SimulationWindowBars;
         var evaluationEndIndex = Array.FindIndex(
             input.Bars, bar => bar.Timestamp >= input.DataTo);
         if (evaluationEndIndex < 0) evaluationEndIndex = input.Bars.Length;
@@ -83,6 +83,64 @@ public sealed class PatternPreviewSimulationEngine
         var entriesToday = 0;
         var safetyBlockedEntries = 0;
         var exitPolicy = LongPositionExitPolicyCatalog.ForCustom(strategy.Source);
+        // 차기봉 진입은 신호 봉에서 확정되지 않는다. 백테스트와 마찬가지로 대기 상태로
+        // 두었다가 체결 봉에서 자격을 다시 확인하고 그 봉의 시가로 재산정한다.
+        PreviewPendingEntry? pendingEntry = null;
+
+        bool CanEnter(int barIndex) =>
+            StrategyEntryEligibilityPolicy.Evaluate(
+                new StrategyEntryEligibilityRequest(
+                    DefaultMaxPositions: 1,
+                    StrategyMaxPositions: portfolioRules.MaxTotalPositions,
+                    OpenPositionCount: 0,
+                    DrawdownBlocked: drawdown.IsBlocked,
+                    ConsecutiveLossBlocked:
+                        barIndex < tradeTransition.CircuitBreakerBlockedUntilStep,
+                    MaxEntriesPerSession: portfolioRules.MaxEntriesPerDay,
+                    EntriesThisSession: entriesToday,
+                    ReentryBlocked: barIndex < tradeTransition.ReentryBlockedUntilStep))
+                .CanEnter;
+
+        PreviewPosition CreatePosition(
+            int entryIndex, LongEntryFill fill, decimal entryAtr, decimal allocationScale) =>
+            new()
+            {
+                EntryIndex = entryIndex,
+                EntryPrice = fill.EntryPrice,
+                StopPrice = fill.StopPrice,
+                TargetPrice = fill.TargetPrice,
+                HighestPrice = fill.EntryPrice,
+                LowestPrice = fill.EntryPrice,
+                InitialRisk = fill.RiskDistance,
+                EntryAtr = entryAtr > 0 ? entryAtr : fill.RiskDistance,
+                InvestedCapital = fill.EntryPrice * PreviewQuantity,
+                TotalCost = fill.EntryPrice * PreviewQuantity,
+                AllocationScale = allocationScale
+            };
+
+        // 드로다운 관측용 실현자산 지수. 복리 수익률(compoundedReturn)은 한 사이클이
+        // 끝날 때 한 번 반영해야 정확하지만, 서킷브레이커는 그때까지 기다리면 안 된다.
+        // 백테스트는 부분청산·스케일아웃을 포함해 정산되는 모든 체결에서 실현자산을
+        // 갱신하고 드로다운을 관측하므로, 미리보기도 같은 시점에 관측한다.
+        var realizedEquityIndex = 1m;
+
+        void ObserveRealized(PreviewPosition openPosition)
+        {
+            var delta = openPosition.RealizedPnl - openPosition.ObservedRealizedPnl;
+            if (delta == 0m) return;
+
+            openPosition.ObservedRealizedPnl = openPosition.RealizedPnl;
+            if (openPosition.InvestedCapital > 0)
+            {
+                realizedEquityIndex +=
+                    delta / openPosition.InvestedCapital * openPosition.AllocationScale;
+            }
+
+            drawdown = StrategyDrawdownPolicy.Observe(
+                drawdown,
+                realizedEquityIndex,
+                circuitBreaker.MaxDrawdownPercent);
+        }
 
         void Complete(PreviewPosition openPosition)
         {
@@ -98,8 +156,54 @@ public sealed class PatternPreviewSimulationEngine
         {
             ct.ThrowIfCancellationRequested();
             var current = input.Bars[index];
-            var window = input.Bars[..(index + 1)];
+            // 백테스트와 같은 크기의 평가 창을 사용한다. 미리보기가 전체 접두 구간을
+            // 넘기면 창 길이에 민감한 지표(누적·전 구간 최대/최소 등)가 같은 봉에서
+            // 백테스트와 다른 값을 내고, 두 엔진의 신호가 갈린다.
+            var windowSize = Math.Min(index + 1, evaluationWindowBars);
+            var window = input.Bars[(index + 1 - windowSize)..(index + 1)];
             input.Runtime.SetReferenceData(runtimeReferenceData, current.Timestamp);
+
+            // ── 대기 중인 차기봉 진입 체결 ──
+            // 청산 평가보다 먼저 수행해야 진입 봉의 장중·종가 규칙이 같은 반복에서
+            // 적용된다. 백테스트도 대기 진입을 체결한 뒤 곧바로 그 봉의 청산 로직을 돌린다.
+            if (pendingEntry is { } pending)
+            {
+                pendingEntry = null;
+                var fillDay = DateOnly.FromDateTime(current.Timestamp);
+                if (fillDay != currentEntryDay)
+                {
+                    currentEntryDay = fillDay;
+                    entriesToday = 0;
+                }
+
+                // 신호 봉과 체결 봉 사이에 서킷브레이커나 재진입 쿨다운이 걸렸을 수 있다.
+                if (!CanEnter(index))
+                {
+                    safetyBlockedEntries++;
+                }
+                else
+                {
+                    var pendingFill = LongEntryFillPolicy.Reprice(
+                        pending.SignalEntryPrice,
+                        pending.SignalStopPrice,
+                        pending.SignalTargetPrice,
+                        current.Open,
+                        pending.FallbackTargetMultiple);
+                    if (pendingFill is not null)
+                    {
+                        position = CreatePosition(
+                            index, pendingFill, pending.EntryAtr, pending.AllocationScale);
+                        entriesToday++;
+                        markers.Add(new PatternPreviewMarker(
+                            current.Timestamp,
+                            "ENTRY",
+                            pendingFill.EntryPrice,
+                            pendingFill.StopPrice,
+                            pendingFill.TargetPrice,
+                            pending.Details));
+                    }
+                }
+            }
 
             if (position is not null && index >= position.EntryIndex)
             {
@@ -121,6 +225,8 @@ public sealed class PatternPreviewSimulationEngine
                     scaling: scaling);
 
                 position.Apply(result.State);
+                // 부분청산·스케일아웃으로 실현손익이 생긴 즉시 드로다운을 관측한다.
+                ObserveRealized(position);
 
                 foreach (var executionEvent in result.Events)
                 {
@@ -175,10 +281,6 @@ public sealed class PatternPreviewSimulationEngine
                             position.RealizedPnl,
                             reentry,
                             circuitBreaker));
-                    drawdown = StrategyDrawdownPolicy.Observe(
-                        drawdown,
-                        compoundedReturn,
-                        circuitBreaker.MaxDrawdownPercent);
 
                     markers.Add(new PatternPreviewMarker(
                         current.Timestamp, "EXIT", policyExit.Price, Reason: policyExit.Reason));
@@ -208,75 +310,59 @@ public sealed class PatternPreviewSimulationEngine
                 entriesToday = 0;
             }
 
-            var entryEligibility = StrategyEntryEligibilityPolicy.Evaluate(
-                new StrategyEntryEligibilityRequest(
-                    DefaultMaxPositions: 1,
-                    StrategyMaxPositions: portfolioRules.MaxTotalPositions,
-                    OpenPositionCount: 0,
-                    DrawdownBlocked: drawdown.IsBlocked,
-                    ConsecutiveLossBlocked:
-                        index < tradeTransition.CircuitBreakerBlockedUntilStep,
-                    MaxEntriesPerSession: portfolioRules.MaxEntriesPerDay,
-                    EntriesThisSession: entriesToday,
-                    ReentryBlocked: index < tradeTransition.ReentryBlockedUntilStep));
-            if (!entryEligibility.CanEnter)
+            if (!CanEnter(index))
             {
                 safetyBlockedEntries++;
                 continue;
             }
 
-            var entryIndex = index;
-            var entryPrice = current.Close;
-            var entryDate = current.Timestamp;
+            var allocationScale = Math.Min(
+                PositionAllocationPolicy.NormalizeScale(signal.AllocationScale),
+                portfolioRules.MaxSinglePositionPercent > 0
+                    ? portfolioRules.MaxSinglePositionPercent / 100m
+                    : 1m);
+            var fallbackTargetMultiple = LongEntryFillPolicy.ResolveFallbackTargetMultiple(
+                strategy.Source.AtrStopMultiplier,
+                strategy.Source.AtrTargetMultiplier);
+            var entryAtr = input.Atr[index];
+            var entryDetails =
+                $"{signal.Details} · 매수 비중 {signal.AllocationScale * 100m:F0}%";
+
             if (string.Equals(
                     strategy.EntryMode,
                     StrategyCatalog.NextOpenEntryMode,
                     StringComparison.OrdinalIgnoreCase))
             {
+                // 다음 봉이 평가 구간 안에 있어야 체결할 수 있다.
                 if (index + 1 >= evaluationEndIndex) continue;
-                entryIndex = index + 1;
-                entryPrice = input.Bars[entryIndex].Open;
-                entryDate = input.Bars[entryIndex].Timestamp;
+                pendingEntry = new PreviewPendingEntry(
+                    signal.EntryPrice,
+                    signal.StopLossPrice,
+                    signal.TargetPrice,
+                    fallbackTargetMultiple,
+                    entryAtr,
+                    allocationScale,
+                    entryDetails);
+                continue;
             }
 
-            var fallbackTargetMultiple = LongEntryFillPolicy.ResolveFallbackTargetMultiple(
-                strategy.Source.AtrStopMultiplier,
-                strategy.Source.AtrTargetMultiplier);
             var fill = LongEntryFillPolicy.Reprice(
                 signal.EntryPrice,
                 signal.StopLossPrice,
                 signal.TargetPrice,
-                entryPrice,
+                current.Close,
                 fallbackTargetMultiple);
             if (fill is null) continue;
 
-            var entryAtr = input.Atr[index];
-            position = new PreviewPosition
-            {
-                EntryIndex = entryIndex,
-                EntryPrice = fill.EntryPrice,
-                StopPrice = fill.StopPrice,
-                TargetPrice = fill.TargetPrice,
-                HighestPrice = fill.EntryPrice,
-                LowestPrice = fill.EntryPrice,
-                InitialRisk = fill.RiskDistance,
-                EntryAtr = entryAtr > 0 ? entryAtr : fill.RiskDistance,
-                InvestedCapital = fill.EntryPrice * PreviewQuantity,
-                TotalCost = fill.EntryPrice * PreviewQuantity,
-                AllocationScale = Math.Min(
-                    PositionAllocationPolicy.NormalizeScale(signal.AllocationScale),
-                    portfolioRules.MaxSinglePositionPercent > 0
-                        ? portfolioRules.MaxSinglePositionPercent / 100m
-                        : 1m)
-            };
+            position = CreatePosition(index, fill, entryAtr, allocationScale);
             entriesToday++;
             markers.Add(new PatternPreviewMarker(
-                entryDate,
+                current.Timestamp,
                 "ENTRY",
                 fill.EntryPrice,
                 fill.StopPrice,
                 fill.TargetPrice,
-                $"{signal.Details} · 매수 비중 {signal.AllocationScale * 100m:F0}%"));
+                entryDetails));
         }
 
         var displayStart = visibleBars[0].Timestamp;
@@ -334,6 +420,19 @@ public sealed class PatternPreviewSimulationEngine
             warnings);
     }
 
+    /// <summary>
+    /// 신호는 났지만 아직 체결되지 않은 차기봉 진입.
+    /// 신호 시점의 가격·기하만 담고, 자격 재확인과 재산정은 체결 봉에서 수행한다.
+    /// </summary>
+    private sealed record PreviewPendingEntry(
+        decimal SignalEntryPrice,
+        decimal SignalStopPrice,
+        decimal SignalTargetPrice,
+        decimal FallbackTargetMultiple,
+        decimal EntryAtr,
+        decimal AllocationScale,
+        string Details);
+
     private sealed class PreviewPosition
     {
         public int EntryIndex { get; init; }
@@ -352,6 +451,10 @@ public sealed class PatternPreviewSimulationEngine
         public decimal InvestedCapital { get; set; }
         public decimal TotalCost { get; set; }
         public decimal RealizedPnl { get; set; }
+
+        /// <summary>드로다운 관측에 이미 반영한 실현손익. 부분 실현을 중복 계산하지 않는다.</summary>
+        public decimal ObservedRealizedPnl { get; set; }
+
         public decimal AllocationScale { get; init; } = 1m;
         public Dictionary<int, int> ScaleCounts { get; private set; } = [];
 

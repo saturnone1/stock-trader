@@ -28,7 +28,9 @@ public sealed class BacktestSignalEntryProcessor
             if (openPositions.Count >= context.MaxTotalPositions) break;
             if (!context.SymbolData.TryGetValue(symbol, out var data)) continue;
             if (!data.TimestampToIndex.TryGetValue(context.Date, out var barIndex)) continue;
-            if (barIndex < BacktestDataPolicy.MinimumWarmupBars) continue;
+            // 인덱스 i 인 봉을 평가할 때 이력은 i + 1 개다. 최소 봉 수를 인덱스 하한으로
+            // 그대로 쓰면 한 봉을 과하게 건너뛰고, 미리보기와 첫 평가 봉이 어긋난다.
+            if (barIndex < BacktestDataPolicy.FirstEvaluableBarIndex) continue;
 
             var windowSize = Math.Min(barIndex + 1, context.MaxWindow);
             var windowStart = barIndex + 1 - windowSize;
