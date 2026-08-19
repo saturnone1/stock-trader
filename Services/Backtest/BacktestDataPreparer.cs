@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
 using StockTrader.Domain.MarketData;
@@ -42,6 +43,7 @@ public sealed class BacktestDataPreparer
         DateTime? actualDataFrom = null;
         var warmupCalendarDays = ResolveWarmupCalendarDays(timeFrame, tqqq200Sma);
         var fetchFrom = from.AddDays(-warmupCalendarDays);
+        var evidence = BuildEvidence(dataFeed.Source, timeFrame, warmupCalendarDays);
 
         foreach (var symbol in MarketSymbolPolicy.NormalizeMany(symbols))
         {
@@ -74,7 +76,8 @@ public sealed class BacktestDataPreparer
         return new PreparedBacktestData(
             new ReadOnlyDictionary<string, PreparedSymbolData>(prepared),
             warnings.AsReadOnly(),
-            actualDataFrom);
+            actualDataFrom,
+            evidence);
     }
 
     public PreparedBacktestData Slice(
@@ -84,7 +87,8 @@ public sealed class BacktestDataPreparer
         DateTime from,
         DateTime to,
         CumulativeRsi2Config cumulativeRsi2,
-        Tqqq200SmaConfig tqqq200Sma)
+        Tqqq200SmaConfig tqqq200Sma,
+        MarketDataEvidence evidence)
     {
         var prepared = new Dictionary<string, PreparedSymbolData>(StringComparer.OrdinalIgnoreCase);
         var warnings = new List<string>();
@@ -141,8 +145,22 @@ public sealed class BacktestDataPreparer
         return new PreparedBacktestData(
             new ReadOnlyDictionary<string, PreparedSymbolData>(prepared),
             warnings.AsReadOnly(),
-            actualDataFrom);
+            actualDataFrom,
+            evidence);
     }
+
+    /// <summary>
+    /// 준비 조건을 명시적 근거로 조립한다. 백테스트는 정규장 봉만 사용하므로
+    /// 세션 범위는 정규장으로 진술한다.
+    /// </summary>
+    private static MarketDataEvidence BuildEvidence(
+        DataSource provider, TimeFrame timeFrame, int warmupCalendarDays) =>
+        MarketDataEvidence.Create(
+            provider,
+            timeFrame,
+            MarketSessionScope.RegularSessionOnly,
+            warmupCalendarDays,
+            BacktestDataPolicy.MinimumWarmupBars);
 
     private PreparedSymbolData Prepare(
         OhlcvBar[] bars,

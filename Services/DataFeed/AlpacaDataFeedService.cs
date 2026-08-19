@@ -10,6 +10,8 @@ namespace StockTrader.Services.DataFeed;
 
 public class AlpacaDataFeedService : IDataFeedService
 {
+    public DataSource Source => DataSource.Alpaca;
+
     private readonly IAlpacaDataClient _dataClient;
     private readonly ILogger<AlpacaDataFeedService> _logger;
     private readonly IMarketCalendar _marketCalendar;

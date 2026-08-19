@@ -104,6 +104,8 @@ public sealed class MarketRegimeTrendPolicyTests
 
     private sealed class FixedDataFeed(IReadOnlyList<OhlcvBar> bars) : IDataFeedService
     {
+        public DataSource Source => DataSource.Alpaca;
+
         public Task<List<OhlcvBar>> GetHistoricalBarsAsync(
             string symbol,
             TimeFrame timeFrame,

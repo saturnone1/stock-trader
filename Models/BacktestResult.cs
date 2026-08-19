@@ -1,5 +1,6 @@
 using StockTrader.Models.Enums;
 
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Strategies;
 using StockTrader.Domain.Backtesting;
 
@@ -375,6 +376,12 @@ public class BacktestResult
 
     /// <summary>실제 데이터 조회에 사용된 시작일 (분봉 기간 제한으로 조정된 경우 요청일과 다를 수 있음)</summary>
     public DateTime? ActualDataFrom { get; set; }
+
+    /// <summary>
+    /// 이 결과가 어떤 데이터 조건에서 산출되었는지에 대한 근거.
+    /// 조정 모드·세션 범위·캘린더 버전이 다른 두 결과는 직접 비교할 수 없다.
+    /// </summary>
+    public MarketDataEvidence? DataEvidence { get; set; }
 
     // 성과 지표 확장
     public decimal SortinoRatio { get; set; }

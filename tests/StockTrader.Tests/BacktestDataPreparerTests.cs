@@ -73,9 +73,12 @@ public class BacktestDataPreparerTests
         var sliced = preparer.Slice(
             full.Symbols, ["TQQQ"], TimeFrame.Daily,
             bars[450].Timestamp, bars[^1].Timestamp, slicePolicy,
-            new Tqqq200SmaConfig { SmaPeriod = 25, SmaStopMultiplier = 0.97m });
+            new Tqqq200SmaConfig { SmaPeriod = 25, SmaStopMultiplier = 0.97m },
+            full.Evidence);
 
         sliced.HasData.Should().BeTrue();
+        // 잘라낸 구간도 원본과 같은 데이터 조건에서 나왔음을 진술해야 한다.
+        sliced.Evidence.Should().Be(full.Evidence);
         sliced.Symbols["TQQQ"].CumulativeRsi2.Should().Equal(
             indicators.CumulativeRsi(
                 sliced.Symbols["TQQQ"].Closes,
@@ -125,6 +128,7 @@ public class BacktestDataPreparerTests
 
     private sealed class RecordingDataFeed(List<OhlcvBar> bars) : IDataFeedService
     {
+        public DataSource Source => DataSource.Alpaca;
         public List<string> RequestedSymbols { get; } = [];
         public List<DateTime> RequestedFrom { get; } = [];
 

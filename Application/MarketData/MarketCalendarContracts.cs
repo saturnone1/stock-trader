@@ -11,4 +11,10 @@ public interface IMarketCalendar
     TimeSpan GetMarketClose(MarketRegion market);
     DateTime GetLocalNow(MarketRegion market);
     DateTime GetLocalTime(MarketRegion market, DateTime utc);
+
+    /// <summary>
+    /// 해당 시장 로컬 날짜의 거래 상태. 휴장·조기마감 근거를 포함한다.
+    /// 캘린더 근거가 없는 날짜는 추측하지 않고 실패한다.
+    /// </summary>
+    TradingDayEvidence GetTradingDay(MarketRegion market, DateOnly marketDate);
 }

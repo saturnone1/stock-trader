@@ -206,6 +206,7 @@ public class BacktestService : IBacktestService
             slippageModel,
             prepared.Warnings.ToList(),
             prepared.ActualDataFrom,
+            prepared.Evidence,
             new BacktestExecutionAdapter(),
             weightStrategy,
             cumulativeRsi2,

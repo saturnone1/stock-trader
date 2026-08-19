@@ -11,6 +11,8 @@ namespace StockTrader.Services.DataFeed;
 
 public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
 {
+    public DataSource Source => DataSource.Yahoo;
+
     private readonly HttpClient _httpClient;
     private readonly YahooFinanceSettings _settings;
     private readonly IMarketCalendar _marketCalendar;

@@ -74,6 +74,7 @@ public sealed class OptimizationCandidateEvaluator : IOptimizationCandidateEvalu
             return await _runner.RunAsync(
                 context.Request.Symbols,
                 prepared,
+                context.EvidenceFor(timeFrame),
                 [_detectors.Create(pattern)],
                 context.Regimes,
                 from,

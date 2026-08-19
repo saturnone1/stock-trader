@@ -1,3 +1,4 @@
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
 using StockTrader.Configuration;
@@ -37,6 +38,7 @@ public sealed class BacktestSimulationEngine
         SlippageModel slippageModel,
         List<string> warnings,
         DateTime? actualDataFrom,
+        MarketDataEvidence dataEvidence,
         BacktestExecutionAdapter simulator,
         WeightStrategy? weightStrategy,
         CumulativeRsi2Config cumulativeRsi2Config,
@@ -169,7 +171,8 @@ public sealed class BacktestSimulationEngine
             TotalCommission = tradeLedger.TotalCommission,
             WeightStrategyApplied = weightStrategy != null,
             WeightReducedTrades = portfolio.WeightReducedTrades,
-            ActualDataFrom = actualDataFrom
+            ActualDataFrom = actualDataFrom,
+            DataEvidence = dataEvidence
         });
     }
 

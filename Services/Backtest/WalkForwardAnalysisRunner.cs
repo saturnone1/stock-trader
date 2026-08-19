@@ -104,6 +104,7 @@ public sealed class WalkForwardAnalysisRunner
             _simulation.RunAsync(
                 request.Symbols,
                 prepared.Symbols,
+                prepared.Evidence,
                 detectors,
                 regimes,
                 from,

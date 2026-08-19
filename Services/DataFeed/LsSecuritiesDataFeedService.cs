@@ -14,6 +14,8 @@ namespace StockTrader.Services.DataFeed;
 /// </summary>
 public class LsSecuritiesDataFeedService : IDataFeedService
 {
+    public DataSource Source => DataSource.LsSecurities;
+
     private readonly HttpClient _http;
     private readonly LsAuthService _auth;
     private readonly TimeProvider _timeProvider;

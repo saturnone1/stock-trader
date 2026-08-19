@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.MarketData;
 using StockTrader.Configuration;
 using StockTrader.Domain.Backtesting;
 using StockTrader.Models;
@@ -28,6 +29,7 @@ public sealed class BacktestPreparedSimulationRunner
     internal async Task<BacktestResult> RunAsync(
         List<string> symbols,
         IReadOnlyDictionary<string, PreparedSymbolData> fullDataMap,
+        MarketDataEvidence evidence,
         List<IPatternDetector> detectors,
         Dictionary<DateOnly, MarketRegime> regimeByDate,
         DateTime from,
@@ -58,7 +60,8 @@ public sealed class BacktestPreparedSimulationRunner
             from,
             to,
             cumulativeRsi2Config,
-            effectivePatternSettings.Tqqq200Sma);
+            effectivePatternSettings.Tqqq200Sma,
+            evidence);
 
         if (!prepared.HasData)
             return new BacktestResult { Warnings = prepared.Warnings.ToList() };
@@ -79,6 +82,7 @@ public sealed class BacktestPreparedSimulationRunner
             slippageModel,
             prepared.Warnings.ToList(),
             prepared.ActualDataFrom,
+            prepared.Evidence,
             new BacktestExecutionAdapter(),
             weightStrategy,
             cumulativeRsi2Config,

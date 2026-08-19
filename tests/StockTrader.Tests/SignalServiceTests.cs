@@ -67,7 +67,7 @@ public class SignalServiceTests : IDisposable
             new LiveSignalEvaluationStore(_db),
             opts,
             effectiveTimeProvider,
-            new MarketCalendar(effectiveTimeProvider),
+            new MarketCalendar(effectiveTimeProvider, NullLogger<MarketCalendar>.Instance),
             NullLogger<SignalService>.Instance);
     }
 
