@@ -211,6 +211,21 @@ public sealed record LongEntryFill(
 
 public static class LongEntryFillPolicy
 {
+    /// <summary>
+    /// 신호가 유효한 목표가를 싣지 못했을 때 사용할 R 배수.
+    ///
+    /// 전략이 선언한 손절·목표 ATR 배수의 비율이 곧 그 전략의 손익비이므로, 폴백도
+    /// 같은 기하를 따라야 한다. 이 값을 상수로 고정하면 전략 정의를 무시한 목표가가
+    /// 만들어지고, 그 상수를 한 엔진만 쓰면 preview 와 backtest 가 같은 신호에서
+    /// 서로 다른 목표가를 만든다. 두 경로 모두 이 함수를 통해 값을 얻는다.
+    /// </summary>
+    public static decimal ResolveFallbackTargetMultiple(
+        decimal atrStopMultiplier,
+        decimal atrTargetMultiplier) =>
+        atrStopMultiplier > 0 && atrTargetMultiplier > 0
+            ? atrTargetMultiplier / atrStopMultiplier
+            : 1m;
+
     public static LongEntryFill? Reprice(
         decimal signalEntry,
         decimal signalStop,

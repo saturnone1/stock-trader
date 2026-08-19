@@ -133,7 +133,10 @@ public sealed class BacktestSignalEntryProcessor
                             allocation.EffectiveEquity,
                             effectiveRisk,
                             sizing.PositionCapFraction,
-                            customExit));
+                            customExit,
+                            LongEntryFillPolicy.ResolveFallbackTargetMultiple(
+                                entryDefinition.AtrStopMultiplier,
+                                entryDefinition.AtrTargetMultiplier)));
                     }
                     else if (!isNextOpen)
                     {

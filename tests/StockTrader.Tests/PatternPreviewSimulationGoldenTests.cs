@@ -181,17 +181,56 @@ public class PatternPreviewSimulationGoldenTests
                 new AlwaysSignalRuntime(strategy)));
 
         result.Should().NotBeNull();
+        // 요청 시작일이 bars[49] 이지만 첫 평가 봉은 bars[50] 이다. 백테스트가
+        // barIndex < MinimumWarmupBars 인 봉을 평가하지 않으므로 미리보기도 같은
+        // 경계를 쓴다. 이전에는 미리보기만 bars[49] 를 평가해 백테스트에 없는
+        // 진입을 한 건 더 보여 주었고, 그 여파로 이후 쿨다운 일정 전체가 밀렸다.
         result!.Markers.Where(marker => marker.Type == "ENTRY")
             .Select(marker => marker.Date)
             .Should().Equal(
-                bars[49].Timestamp,
-                bars[53].Timestamp,
-                bars[58].Timestamp);
+                bars[50].Timestamp,
+                bars[54].Timestamp);
         result.Markers.Where(marker => marker.Type == "EXIT")
             .Select(marker => marker.Date)
-            .Should().Equal(bars[50].Timestamp, bars[54].Timestamp);
-        result.Summary.SafetyBlockedEntries.Should().Be(7);
-        result.Summary.OpenPosition.Should().BeTrue();
+            .Should().Equal(bars[51].Timestamp, bars[55].Timestamp);
+        // 두 진입이 모두 청산되고, 세 번째 진입은 연속손실 차단이 풀리기 전에
+        // 평가 구간이 끝나므로 열린 포지션이 남지 않는다.
+        result.Summary.OpenPosition.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RunAsync_DoesNotEvaluateBarsBelowTheSharedWarmupBoundary()
+    {
+        // 백테스트의 첫 평가 봉과 같은 경계를 쓰는지 직접 고정한다.
+        var bars = Bars(60);
+        var strategy = Compile(new StrategyDocument
+        {
+            Name = "warmup-boundary-golden",
+            EntryMode = StrategyCatalog.CurrentCloseEntryMode,
+            EntryRulesJson =
+                """[{"indicator":"PRICE_CHANGE","operator":">=","value":-100,"params":{"bars":1}}]""",
+            AtrStopMultiplier = 1m,
+            AtrTargetMultiplier = 100m,
+            MaxHoldingBars = 0
+        });
+
+        var result = await new PatternPreviewSimulationEngine().RunAsync(
+            new PatternPreviewSimulationInput(
+                "AAA",
+                TimeFrame.Daily,
+                bars[0].Timestamp,
+                bars[59].Timestamp,
+                bars,
+                Enumerable.Repeat(5m, bars.Length).ToArray(),
+                new Dictionary<string, OhlcvBar[]>(),
+                [],
+                new AlwaysSignalRuntime(strategy)));
+
+        result.Should().NotBeNull();
+        result!.Markers.Where(marker => marker.Type == "ENTRY")
+            .Select(marker => marker.Date)
+            .Should().NotContain(bars[49].Timestamp)
+            .And.Contain(bars[StrategyEvaluationPolicy.MinimumWarmupBars].Timestamp);
     }
 
     private static CompiledStrategy Compile(StrategyDocument definition)

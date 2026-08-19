@@ -2411,6 +2411,25 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void PreviewAndBacktestDeriveTheEntryFallbackTargetFromOneOwner()
+    {
+        // 폴백 R 배수를 한쪽 엔진만 상수로 고정하면 같은 신호에서 서로 다른 목표가가 나온다.
+        // 두 경로 모두 전략 기하에서 값을 도출하는 같은 함수를 통해야 한다.
+        var repository = FindRepositoryRoot();
+        var owner = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LongPositionExecutionPolicy.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
+        var pending = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPendingEntryProcessor.cs"));
+
+        owner.Should().Contain("public static decimal ResolveFallbackTargetMultiple(");
+        preview.Should().Contain("LongEntryFillPolicy.ResolveFallbackTargetMultiple(");
+        pending.Should().NotContain("fallbackTargetMultiple: 2m");
+        pending.Should().Contain("pending.FallbackTargetMultiple");
+    }
+
+    [Fact]
     public void TradingDayDecisionsHaveOneCalendarOwner()
     {
         // 주말만 보는 판정은 휴장일에 거래일이 있다고 답한다. 거래 실행·데이터 동기화·

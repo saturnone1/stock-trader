@@ -60,7 +60,7 @@ internal sealed class BacktestPendingEntryProcessor
                 pending.SignalStopPrice,
                 pending.SignalTargetPrice,
                 entryBar.Open,
-                fallbackTargetMultiple: 2m);
+                pending.FallbackTargetMultiple);
             if (fill == null)
             {
                 _entries.Remove(symbol);
