@@ -1,4 +1,5 @@
 using FluentAssertions;
+using StockTrader.Domain.MarketData;
 using StockTrader.Application.Execution;
 using StockTrader.Models;
 
@@ -6,6 +7,10 @@ namespace StockTrader.Tests;
 
 public class StrategyTradeTransitionPolicyTests
 {
+    /// <summary>실제 거래소 캘린더를 연결해 휴장일이 쿨다운 일수로 세어지지 않음을 함께 고정한다.</summary>
+    private static bool IsTradingDay(DateOnly date) =>
+        ExchangeCalendarCatalog.GetTradingDay(MarketRegion.UnitedStates, date).IsTradingDay;
+
     [Fact]
     public void ApplyUsesIndependentReentryAndCircuitBreakerTimelines()
     {
@@ -101,13 +106,13 @@ public class StrategyTradeTransitionPolicyTests
         };
 
         StrategyHistoricalCooldownPolicy.Evaluate(
-                trades, reentry, breaker, new DateTime(2025, 1, 6))
+                trades, reentry, breaker, new DateTime(2025, 1, 6), IsTradingDay)
             .Should().Be(new StrategyHistoricalCooldownDecision(true, true));
         StrategyHistoricalCooldownPolicy.Evaluate(
-                trades, reentry, breaker, new DateTime(2025, 1, 8))
+                trades, reentry, breaker, new DateTime(2025, 1, 8), IsTradingDay)
             .Should().Be(new StrategyHistoricalCooldownDecision(false, true));
         StrategyHistoricalCooldownPolicy.Evaluate(
-                trades, reentry, breaker, new DateTime(2025, 1, 9))
+                trades, reentry, breaker, new DateTime(2025, 1, 9), IsTradingDay)
             .Should().Be(new StrategyHistoricalCooldownDecision(false, false));
     }
 

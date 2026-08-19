@@ -1,4 +1,5 @@
 using FluentAssertions;
+using StockTrader.Domain.MarketData;
 using StockTrader.Application.Reporting;
 using TimeZoneConverter;
 
@@ -24,6 +25,10 @@ public sealed class DailyReportPolicyTests
         (window.ToUtc - window.FromUtc).Should().Be(TimeSpan.FromHours(23));
     }
 
+    /// <summary>실제 거래소 캘린더를 연결해 휴장일 동작까지 함께 고정한다.</summary>
+    private static bool IsTradingDay(DateOnly date) =>
+        ExchangeCalendarCatalog.GetTradingDay(MarketRegion.UnitedStates, date).IsTradingDay;
+
     [Fact]
     public void CalculateDelay_KoreanOverrideSkipsCandidatesWhoseUsDateIsWeekend()
     {
@@ -33,7 +38,8 @@ public sealed class DailyReportPolicyTests
             observation,
             new TimeOnly(7, 30),
             KoreanTime,
-            EasternTime);
+            EasternTime,
+            IsTradingDay);
 
         delay.Should().Be(TimeSpan.FromHours(71.5));
     }

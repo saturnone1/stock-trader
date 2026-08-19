@@ -66,7 +66,8 @@ public sealed class MLRetrainingService : BackgroundService
                     _timeProvider.GetUtcNow(),
                     TimeSpan.FromHours(_mlSettings.AutoRetrainIntervalHours),
                     EasternTime,
-                    _retrainAfterEt),
+                    _retrainAfterEt,
+                    TradingDayPredicate),
                 _timeProvider,
                 stoppingToken);
             await RunRetrainCycleAsync(stoppingToken);
@@ -80,12 +81,13 @@ public sealed class MLRetrainingService : BackgroundService
         var window = MlRetrainingSchedulePolicy.Evaluate(
             observedAt,
             EasternTime,
-            _retrainAfterEt);
+            _retrainAfterEt,
+            TradingDayPredicate);
 
-        // 주말 스킵
-        if (window == MlRetrainingWindowStatus.Weekend)
+        // 휴장일 스킵: 새로 완성된 거래 결과가 없어 재학습할 근거가 없다.
+        if (window == MlRetrainingWindowStatus.NonTradingDay)
         {
-            _logger.LogDebug("MLRetrainingService: skipping — weekend");
+            _logger.LogDebug("MLRetrainingService: skipping — non-trading day");
             return;
         }
 
@@ -173,7 +175,12 @@ public sealed class MLRetrainingService : BackgroundService
         => MlRetrainingSchedulePolicy.CalculateInitialDelay(
             _timeProvider.GetUtcNow(),
             EasternTime,
-            _retrainAfterEt);
+            _retrainAfterEt,
+            TradingDayPredicate);
+
+
+    private Func<DateOnly, bool> TradingDayPredicate =>
+        _marketCalendar.TradingDayPredicate(MarketRegion.UnitedStates);
 
     private TimeZoneInfo EasternTime =>
         _marketCalendar.GetTimeZone(MarketRegion.UnitedStates);

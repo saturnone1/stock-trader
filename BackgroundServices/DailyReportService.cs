@@ -91,7 +91,8 @@ public sealed class DailyReportService : BackgroundService
             _timeProvider.GetUtcNow(),
             reportTime,
             reportTimeZone,
-            marketTimeZone);
+            marketTimeZone,
+            _marketCalendar.TradingDayPredicate(MarketRegion.UnitedStates));
     }
 
     private async Task GenerateAsync(CancellationToken ct)

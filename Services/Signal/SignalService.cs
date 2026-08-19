@@ -111,7 +111,8 @@ public class SignalService : ISignalService
                     strategyTrades,
                     reentryRules ?? new ReentryConfig(),
                     breakerRules ?? new CircuitBreakerConfig(),
-                    marketDate);
+                    marketDate,
+                    _marketCalendar.TradingDayPredicate(MarketRegion.UnitedStates));
                 var entriesToday = evaluation.ExecutedEntriesFor(signal.CustomPatternName)
                     + recommendations.Count(rec => string.Equals(
                         rec.CustomPatternName, signal.CustomPatternName, StringComparison.OrdinalIgnoreCase));

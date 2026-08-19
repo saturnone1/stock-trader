@@ -68,7 +68,13 @@ The calendar carries evidence for 2024-2027. Extending it is a deliberate act th
 coverage end causes the live gate to refuse trading until the calendar is extended — a visible,
 recoverable stop rather than a silent wrong answer.
 
-The remaining weekend-only checks in `DailyMarketDataSyncPolicy`, `DailyReportPolicy`,
-`MlRetrainingSchedulePolicy`, and `StrategyTradeTransitionPolicy` are not yet migrated. They schedule
-operational work rather than deciding execution semantics, so they are lower risk, but they should
-adopt the same catalog so that one calendar owns every trading-day answer.
+`DailyMarketDataSyncPolicy`, `DailyReportPolicy`, `MlRetrainingSchedulePolicy`, and
+`StrategyTradeTransitionPolicy` have since been migrated to the same catalog, so one calendar now
+owns every trading-day answer and an architecture test enforces it. Those paths schedule operational
+work rather than placing orders, so they fail in the opposite direction: an unknown calendar date
+counts as a trading day, preventing reports, retraining, and cooldown expiry from being deferred
+indefinitely. `MarketCalendarSchedulingExtensions` is the one place that encodes that direction.
+
+The cooldown migration is a behavior correction, not just a refactor: cooldowns are expressed in
+bars, so counting weekdays released a re-entry or consecutive-loss block early whenever a holiday
+fell inside the window.

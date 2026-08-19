@@ -66,11 +66,18 @@ public sealed record StrategyHistoricalCooldownDecision(
 /// </summary>
 public static class StrategyHistoricalCooldownPolicy
 {
+    /// <summary>
+    /// 재진입·연속손실 차단 여부를 판정한다.
+    /// 쿨다운은 봉 수(거래일 수)로 정의되므로 만료일도 실제 거래일로 세어야 한다.
+    /// <paramref name="isTradingDay"/> 는 호출자가 거래소 캘린더를 연결한다. 휴장일을
+    /// 거래일로 세면 쿨다운이 실제보다 일찍 풀려 차단해야 할 재진입을 허용하게 된다.
+    /// </summary>
     public static StrategyHistoricalCooldownDecision Evaluate(
         IReadOnlyList<StrategyCompletedTrade> trades,
         ReentryConfig reentry,
         CircuitBreakerConfig circuitBreaker,
-        DateTime asOfUtc)
+        DateTime asOfUtc,
+        Func<DateOnly, bool> isTradingDay)
     {
         if (trades.Count == 0)
             return new(false, false);
@@ -84,29 +91,39 @@ public static class StrategyHistoricalCooldownPolicy
             latest.RealizedPnl,
             reentry);
         var reentryBlocked = reentrySteps > 0
-            && asOfUtc.Date <= AddWeekdays(latest.ExitedAt.Date, reentrySteps);
+            && asOfUtc.Date <= AddTradingDays(latest.ExitedAt.Date, reentrySteps, isTradingDay);
 
         var trailingLosses = StrategyTradeTransitionPolicy.CountTrailingLosses(
             chronologicalTrades.Select(trade => trade.RealizedPnl));
         var consecutiveLossBlocked = circuitBreaker.ConsecutiveLossLimit > 0
             && trailingLosses >= circuitBreaker.ConsecutiveLossLimit
-            && asOfUtc.Date <= AddWeekdays(
+            && asOfUtc.Date <= AddTradingDays(
                 latest.ExitedAt.Date,
-                circuitBreaker.CooldownBars);
+                circuitBreaker.CooldownBars,
+                isTradingDay);
         return new(reentryBlocked, consecutiveLossBlocked);
     }
 
-    private static DateTime AddWeekdays(DateTime date, int weekdays)
+    private static DateTime AddTradingDays(
+        DateTime date, int tradingDays, Func<DateOnly, bool> isTradingDay)
     {
         var result = date.Date;
-        var remaining = Math.Max(0, weekdays);
-        while (remaining > 0)
+        var remaining = Math.Max(0, tradingDays);
+
+        // 쿨다운 자체가 짧으므로 탐색 상한은 넉넉하되 유한해야 한다. 판정이 계속
+        // 거짓이면 그만 세고 마지막 날짜를 반환한다 — 차단을 무한히 연장하지 않는다.
+        var maximumCalendarDays = Math.Max(1, remaining) * 7 + 30;
+        var examined = 0;
+
+        while (remaining > 0 && examined < maximumCalendarDays)
         {
             result = result.AddDays(1);
-            if (result.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            examined++;
+            if (!isTradingDay(DateOnly.FromDateTime(result)))
                 continue;
             remaining--;
         }
+
         return result;
     }
 }
