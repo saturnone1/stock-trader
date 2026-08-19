@@ -20,3 +20,12 @@ and time zone, time frame, price adjustment mode, session scope, calendar versio
 requirements. This makes the previously invisible LS Securities split explicit: its daily and weekly
 bars are split/dividend adjusted while its intraday bars are unadjusted. Stored results and the
 desktop contract expose this evidence; no simulation arithmetic changed as a result of adding it.
+
+The LS Securities daily-bar fallback that aggregated 60-minute bars when the t8410 request returned
+nothing has been removed. The minute TR carries no adjustment field, so that fallback produced
+unadjusted daily bars, and the shared bar identity `(Symbol, TimeFrame, Timestamp)` has no provider
+or adjustment column to distinguish them from the adjusted series. A price series with split and
+dividend discontinuities could therefore be stored as though it were adjusted, silently corrupting
+every result computed from it afterwards. A failed t8410 request now logs an error and returns no
+bars rather than substituting a series whose adjustment cannot be guaranteed. Callers already treat
+an empty result as insufficient data. An architecture test prevents the fallback from returning.

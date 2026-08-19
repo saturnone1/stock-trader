@@ -42,6 +42,9 @@ market, and market time zone were likewise implicit in whichever adapter happene
 - `PreparedBacktestData` carries the evidence, `Slice` preserves it, and it reaches `BacktestResult`
   and the `BacktestResponse` contract. Optimization keeps evidence per time frame, because a run
   that selected a different time frame also selected a possibly different adjustment mode.
+- A provider path that cannot guarantee its declared adjustment mode returns no bars instead of
+  substituting a differently adjusted series. The LS Securities daily fallback that aggregated
+  unadjusted 60-minute bars is removed accordingly, and an architecture test prevents its return.
 
 ## Consequences
 
@@ -49,6 +52,12 @@ A stored backtest result now states the conditions that produced it, and `IsComp
 comparability question answerable instead of assumed. The LS Securities daily/intraday adjustment
 split becomes visible in results rather than being an undocumented property of whichever code path
 served the bars.
+
+Removing the LS daily fallback trades availability for integrity: a t8410 outage now yields no daily
+bars for that symbol rather than degraded ones. That is the correct trade because the degraded bars
+were indistinguishable from correct ones once stored, so the failure they caused was silent and
+unbounded in time, while an empty result is visible immediately and callers already handle it as
+insufficient data.
 
 Holiday and early-close corrections intentionally change historical behavior: sessions that the old
 rule reported as open are now correctly closed. `MarketCalendarTests` and `ExchangeCalendarCatalogTests`

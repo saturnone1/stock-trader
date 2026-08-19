@@ -2411,6 +2411,20 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void LsDailyBarsNeverFallBackToUnadjustedMinuteAggregation()
+    {
+        // t8412 분봉에는 수정주가 파라미터가 없다. 그 분봉을 집계해 만든 일봉은 미조정
+        // 계열이면서도 공유 저장소에서 수정주가 일봉과 구분되지 않으므로, 이 폴백이
+        // 되살아나면 저장된 봉과 그 위의 모든 결과가 조용히 오염된다.
+        var repository = FindRepositoryRoot();
+        var feed = File.ReadAllText(Path.Combine(
+            repository, "Services/DataFeed/LsSecuritiesDataFeedService.cs"));
+
+        feed.Should().Contain("[\"sujung\"] = \"Y\"");
+        feed.Should().NotContain("GetDailyBarsViaMinuteAggregationAsync");
+    }
+
+    [Fact]
     public void StrategyWarmupRequirementHasOneCatalogOwner()
     {
         var repository = FindRepositoryRoot();
