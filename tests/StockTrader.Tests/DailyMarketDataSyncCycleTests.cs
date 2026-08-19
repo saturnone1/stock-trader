@@ -21,6 +21,17 @@ public sealed class DailyMarketDataSyncCycleTests
     private readonly Mock<IMarketCalendar> _calendar = new();
     private readonly DailyMarketDataSyncState _state = new();
 
+    public DailyMarketDataSyncCycleTests()
+    {
+        // 거래일 판정은 실제 거래소 캘린더에 위임한다. 동기화 대상 날짜가 휴장일인지는
+        // 이 테스트가 검증하려는 대상이 아니지만, 가짜 값을 넣으면 캘린더가 바뀌었을 때
+        // 테스트가 현실과 어긋난 채로 통과하게 된다.
+        _calendar.Setup(service => service.GetTradingDay(
+                It.IsAny<MarketRegion>(), It.IsAny<DateOnly>()))
+            .Returns((MarketRegion market, DateOnly date) =>
+                ExchangeCalendarCatalog.GetTradingDay(market, date));
+    }
+
     [Fact]
     public async Task ScheduledSyncWaitsForTheSelectedProviderMarket()
     {

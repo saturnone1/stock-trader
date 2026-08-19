@@ -196,8 +196,27 @@ public sealed class DailyMarketDataSyncCycle(
         DateTime observedAt)
     {
         var market = DataProviderCatalog.Get(source).MarketRegion;
+        var marketLocalTime = marketCalendar.GetLocalTime(market, observedAt);
+        var marketDate = DateOnly.FromDateTime(marketLocalTime);
+
+        TradingDayEvidence tradingDay;
+        try
+        {
+            tradingDay = marketCalendar.GetTradingDay(market, marketDate);
+        }
+        catch (MarketCalendarCoverageException ex)
+        {
+            // 캘린더 근거가 없으면 휴장일일 수도 있는 날을 거래일로 단정하지 않는다.
+            // 동기화를 건너뛰면 다음 주기에 다시 시도하므로 데이터가 유실되지는 않는다.
+            logger.LogError(ex,
+                "[DailySync] {Market} {Date:yyyy-MM-dd} 캘린더 근거 없음 → 동기화 건너뜀",
+                market, marketDate);
+            tradingDay = new TradingDayEvidence(marketDate, TradingDayStatus.Holiday);
+        }
+
         return DailyMarketDataSyncPolicy.EvaluateWindow(
-            marketCalendar.GetLocalTime(market, observedAt),
+            marketLocalTime,
+            tradingDay,
             marketCalendar.GetMarketClose(market),
             TimeSpan.FromMinutes(settings.Value.DailyDataSyncCloseDelayMinutes));
     }

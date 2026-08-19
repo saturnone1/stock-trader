@@ -23,11 +23,18 @@ public static class DailyReportPolicy
             TimeZoneInfo.ConvertTimeToUtc(localEnd, marketTimeZone));
     }
 
+    /// <summary>
+    /// 다음 보고 시각까지의 지연. 거래가 없었던 날에는 보고하지 않으므로
+    /// 실제 거래일이 될 때까지 후보 날짜를 밀어낸다.
+    /// 거래일 여부는 <paramref name="isMarketTradingDay"/> 가 판정하며, 호출자가
+    /// 거래소 캘린더를 연결한다. 연속 휴장이 아무리 길어도 탐색은 유한하게 끝난다.
+    /// </summary>
     public static TimeSpan CalculateDelay(
         DateTimeOffset observation,
         TimeOnly reportTime,
         TimeZoneInfo reportTimeZone,
-        TimeZoneInfo marketTimeZone)
+        TimeZoneInfo marketTimeZone,
+        Func<DateOnly, bool> isMarketTradingDay)
     {
         var reportLocalNow = TimeZoneInfo.ConvertTime(observation, reportTimeZone);
         var candidate = DateTime.SpecifyKind(
@@ -36,11 +43,16 @@ public static class DailyReportPolicy
         if (candidate <= reportLocalNow.DateTime)
             candidate = candidate.AddDays(1);
 
-        while (true)
+        // 어떤 시장도 연속 휴장이 이보다 길지 않다. 판정이 계속 거짓을 반환하더라도
+        // 무한 루프에 빠지지 않고 마지막 후보로 예약한 뒤 다음 주기에 재평가한다.
+        const int maximumConsecutiveNonTradingDays = 14;
+
+        for (var attempt = 0; attempt <= maximumConsecutiveNonTradingDays; attempt++)
         {
             var candidateUtc = TimeZoneInfo.ConvertTimeToUtc(candidate, reportTimeZone);
             var marketDate = TimeZoneInfo.ConvertTimeFromUtc(candidateUtc, marketTimeZone);
-            if (marketDate.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday)
+            if (attempt == maximumConsecutiveNonTradingDays
+                || isMarketTradingDay(DateOnly.FromDateTime(marketDate)))
             {
                 var delay = candidateUtc - observation.UtcDateTime;
                 return delay < TimeSpan.Zero ? MinimumDelay : delay;
@@ -48,6 +60,8 @@ public static class DailyReportPolicy
 
             candidate = candidate.AddDays(1);
         }
+
+        return MinimumDelay;
     }
 
     public static DailyReportData Create(

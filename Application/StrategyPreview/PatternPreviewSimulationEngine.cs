@@ -64,8 +64,11 @@ public sealed class PatternPreviewSimulationEngine
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
+        // 백테스트는 barIndex < MinimumWarmupBars 인 봉을 평가하지 않는다. preview 가
+        // 한 봉 앞서 평가하면 같은 전략·같은 데이터에서 백테스트에 없는 진입이 미리보기에만
+        // 나타난다. 더 많은 워밍업을 요구하는 쪽으로 맞춰 두 엔진의 첫 평가 봉을 일치시킨다.
         var evaluationStartIndex = Math.Max(
-            StrategyEvaluationPolicy.MinimumWarmupBars - 1,
+            StrategyEvaluationPolicy.MinimumWarmupBars,
             requestedStartIndex);
         var evaluationEndIndex = Array.FindIndex(
             input.Bars, bar => bar.Timestamp >= input.DataTo);
@@ -236,9 +239,9 @@ public sealed class PatternPreviewSimulationEngine
                 entryDate = input.Bars[entryIndex].Timestamp;
             }
 
-            var fallbackTargetMultiple = strategy.Source.AtrStopMultiplier > 0
-                ? strategy.Source.AtrTargetMultiplier / strategy.Source.AtrStopMultiplier
-                : 1m;
+            var fallbackTargetMultiple = LongEntryFillPolicy.ResolveFallbackTargetMultiple(
+                strategy.Source.AtrStopMultiplier,
+                strategy.Source.AtrTargetMultiplier);
             var fill = LongEntryFillPolicy.Reprice(
                 signal.EntryPrice,
                 signal.StopLossPrice,

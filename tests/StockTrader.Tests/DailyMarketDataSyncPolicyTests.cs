@@ -43,6 +43,8 @@ public class DailyMarketDataSyncPolicyTests
 
         var result = DailyMarketDataSyncPolicy.EvaluateWindow(
             local,
+            ExchangeCalendarCatalog.GetTradingDay(
+                MarketRegion.UnitedStates, DateOnly.FromDateTime(local)),
             new TimeSpan(16, 0, 0),
             TimeSpan.FromHours(1));
 

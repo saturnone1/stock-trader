@@ -14,7 +14,12 @@ internal sealed record BacktestPendingEntry(
     decimal EquityAtSignal,
     decimal RiskFraction,
     decimal PositionCapFraction,
-    LongPositionExitPolicy? ExitProfile);
+    LongPositionExitPolicy? ExitProfile,
+    /// <summary>
+    /// 신호가 유효한 목표가를 싣지 못했을 때 적용할 R 배수. 신호 시점의 전략 기하에서
+    /// 도출해 보관하므로, 체결이 다음 봉으로 미뤄져도 preview 와 같은 목표가가 나온다.
+    /// </summary>
+    decimal FallbackTargetMultiple);
 
 /// <summary>현재가와 차기봉 시가 진입이 공유하는 백테스트 포지션 생성 계약입니다.</summary>
 internal static class BacktestOpenPositionFactory

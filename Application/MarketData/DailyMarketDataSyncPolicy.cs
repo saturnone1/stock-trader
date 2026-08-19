@@ -26,17 +26,24 @@ public static class DailyMarketDataSyncPolicy
             ? StrategyEvaluationPolicy.RegimeTrendBars
             : StrategyEvaluationPolicy.LiveScannerMinimumBars;
 
+    /// <summary>
+    /// 동기화 대상 날짜와 그날의 완료 여부를 결정한다.
+    /// 거래일 여부와 마감 시각은 호출자가 거래소 캘린더에서 조회한 근거로 전달한다.
+    /// 조기마감일에는 정규 마감이 아니라 그날의 실제 마감 시각을 기준으로 완료를 판정하므로,
+    /// 일찍 끝난 장의 일봉을 정규 마감 시각까지 미완성으로 오해하지 않는다.
+    /// </summary>
     public static DailyMarketDataSyncWindow EvaluateWindow(
         DateTime marketLocalTime,
+        TradingDayEvidence tradingDayEvidence,
         TimeSpan regularClose,
         TimeSpan closeDelay)
     {
-        var tradingDay = marketLocalTime.DayOfWeek is not (
-            DayOfWeek.Saturday or DayOfWeek.Sunday);
+        var tradingDay = tradingDayEvidence.IsTradingDay;
+        var effectiveClose = tradingDayEvidence.EarlyCloseTime ?? regularClose;
         return new DailyMarketDataSyncWindow(
             DateOnly.FromDateTime(marketLocalTime),
             tradingDay,
-            tradingDay && marketLocalTime.TimeOfDay >= regularClose.Add(closeDelay));
+            tradingDay && marketLocalTime.TimeOfDay >= effectiveClose.Add(closeDelay));
     }
 
     public static bool IsCompletedDailyTimestamp(

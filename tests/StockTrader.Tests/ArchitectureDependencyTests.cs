@@ -2411,6 +2411,56 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void PreviewAndBacktestDeriveTheEntryFallbackTargetFromOneOwner()
+    {
+        // 폴백 R 배수를 한쪽 엔진만 상수로 고정하면 같은 신호에서 서로 다른 목표가가 나온다.
+        // 두 경로 모두 전략 기하에서 값을 도출하는 같은 함수를 통해야 한다.
+        var repository = FindRepositoryRoot();
+        var owner = File.ReadAllText(Path.Combine(
+            repository, "Application/Execution/LongPositionExecutionPolicy.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
+        var pending = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPendingEntryProcessor.cs"));
+
+        owner.Should().Contain("public static decimal ResolveFallbackTargetMultiple(");
+        preview.Should().Contain("LongEntryFillPolicy.ResolveFallbackTargetMultiple(");
+        pending.Should().NotContain("fallbackTargetMultiple: 2m");
+        pending.Should().Contain("pending.FallbackTargetMultiple");
+    }
+
+    [Fact]
+    public void TradingDayDecisionsHaveOneCalendarOwner()
+    {
+        // 주말만 보는 판정은 휴장일에 거래일이 있다고 답한다. 거래 실행·데이터 동기화·
+        // 보고·재학습·쿨다운 만료가 모두 하나의 거래소 캘린더를 통해야 서로 어긋나지 않는다.
+        var repository = FindRepositoryRoot();
+        var owner = File.ReadAllText(Path.Combine(
+            repository, "Domain/MarketData/ExchangeCalendarCatalog.cs"));
+
+        owner.Should().Contain("public static TradingDayEvidence GetTradingDay(");
+
+        string[] mustNotDecideByDayOfWeek =
+        [
+            "Services/Market/MarketCalendar.cs",
+            "Application/MarketData/DailyMarketDataSyncPolicy.cs",
+            "Application/Reporting/DailyReportPolicy.cs",
+            "Application/Analysis/MlRetrainingSchedulePolicy.cs",
+            "Application/Execution/StrategyTradeTransitionPolicy.cs"
+        ];
+
+        foreach (var relativePath in mustNotDecideByDayOfWeek)
+        {
+            var source = File.ReadAllText(Path.Combine(repository, relativePath));
+
+            source.Should().NotContain("DayOfWeek.Saturday",
+                $"{relativePath} 는 거래일 여부를 요일로 판정하면 안 됩니다");
+            source.Should().NotContain("DayOfWeek.Sunday",
+                $"{relativePath} 는 거래일 여부를 요일로 판정하면 안 됩니다");
+        }
+    }
+
+    [Fact]
     public void LsDailyBarsNeverFallBackToUnadjustedMinuteAggregation()
     {
         // t8412 분봉에는 수정주가 파라미터가 없다. 그 분봉을 집계해 만든 일봉은 미조정
