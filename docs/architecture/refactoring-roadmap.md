@@ -30,6 +30,11 @@
   embedding offsets in provider code. This corrects Yahoo's winter window, which previously started
   one hour early and omitted the final regular-session hour; summer/winter request goldens prevent
   DST drift from returning.
+- Historical Alpaca and Yahoo queries now cross one `MarketDataRequestWindowPolicy`. Explicit UTC
+  instants remain unchanged, local inputs are converted, and unspecified API dates receive the
+  application's deterministic UTC interval meaning. This corrects Yahoo's former host-local
+  relabelling, which shifted an already-converted intraday preview by the server offset. An exact
+  Unix request-window golden prevents environment-dependent research data from returning.
 - Pending live entries now reconcile through `ILiveEntryReconciliationCycle`; the 43-line hosted
   worker owns only scope creation and clocked scheduling. The cycle groups durable entries by owning
   account, shares one observation boundary, isolates broker failures per account, and never falls

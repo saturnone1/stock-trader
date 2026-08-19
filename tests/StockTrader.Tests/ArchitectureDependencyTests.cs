@@ -2233,6 +2233,34 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void HistoricalUnitedStatesDataRequestsShareOneUtcWindowPolicy()
+    {
+        var repository = FindRepositoryRoot();
+        var policy = File.ReadAllText(Path.Combine(
+            repository,
+            "Application/MarketData/MarketDataRequestWindowPolicy.cs"));
+        var adapters = new[]
+        {
+            "Services/DataFeed/AlpacaDataFeedService.cs",
+            "Services/DataFeed/YahooFinanceDataFeedService.cs"
+        };
+
+        policy.Should().Contain("DateTimeKind.Utc => value");
+        policy.Should().Contain("DateTimeKind.Local => value.ToUniversalTime()");
+        policy.Should().NotContain("StockTrader.Services");
+
+        foreach (var path in adapters)
+        {
+            var adapter = File.ReadAllText(Path.Combine(repository, path));
+            adapter.Should().Contain("MarketDataRequestWindowPolicy.Resolve(from, to)");
+        }
+
+        var yahoo = File.ReadAllText(Path.Combine(repository, adapters[1]));
+        yahoo.Should().NotContain("SpecifyKind(from, DateTimeKind.Local)");
+        yahoo.Should().NotContain("SpecifyKind(to, DateTimeKind.Local)");
+    }
+
+    [Fact]
     public void DailyDataSyncWorkerOnlySchedulesTheProviderMarketCycle()
     {
         var repository = FindRepositoryRoot();

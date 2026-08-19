@@ -36,7 +36,12 @@ public class AlpacaDataFeedService : IDataFeedService
         try
         {
             var barTimeFrame = ToAlpacaTimeFrame(timeFrame);
-            var request = new HistoricalBarsRequest(symbol, from, to, barTimeFrame)
+            var window = MarketDataRequestWindowPolicy.Resolve(from, to);
+            var request = new HistoricalBarsRequest(
+                symbol,
+                window.StartUtc,
+                window.EndUtc,
+                barTimeFrame)
             {
                 Adjustment = Adjustment.SplitsAndDividends
             };

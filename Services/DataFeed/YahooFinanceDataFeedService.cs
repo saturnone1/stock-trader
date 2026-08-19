@@ -66,8 +66,9 @@ public class YahooFinanceDataFeedService : IDataFeedService, IDisposable
             }
 
             var interval = ToYahooInterval(timeFrame);
-            var period1 = new DateTimeOffset(DateTime.SpecifyKind(from, DateTimeKind.Local)).ToUnixTimeSeconds();
-            var period2 = new DateTimeOffset(DateTime.SpecifyKind(to, DateTimeKind.Local)).ToUnixTimeSeconds();
+            var window = MarketDataRequestWindowPolicy.Resolve(from, to);
+            var period1 = new DateTimeOffset(window.StartUtc).ToUnixTimeSeconds();
+            var period2 = new DateTimeOffset(window.EndUtc).ToUnixTimeSeconds();
 
             var url = $"/v8/finance/chart/{symbol}?period1={period1}&period2={period2}&interval={interval}";
             var result = await FetchChartAsync(url, ct);

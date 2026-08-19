@@ -10,6 +10,29 @@ namespace StockTrader.Tests;
 
 public sealed class YahooFinanceDataFeedServiceTests
 {
+    [Fact]
+    public async Task GetHistoricalBarsAsync_PreservesAnExplicitUtcRequestWindow()
+    {
+        var handler = new CapturingHandler();
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://query1.finance.yahoo.com")
+        };
+        using var service = CreateService(client);
+        var from = new DateTimeOffset(2026, 7, 15, 13, 30, 0, TimeSpan.Zero);
+        var to = new DateTimeOffset(2026, 7, 15, 20, 0, 0, TimeSpan.Zero);
+
+        await service.GetHistoricalBarsAsync(
+            "TQQQ",
+            Domain.MarketData.TimeFrame.OneMinute,
+            from.UtcDateTime,
+            to.UtcDateTime);
+
+        handler.RequestUri.Should().NotBeNull();
+        handler.RequestUri!.Query.Should().Contain($"period1={from.ToUnixTimeSeconds()}");
+        handler.RequestUri.Query.Should().Contain($"period2={to.ToUnixTimeSeconds()}");
+    }
+
     [Theory]
     [InlineData(2026, 1, 15, 14, 30, 21, 0)]
     [InlineData(2026, 7, 15, 13, 30, 20, 0)]
@@ -27,11 +50,7 @@ public sealed class YahooFinanceDataFeedServiceTests
         {
             BaseAddress = new Uri("https://query1.finance.yahoo.com")
         };
-        using var service = new YahooFinanceDataFeedService(
-            client,
-            Options.Create(new YahooFinanceSettings { RateLimitDelayMs = 0 }),
-            new MarketCalendar(TimeProvider.System),
-            NullLogger<YahooFinanceDataFeedService>.Instance);
+        using var service = CreateService(client);
 
         await service.GetIntradayBarsAsync("TQQQ", new DateTime(year, month, day));
 
@@ -46,6 +65,12 @@ public sealed class YahooFinanceDataFeedServiceTests
         handler.RequestUri.Query.Should().Contain($"period2={expectedEnd}");
         handler.RequestUri.Query.Should().Contain("interval=1m");
     }
+
+    private static YahooFinanceDataFeedService CreateService(HttpClient client) => new(
+        client,
+        Options.Create(new YahooFinanceSettings { RateLimitDelayMs = 0 }),
+        new MarketCalendar(TimeProvider.System),
+        NullLogger<YahooFinanceDataFeedService>.Instance);
 
     private sealed class CapturingHandler : HttpMessageHandler
     {

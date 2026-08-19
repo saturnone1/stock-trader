@@ -27,6 +27,8 @@ infrastructure.
   catalog shared by provider metadata, calendars, scanning, synchronization, and scheduling.
 - Provider regular-session request windows: one application policy converts a market-local date
   through the central calendar into DST-correct UTC boundaries for Alpaca and Yahoo.
+- Historical provider request instants: one application policy preserves explicit UTC ranges,
+  normalizes local inputs, and gives unspecified date boundaries deterministic UTC meaning.
 - Market-regime trend evidence: one completed-bar policy with an explicit as-of cutoff, central
   200-day window, strict boundary semantics, and fail-closed insufficient-history behavior.
 - ML signal-scoring evidence: one versioned causal feature catalog captured at signal time, one
@@ -491,4 +493,6 @@ defaults, active-profile selection, and modification time have one application o
   and scaling conditions through one compiled-strategy instruction resolver.
 - `adr/0066-centralize-provider-session-windows.md`: derive dated provider requests from the central
   market calendar and one DST-correct regular-session window policy.
+- `adr/0067-normalize-provider-request-instants.md`: preserve historical request instants across
+  developer and server time zones through one validated UTC interval policy.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.
