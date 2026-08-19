@@ -2,6 +2,16 @@
 
 ## Current progress
 
+- Market-data conditions are now explicit evidence rather than adapter-internal assumption.
+  `PriceAdjustmentCatalog` owns the adjustment mode each provider delivers per time frame, making
+  visible that LS Securities returns adjusted daily/weekly bars but unadjusted intraday bars.
+  `ExchangeCalendarCatalog` replaces the weekend-only trading-day rule with versioned exchange
+  holiday and early-close evidence and fails closed outside its coverage range, correcting sessions
+  that were previously reported open on holidays and on early-close afternoons. `MarketDataEvidence`
+  states provider, market region, time zone, time frame, adjustment mode, session scope, calendar
+  version, and warmup requirements; preparation assembles it from the catalogs, slicing preserves it,
+  optimization keeps it per time frame, and it reaches `BacktestResult` and the desktop contract so a
+  stored result can prove the conditions that produced it.
 - ML signal scoring now captures a versioned feature snapshot before a signal is persisted and
   carries the source-signal identity through broker-confirmed positions and realized trades.
   Training groups partial exits into one original decision outcome, excludes legacy rows without

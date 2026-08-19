@@ -2691,6 +2691,19 @@ export interface components {
             /** Format: double */
             partialProfitR?: null | number;
         };
+        BacktestDataEvidenceResponse: {
+            provider: string;
+            marketRegion: string;
+            marketTimeZoneId: string;
+            timeFrame: string;
+            adjustmentMode: string;
+            sessionScope: string;
+            calendarVersion: string;
+            /** Format: int32 */
+            warmupCalendarDays: number;
+            /** Format: int32 */
+            requiredWarmupBars: number;
+        };
         BacktestEquityPointResponse: {
             timestamp: string;
             /** Format: double */
@@ -2813,6 +2826,7 @@ export interface components {
             weightReducedTrades: number;
             usedTimeFrame: string;
             actualDataFrom: null | string;
+            dataEvidence: null | components["schemas"]["BacktestDataEvidenceResponse"];
             perPattern: {
                 [key: string]: components["schemas"]["BacktestStrategyPerformanceResponse"];
             };

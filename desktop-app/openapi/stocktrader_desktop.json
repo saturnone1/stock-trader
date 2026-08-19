@@ -2293,6 +2293,51 @@
           }
         }
       },
+      "BacktestDataEvidenceResponse": {
+        "required": [
+          "provider",
+          "marketRegion",
+          "marketTimeZoneId",
+          "timeFrame",
+          "adjustmentMode",
+          "sessionScope",
+          "calendarVersion",
+          "warmupCalendarDays",
+          "requiredWarmupBars"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "marketRegion": {
+            "type": "string"
+          },
+          "marketTimeZoneId": {
+            "type": "string"
+          },
+          "timeFrame": {
+            "type": "string"
+          },
+          "adjustmentMode": {
+            "type": "string"
+          },
+          "sessionScope": {
+            "type": "string"
+          },
+          "calendarVersion": {
+            "type": "string"
+          },
+          "warmupCalendarDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "requiredWarmupBars": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "BacktestEquityPointResponse": {
         "required": [
           "timestamp",
@@ -2566,6 +2611,7 @@
           "weightReducedTrades",
           "usedTimeFrame",
           "actualDataFrom",
+          "dataEvidence",
           "perPattern",
           "perStrategy",
           "perSymbol",
@@ -2677,6 +2723,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "dataEvidence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BacktestDataEvidenceResponse"
+              }
             ]
           },
           "perPattern": {

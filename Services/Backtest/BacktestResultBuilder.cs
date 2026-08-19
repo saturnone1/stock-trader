@@ -1,3 +1,4 @@
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Backtesting;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
@@ -76,6 +77,7 @@ internal static class BacktestResultBuilder
             WeightReducedTrades = input.WeightReducedTrades,
             Warnings = input.Warnings,
             ActualDataFrom = input.ActualDataFrom,
+            DataEvidence = input.DataEvidence,
             SortinoRatio = periodPerformance.SortinoRatio,
             CalmarRatio = periodPerformance.CalmarRatio,
             ProfitFactor = profitFactor,
@@ -144,4 +146,5 @@ internal sealed record BacktestResultInputs
     public required bool WeightStrategyApplied { get; init; }
     public required int WeightReducedTrades { get; init; }
     public DateTime? ActualDataFrom { get; init; }
+    public MarketDataEvidence? DataEvidence { get; init; }
 }

@@ -1,8 +1,39 @@
+using StockTrader.Application.MarketData;
 using StockTrader.Models;
 
 namespace StockTrader.Api.Contracts;
 
 public sealed record BacktestErrorResponse(string Error);
+
+/// <summary>
+/// 결과가 어떤 데이터 조건에서 산출되었는지에 대한 근거.
+/// 저장된 결과를 나중에 다시 읽어도 조건을 진술할 수 있게 한다.
+/// </summary>
+public sealed record BacktestDataEvidenceResponse(
+    string Provider,
+    string MarketRegion,
+    string MarketTimeZoneId,
+    string TimeFrame,
+    string AdjustmentMode,
+    string SessionScope,
+    string CalendarVersion,
+    int WarmupCalendarDays,
+    int RequiredWarmupBars)
+{
+    public static BacktestDataEvidenceResponse? Create(MarketDataEvidence? evidence) =>
+        evidence is null
+            ? null
+            : new BacktestDataEvidenceResponse(
+                evidence.Provider.ToString(),
+                evidence.MarketRegion.ToString(),
+                evidence.MarketTimeZoneId,
+                evidence.TimeFrame.ToString(),
+                evidence.AdjustmentMode.ToString(),
+                evidence.SessionScope.ToString(),
+                evidence.CalendarVersion,
+                evidence.WarmupCalendarDays,
+                evidence.RequiredWarmupBars);
+}
 
 public sealed record BacktestStrategyPerformanceResponse(
     int SampleSize,
@@ -108,6 +139,7 @@ public sealed record BacktestResponse(
     int WeightReducedTrades,
     string UsedTimeFrame,
     string? ActualDataFrom,
+    BacktestDataEvidenceResponse? DataEvidence,
     IReadOnlyDictionary<string, BacktestStrategyPerformanceResponse> PerPattern,
     IReadOnlyDictionary<string, BacktestStrategyPerformanceResponse> PerStrategy,
     IReadOnlyList<BacktestSymbolPerformanceResponse> PerSymbol,
@@ -147,6 +179,7 @@ public sealed record BacktestResponse(
             result.WeightReducedTrades,
             result.UsedTimeFrame.ToString(),
             result.ActualDataFrom?.ToString("O"),
+            BacktestDataEvidenceResponse.Create(result.DataEvidence),
             result.PerPatternStats.ToDictionary(
                 item => item.Key.ToString(),
                 item => BacktestStrategyPerformanceResponse.Create(item.Value)),

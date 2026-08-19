@@ -69,7 +69,7 @@ public sealed class YahooFinanceDataFeedServiceTests
     private static YahooFinanceDataFeedService CreateService(HttpClient client) => new(
         client,
         Options.Create(new YahooFinanceSettings { RateLimitDelayMs = 0 }),
-        new MarketCalendar(TimeProvider.System),
+        new MarketCalendar(TimeProvider.System, NullLogger<MarketCalendar>.Instance),
         NullLogger<YahooFinanceDataFeedService>.Instance);
 
     private sealed class CapturingHandler : HttpMessageHandler

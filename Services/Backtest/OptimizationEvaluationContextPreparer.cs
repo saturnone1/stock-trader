@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Backtesting;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Optimization;
 using StockTrader.Configuration;
 using StockTrader.Models.Enums;
@@ -60,6 +61,7 @@ public sealed class OptimizationEvaluationContextPreparer
             BacktestDetectorMetadata.CollectReferenceSymbols([detector]));
         var dataByTimeFrame = new Dictionary<TimeFrame,
             IReadOnlyDictionary<string, PreparedSymbolData>>();
+        var evidenceByTimeFrame = new Dictionary<TimeFrame, MarketDataEvidence>();
 
         foreach (var timeFrame in OptimizationDataPreparationPolicy.ResolveTimeFrames(request))
         {
@@ -73,7 +75,10 @@ public sealed class OptimizationEvaluationContextPreparer
                 _patternSettings.Tqqq200Sma,
                 ct);
             if (prepared.HasData)
+            {
                 dataByTimeFrame[timeFrame] = prepared.Symbols;
+                evidenceByTimeFrame[timeFrame] = prepared.Evidence;
+            }
         }
 
         if (dataByTimeFrame.Count == 0)
@@ -83,10 +88,14 @@ public sealed class OptimizationEvaluationContextPreparer
                 "유효한 심볼 데이터 없음 — 데이터 피드/심볼을 확인하세요");
         }
 
-        var defaultData = dataByTimeFrame.TryGetValue(
-            request.TimeFrame, out var requestedData)
-            ? requestedData
+        var hasRequestedTimeFrame = dataByTimeFrame.TryGetValue(
+            request.TimeFrame, out var requestedData);
+        var defaultData = hasRequestedTimeFrame
+            ? requestedData!
             : dataByTimeFrame.Values.First();
+        var defaultEvidence = hasRequestedTimeFrame
+            ? evidenceByTimeFrame[request.TimeFrame]
+            : evidenceByTimeFrame[dataByTimeFrame.Keys.First()];
         var risk = new OptimizationRiskParameters(
             _tradingSettings.RiskPerTradePercent,
             _tradingSettings.DailyLossLimitPercent,
@@ -99,6 +108,8 @@ public sealed class OptimizationEvaluationContextPreparer
                 dataByTimeFrame,
                 defaultData,
                 regimes,
-                risk));
+                risk,
+                evidenceByTimeFrame,
+                defaultEvidence));
     }
 }

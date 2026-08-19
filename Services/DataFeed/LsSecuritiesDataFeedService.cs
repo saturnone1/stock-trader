@@ -14,6 +14,8 @@ namespace StockTrader.Services.DataFeed;
 /// </summary>
 public class LsSecuritiesDataFeedService : IDataFeedService
 {
+    public DataSource Source => DataSource.LsSecurities;
+
     private readonly HttpClient _http;
     private readonly LsAuthService _auth;
     private readonly TimeProvider _timeProvider;
@@ -249,21 +251,28 @@ public class LsSecuritiesDataFeedService : IDataFeedService
 
     /// <summary>
     /// 일봉/주봉 데이터를 t8410(기간별 주가) TR로 직접 조회.
-    /// t8410은 수년치 일/주/월/년봉 데이터를 지원하며 수정주가 옵션 포함.
-    /// t8410 실패 시 60분봉(t8412) 집계로 폴백 (최대 ~1년치).
+    /// t8410은 수년치 일/주/월/년봉 데이터를 지원하며 수정주가(sujung="Y")로 요청한다.
+    ///
+    /// t8410 실패 시 60분봉(t8412) 집계로 폴백하던 경로는 제거되었다. t8412에는 수정주가
+    /// 파라미터가 없어 그 폴백은 미조정 가격으로 만든 일봉을 반환했고, 공유 저장소의
+    /// 봉 식별자 (Symbol, TimeFrame, Timestamp) 에는 공급자·조정 모드 컬럼이 없어
+    /// 수정주가 일봉과 구분할 수 없었다. 분할·배당 시점에 불연속이 있는 계열이
+    /// 조정된 계열인 척 저장되면 그 위에서 산출된 모든 결과가 조용히 오염된다.
+    /// 조정 근거를 보장할 수 없으면 데이터를 만들어내지 않고 빈 결과로 실패한다.
     /// </summary>
     private async Task<List<OhlcvBar>> GetDailyBarsAsync(
         string symbol, TimeFrame timeFrame,
         DateTime from, DateTime to, CancellationToken ct)
     {
-        // 1차: t8410 기간별 주가 직접 조회
         var bars = await GetDailyBarsViaT8410Async(symbol, timeFrame, from, to, ct);
         if (bars.Count > 0)
             return bars;
 
-        // 폴백: 60분봉 집계 (최대 ~1년치)
-        _logger.LogWarning("[LS Data] {Symbol} t8410 조회 실패, 60분봉 집계로 폴백", symbol);
-        return await GetDailyBarsViaMinuteAggregationAsync(symbol, timeFrame, from, to, ct);
+        _logger.LogError(
+            "[LS Data] {Symbol} {TimeFrame} t8410 수정주가 조회 실패 ({From:d}~{To:d}). " +
+            "미조정 분봉 집계로 대체하지 않고 빈 결과를 반환합니다.",
+            symbol, timeFrame, from, to);
+        return [];
     }
 
     /// <summary>t8410 기간별 주가 조회. gubun: 2=일, 3=주, 4=월, 5=년</summary>
@@ -382,41 +391,6 @@ public class LsSecuritiesDataFeedService : IDataFeedService
             Close = item.TryGetProperty("close", out var c) ? c.GetDecimal() : 0,
             Volume = volume
         };
-    }
-
-    /// <summary>폴백: 60분봉(t8412)을 날짜별 집계하여 일봉 생성 (최대 ~1년치)</summary>
-    private async Task<List<OhlcvBar>> GetDailyBarsViaMinuteAggregationAsync(
-        string symbol, TimeFrame timeFrame,
-        DateTime from, DateTime to, CancellationToken ct)
-    {
-        var minuteBars = await GetMinuteBarsInternal(symbol, 60, from, to, ct);
-
-        if (minuteBars.Count == 0)
-        {
-            _logger.LogWarning("[LS Data] {Symbol} 일봉 폴백 집계: 분봉 데이터도 없음 ({From:d}~{To:d})",
-                symbol, from, to);
-            return [];
-        }
-
-        var dailyBars = minuteBars
-            .GroupBy(b => b.Timestamp.Date)
-            .Select(g => new OhlcvBar
-            {
-                Symbol = symbol,
-                Timestamp = g.Key,
-                TimeFrame = timeFrame,
-                Open = g.First().Open,
-                High = g.Max(b => b.High),
-                Low = g.Min(b => b.Low),
-                Close = g.Last().Close,
-                Volume = g.Sum(b => b.Volume)
-            })
-            .OrderBy(b => b.Timestamp)
-            .ToList();
-
-        _logger.LogInformation("[LS Data] {Symbol} 일봉 폴백 집계 {Count}건 ({From:d}~{To:d})",
-            symbol, dailyBars.Count, from, to);
-        return dailyBars;
     }
 
     #endregion

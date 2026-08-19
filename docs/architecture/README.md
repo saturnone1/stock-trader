@@ -495,4 +495,7 @@ defaults, active-profile selection, and modification time have one application o
   market calendar and one DST-correct regular-session window policy.
 - `adr/0067-normalize-provider-request-instants.md`: preserve historical request instants across
   developer and server time zones through one validated UTC interval policy.
+- `adr/0068-state-market-data-evidence-explicitly.md`: replace the weekend-only calendar with
+  versioned exchange holiday and early-close evidence, own per-provider price adjustment in a
+  catalog, and carry the resulting run conditions into persisted result metadata.
 - `refactoring-roadmap.md`: migration order, gates, and measurable completion criteria.

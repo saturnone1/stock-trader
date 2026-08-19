@@ -1,3 +1,4 @@
+using StockTrader.Application.MarketData;
 using StockTrader.Models;
 
 namespace StockTrader.Application.Backtesting;
@@ -16,7 +17,8 @@ public sealed record PreparedSymbolData(
 public sealed record PreparedBacktestData(
     IReadOnlyDictionary<string, PreparedSymbolData> Symbols,
     IReadOnlyList<string> Warnings,
-    DateTime? ActualDataFrom)
+    DateTime? ActualDataFrom,
+    MarketDataEvidence Evidence)
 {
     public bool HasData => Symbols.Count > 0;
 }
