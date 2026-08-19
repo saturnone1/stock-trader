@@ -2411,6 +2411,36 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void PreviewAndBacktestShareOneBarStepSemantics()
+    {
+        // 두 엔진이 같은 봉을 같은 방식으로 지나가야 한다. 아래 네 가지는 실제로
+        // 서로 달라서 같은 전략이 미리보기와 백테스트에서 다른 진입을 만들던 지점이다.
+        var repository = FindRepositoryRoot();
+        var warmupOwner = File.ReadAllText(Path.Combine(
+            repository, "Application/Strategies/StrategyEvaluationPolicy.cs"));
+        var preview = File.ReadAllText(Path.Combine(
+            repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
+        var entryProcessor = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestSignalEntryProcessor.cs"));
+
+        // 첫 평가 봉 인덱스는 한 곳이 소유하고 두 엔진이 그 값을 참조한다.
+        warmupOwner.Should().Contain(
+            "public const int FirstEvaluableBarIndex = MinimumWarmupBars - 1;");
+        preview.Should().Contain("StrategyEvaluationPolicy.FirstEvaluableBarIndex");
+        entryProcessor.Should().Contain("BacktestDataPolicy.FirstEvaluableBarIndex");
+
+        // 평가 창 크기는 같은 카탈로그에서 온다.
+        preview.Should().Contain("BacktestTimeFramePolicy.Get(input.TimeFrame).SimulationWindowBars");
+
+        // 차기봉 진입은 신호 봉이 아니라 체결 봉에서 자격을 재확인한다.
+        preview.Should().Contain("PreviewPendingEntry");
+        preview.Should().Contain("if (!CanEnter(index))");
+
+        // 드로다운은 전량 청산이 아니라 실현이 생길 때마다 관측한다.
+        preview.Should().Contain("ObserveRealized(position);");
+    }
+
+    [Fact]
     public void PreviewAndBacktestDeriveTheEntryFallbackTargetFromOneOwner()
     {
         // 폴백 R 배수를 한쪽 엔진만 상수로 고정하면 같은 신호에서 서로 다른 목표가가 나온다.

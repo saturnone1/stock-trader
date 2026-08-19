@@ -27,6 +27,10 @@ public static class BacktestDataPolicy
 {
     /// <summary>지표 워밍업과 체결 시뮬레이션에 필요한 최소 봉 수입니다.</summary>
     public const int MinimumWarmupBars = Strategies.StrategyEvaluationPolicy.MinimumWarmupBars;
+
+    /// <summary>전략을 평가할 수 있는 첫 봉의 인덱스. 미리보기와 같은 경계를 사용합니다.</summary>
+    public const int FirstEvaluableBarIndex =
+        Strategies.StrategyEvaluationPolicy.FirstEvaluableBarIndex;
 }
 
 public static class BacktestTimeline
