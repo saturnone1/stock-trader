@@ -4,6 +4,13 @@ StockTrader is moving from a folder-organized monolith to a modular monolith. It
 deployable application while gaining explicit boundaries that reduce the amount of code a person
 or AI must understand for one change.
 
+The next architecture direction is selective, evidence-led service extraction rather than a
+big-bang microservice rewrite. [ADR 0069](adr/0069-adopt-evolutionary-service-extraction.md) defines
+the target business and consistency boundaries; the
+[MSA transition roadmap](msa-transition-roadmap.md) defines the measurement, contract, conformance,
+cutover, and rollback gates. Neither document authorizes a runtime or database split without a
+separate extraction decision.
+
 ## Target modules
 
 | Module | Owns | Must not own |
