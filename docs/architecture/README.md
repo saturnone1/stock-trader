@@ -14,17 +14,15 @@ separate extraction decision.
 MSA Stage 1 has started under [ADR 0070](adr/0070-establish-optimization-worker-contract-boundary.md).
 The optimization scheduler now depends on a process-neutral execution port, and versioned strategy,
 market-data evidence, lease, heartbeat, and result-acceptance contracts exist for conformance work.
-The adapter remains in-process; no remote worker, shared database, or second writer is active. New
-extracted computation/orchestration hosts default to F# while sharing the existing C# engine.
-`StockTrader.ServiceContracts` is now an ASP.NET-independent library. The first F# executable is a
-contract-only shadow validator; it cannot claim or execute jobs until the deterministic engine is an
-independent library and the Stage 2 release gates are approved.
+The authoritative adapter remains in-process; no shared database or second result writer is active.
+New extracted computation/orchestration hosts default to F# while sharing the existing C# engine.
+`StockTrader.ServiceContracts` is now an ASP.NET-independent library.
 
 Optimization contract version 2 now carries the actual immutable prepared series required for
 remote computation: normalized OHLCV bars, aligned ATR/close/protective-stop/cumulative-RSI arrays,
 regime snapshots, and risk settings. A canonical data hash binds this payload to the evaluation
-input, and malformed, duplicated, or tampered series fail lease validation. This is still a local
-contract boundary, not an enabled remote lease transport. Evidence metadata has its own recomputed
+input, and malformed, duplicated, or tampered series fail lease validation. The executable transport
+remains disabled by default. Evidence metadata has its own recomputed
 identity as well, so changing provider, adjustment, calendar, or range claims without changing the
 evidence ID is rejected.
 
@@ -62,6 +60,12 @@ workload authentication scheme and an outbound F# shadow probe. The Worker uses 
 cookies nor a Kubernetes token; a cluster Secret is injected only into the API and Worker, while
 the default application configuration keeps the transport disabled. This handshake does not yet
 lease or execute jobs.
+
+[ADR 0074](adr/0074-establish-durable-optimization-leases.md) adds Strategy Research-owned durable
+lease records and authenticated claim, heartbeat, and idempotent result APIs. The F# Worker can
+submit only a contract-validation receipt; it cannot write canonical optimization or financial
+results. A separate `LeaseTransportEnabled=false` gate remains fixed in K3s because executable
+prepared data requires internal TLS/workload identity before real-Pod activation.
 
 ## Target modules
 

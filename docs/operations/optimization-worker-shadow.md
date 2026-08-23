@@ -79,8 +79,10 @@ curl --fail http://127.0.0.1:18080/metrics
 
 ## Rollback
 
-Shadow mode owns no durable state, so rollback does not require database backup, restore, or job
-reconciliation. Stop the workload immediately with:
+The currently deployed handshake release owns no durable lease. Releases containing ADR 0074 add
+Strategy Research-owned audit records, but the K3s lease switch remains false and the Worker still
+owns no database. Rollback does not delete those records or require financial reconciliation. Stop
+the workload immediately with:
 
 ```bash
 sudo k3s kubectl -n stocktrader scale \
@@ -96,7 +98,8 @@ shadow release.
 ## Current limitations
 
 - This is one physical K3s node and is not high availability.
-- No authenticated lease transport or remote computation is enabled.
+- Durable lease APIs exist behind `LeaseTransportEnabled=false`; no executable lease transport or
+  remote computation is enabled in K3s.
 - The authenticated status handshake uses node-local cluster HTTP; executable leases require the
   internal TLS/workload-identity gate.
 - Prometheus-format metrics exist, but no cluster scraper, retention, dashboard, or alert has yet

@@ -38,6 +38,9 @@ public static class DataServiceExtensions
         services.AddScoped<SettingsManagementService>();
         services.AddScoped<IOptimizationJobExecutionStore, OptimizationJobExecutionStore>();
         services.AddScoped<IOptimizationJobLifecycle, OptimizationJobLifecycle>();
+        services.AddScoped<IOptimizationWorkerLeaseCoordinator,
+            OptimizationWorkerLeaseCoordinator>();
+        services.AddScoped<OptimizationShadowLeasePublisher>();
         services.AddScoped<IOptimizationJobControlStore, OptimizationJobControlStore>();
         services.AddScoped<OptimizationJobControlService>();
         services.AddScoped<IOptimizationJobManagementStore, OptimizationJobManagementStore>();

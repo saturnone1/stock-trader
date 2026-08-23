@@ -50,6 +50,8 @@ spec:
               key: Alpaca__EnableStreaming
         - name: OptimizationWorkerTransport__Enabled
           value: "true"
+        - name: OptimizationWorkerTransport__LeaseTransportEnabled
+          value: "false"
         - name: OptimizationWorkerTransport__Mode
           value: "Shadow"
         - name: OptimizationWorkerTransport__SharedSecret

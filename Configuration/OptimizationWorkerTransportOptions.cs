@@ -14,6 +14,7 @@ public sealed class OptimizationWorkerTransportOptions
     public const int MaximumLeaseSeconds = 1800;
 
     public bool Enabled { get; init; }
+    public bool LeaseTransportEnabled { get; init; }
     public OptimizationWorkerTransportMode Mode { get; init; } =
         OptimizationWorkerTransportMode.Shadow;
     public string SharedSecret { get; init; } = string.Empty;
@@ -21,5 +22,6 @@ public sealed class OptimizationWorkerTransportOptions
 
     public bool IsValid() =>
         LeaseSeconds is >= MinimumLeaseSeconds and <= MaximumLeaseSeconds
-        && (!Enabled || SharedSecret.Length >= MinimumSecretLength);
+        && (!Enabled || SharedSecret.Length >= MinimumSecretLength)
+        && (!LeaseTransportEnabled || Enabled);
 }

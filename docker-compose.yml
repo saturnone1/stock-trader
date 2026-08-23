@@ -13,6 +13,7 @@ services:
       Alpaca__IsPaper: ${ALPACA_IS_PAPER:-true}
       Alpaca__EnableStreaming: ${ALPACA_ENABLE_STREAMING:-false}
       OptimizationWorkerTransport__Enabled: ${OPTIMIZATION_WORKER_TRANSPORT_ENABLED:-false}
+      OptimizationWorkerTransport__LeaseTransportEnabled: ${OPTIMIZATION_WORKER_LEASES_ENABLED:-false}
       OptimizationWorkerTransport__Mode: Shadow
       OptimizationWorkerTransport__SharedSecret: ${OPTIMIZATION_WORKER_SHARED_SECRET:-}
     ports:

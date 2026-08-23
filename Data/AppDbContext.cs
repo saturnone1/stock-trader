@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<CustomPatternDefinition> CustomPatterns => Set<CustomPatternDefinition>();
     public DbSet<OptimizationJob> OptimizationJobs => Set<OptimizationJob>();
     public DbSet<OptimizationResult> OptimizationResults => Set<OptimizationResult>();
+    public DbSet<OptimizationWorkerLeaseRecord> OptimizationWorkerLeases =>
+        Set<OptimizationWorkerLeaseRecord>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -194,6 +196,21 @@ public class AppDbContext : DbContext
                   .WithMany(j => j.Results)
                   .HasForeignKey(r => r.JobId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OptimizationWorkerLeaseRecord>(entity =>
+        {
+            entity.HasKey(lease => lease.LeaseId);
+            entity.HasIndex(lease => new { lease.JobId, lease.Purpose, lease.InputHash })
+                .IsUnique();
+            entity.HasIndex(lease => new { lease.Status, lease.ExpiresAt, lease.CreatedAt });
+            entity.HasIndex(lease => lease.SubmissionId)
+                .IsUnique()
+                .HasFilter("\"SubmissionId\" IS NOT NULL");
+            entity.HasOne<OptimizationJob>()
+                .WithMany()
+                .HasForeignKey(lease => lease.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

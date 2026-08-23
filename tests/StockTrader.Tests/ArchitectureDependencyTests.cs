@@ -1703,6 +1703,8 @@ public class ArchitectureDependencyTests
             repository, "workers/optimization-worker/HealthHost.fs"));
         var fsharpControlProbe = File.ReadAllText(Path.Combine(
             repository, "workers/optimization-worker/ControlPlaneProbe.fs"));
+        var fsharpControlClient = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/ControlPlaneClient.fs"));
         var workerDockerfile = File.ReadAllText(Path.Combine(
             repository, "Dockerfile.optimization-worker"));
         var workerDeployment = File.ReadAllText(Path.Combine(
@@ -1953,14 +1955,18 @@ public class ArchitectureDependencyTests
         fsharpHealth.Should().Contain("/health/live");
         fsharpHealth.Should().Contain("/health/ready");
         fsharpHealth.Should().Contain("/metrics");
-        fsharpControlProbe.Should().Contain("OptimizationWorkerHttpHeaders.WorkerId");
-        fsharpControlProbe.Should().Contain("OptimizationWorkerHttpHeaders.Secret");
-        fsharpControlProbe.Should().NotContain("StockTrader.Models");
+        fsharpControlClient.Should().Contain("OptimizationWorkerHttpHeaders.WorkerId");
+        fsharpControlClient.Should().Contain("OptimizationWorkerHttpHeaders.Secret");
+        (fsharpControlProbe + fsharpControlClient).Should().NotContain("StockTrader.Models");
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/Program.fs"))
             .Length.Should().BeLessThanOrEqualTo(60);
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/HealthHost.fs"))
             .Length.Should().BeLessThanOrEqualTo(60);
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/ControlPlaneProbe.fs"))
+            .Length.Should().BeLessThanOrEqualTo(100);
+        File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/ControlPlaneClient.fs"))
+            .Length.Should().BeLessThanOrEqualTo(100);
+        File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/ShadowLeaseProcessor.fs"))
             .Length.Should().BeLessThanOrEqualTo(100);
         workerDockerfile.Should().Contain("StockTrader.OptimizationWorker.fsproj");
         workerDockerfile.Should().Contain("USER $APP_UID");
@@ -1974,6 +1980,8 @@ public class ArchitectureDependencyTests
         workerDeployment.Should().Contain("cpu: \"2\"");
         workerDeployment.Should().NotContain("stocktrader-data");
         apiDeployment.Should().Contain("OptimizationWorkerTransport__Enabled");
+        apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseTransportEnabled");
+        apiDeployment.Should().Contain("value: \"false\"");
         apiDeployment.Should().Contain("stocktrader-optimization-worker-auth");
         workerSecretExample.Should().Contain("REPLACE_WITH_A_RANDOM_32_PLUS_CHARACTER_SECRET");
         workerSecretExample.Should().NotContain("tjxodnjs1");
@@ -4052,20 +4060,39 @@ public class ArchitectureDependencyTests
             repository, "Api/OptimizationWorkerEndpoints.cs"));
         var security = File.ReadAllText(Path.Combine(
             repository, "Extensions/SecurityServiceExtensions.cs"));
+        var leaseStore = string.Join("\n", Directory.EnumerateFiles(
+                Path.Combine(repository, "Data/Repositories"),
+                "OptimizationWorkerLeaseCoordinator*.cs")
+            .Select(File.ReadAllText));
+        var workerProject = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/StockTrader.OptimizationWorker.fsproj"));
+        var apiDeployment = File.ReadAllText(Path.Combine(
+            repository, "k8s/deployment-api.yaml"));
         var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
 
         options.Should().Contain("MinimumSecretLength = 32");
         options.Should().Contain("public bool Enabled { get; init; }");
+        options.Should().Contain("public bool LeaseTransportEnabled { get; init; }");
         handler.Should().Contain("OptimizationWorkerCredentialPolicy.IsAuthorized(");
         handler.Should().Contain("OptimizationWorkerHttpHeaders.Secret");
         handler.Should().NotContain("CookieAuthenticationDefaults");
         endpoints.Should().Contain("/internal/optimization-worker");
         endpoints.Should().Contain("ExcludeFromDescription()");
         endpoints.Should().Contain("OptimizationWorkerAuthenticationDefaults.Policy");
+        endpoints.Should().Contain("/leases/claim");
+        endpoints.Should().Contain("/leases/heartbeat");
+        endpoints.Should().Contain("/leases/result");
+        leaseStore.Should().Contain("OptimizationWorkerLeases");
+        leaseStore.Should().NotContain("OptimizationResults.Add");
+        workerProject.Should().NotContain("EntityFrameworkCore");
+        workerProject.Should().NotContain("Sqlite");
+        apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseTransportEnabled");
+        apiDeployment.Should().Contain("value: \"false\"");
         security.Should().Contain("OptimizationWorkerAuthenticationHandler");
         security.Should().Contain("RequireClaim(\"service\", \"optimization-worker\")");
         settings.Should().Contain("\"OptimizationWorkerTransport\"");
         settings.Should().Contain("\"Enabled\": false");
+        settings.Should().Contain("\"LeaseTransportEnabled\": false");
         settings.Should().NotContain("SharedSecret");
     }
 

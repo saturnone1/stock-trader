@@ -8,6 +8,9 @@
     <ProjectReference Include="..\..\src\StockTrader.Engine\StockTrader.Engine.csproj" />
     <ProjectReference Include="..\..\src\StockTrader.OptimizationProtocol\StockTrader.OptimizationProtocol.csproj" />
     <ProjectReference Include="..\..\src\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
+    <Compile Include="WorkerState.fs" />
+    <Compile Include="ControlPlaneClient.fs" />
+    <Compile Include="ShadowLeaseProcessor.fs" />
     <Compile Include="ControlPlaneProbe.fs" />
     <Compile Include="HealthHost.fs" />
     <Compile Include="Program.fs" />

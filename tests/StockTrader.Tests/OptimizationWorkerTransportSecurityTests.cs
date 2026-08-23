@@ -24,6 +24,10 @@ public class OptimizationWorkerTransportSecurityTests
             SharedSecret = ValidSecret,
             LeaseSeconds = OptimizationWorkerTransportOptions.MinimumLeaseSeconds
         }.IsValid().Should().BeTrue();
+        new OptimizationWorkerTransportOptions
+        {
+            LeaseTransportEnabled = true
+        }.IsValid().Should().BeFalse();
     }
 
     [Theory]

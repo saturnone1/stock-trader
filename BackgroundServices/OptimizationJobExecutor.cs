@@ -43,6 +43,7 @@ public class OptimizationJobExecutor : IOptimizationWorkExecutor
         var contextPreparer = sp.GetRequiredService<IOptimizationEvaluationContextPreparer>();
         var candidateEvaluator = sp.GetRequiredService<IOptimizationCandidateEvaluator>();
         var executionStore = sp.GetRequiredService<IOptimizationJobExecutionStore>();
+        var shadowLeases = sp.GetRequiredService<OptimizationShadowLeasePublisher>();
 
         // ── 1. RequestJson 역직렬화 ──
         OptimizeRequest request;
@@ -65,6 +66,7 @@ public class OptimizationJobExecutor : IOptimizationWorkExecutor
         if (!preparation.IsSuccess)
             throw new InvalidOperationException(preparation.Message);
         var evaluation = preparation.Context!;
+        await shadowLeases.PublishAsync(job.Id, evaluation, ct);
 
         // ── 4. 전체 조합 생성 / TotalCombinations 업데이트 ──
         var allCombinations = StrategyOptimizationSpace.GenerateOptimizeCombinations(request.OptimizeParams);
@@ -327,4 +329,5 @@ public class OptimizationJobExecutor : IOptimizationWorkExecutor
     }
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
+
 }

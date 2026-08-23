@@ -10,6 +10,7 @@ public static class OptimizationWorkerContractCatalog
     public const string IndicatorCatalogVersion = "indicator-catalog-v1";
     public const string PatternCatalogVersion = "pattern-catalog-v1";
     public const string OptimizationCostModelVersion = "adaptive-cost-v1";
+    public const string ShadowValidationPurpose = "shadow-contract-validation-v1";
 }
 
 public static class OptimizationWorkerHttpHeaders
@@ -69,7 +70,10 @@ public sealed record OptimizationWorkLease(
     long CancellationGeneration,
     DateTime LeasedAt,
     DateTime ExpiresAt,
-    OptimizationEvaluationInput Input);
+    OptimizationEvaluationInput Input)
+{
+    public string Purpose { get; init; } = OptimizationWorkerContractCatalog.ShadowValidationPurpose;
+}
 
 public sealed record OptimizationWorkerHeartbeat(
     int ContractVersion,
@@ -92,6 +96,27 @@ public sealed record OptimizationWorkerResultSubmission(
     string ResultHash,
     string ResultJson,
     DateTime CompletedAt);
+
+public sealed record OptimizationWorkerHeartbeatReceipt(
+    int ContractVersion,
+    bool Continue,
+    DateTime LeaseExpiresAt,
+    long CancellationGeneration,
+    string Reason);
+
+public sealed record OptimizationWorkerResultReceipt(
+    int ContractVersion,
+    OptimizationResultAcceptance Acceptance);
+
+public sealed record OptimizationWorkerValidationResult(
+    int ContractVersion,
+    string Purpose,
+    string InputHash,
+    string StrategyHash,
+    string EvidenceId,
+    string PreparedDataHash,
+    int SeriesCount,
+    int BarCount);
 
 public static class OptimizationEvaluationInputIdentity
 {
@@ -122,6 +147,8 @@ public static class OptimizationLeaseCompatibilityPolicy
             return "unsupported-contract";
         if (string.IsNullOrWhiteSpace(lease.LeaseId) || lease.JobId <= 0 || lease.LeaseGeneration < 1)
             return "invalid-lease-identity";
+        if (lease.Purpose != OptimizationWorkerContractCatalog.ShadowValidationPurpose)
+            return "unsupported-lease-purpose";
         if (lease.ExpiresAt <= lease.LeasedAt)
             return "invalid-lease-window";
         var expected = OptimizationEvaluationInputIdentity.Compute(
@@ -137,10 +164,42 @@ public static class OptimizationLeaseCompatibilityPolicy
     }
 }
 
+public enum OptimizationHeartbeatAcceptance
+{
+    Accepted, UnsupportedContract, StaleLease, CancelledGeneration,
+    InputMismatch, LeaseExpired, InvalidProgress
+}
+
+public static class OptimizationHeartbeatAcceptancePolicy
+{
+    public static OptimizationHeartbeatAcceptance Evaluate(
+        OptimizationWorkLease lease,
+        OptimizationWorkerHeartbeat heartbeat,
+        long cancellationGeneration,
+        DateTime observedAt)
+    {
+        if (heartbeat.ContractVersion != OptimizationWorkerContractCatalog.HeartbeatVersion)
+            return OptimizationHeartbeatAcceptance.UnsupportedContract;
+        if (heartbeat.JobId != lease.JobId || heartbeat.LeaseId != lease.LeaseId
+            || heartbeat.LeaseGeneration != lease.LeaseGeneration)
+            return OptimizationHeartbeatAcceptance.StaleLease;
+        if (heartbeat.CancellationGeneration != cancellationGeneration
+            || lease.CancellationGeneration != cancellationGeneration)
+            return OptimizationHeartbeatAcceptance.CancelledGeneration;
+        if (heartbeat.InputHash != lease.Input.InputHash)
+            return OptimizationHeartbeatAcceptance.InputMismatch;
+        if (observedAt > lease.ExpiresAt)
+            return OptimizationHeartbeatAcceptance.LeaseExpired;
+        return heartbeat.TestedCombinations < 0
+            ? OptimizationHeartbeatAcceptance.InvalidProgress
+            : OptimizationHeartbeatAcceptance.Accepted;
+    }
+}
+
 public enum OptimizationResultAcceptance
 {
     Accepted, Duplicate, UnsupportedContract, StaleLease, CancelledGeneration,
-    InputMismatch, LeaseExpired, ResultHashMismatch
+    InputMismatch, LeaseExpired, ResultHashMismatch, InvalidResultPayload
 }
 
 public static class OptimizationResultAcceptancePolicy
@@ -162,10 +221,12 @@ public static class OptimizationResultAcceptancePolicy
             return OptimizationResultAcceptance.CancelledGeneration;
         if (submission.InputHash != lease.Input.InputHash)
             return OptimizationResultAcceptance.InputMismatch;
-        if (observedAt > lease.ExpiresAt)
-            return OptimizationResultAcceptance.LeaseExpired;
         if (CanonicalJsonHash.Compute(submission.ResultJson) != submission.ResultHash)
             return OptimizationResultAcceptance.ResultHashMismatch;
-        return duplicate ? OptimizationResultAcceptance.Duplicate : OptimizationResultAcceptance.Accepted;
+        if (duplicate)
+            return OptimizationResultAcceptance.Duplicate;
+        return observedAt > lease.ExpiresAt
+            ? OptimizationResultAcceptance.LeaseExpired
+            : OptimizationResultAcceptance.Accepted;
     }
 }

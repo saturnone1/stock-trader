@@ -7,6 +7,7 @@ open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.DependencyInjection
 open StockTrader.ServiceContracts.Optimization
 open StockTrader.OptimizationWorker.ControlPlaneProbe
+open StockTrader.OptimizationWorker.WorkerState
 
 let private status (probe: ProbeSnapshot) =
     {| service = "optimization-worker"
@@ -34,7 +35,7 @@ let run (_: string array) =
         Func<IResult>(fun () ->
             let snapshot = probe.Snapshot()
             let connected = if snapshot.Connected then 1 else 0
-            let body = $"stocktrader_optimization_worker_ready 1\nstocktrader_optimization_worker_control_connected {connected}\nstocktrader_optimization_worker_control_attempts_total {snapshot.Attempts}\nstocktrader_optimization_worker_control_successes_total {snapshot.Successes}\nstocktrader_optimization_worker_contract_version {OptimizationWorkerContractCatalog.LeaseVersion}\n"
+            let body = $"stocktrader_optimization_worker_ready 1\nstocktrader_optimization_worker_control_connected {connected}\nstocktrader_optimization_worker_control_attempts_total {snapshot.Attempts}\nstocktrader_optimization_worker_control_successes_total {snapshot.Successes}\nstocktrader_optimization_worker_leases_total {snapshot.Leases}\nstocktrader_optimization_worker_heartbeats_total {snapshot.Heartbeats}\nstocktrader_optimization_worker_results_total {snapshot.Results}\nstocktrader_optimization_worker_contract_version {OptimizationWorkerContractCatalog.LeaseVersion}\n"
             Results.Text(body, "text/plain; version=0.0.4")))
     |> ignore
 
