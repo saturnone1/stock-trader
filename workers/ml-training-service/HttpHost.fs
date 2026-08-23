@@ -16,12 +16,14 @@ module HttpHost =
     let run (args: string array) =
         let config = Configuration.load()
         let json = JsonSerializerOptions(JsonSerializerDefaults.Web)
+        let serverCertificate = X509Certificate2.CreateFromPemFile(
+            config.ServerCertificatePath, config.ServerCertificateKeyPath)
         let builder = WebApplication.CreateBuilder(args)
         builder.WebHost.ConfigureKestrel(fun options ->
             options.ListenAnyIP(8080) |> ignore
             options.ListenAnyIP(8443, Action<ListenOptions>(fun listen ->
-                listen.UseHttps(config.ServerCertificatePath, config.ServerCertificateKeyPath,
-                    Action<HttpsConnectionAdapterOptions>(fun https ->
+                listen.UseHttps(Action<HttpsConnectionAdapterOptions>(fun https ->
+                        https.ServerCertificate <- serverCertificate
                         https.ClientCertificateMode <- ClientCertificateMode.RequireCertificate
                         https.ClientCertificateValidation <- fun certificate _ _ ->
                             use chain = new X509Chain()
