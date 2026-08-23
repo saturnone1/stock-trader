@@ -36,8 +36,21 @@ public sealed class MarketDataRollbackProjector(
                     $"Rollback series count changed for {item.Symbol}/{frame}.");
             var bars = response.Bars.Select(MarketDataContractMapper.ToModel).ToArray();
             await local.AddBarsAsync(bars, ct);
-            var projected = await local.GetBarsAsync(
-                item.Symbol, frame, item.FirstBarUtc, item.LastBarUtc, ct);
+            // The compatibility schema stores timestamps as ISO text. EF's SQLite boundary
+            // parameter can sort just before an identical `...Z` value and omit the last bar.
+            // Read a padded window, then enforce the exact UTC range in memory.
+            var projectedWindow = await local.GetBarsAsync(
+                item.Symbol,
+                frame,
+                item.FirstBarUtc.AddDays(-1),
+                item.LastBarUtc.AddDays(1),
+                ct);
+            var firstBarUtc = MarketDataContractHash.Utc(item.FirstBarUtc);
+            var lastBarUtc = MarketDataContractHash.Utc(item.LastBarUtc);
+            var projected = projectedWindow
+                .Where(bar => MarketDataContractHash.Utc(bar.Timestamp) >= firstBarUtc
+                              && MarketDataContractHash.Utc(bar.Timestamp) <= lastBarUtc)
+                .ToArray();
             var difference = MarketDataContractParity.DescribeDifference(
                 response.Bars,
                 projected.Select(MarketDataContractMapper.ToContract));

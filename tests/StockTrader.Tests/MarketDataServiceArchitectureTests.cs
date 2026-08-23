@@ -43,7 +43,9 @@ public sealed class MarketDataServiceArchitectureTests
         registrations.Should().Contain("IOhlcvRepository, MarketDataRepositoryRouter");
         registrations.Should().Contain("MarketDataFeedRouter");
         streaming.Should().Contain("In-process Alpaca streaming disabled");
-        rollback.Should().Contain("MarketDataContractParity.ContentEquals(");
+        rollback.Should().Contain("MarketDataContractParity.DescribeDifference(");
+        rollback.Should().Contain("item.FirstBarUtc.AddDays(-1)");
+        rollback.Should().Contain("item.LastBarUtc.AddDays(1)");
     }
 
     [Fact]
