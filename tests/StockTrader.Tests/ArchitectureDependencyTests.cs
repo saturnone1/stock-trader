@@ -4080,6 +4080,7 @@ public class ArchitectureDependencyTests
             repository, "workers/optimization-worker/StockTrader.OptimizationWorker.fsproj"));
         var apiDeployment = File.ReadAllText(Path.Combine(
             repository, "k8s/deployment-api.yaml"));
+        var compositionRoot = File.ReadAllText(Path.Combine(repository, "Program.cs"));
         var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
 
         options.Should().Contain("MinimumSecretLength = 32");
@@ -4101,6 +4102,10 @@ public class ArchitectureDependencyTests
         apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseTransportEnabled");
         apiDeployment.Should().Contain("value: \"true\"");
         apiDeployment.Should().Contain("ClientCertificateMode");
+        apiDeployment.Should().Contain("name: public-http");
+        apiDeployment.Should().Contain("name: worker-tls");
+        compositionRoot.Should().Contain("https.ClientCertificateValidation");
+        compositionRoot.Should().Contain("LeaseTransportEnabled");
         handler.Should().Contain("GetClientCertificateAsync");
         handler.Should().Contain("certificates.IsTrusted");
         certificateValidator.Should().Contain("X509ChainTrustMode.CustomRootTrust");

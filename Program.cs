@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using System.Reflection;
 using Serilog;
 using StockTrader.Api;
+using StockTrader.Configuration;
 using StockTrader.Extensions;
 
 Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger();
@@ -13,6 +14,18 @@ try
     var builder = WebApplication.CreateBuilder(args);
     if (!isOpenApiGeneration && !builder.Environment.IsDevelopment())
         builder.Configuration.AddUserSecrets<Program>(optional: true);
+
+    if (builder.Configuration.GetValue<bool>(
+            $"{OptimizationWorkerTransportOptions.SectionName}:LeaseTransportEnabled"))
+    {
+        builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
+        {
+            // The private worker CA is intentionally absent from the host trust store.
+            // Accept it at the TLS boundary; the worker endpoints then enforce the
+            // configured CA, clientAuth EKU, common name, and shared secret.
+            https.ClientCertificateValidation = (_, _, _) => true;
+        }));
+    }
 
     builder.Host.UseSerilog((context, services, logging) => logging
         .ReadFrom.Configuration(context.Configuration)
