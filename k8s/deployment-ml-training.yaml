@@ -88,6 +88,8 @@ spec:
         - name: client-ca
           mountPath: /tls/client-ca
           readOnly: true
+        - name: runtime-tmp
+          mountPath: /tmp
         livenessProbe:
           httpGet:
             path: /health/live
@@ -116,6 +118,9 @@ spec:
           items:
           - key: ca.crt
             path: ca.crt
+      - name: runtime-tmp
+        emptyDir:
+          sizeLimit: 256Mi
 
 ---
 apiVersion: v1
