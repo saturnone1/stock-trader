@@ -20,6 +20,9 @@ public sealed class MarketDataServiceArchitectureTests
         sources.Should().NotContain("AppDbContext");
         sources.Should().NotContain("OhlcvRepository");
         sources.Should().NotContain("BrokerOrder");
+        sources.Should().Contain("StreamingProtocol.isAuthenticated authentication");
+        sources.Should().Contain("\"authenticated\"");
+        sources.Should().NotContain("authentication.Contains(\"authorized\"");
         manifest.Should().Contain("serviceAccountName: stocktrader-market-data");
         manifest.Should().Contain("automountServiceAccountToken: false");
         manifest.Should().Contain("__MARKET_DATA_DATA_DIR__");

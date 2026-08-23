@@ -13,6 +13,23 @@ open StockTrader.Domain.MarketData
 open StockTrader.Engine.MarketData
 open StockTrader.ServiceContracts.MarketData
 
+module StreamingProtocol =
+    let isAuthenticated (json: string) =
+        try
+            use document = JsonDocument.Parse(json)
+            document.RootElement.ValueKind = JsonValueKind.Array
+            && (document.RootElement.EnumerateArray()
+                |> Seq.exists (fun value ->
+                    String.Equals(
+                        ProviderJson.stringAt value "T",
+                        "success",
+                        StringComparison.OrdinalIgnoreCase)
+                    && String.Equals(
+                        ProviderJson.stringAt value "msg",
+                        "authenticated",
+                        StringComparison.OrdinalIgnoreCase)))
+        with :? JsonException -> false
+
 type SubscriptionState() =
     let sync = obj()
     let mutable symbols: string array = [||]
@@ -88,7 +105,7 @@ type AlpacaStreamingWorker(
         let! _ = receive socket ct
         do! send socket (JsonSerializer.Serialize({| action="auth"; key=settings.AlpacaKey; secret=settings.AlpacaSecret |})) ct
         let! authentication = receive socket ct
-        if not (authentication.Contains("authorized", StringComparison.OrdinalIgnoreCase)) then
+        if not (StreamingProtocol.isAuthenticated authentication) then
             invalidOp "Alpaca streaming authentication was rejected"
         subscriptions.SetConnected(true)
         let mutable appliedGeneration = -1L
