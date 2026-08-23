@@ -11,6 +11,12 @@ the target business and consistency boundaries; the
 cutover, and rollback gates. Neither document authorizes a runtime or database split without a
 separate extraction decision.
 
+MSA Stage 1 has started under [ADR 0070](adr/0070-establish-optimization-worker-contract-boundary.md).
+The optimization scheduler now depends on a process-neutral execution port, and versioned strategy,
+market-data evidence, lease, heartbeat, and result-acceptance contracts exist for conformance work.
+The adapter remains in-process; no remote worker, shared database, or second writer is active. New
+extracted computation/orchestration hosts default to F# while sharing the existing C# engine.
+
 ## Target modules
 
 | Module | Owns | Must not own |

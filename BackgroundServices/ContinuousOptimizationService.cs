@@ -12,13 +12,13 @@ public class ContinuousOptimizationService : BackgroundService
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly OptimizationJobExecutor _executor;
+    private readonly IOptimizationWorkExecutor _executor;
     private readonly ILogger<ContinuousOptimizationService> _logger;
     private readonly TimeProvider _clock;
 
     public ContinuousOptimizationService(
         IServiceScopeFactory scopeFactory,
-        OptimizationJobExecutor executor,
+        IOptimizationWorkExecutor executor,
         ILogger<ContinuousOptimizationService> logger,
         TimeProvider clock)
     {
@@ -62,7 +62,7 @@ public class ContinuousOptimizationService : BackgroundService
 
             try
             {
-                var disposition = await _executor.ExecuteJobAsync(job, stoppingToken);
+                var disposition = await _executor.ExecuteAsync(job, stoppingToken);
                 await PersistExecutionDispositionAsync(job.Id, disposition);
 
                 if (disposition == OptimizationJobExecutionDisposition.Completed)

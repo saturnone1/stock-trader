@@ -47,6 +47,19 @@ Trading Core <----- broker evidence -----------------------> Broker adapters
 The arrows do not imply shared databases. User-facing aggregation belongs at the Edge API; financial
 commands terminate at Trading Core. Research cannot directly place an order.
 
+## Implementation language policy
+
+Extracted compute and orchestration services default to **F# on .NET**. They reference shared C#
+contract and deterministic-engine assemblies instead of reimplementing strategy, indicator, fill,
+cost, or portfolio semantics. This keeps service hosts concise while preserving one executable
+meaning across preview, backtest, optimization, and live trading.
+
+The ASP.NET application project is not a shared library. Before the first F# host is introduced,
+contracts and deterministic engine code must compile as independent .NET libraries with architecture
+tests enforcing their dependency direction. Engine-free projection/notification services may
+evaluate Go in an extraction-specific ADR, but language diversity must demonstrate a material line
+count or operational benefit and must not duplicate a trading catalog or policy.
+
 ## Service scorecard
 
 Scores are relative to the current baseline: 1 is low and 5 is high.

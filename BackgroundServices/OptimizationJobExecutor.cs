@@ -9,7 +9,7 @@ namespace StockTrader.BackgroundServices;
 /// IServiceScopeFactory로 per-job scope를 생성하여 접근합니다.
 /// 준비된 평가 컨텍스트 위에서 청크·저장·중단 상태만 조정합니다.
 /// </summary>
-public class OptimizationJobExecutor
+public class OptimizationJobExecutor : IOptimizationWorkExecutor
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OptimizationJobExecutor> _logger;
@@ -29,7 +29,7 @@ public class OptimizationJobExecutor
     /// 작업 하나를 끝까지 (또는 취소/제한 도달까지) 실행합니다.
     /// 청크 단위로 진행되며, 중단되어도 CurrentChunkIndex가 저장되어 재시작 시 이어받을 수 있습니다.
     /// </summary>
-    internal async Task<OptimizationJobExecutionDisposition> ExecuteJobAsync(
+    public async Task<OptimizationJobExecutionDisposition> ExecuteAsync(
         OptimizationJobExecutionTicket job,
         CancellationToken ct)
     {

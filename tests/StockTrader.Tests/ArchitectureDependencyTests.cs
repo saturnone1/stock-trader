@@ -1140,7 +1140,6 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/OptimizationAutoTuneService.cs"));
         var autoTuneStore = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/OptimizationAutoTuneStore.cs"));
-
         document.Should().Contain("public sealed class StrategyDocument");
         document.Should().Contain("public int? StoredStrategyId { get; set; }");
         document.Should().NotContain("NormalizedName");
@@ -1607,6 +1606,10 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/OptimizationAutoTuneService.cs"));
         var autoTuneStore = File.ReadAllText(Path.Combine(
             repository, "Data/Repositories/OptimizationAutoTuneStore.cs"));
+        var workerContracts = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationWorkerContracts.cs"));
+        var backgroundRegistration = File.ReadAllText(Path.Combine(
+            repository, "Extensions/BackgroundServiceExtensions.cs"));
 
         source.Should().Contain("IOptimizationEvaluationContextPreparer");
         source.Should().Contain("IOptimizationJobExecutionStore");
@@ -1730,6 +1733,18 @@ public class ArchitectureDependencyTests
         source.Should().NotContain("DateTime.UtcNow");
         worker.Should().Contain("TimeProvider");
         worker.Should().Contain("IOptimizationJobLifecycle");
+        worker.Should().Contain("IOptimizationWorkExecutor");
+        worker.Should().NotContain("OptimizationJobExecutor _executor");
+        source.Should().Contain(": IOptimizationWorkExecutor");
+        backgroundRegistration.Should().Contain(
+            "AddSingleton<IOptimizationWorkExecutor, OptimizationJobExecutor>()");
+        workerContracts.Should().Contain("StrategyExecutionArtifact");
+        workerContracts.Should().Contain("OptimizationDataEvidenceSet");
+        workerContracts.Should().Contain("OptimizationWorkLease");
+        workerContracts.Should().Contain("OptimizationWorkerHeartbeat");
+        workerContracts.Should().Contain("OptimizationResultAcceptancePolicy");
+        workerContracts.Should().NotContain("StockTrader.Data");
+        workerContracts.Should().NotContain("Microsoft.EntityFrameworkCore");
         worker.Should().Contain("Task.Delay(PollInterval, _clock, stoppingToken)");
         worker.Should().NotContain("DateTime.UtcNow");
         worker.Should().NotContain("IOptimizationRepository");
