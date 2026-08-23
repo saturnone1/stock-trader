@@ -22,7 +22,7 @@ public static class OptimizationDataEvidenceFactory
             .ToArray();
         return new(
             OptimizationWorkerContractCatalog.EvaluationInputVersion,
-            CanonicalJsonHash.Compute(series),
+            OptimizationDataEvidenceIdentity.Compute(series),
             series);
     }
 
@@ -68,11 +68,12 @@ public static class OptimizationEvaluationInputFactory
         var requestJson = OptimizeRequestJsonCodec.Serialize(context.Request);
         var strategy = StrategyExecutionArtifactFactory.Create(context.Request.BasePattern);
         var evidence = OptimizationDataEvidenceFactory.Create(context);
+        var preparedData = OptimizationPreparedDataFactory.Create(context);
         var hash = OptimizationEvaluationInputIdentity.Compute(
             OptimizationWorkerContractCatalog.EvaluationInputVersion,
-            requestJson, strategy.ContentHash, evidence.EvidenceId);
+            requestJson, strategy.ContentHash, evidence.EvidenceId, preparedData.DataHash);
         return new(OptimizationWorkerContractCatalog.EvaluationInputVersion,
-            hash, requestJson, strategy, evidence);
+            hash, requestJson, strategy, evidence, preparedData);
     }
 }
 

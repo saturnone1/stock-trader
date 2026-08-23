@@ -1620,6 +1620,12 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/OptimizationWorkerContracts.cs"));
         var serviceContracts = File.ReadAllText(Path.Combine(
             repository, "src/StockTrader.ServiceContracts/OptimizationContracts.cs"));
+        var preparedDataContracts = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.ServiceContracts/OptimizationPreparedDataContracts.cs"));
+        var evidencePolicy = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.ServiceContracts/OptimizationDataEvidencePolicy.cs"));
+        var preparedDataFactory = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationPreparedDataFactory.cs"));
         var contractProject = File.ReadAllText(Path.Combine(
             repository, "src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj"));
         var engineProject = File.ReadAllText(Path.Combine(
@@ -1824,14 +1830,27 @@ public class ArchitectureDependencyTests
             "AddSingleton<IOptimizationWorkExecutor, OptimizationJobExecutor>()");
         workerContracts.Should().Contain("StrategyExecutionArtifactFactory");
         workerContracts.Should().Contain("OptimizationDataEvidenceFactory");
+        workerContracts.Should().Contain("OptimizationPreparedDataFactory.Create(context)");
         workerContracts.Should().NotContain("StockTrader.Data");
         workerContracts.Should().NotContain("Microsoft.EntityFrameworkCore");
         serviceContracts.Should().Contain("StrategyExecutionArtifact");
         serviceContracts.Should().Contain("OptimizationWorkLease");
+        serviceContracts.Should().Contain("OptimizationPreparedDataSet PreparedData");
+        serviceContracts.Should().Contain("OptimizationPreparedDataCompatibilityPolicy.Error");
+        serviceContracts.Should().Contain("OptimizationDataEvidenceCompatibilityPolicy.Error");
         serviceContracts.Should().Contain("OptimizationWorkerHeartbeat");
         serviceContracts.Should().Contain("OptimizationResultAcceptancePolicy");
         serviceContracts.Should().NotContain("StockTrader.Application");
         serviceContracts.Should().NotContain("StockTrader.Domain");
+        preparedDataContracts.Should().Contain("OptimizationPreparedSeries");
+        preparedDataContracts.Should().Contain("OptimizationRiskSnapshot");
+        preparedDataContracts.Should().Contain("invalid-prepared-series-shape");
+        preparedDataContracts.Should().NotContain("StockTrader.Models");
+        preparedDataContracts.Should().NotContain("StockTrader.Application");
+        evidencePolicy.Should().Contain("data-evidence-hash-mismatch");
+        evidencePolicy.Should().NotContain("StockTrader.Application");
+        preparedDataFactory.Should().Contain("data.Atr.ToArray()");
+        preparedDataFactory.Should().Contain("context.Regimes.OrderBy");
         contractProject.Should().NotContain("ProjectReference");
         engineProject.Should().Contain("StrategyCompiler.cs");
         engineProject.Should().Contain("StrategyDocument.cs");

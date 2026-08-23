@@ -45,6 +45,11 @@ public class OptimizationWorkerContractTests
         first.Series.Should().ContainSingle();
         first.Series[0].Completeness.Should().Be(OptimizationDataCompleteness.Unverified);
         first.Series[0].CalendarVersion.Should().Be(MarketCalendarVersion.Current);
+        OptimizationDataEvidenceCompatibilityPolicy.Error(first).Should().BeNull();
+        OptimizationDataEvidenceCompatibilityPolicy.Error(first with
+        {
+            Series = [first.Series[0] with { Provider = "tampered" }]
+        }).Should().Be("data-evidence-hash-mismatch");
     }
 
     [Fact]
@@ -58,6 +63,33 @@ public class OptimizationWorkerContractTests
         first.InputHash.Should().NotBe(correctedBar.InputHash);
         first.ContractVersion.Should().Be(OptimizationWorkerContractCatalog.EvaluationInputVersion);
         first.Strategy.ContentHash.Should().NotBeNullOrWhiteSpace();
+        first.PreparedData.Series.Should().ContainSingle();
+        first.PreparedData.Series[0].Bars.Should().HaveCount(2);
+        first.PreparedData.Series[0].Atr.Should().Equal(1m, 1m);
+        OptimizationPreparedDataCompatibilityPolicy.Error(first.PreparedData).Should().BeNull();
+    }
+
+    [Fact]
+    public void PreparedData_BindsRiskAndRejectsTamperedOrMisalignedSeries()
+    {
+        var first = OptimizationPreparedDataFactory.Create(Context(100m, riskPerTrade: 1m));
+        var changedRisk = OptimizationPreparedDataFactory.Create(Context(100m, riskPerTrade: 2m));
+        var series = first.Series[0] with { Atr = [1m] };
+        var invalidShape = first with
+        {
+            Series = [series],
+            DataHash = OptimizationPreparedDataIdentity.Compute([series], first.Regimes, first.Risk)
+        };
+        var tampered = first with
+        {
+            Risk = first.Risk with { RiskPerTradePercent = 9m }
+        };
+
+        first.DataHash.Should().NotBe(changedRisk.DataHash);
+        OptimizationPreparedDataCompatibilityPolicy.Error(invalidShape)
+            .Should().Be("invalid-prepared-series-shape");
+        OptimizationPreparedDataCompatibilityPolicy.Error(tampered)
+            .Should().Be("prepared-data-hash-mismatch");
     }
 
     [Fact]
@@ -132,7 +164,9 @@ public class OptimizationWorkerContractTests
         MaxHoldingBars = 20
     };
 
-    private static OptimizationEvaluationContext Context(decimal secondClose)
+    private static OptimizationEvaluationContext Context(
+        decimal secondClose,
+        decimal riskPerTrade = 1m)
     {
         var bars = new[]
         {
@@ -175,7 +209,7 @@ public class OptimizationWorkerContractTests
             byTimeFrame,
             symbols,
             [],
-            new OptimizationRiskParameters(1m, 3m, 5, 2),
+            new OptimizationRiskParameters(riskPerTrade, 3m, 5, 2),
             new Dictionary<TimeFrame, MarketDataEvidence> { [TimeFrame.Daily] = evidence },
             evidence);
     }

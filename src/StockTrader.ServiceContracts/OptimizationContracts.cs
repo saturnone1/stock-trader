@@ -2,10 +2,10 @@ namespace StockTrader.ServiceContracts.Optimization;
 
 public static class OptimizationWorkerContractCatalog
 {
-    public const int EvaluationInputVersion = 1;
-    public const int LeaseVersion = 1;
-    public const int HeartbeatVersion = 1;
-    public const int ResultVersion = 1;
+    public const int EvaluationInputVersion = 2;
+    public const int LeaseVersion = 2;
+    public const int HeartbeatVersion = 2;
+    public const int ResultVersion = 2;
     public const string EngineSemanticsVersion = "long-position-session-v1";
     public const string IndicatorCatalogVersion = "indicator-catalog-v1";
     public const string PatternCatalogVersion = "pattern-catalog-v1";
@@ -52,7 +52,8 @@ public sealed record OptimizationEvaluationInput(
     string InputHash,
     string RequestJson,
     StrategyExecutionArtifact Strategy,
-    OptimizationDataEvidenceSet DataEvidence);
+    OptimizationDataEvidenceSet DataEvidence,
+    OptimizationPreparedDataSet PreparedData);
 
 public sealed record OptimizationWorkLease(
     int ContractVersion,
@@ -92,12 +93,14 @@ public static class OptimizationEvaluationInputIdentity
         int contractVersion,
         string requestJson,
         string strategyHash,
-        string evidenceId) => CanonicalJsonHash.Compute(new
+        string evidenceId,
+        string preparedDataHash) => CanonicalJsonHash.Compute(new
         {
             ContractVersion = contractVersion,
             RequestJson = requestJson,
             StrategyHash = strategyHash,
-            EvidenceId = evidenceId
+            EvidenceId = evidenceId,
+            PreparedDataHash = preparedDataHash
         });
 }
 
@@ -108,7 +111,8 @@ public static class OptimizationLeaseCompatibilityPolicy
         if (lease.ContractVersion != OptimizationWorkerContractCatalog.LeaseVersion
             || lease.Input.ContractVersion != OptimizationWorkerContractCatalog.EvaluationInputVersion
             || lease.Input.Strategy.ContractVersion != OptimizationWorkerContractCatalog.EvaluationInputVersion
-            || lease.Input.DataEvidence.ContractVersion != OptimizationWorkerContractCatalog.EvaluationInputVersion)
+            || lease.Input.DataEvidence.ContractVersion != OptimizationWorkerContractCatalog.EvaluationInputVersion
+            || lease.Input.PreparedData.ContractVersion != OptimizationWorkerContractCatalog.EvaluationInputVersion)
             return "unsupported-contract";
         if (string.IsNullOrWhiteSpace(lease.LeaseId) || lease.JobId <= 0 || lease.LeaseGeneration < 1)
             return "invalid-lease-identity";
@@ -118,10 +122,12 @@ public static class OptimizationLeaseCompatibilityPolicy
             lease.Input.ContractVersion,
             lease.Input.RequestJson,
             lease.Input.Strategy.ContentHash,
-            lease.Input.DataEvidence.EvidenceId);
-        return string.Equals(expected, lease.Input.InputHash, StringComparison.Ordinal)
-            ? null
-            : "input-hash-mismatch";
+            lease.Input.DataEvidence.EvidenceId,
+            lease.Input.PreparedData.DataHash);
+        if (!string.Equals(expected, lease.Input.InputHash, StringComparison.Ordinal))
+            return "input-hash-mismatch";
+        return OptimizationDataEvidenceCompatibilityPolicy.Error(lease.Input.DataEvidence)
+            ?? OptimizationPreparedDataCompatibilityPolicy.Error(lease.Input.PreparedData);
     }
 }
 

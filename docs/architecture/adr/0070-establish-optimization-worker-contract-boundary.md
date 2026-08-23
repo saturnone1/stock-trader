@@ -38,11 +38,17 @@ The contract foundation contains:
   every symbol series;
 - an `OptimizationEvaluationInput` binding the serialized request to the strategy and data evidence
   identities;
+- an `OptimizationPreparedDataSet` carrying normalized bars, aligned precomputed indicator arrays,
+  regime snapshots, and risk settings under a separate canonical content hash;
 - lease, heartbeat, and result-submission contracts carrying lease generation, cancellation
   generation, input hash, expiry, and stable submission identity;
 - a fail-closed result-acceptance policy for unsupported, stale, cancelled, mismatched, expired,
   mutated, and duplicate submissions;
 - canonical JSON hashing that sorts object properties and preserves array order.
+
+Lease compatibility independently recomputes both prepared-data and evidence identities. Binding
+only the supplied IDs into the outer input hash is insufficient because a mutated inner payload
+could otherwise retain its old ID.
 
 Extracted computation and orchestration services will use **F# by default**. The F# host will
 reference the existing .NET contract and deterministic-engine assemblies. F# is selected for its
@@ -61,8 +67,9 @@ claim or the research result explicitly retains the degradation.
 
 ## Compatibility and conformance
 
-The first contract version has no backward compatibility obligation because it has no deployed
-remote consumer. Once a second process is introduced, producer and consumer must support a named
+Contract version 2 adds executable prepared data before any remote consumer exists, so version 1
+has no backward compatibility obligation. Once a second process is introduced, producer and
+consumer must support a named
 compatibility window and reject unknown versions.
 
 Characterization tests require that:
@@ -73,9 +80,19 @@ Characterization tests require that:
 4. stale leases and cancellation generations cannot be accepted;
 5. expired, mutated, and duplicate submissions have distinct outcomes;
 6. the current scheduling loop depends only on the application execution port.
+7. prepared arrays align exactly with their bar series and risk, regime, or price changes alter the
+   immutable prepared-data identity.
 
 The broader preview/backtest/live conformance corpus remains mandatory before a remote worker is
 enabled. This ADR does not weaken those gates.
+
+## Agent working-set budget
+
+The transport-neutral contract library keeps optimization messages split between a 152-nonblank-line
+lease/result file, an 82-line prepared-data file, a 28-line evidence policy, and a 39-line canonical
+hash helper. The monolith
+projection into the prepared-data contract is 63 nonblank lines, and the F# validator remains 50
+nonblank lines. Contract and policy duplication in the F# host remains zero.
 
 ## Deferred decisions
 

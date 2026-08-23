@@ -20,6 +20,14 @@ extracted computation/orchestration hosts default to F# while sharing the existi
 contract-only shadow validator; it cannot claim or execute jobs until the deterministic engine is an
 independent library and the Stage 2 release gates are approved.
 
+Optimization contract version 2 now carries the actual immutable prepared series required for
+remote computation: normalized OHLCV bars, aligned ATR/close/protective-stop/cumulative-RSI arrays,
+regime snapshots, and risk settings. A canonical data hash binds this payload to the evaluation
+input, and malformed, duplicated, or tampered series fail lease validation. This is still a local
+contract boundary, not an enabled remote lease transport. Evidence metadata has its own recomputed
+identity as well, so changing provider, adjustment, calendar, or range claims without changing the
+evidence ID is rejected.
+
 [ADR 0071](adr/0071-extract-deterministic-strategy-kernel.md) starts that engine split. Strategy
 documents, compilation, rule models, timeframe identity, and central strategy/indicator catalogs now
 compile into package-free `StockTrader.Engine`; shared artifact validation lives in
