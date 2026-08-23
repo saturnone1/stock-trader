@@ -18,6 +18,8 @@ module HttpHost =
         let json = JsonSerializerOptions(JsonSerializerDefaults.Web)
         let serverCertificate = X509Certificate2.CreateFromPemFile(
             config.ServerCertificatePath, config.ServerCertificateKeyPath)
+        let clientAuthority = X509Certificate2.CreateFromPem(
+            IO.File.ReadAllText config.ClientCaPath)
         let builder = WebApplication.CreateBuilder(args)
         builder.WebHost.ConfigureKestrel(fun options ->
             options.ListenAnyIP(8080) |> ignore
@@ -28,7 +30,7 @@ module HttpHost =
                         https.ClientCertificateValidation <- fun certificate _ _ ->
                             use chain = new X509Chain()
                             chain.ChainPolicy.TrustMode <- X509ChainTrustMode.CustomRootTrust
-                            chain.ChainPolicy.CustomTrustStore.Add(X509Certificate2.CreateFromPemFile(config.ClientCaPath)) |> ignore
+                            chain.ChainPolicy.CustomTrustStore.Add(clientAuthority) |> ignore
                             chain.ChainPolicy.RevocationMode <- X509RevocationMode.NoCheck
                             chain.Build certificate)) |> ignore)) |> ignore) |> ignore
         builder.Services.AddSingleton config |> ignore

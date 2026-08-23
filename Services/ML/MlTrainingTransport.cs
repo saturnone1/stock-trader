@@ -193,13 +193,14 @@ internal sealed class MlTrainingTransport : IMlTrainingTransport, IDisposable
         var handler = new HttpClientHandler();
         handler.ClientCertificates.Add(X509Certificate2.CreateFromPemFile(
             options.ClientCertificatePath, options.ClientCertificateKeyPath));
+        var serverAuthority = X509Certificate2.CreateFromPem(
+            File.ReadAllText(options.ServerCertificateAuthorityPath));
         handler.ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
         {
             if (certificate is null) return false;
             using var chain = new X509Chain();
             chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-            chain.ChainPolicy.CustomTrustStore.Add(
-                X509Certificate2.CreateFromPemFile(options.ServerCertificateAuthorityPath));
+            chain.ChainPolicy.CustomTrustStore.Add(serverAuthority);
             chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
             return chain.Build(certificate)
                 && certificate.GetNameInfo(X509NameType.DnsName, false)
