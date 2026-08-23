@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 using StockTrader.ServiceContracts;
 using StockTrader.ServiceContracts.Optimization;
 
@@ -19,7 +20,23 @@ public static class OptimizationShadowResultIdentity
             .OrderBy(candidate => candidate.Rank)
             .Select(candidate => candidate with
             {
-                ParametersJson = NormalizeParameters(candidate.ParametersJson)
+                ParametersJson = NormalizeParameters(candidate.ParametersJson),
+                TotalReturn = NormalizeDecimal(candidate.TotalReturn),
+                SortinoRatio = NormalizeDecimal(candidate.SortinoRatio),
+                SharpeRatio = NormalizeDecimal(candidate.SharpeRatio),
+                MaxDrawdown = NormalizeDecimal(candidate.MaxDrawdown),
+                WinRate = NormalizeDecimal(candidate.WinRate),
+                ProfitFactor = NormalizeDecimal(candidate.ProfitFactor),
+                CalmarRatio = NormalizeDecimal(candidate.CalmarRatio),
+                AnnualizedReturn = NormalizeDecimal(candidate.AnnualizedReturn),
+                OosTotalReturn = NormalizeDecimal(candidate.OosTotalReturn),
+                OosSortinoRatio = NormalizeDecimal(candidate.OosSortinoRatio),
+                OosSharpeRatio = NormalizeDecimal(candidate.OosSharpeRatio),
+                OosMaxDrawdown = NormalizeDecimal(candidate.OosMaxDrawdown),
+                OosWinRate = NormalizeDecimal(candidate.OosWinRate),
+                OosProfitFactor = NormalizeDecimal(candidate.OosProfitFactor),
+                OosCalmarRatio = NormalizeDecimal(candidate.OosCalmarRatio),
+                OosAnnualizedReturn = NormalizeDecimal(candidate.OosAnnualizedReturn)
             })
             .ToArray()
     };
@@ -36,4 +53,12 @@ public static class OptimizationShadowResultIdentity
             ?? throw new InvalidOperationException("Optimization parameters are empty.");
         return JsonSerializer.Serialize(parameters, Json);
     }
+
+    private static decimal NormalizeDecimal(decimal value) => decimal.Parse(
+        value.ToString("G29", CultureInfo.InvariantCulture),
+        NumberStyles.Float,
+        CultureInfo.InvariantCulture);
+
+    private static decimal? NormalizeDecimal(decimal? value) =>
+        value.HasValue ? NormalizeDecimal(value.Value) : null;
 }
