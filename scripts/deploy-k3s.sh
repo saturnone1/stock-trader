@@ -251,7 +251,10 @@ if $deploy_api; then
   sudo buildah rm "$migration_container" >/dev/null
 fi
 if $deploy_market_data; then
-  sudo install -d -m 0750 "$market_data_dir/backups"
+  # K3s hostPath does not reliably apply fsGroup ownership. The Market Data
+  # image runs as the fixed non-root UID/GID 1654 and exclusively owns this path.
+  sudo install -d -o 1654 -g 1654 -m 0750 "$market_data_dir"
+  sudo install -d -o 1654 -g 1654 -m 0750 "$market_data_dir/backups"
   if sudo test -f "$market_data_dir/marketdata.db"; then
     if ! command -v sqlite3 >/dev/null 2>&1; then
       echo "sqlite3 is required to back up the Market Data database." >&2
