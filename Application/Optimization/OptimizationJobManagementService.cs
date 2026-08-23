@@ -1,4 +1,6 @@
 using StockTrader.Domain.Optimization;
+using StockTrader.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace StockTrader.Application.Optimization;
 
@@ -105,7 +107,8 @@ public interface IOptimizationJobManagementStore
 public enum OptimizationJobCreateOutcome
 {
     Created,
-    InvalidName
+    InvalidName,
+    UnsupportedRemoteDuration
 }
 
 public sealed record OptimizationJobCreateResult(
@@ -133,13 +136,16 @@ public sealed class OptimizationJobManagementService
 
     private readonly IOptimizationJobManagementStore _store;
     private readonly TimeProvider _clock;
+    private readonly OptimizationWorkerTransportOptions _transport;
 
     public OptimizationJobManagementService(
         IOptimizationJobManagementStore store,
-        TimeProvider clock)
+        TimeProvider clock,
+        IOptions<OptimizationWorkerTransportOptions> transport)
     {
         _store = store;
         _clock = clock;
+        _transport = transport.Value;
     }
 
     public async Task<OptimizationJobCreateResult> CreateAsync(
@@ -148,6 +154,10 @@ public sealed class OptimizationJobManagementService
     {
         if (string.IsNullOrWhiteSpace(command.Name))
             return new OptimizationJobCreateResult(OptimizationJobCreateOutcome.InvalidName);
+        if (_transport.Mode == OptimizationWorkerTransportMode.Remote
+            && command.MaxDurationHours.HasValue)
+            return new OptimizationJobCreateResult(
+                OptimizationJobCreateOutcome.UnsupportedRemoteDuration);
 
         var stored = await _store.CreateAsync(new OptimizationJobRecord
         {

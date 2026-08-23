@@ -1,4 +1,6 @@
 using StockTrader.Api.Contracts;
+using StockTrader.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace StockTrader.Api;
 
@@ -8,7 +10,9 @@ public static class MetadataEndpoints
     {
         var group = api.MapGroup("/metadata").RequireAuthorization();
 
-        group.MapGet("/strategy-builder", () => Results.Ok(StrategyBuilderMetadataResponse.Create()))
+        group.MapGet("/strategy-builder", (
+            IOptions<OptimizationWorkerTransportOptions> optimization) =>
+            Results.Ok(StrategyBuilderMetadataResponse.Create(optimization.Value)))
             .Produces<StrategyBuilderMetadataResponse>();
 
         return api;

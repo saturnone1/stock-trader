@@ -18,6 +18,7 @@
 
   let rankOptions = []
   let defaultRankBy = ''
+  let optimizationExecution = null
 
   let timeFrameOptions = []
   let dataSourceOptions = [['', '기본 설정']]
@@ -131,6 +132,7 @@
     try {
       const metadata = await metadataApi.getStrategyBuilder()
       const rankingMetadata = projectOptimizationRankingMetadata(metadata)
+      optimizationExecution = metadata?.optimizationExecution ?? null
       rankOptions = rankingMetadata.rankOptions
       defaultRankBy = rankingMetadata.defaultRankBy
       if (!rankOptions.some(([value]) => value === form.rankBy)) form.rankBy = defaultRankBy
@@ -321,6 +323,7 @@
       {timeFrameOptions}
       {dataSourceOptions}
       {rankOptions}
+      execution={optimizationExecution}
       {entryRuleOptions}
       {exitRuleOptions}
       baseline={initialContext?.baseline}

@@ -1,4 +1,4 @@
-module StockTrader.OptimizationWorker.ShadowLeaseProcessor
+module StockTrader.OptimizationWorker.LeaseProcessor
 
 open System
 open System.Text.Json
@@ -14,15 +14,14 @@ let private compatibilityError (lease: OptimizationWorkLease) =
     match OptimizationLeaseCompatibilityPolicy.Error lease with
     | null -> StrategyExecutionArtifactPolicy.CompatibilityError lease.Input.Strategy |> Option.ofObj
     | error -> Some error
+let private isComputePurpose purpose =
+    purpose = OptimizationWorkerContractCatalog.OptimizationComputePurpose
+    || purpose = OptimizationWorkerContractCatalog.ShadowComputePurpose
 let private validationResult (lease: OptimizationWorkLease) =
     let input = lease.Input
     OptimizationWorkerValidationResult(
-        OptimizationWorkerContractCatalog.ResultVersion,
-        lease.Purpose,
-        input.InputHash,
-        input.Strategy.ContentHash,
-        input.DataEvidence.EvidenceId,
-        input.PreparedData.DataHash,
+        OptimizationWorkerContractCatalog.ResultVersion, lease.Purpose, input.InputHash,
+        input.Strategy.ContentHash, input.DataEvidence.EvidenceId, input.PreparedData.DataHash,
         input.PreparedData.Series.Count,
         input.PreparedData.Series |> Seq.sumBy (fun series -> series.Bars.Count))
 let private initialHeartbeat (control: Client) (state: ProbeState)
@@ -44,7 +43,7 @@ let private initialHeartbeat (control: Client) (state: ProbeState)
             return Ok ()
 }
 let private computeResult (lease: OptimizationWorkLease) (ct: CancellationToken) = task {
-    if lease.Purpose = OptimizationWorkerContractCatalog.ShadowComputePurpose then
+    if isComputePurpose lease.Purpose then
         let! result = OptimizationComputeFacade.ExecuteAsync(lease, ct)
         return JsonSerializer.Serialize(result)
     else
@@ -53,7 +52,7 @@ let private computeResult (lease: OptimizationWorkLease) (ct: CancellationToken)
 let private submitResult (control: Client) (state: ProbeState)
                          (lease: OptimizationWorkLease) resultJson ct = task {
     let suffix =
-        if lease.Purpose = OptimizationWorkerContractCatalog.ShadowComputePurpose
+        if isComputePurpose lease.Purpose
         then ":compute:v1" else ":validation:v1"
     let submission = OptimizationWorkerResultSubmission(
         OptimizationWorkerContractCatalog.ResultVersion,

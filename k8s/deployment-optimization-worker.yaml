@@ -13,11 +13,16 @@ metadata:
   namespace: stocktrader
   labels:
     app: stocktrader-optimization-worker
-    stocktrader.io/mode: shadow
+    stocktrader.io/mode: __OPTIMIZATION_WORKER_MODE_LABEL__
 spec:
-  replicas: 1
+  replicas: __OPTIMIZATION_WORKER_REPLICAS__
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 180
   strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: stocktrader-optimization-worker
@@ -25,7 +30,7 @@ spec:
     metadata:
       labels:
         app: stocktrader-optimization-worker
-        stocktrader.io/mode: shadow
+        stocktrader.io/mode: __OPTIMIZATION_WORKER_MODE_LABEL__
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/path: "/metrics"
@@ -52,6 +57,10 @@ spec:
           value: "Production"
         - name: STOCKTRADER_CONTROL_API_URL
           value: "https://stocktrader-api:3443"
+        - name: STOCKTRADER_WORKER_MODE
+          value: "__OPTIMIZATION_WORKER_MODE__"
+        - name: STOCKTRADER_WORKER_POLL_MILLISECONDS
+          value: "1000"
         - name: STOCKTRADER_WORKER_CLIENT_CERT_PATH
           value: "/tls/client/tls.crt"
         - name: STOCKTRADER_WORKER_CLIENT_KEY_PATH

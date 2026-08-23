@@ -14,6 +14,18 @@ public interface IOptimizationWorkerLeaseCoordinator
         DateTime observedAt,
         CancellationToken ct);
 
+    Task<OptimizationRemoteLeasePublication> PublishRemoteAsync(
+        int jobId,
+        OptimizationEvaluationInput input,
+        DateTime observedAt,
+        CancellationToken ct);
+
+    Task CancelRemoteAsync(
+        int jobId,
+        string leaseId,
+        DateTime observedAt,
+        CancellationToken ct);
+
     Task<OptimizationWorkLease?> TryLeaseAsync(
         string workerId,
         DateTime observedAt,
@@ -32,6 +44,29 @@ public interface IOptimizationWorkerLeaseCoordinator
         CancellationToken ct);
 }
 
+public sealed record OptimizationRemoteLeasePublication(
+    string LeaseId,
+    string InputHash);
+
+public enum OptimizationRemoteCommitOutcome
+{
+    Waiting,
+    Committed,
+    AlreadyCommitted,
+    JobStopped,
+    LeaseCancelled
+}
+
+public interface IOptimizationRemoteResultCommitter
+{
+    Task<OptimizationRemoteCommitOutcome> TryCommitAsync(
+        int jobId,
+        string leaseId,
+        string inputHash,
+        DateTime observedAt,
+        CancellationToken ct);
+}
+
 public sealed record OptimizationShadowComparisonSummary(
     int Awaiting,
     int Matches,
@@ -43,4 +78,25 @@ public interface IOptimizationShadowResultCoordinator
     Task RecordAuthoritativeAsync(int jobId, DateTime observedAt, CancellationToken ct);
 
     Task<OptimizationShadowComparisonSummary> GetSummaryAsync(CancellationToken ct);
+}
+
+public sealed record OptimizationWorkerLeaseOperationalSummary(
+    int Pending,
+    int Active,
+    int ExpiredActive,
+    int Completed,
+    int Cancelled,
+    int Reclaimed,
+    int CanonicalPending,
+    int CanonicalActive,
+    int CanonicalCompleted,
+    int CanonicalCommitted,
+    DateTime? OldestPendingAt,
+    DateTime? LastCompletedAt);
+
+public interface IOptimizationWorkerLeaseMonitor
+{
+    Task<OptimizationWorkerLeaseOperationalSummary> GetOperationalSummaryAsync(
+        DateTime observedAt,
+        CancellationToken ct);
 }

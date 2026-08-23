@@ -35,6 +35,10 @@ public class OptimizationWorkerTransportSecurityTests
             SharedSecret = ValidSecret,
             ClientCertificateAuthorityPath = "/tls/client-ca/ca.crt"
         }.IsValid().Should().BeTrue();
+        new OptimizationWorkerTransportOptions
+        {
+            Mode = OptimizationWorkerTransportMode.Remote
+        }.IsValid().Should().BeFalse();
     }
 
     [Theory]

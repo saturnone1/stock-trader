@@ -5,6 +5,7 @@ using StockTrader.Domain.Optimization;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
 using StockTrader.Api.Contracts;
+using StockTrader.Configuration;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -140,9 +141,10 @@ public class CentralCatalogTests
     [Fact]
     public void StrategyBuilderContractIsVersionedAndProjectsEveryCentralCatalogEntry()
     {
-        var contract = StrategyBuilderMetadataResponse.Create();
+        var contract = StrategyBuilderMetadataResponse.Create(
+            new OptimizationWorkerTransportOptions());
 
-        contract.SchemaVersion.Should().Be(6);
+        contract.SchemaVersion.Should().Be(7);
         contract.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
@@ -165,6 +167,15 @@ public class CentralCatalogTests
             .Should().Equal(OptimizationRankingCatalog.All.Select(item => item.Code));
         contract.OptimizationRankings.Should().ContainSingle(item => item.IsDefault)
             .Which.Code.Should().Be(OptimizationRankingCatalog.DefaultCode);
+        contract.OptimizationExecution.UsesRemoteWorker.Should().BeFalse();
+        var remote = StrategyBuilderMetadataResponse.Create(new OptimizationWorkerTransportOptions
+        {
+            Mode = OptimizationWorkerTransportMode.Remote,
+            MaxConcurrentRemoteJobs = 4
+        });
+        remote.OptimizationExecution.UsesRemoteWorker.Should().BeTrue();
+        remote.OptimizationExecution.SupportsDurationLimit.Should().BeFalse();
+        remote.OptimizationExecution.MaxConcurrentJobs.Should().Be(4);
         contract.TimeFrames.Should().OnlyContain(item =>
             item.Preview.DefaultLookbackDays > 0
             && item.Preview.MaximumRangeDays >= item.Preview.DefaultLookbackDays
@@ -177,12 +188,13 @@ public class CentralCatalogTests
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         options.Converters.Add(new JsonStringEnumConverter());
 
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(StrategyBuilderMetadataResponse.Create(), options));
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(
+            StrategyBuilderMetadataResponse.Create(new OptimizationWorkerTransportOptions()), options));
         var root = json.RootElement;
         var yahoo = root.GetProperty("dataProviders").EnumerateArray()
             .Single(item => item.GetProperty("value").GetString() == "Yahoo");
 
-        root.GetProperty("schemaVersion").GetInt32().Should().Be(6);
+        root.GetProperty("schemaVersion").GetInt32().Should().Be(7);
         root.GetProperty("timeFrames")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         yahoo.GetProperty("maximumLookbackDays").GetProperty("OneMinute").GetInt32().Should().Be(7);
         root.GetProperty("slippageModels")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);

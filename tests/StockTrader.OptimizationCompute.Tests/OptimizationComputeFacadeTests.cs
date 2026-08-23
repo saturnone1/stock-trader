@@ -26,13 +26,13 @@ public sealed class OptimizationComputeFacadeTests
             From.AddMinutes(5),
             input)
         {
-            Purpose = OptimizationWorkerContractCatalog.ShadowComputePurpose
+            Purpose = OptimizationWorkerContractCatalog.OptimizationComputePurpose
         };
 
         var result = await OptimizationComputeFacade.ExecuteAsync(lease);
 
         result.InputHash.Should().Be(input.InputHash);
-        result.Purpose.Should().Be(OptimizationWorkerContractCatalog.ShadowComputePurpose);
+        result.Purpose.Should().Be(OptimizationWorkerContractCatalog.OptimizationComputePurpose);
         result.TotalCombinations.Should().Be(1);
         result.TestedCombinations.Should().Be(1);
         result.Results.Should().ContainSingle();

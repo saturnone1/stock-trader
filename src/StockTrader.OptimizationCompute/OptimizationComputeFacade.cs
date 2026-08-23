@@ -20,7 +20,8 @@ public static class OptimizationComputeFacade
             ?? StrategyExecutionArtifactPolicy.CompatibilityError(lease.Input.Strategy);
         if (error is not null)
             throw new InvalidOperationException($"Incompatible optimization lease: {error}");
-        if (lease.Purpose != OptimizationWorkerContractCatalog.ShadowComputePurpose)
+        if (lease.Purpose != OptimizationWorkerContractCatalog.ShadowComputePurpose
+            && lease.Purpose != OptimizationWorkerContractCatalog.OptimizationComputePurpose)
             throw new InvalidOperationException($"Unsupported compute purpose: {lease.Purpose}");
 
         var request = OptimizeRequestJsonCodec.Deserialize(lease.Input.RequestJson)
@@ -43,6 +44,7 @@ public static class OptimizationComputeFacade
             evaluator,
             NullLogger<BacktestOptimizationService>.Instance);
         var response = await service.RunAsync(request, ct);
-        return OptimizationComputeResultMapper.Map(lease.Input.InputHash, response);
+        return OptimizationComputeResultMapper.Map(
+            lease.Purpose, lease.Input.InputHash, response);
     }
 }

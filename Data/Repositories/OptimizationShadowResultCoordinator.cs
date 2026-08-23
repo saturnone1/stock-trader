@@ -17,7 +17,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var lease = await db.OptimizationWorkerLeases
             .SingleOrDefaultAsync(item => item.JobId == jobId
-                && item.Purpose == OptimizationWorkerContractCatalog.ShadowComputePurpose, ct);
+                && item.Authority == OptimizationWorkerLeaseAuthority.Shadow, ct);
         if (lease is null) return;
         var job = await db.OptimizationJobs.AsNoTracking()
             .SingleAsync(item => item.Id == jobId, ct);
@@ -55,7 +55,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var statuses = await db.OptimizationWorkerLeases.AsNoTracking()
-            .Where(item => item.Purpose == OptimizationWorkerContractCatalog.ShadowComputePurpose)
+            .Where(item => item.Authority == OptimizationWorkerLeaseAuthority.Shadow)
             .GroupBy(item => item.ComparisonStatus)
             .Select(group => new { Status = group.Key, Count = group.Count() })
             .ToListAsync(ct);

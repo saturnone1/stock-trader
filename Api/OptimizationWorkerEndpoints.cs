@@ -20,6 +20,8 @@ public static class OptimizationWorkerEndpoints
             ClaimsPrincipal worker,
             IOptions<OptimizationWorkerTransportOptions> transport,
             IOptimizationShadowResultCoordinator comparisons,
+            IOptimizationWorkerLeaseMonitor leaseMonitor,
+            TimeProvider clock,
             CancellationToken ct) => Results.Ok(new
         {
             service = "strategy-research",
@@ -28,7 +30,8 @@ public static class OptimizationWorkerEndpoints
             leaseTransportEnabled = transport.Value.LeaseTransportEnabled,
             contractVersion = OptimizationWorkerContractCatalog.LeaseVersion,
             engineSemanticsVersion = OptimizationWorkerContractCatalog.EngineSemanticsVersion,
-            shadowComparisons = await comparisons.GetSummaryAsync(ct)
+            shadowComparisons = await comparisons.GetSummaryAsync(ct),
+            leases = await leaseMonitor.GetOperationalSummaryAsync(UtcNow(clock), ct)
         }));
 
         group.MapPost("/leases/claim", async (

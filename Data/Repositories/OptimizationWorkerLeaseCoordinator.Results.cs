@@ -50,7 +50,8 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
                 ct);
         if (affected == 1)
         {
-            await CompleteWorkerComparisonAsync(db, record.LeaseId, now, ct);
+            if (record.Authority == OptimizationWorkerLeaseAuthority.Shadow)
+                await CompleteWorkerComparisonAsync(db, record.LeaseId, now, ct);
             return Result(OptimizationResultAcceptance.Accepted);
         }
 
@@ -70,6 +71,8 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
             OptimizationWorkerContractCatalog.ShadowValidationPurpose =>
                 IsMatchingValidationResult(record, resultJson),
             OptimizationWorkerContractCatalog.ShadowComputePurpose =>
+                IsMatchingComputeResult(record, resultJson),
+            OptimizationWorkerContractCatalog.OptimizationComputePurpose =>
                 IsMatchingComputeResult(record, resultJson),
             _ => false
         };

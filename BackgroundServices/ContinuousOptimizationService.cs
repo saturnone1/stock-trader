@@ -1,12 +1,10 @@
 using StockTrader.Application.Optimization;
+using StockTrader.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace StockTrader.BackgroundServices;
 
-/// <summary>
-/// 우선순위 큐 방식으로 OptimizationJob을 연속 실행하는 BackgroundService.
-/// Pending 작업이 없으면 30초 대기 후 재확인합니다.
-/// 앱 종료(StoppingToken 취소) 시 현재 청크 완료 후 Pending으로 상태를 되돌립니다.
-/// </summary>
+/// <summary>우선순위 큐를 제한된 동시성으로 실행하고 종료 시 작업을 재개 가능하게 보존합니다.</summary>
 public class ContinuousOptimizationService : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
@@ -15,89 +13,111 @@ public class ContinuousOptimizationService : BackgroundService
     private readonly IOptimizationWorkExecutor _executor;
     private readonly ILogger<ContinuousOptimizationService> _logger;
     private readonly TimeProvider _clock;
+    private readonly int _maxConcurrency;
 
     public ContinuousOptimizationService(
         IServiceScopeFactory scopeFactory,
         IOptimizationWorkExecutor executor,
         ILogger<ContinuousOptimizationService> logger,
-        TimeProvider clock)
+        TimeProvider clock,
+        IOptions<OptimizationWorkerTransportOptions> transport)
     {
         _scopeFactory = scopeFactory;
         _executor = executor;
         _logger = logger;
         _clock = clock;
+        _maxConcurrency = transport.Value.Mode == OptimizationWorkerTransportMode.Remote
+            ? transport.Value.MaxConcurrentRemoteJobs
+            : 1;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("ContinuousOptimizationService 시작");
+        var running = new HashSet<Task>();
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            OptimizationJobExecutionTicket? job = null;
-
-            try
+            while (running.Count < _maxConcurrency && !stoppingToken.IsCancellationRequested)
             {
-                job = await UseLifecycleAsync(
-                    lifecycle => lifecycle.TryStartNextAsync(UtcNow));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "다음 Pending Job 시작 실패 — {Delay}후 재시도", PollInterval);
-                await Task.Delay(PollInterval, _clock, stoppingToken);
-                continue;
-            }
-
-            if (job == null)
-            {
-                _logger.LogDebug("대기 중인 최적화 작업 없음 — {Delay} 대기", PollInterval);
-                await Task.Delay(PollInterval, _clock, stoppingToken);
-                continue;
-            }
-
-            _logger.LogInformation(
-                "최적화 작업 시작: Job {Id} ({Name}), Priority={Priority}",
-                job.Id, job.Name, job.Priority);
-
-            try
-            {
-                var disposition = await _executor.ExecuteAsync(job, stoppingToken);
-                await PersistExecutionDispositionAsync(job.Id, disposition);
-
-                if (disposition == OptimizationJobExecutionDisposition.Completed)
-                    await UseAutoTuneAsync(job.Id, stoppingToken);
-
-                if (disposition == OptimizationJobExecutionDisposition.Completed)
+                OptimizationJobExecutionTicket? job;
+                try
                 {
-                    _logger.LogInformation(
-                        "최적화 작업 완료: Job {Id} ({Name})",
-                        job.Id, job.Name);
+                    job = await UseLifecycleAsync(
+                        lifecycle => lifecycle.TryStartNextAsync(UtcNow));
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "다음 Pending Job 시작 실패 — {Delay}후 재시도", PollInterval);
+                    break;
+                }
+                if (job is null) break;
+                running.Add(ExecuteClaimedJobAsync(job, stoppingToken));
             }
-            catch (OperationCanceledException)
-            {
-                // 앱 종료 시 → Pending으로 되돌려 재시작 시 이어받을 수 있도록
-                _logger.LogWarning(
-                    "최적화 작업 중단 (앱 종료): Job {Id} → Pending으로 복귀 (청크 인덱스={Chunk})",
-                    job.Id, job.CurrentChunkIndex);
 
-                await ReturnToPendingSafelyAsync(job.Id);
+            if (running.Count == 0)
+            {
+                await Task.Delay(PollInterval, _clock, stoppingToken);
+                continue;
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "최적화 작업 실패: Job {Id} ({Name})",
-                    job.Id, job.Name);
 
-                await MarkFailedSafelyAsync(
-                    job.Id,
-                    UtcNow,
-                    ex.Message);
+            var wake = Task.Delay(PollInterval, _clock, stoppingToken);
+            await Task.WhenAny(running.Append(wake));
+            foreach (var completed in running.Where(task => task.IsCompleted).ToArray())
+            {
+                running.Remove(completed);
+                await completed;
             }
         }
 
+        if (running.Count > 0)
+            await Task.WhenAll(running);
         _logger.LogInformation("ContinuousOptimizationService 종료");
+    }
+
+    private async Task ExecuteClaimedJobAsync(
+        OptimizationJobExecutionTicket job,
+        CancellationToken stoppingToken)
+    {
+        _logger.LogInformation(
+            "최적화 작업 시작: Job {Id} ({Name}), Priority={Priority}",
+            job.Id, job.Name, job.Priority);
+
+        try
+        {
+            var disposition = await _executor.ExecuteAsync(job, stoppingToken);
+            await PersistExecutionDispositionAsync(job.Id, disposition);
+
+            if (disposition == OptimizationJobExecutionDisposition.Completed)
+                await UseAutoTuneAsync(job.Id, stoppingToken);
+
+            if (disposition == OptimizationJobExecutionDisposition.Completed)
+            {
+                _logger.LogInformation(
+                    "최적화 작업 완료: Job {Id} ({Name})",
+                    job.Id, job.Name);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "최적화 작업 중단 (앱 종료): Job {Id} → Pending으로 복귀 (청크 인덱스={Chunk})",
+                job.Id, job.CurrentChunkIndex);
+
+            await ReturnToPendingSafelyAsync(job.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "최적화 작업 실패: Job {Id} ({Name})",
+                job.Id, job.Name);
+
+            await MarkFailedSafelyAsync(
+                job.Id,
+                UtcNow,
+                ex.Message);
+        }
     }
 
     private async Task PersistExecutionDispositionAsync(

@@ -53,9 +53,15 @@ spec:
         - name: OptimizationWorkerTransport__Enabled
           value: "true"
         - name: OptimizationWorkerTransport__LeaseTransportEnabled
-          value: "true"
+          value: "__OPTIMIZATION_WORKER_LEASE_TRANSPORT_ENABLED__"
         - name: OptimizationWorkerTransport__Mode
-          value: "Shadow"
+          value: "__OPTIMIZATION_WORKER_MODE__"
+        - name: OptimizationWorkerTransport__LeaseSeconds
+          value: "60"
+        - name: OptimizationWorkerTransport__RemotePollMilliseconds
+          value: "1000"
+        - name: OptimizationWorkerTransport__MaxConcurrentRemoteJobs
+          value: "__OPTIMIZATION_WORKER_CONCURRENCY__"
         - name: OptimizationWorkerTransport__SharedSecret
           valueFrom:
             secretKeyRef:

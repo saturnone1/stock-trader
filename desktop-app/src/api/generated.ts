@@ -3426,6 +3426,15 @@ export interface components {
             count: number;
             positions: components["schemas"]["OpenPositionResponse"][];
         };
+        OptimizationExecutionMetadataResponse: {
+            mode: string;
+            usesRemoteWorker: boolean;
+            supportsDurationLimit: boolean;
+            /** Format: int32 */
+            maxConcurrentJobs: number;
+            /** Format: int32 */
+            leaseSeconds: number;
+        };
         OptimizationRankMetadataResponse: {
             code: string;
             displayName: string;
@@ -4176,6 +4185,7 @@ export interface components {
             targetMethods: components["schemas"]["ExitMethodMetadataResponse"][];
             slippageModels: components["schemas"]["SlippageModelMetadataResponse"][];
             optimizationRankings: components["schemas"]["OptimizationRankMetadataResponse"][];
+            optimizationExecution: components["schemas"]["OptimizationExecutionMetadataResponse"];
             liveStrategyConstraints: components["schemas"]["LiveStrategyConstraintsMetadataResponse"];
         };
         StrategyDocument: {

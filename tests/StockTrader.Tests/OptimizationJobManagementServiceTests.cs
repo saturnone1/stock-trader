@@ -6,6 +6,8 @@ using StockTrader.Application.Optimization;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
+using StockTrader.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace StockTrader.Tests;
 
@@ -68,7 +70,8 @@ public class OptimizationJobManagementServiceTests
         var now = new DateTimeOffset(2026, 8, 18, 6, 0, 0, TimeSpan.Zero);
         var service = new OptimizationJobManagementService(
             store.Object,
-            new FixedTimeProvider(now));
+            new FixedTimeProvider(now),
+            Options.Create(new OptimizationWorkerTransportOptions()));
 
         var result = await service.CreateAsync(new CreateOptimizationJobCommand(
             "  research  ",
@@ -96,6 +99,30 @@ public class OptimizationJobManagementServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RemoteModeRejectsWallClockLimitBeforePersistence()
+    {
+        var store = new Mock<IOptimizationJobManagementStore>(MockBehavior.Strict);
+        var service = new OptimizationJobManagementService(
+            store.Object,
+            new FixedTimeProvider(DateTimeOffset.UnixEpoch),
+            Options.Create(new OptimizationWorkerTransportOptions
+            {
+                Mode = OptimizationWorkerTransportMode.Remote,
+                Enabled = true,
+                LeaseTransportEnabled = true,
+                SharedSecret = new string('x', 32),
+                ClientCertificateAuthorityPath = "/tls/ca.crt"
+            }));
+
+        var result = await service.CreateAsync(new CreateOptimizationJobCommand(
+            "remote-duration", 0, 200, 1m, null, 10, "sortinoRatio",
+            false, false, 10, new OptimizeRequest()));
+
+        result.Outcome.Should().Be(OptimizationJobCreateOutcome.UnsupportedRemoteDuration);
+        store.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task FindAsync_ProjectsProgressAndRemainingTimeFromOneObservation()
     {
         var now = new DateTimeOffset(2026, 8, 18, 7, 0, 0, TimeSpan.Zero);
@@ -114,7 +141,8 @@ public class OptimizationJobManagementServiceTests
             .ReturnsAsync(stored);
         var service = new OptimizationJobManagementService(
             store.Object,
-            new FixedTimeProvider(now));
+            new FixedTimeProvider(now),
+            Options.Create(new OptimizationWorkerTransportOptions()));
 
         var result = await service.FindAsync(3);
 
@@ -144,7 +172,8 @@ public class OptimizationJobManagementServiceTests
             .ReturnsAsync(false);
         var service = new OptimizationJobManagementService(
             store.Object,
-            new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+            new FixedTimeProvider(DateTimeOffset.UnixEpoch),
+            Options.Create(new OptimizationWorkerTransportOptions()));
 
         var result = await service.DeleteAsync(9);
 

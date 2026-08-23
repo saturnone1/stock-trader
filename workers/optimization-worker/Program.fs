@@ -5,11 +5,15 @@ open StockTrader.Optimization.Protocol
 open StockTrader.ServiceContracts.Optimization
 
 let json = JsonSerializerOptions(JsonSerializerDefaults.Web)
+let mode =
+    Environment.GetEnvironmentVariable("STOCKTRADER_WORKER_MODE")
+    |> Option.ofObj
+    |> Option.defaultValue "remote"
 
 let emit status detail =
     JsonSerializer.Serialize(
         {| service = "optimization-worker"
-           mode = "shadow"
+           mode = mode
            status = status
            detail = detail
            contractVersion = OptimizationWorkerContractCatalog.LeaseVersion |}, json)

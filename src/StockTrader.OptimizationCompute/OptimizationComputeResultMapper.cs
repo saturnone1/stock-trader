@@ -9,10 +9,11 @@ internal static class OptimizationComputeResultMapper
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public static OptimizationWorkerComputeResult Map(
+        string purpose,
         string inputHash,
         OptimizeResponse response) => new(
         OptimizationWorkerContractCatalog.ResultVersion,
-        OptimizationWorkerContractCatalog.ShadowComputePurpose,
+        purpose,
         inputHash,
         response.TotalCombinations,
         response.TestedCombinations,

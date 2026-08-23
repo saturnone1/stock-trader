@@ -4763,6 +4763,35 @@
           }
         }
       },
+      "OptimizationExecutionMetadataResponse": {
+        "required": [
+          "mode",
+          "usesRemoteWorker",
+          "supportsDurationLimit",
+          "maxConcurrentJobs",
+          "leaseSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "usesRemoteWorker": {
+            "type": "boolean"
+          },
+          "supportsDurationLimit": {
+            "type": "boolean"
+          },
+          "maxConcurrentJobs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "leaseSeconds": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "OptimizationRankMetadataResponse": {
         "required": [
           "code",
@@ -7485,6 +7514,7 @@
           "targetMethods",
           "slippageModels",
           "optimizationRankings",
+          "optimizationExecution",
           "liveStrategyConstraints"
         ],
         "type": "object",
@@ -7574,6 +7604,9 @@
             "items": {
               "$ref": "#/components/schemas/OptimizationRankMetadataResponse"
             }
+          },
+          "optimizationExecution": {
+            "$ref": "#/components/schemas/OptimizationExecutionMetadataResponse"
           },
           "liveStrategyConstraints": {
             "$ref": "#/components/schemas/LiveStrategyConstraintsMetadataResponse"

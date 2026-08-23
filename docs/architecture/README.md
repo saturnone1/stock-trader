@@ -81,6 +81,13 @@ both processes while only the in-process executor writes canonical results. Norm
 hashes produce durable awaiting/match/mismatch audit states. Stage 2 candidate selection is also now
 independent of database Job ID across synchronous, background, and Worker paths.
 
+[ADR 0077](adr/0077-cut-over-remote-optimization-authority.md) defines the full Optimization Worker
+completion boundary. Remote mode makes the Worker the exclusive candidate evaluator while Strategy
+Research remains the single canonical database writer. Durable exactly-once commit, cancellation,
+lease-generation reclaim, two-Pod bounded capacity, dependency-aware readiness, and an explicit
+Shadow rollback are implemented; the ADR remains proposed until the complete service-level K3s
+verification batch passes.
+
 ## Target modules
 
 | Module | Owns | Must not own |

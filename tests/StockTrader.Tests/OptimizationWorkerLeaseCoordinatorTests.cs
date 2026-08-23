@@ -40,7 +40,7 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
         claims.Should().ContainSingle(lease => lease != null);
         var lease = claims.Single(item => item is not null)!;
         lease.Input.InputHash.Should().Be(input.InputHash);
-        lease.Purpose.Should().Be(OptimizationWorkerContractCatalog.ShadowComputePurpose);
+        lease.Purpose.Should().Be(OptimizationWorkerContractCatalog.OptimizationComputePurpose);
         lease.LeaseGeneration.Should().Be(1);
     }
 
@@ -95,6 +95,12 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
             "worker-b", Now.AddSeconds(31), default);
         second.Should().NotBeNull();
         second!.LeaseGeneration.Should().Be(2);
+        var reclaimed = await fixture.Store.GetOperationalSummaryAsync(
+            Now.AddSeconds(32), default);
+        reclaimed.Pending.Should().Be(0);
+        reclaimed.Active.Should().Be(1);
+        reclaimed.ExpiredActive.Should().Be(0);
+        reclaimed.Reclaimed.Should().Be(1);
 
         var staleSubmission = Submission(first, Now.AddSeconds(32));
         (await fixture.Store.SubmitResultAsync(
@@ -123,6 +129,10 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
         stopped.Continue.Should().BeFalse();
         stopped.Reason.Should().Be("job-stopped");
         stopped.CancellationGeneration.Should().Be(1);
+        var cancelled = await fixture.Store.GetOperationalSummaryAsync(
+            Now.AddSeconds(34), default);
+        cancelled.Active.Should().Be(0);
+        cancelled.Cancelled.Should().Be(1);
     }
 
     [Fact]
@@ -145,6 +155,60 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
         OptimizationHeartbeatAcceptancePolicy.Evaluate(
             lease, Heartbeat(lease, Now.AddSeconds(1)) with { InputHash = "changed" },
             3, Now.AddSeconds(1)).Should().Be(OptimizationHeartbeatAcceptance.InputMismatch);
+    }
+
+    [Fact]
+    public async Task RemoteAuthority_CommitsCanonicalResultExactlyOnce()
+    {
+        await using var fixture = await LeaseFixture.CreateAsync(
+            mode: OptimizationWorkerTransportMode.Remote);
+        var publication = await fixture.Store.PublishRemoteAsync(1, Input(), Now, default);
+        var lease = await fixture.Store.TryLeaseAsync("worker-a", Now.AddSeconds(1), default);
+        lease.Should().NotBeNull();
+        lease!.LeaseId.Should().Be(publication.LeaseId);
+
+        var submission = Submission(lease, Now.AddSeconds(2));
+        (await fixture.Store.SubmitResultAsync(
+            "worker-a", submission, Now.AddSeconds(2), default)).Acceptance
+            .Should().Be(OptimizationResultAcceptance.Accepted);
+        (await fixture.Store.TryCommitAsync(
+            1, publication.LeaseId, publication.InputHash, Now.AddSeconds(3), default))
+            .Should().Be(OptimizationRemoteCommitOutcome.Committed);
+        (await fixture.SecondStore.TryCommitAsync(
+            1, publication.LeaseId, publication.InputHash, Now.AddSeconds(4), default))
+            .Should().Be(OptimizationRemoteCommitOutcome.AlreadyCommitted);
+
+        await using var db = await fixture.Factory.CreateDbContextAsync();
+        var stored = await db.OptimizationWorkerLeases.SingleAsync();
+        stored.Authority.Should().Be(OptimizationWorkerLeaseAuthority.Canonical);
+        stored.CanonicalCommittedAt.Should().Be(Now.AddSeconds(3));
+        stored.CanonicalResultHash.Should().NotBeNullOrWhiteSpace();
+        var summary = await fixture.Store.GetOperationalSummaryAsync(
+            Now.AddSeconds(4), default);
+        summary.CanonicalCompleted.Should().Be(1);
+        summary.CanonicalCommitted.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RemoteAuthority_CancelInvalidatesCurrentGeneration()
+    {
+        await using var fixture = await LeaseFixture.CreateAsync(
+            mode: OptimizationWorkerTransportMode.Remote);
+        var publication = await fixture.Store.PublishRemoteAsync(1, Input(), Now, default);
+        var lease = (await fixture.Store.TryLeaseAsync(
+            "worker-a", Now.AddSeconds(1), default))!;
+
+        await fixture.Store.CancelRemoteAsync(
+            1, publication.LeaseId, Now.AddSeconds(2), default);
+
+        var stopped = await fixture.Store.HeartbeatAsync(
+            "worker-a", Heartbeat(lease, Now.AddSeconds(3)), Now.AddSeconds(3), default);
+        stopped.Continue.Should().BeFalse();
+        stopped.Reason.Should().Be("lease-cancelled");
+        stopped.CancellationGeneration.Should().Be(1);
+        (await fixture.Store.SubmitResultAsync(
+            "worker-a", Submission(lease, Now.AddSeconds(3)), Now.AddSeconds(3), default))
+            .Acceptance.Should().Be(OptimizationResultAcceptance.CancelledGeneration);
     }
 
     private static OptimizationWorkerHeartbeat Heartbeat(
@@ -261,7 +325,9 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
             SecondStore = secondStore;
         }
 
-        public static async Task<LeaseFixture> CreateAsync(int leaseSeconds = 300)
+        public static async Task<LeaseFixture> CreateAsync(
+            int leaseSeconds = 300,
+            OptimizationWorkerTransportMode mode = OptimizationWorkerTransportMode.Shadow)
         {
             var path = Path.Combine(Path.GetTempPath(), $"stocktrader-lease-{Guid.NewGuid():N}.db");
             var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -287,7 +353,7 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
             {
                 Enabled = true,
                 LeaseTransportEnabled = true,
-                Mode = OptimizationWorkerTransportMode.Shadow,
+                Mode = mode,
                 SharedSecret = new string('x', 32),
                 LeaseSeconds = leaseSeconds
             });

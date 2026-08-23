@@ -1713,10 +1713,10 @@ public class ArchitectureDependencyTests
             repository, "k8s/deployment-optimization-worker.yaml"));
         var apiDeployment = File.ReadAllText(Path.Combine(
             repository, "k8s/deployment-api.yaml"));
-        var workerSecretExample = File.ReadAllText(Path.Combine(
-            repository, "k8s/secret-optimization-worker.example.yaml"));
         var deploymentScript = File.ReadAllText(Path.Combine(
             repository, "scripts/deploy-k3s.sh"));
+        var workerSecretExample = File.ReadAllText(Path.Combine(
+            repository, "k8s/secret-optimization-worker.example.yaml"));
         var compose = File.ReadAllText(Path.Combine(repository, "docker-compose.yml"));
         var backgroundRegistration = File.ReadAllText(Path.Combine(
             repository, "Extensions/BackgroundServiceExtensions.cs"));
@@ -1846,8 +1846,9 @@ public class ArchitectureDependencyTests
         worker.Should().Contain("IOptimizationWorkExecutor");
         worker.Should().NotContain("OptimizationJobExecutor _executor");
         source.Should().Contain(": IOptimizationWorkExecutor");
-        backgroundRegistration.Should().Contain(
-            "AddSingleton<IOptimizationWorkExecutor, OptimizationJobExecutor>()");
+        backgroundRegistration.Should().Contain("OptimizationWorkerTransportMode.Remote");
+        backgroundRegistration.Should().Contain("RemoteOptimizationJobExecutor");
+        backgroundRegistration.Should().Contain("OptimizationJobExecutor");
         workerContracts.Should().Contain("StrategyExecutionArtifactFactory");
         workerContracts.Should().Contain("OptimizationDataEvidenceFactory");
         workerContracts.Should().Contain("OptimizationPreparedDataFactory.Create(context)");
@@ -1969,7 +1970,7 @@ public class ArchitectureDependencyTests
             .Length.Should().BeLessThanOrEqualTo(100);
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/ControlPlaneClient.fs"))
             .Length.Should().BeLessThanOrEqualTo(100);
-        File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/ShadowLeaseProcessor.fs"))
+        File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/LeaseProcessor.fs"))
             .Length.Should().BeLessThanOrEqualTo(100);
         workerDockerfile.Should().Contain("StockTrader.OptimizationWorker.fsproj");
         workerDockerfile.Should().Contain("USER $APP_UID");
@@ -1984,7 +1985,8 @@ public class ArchitectureDependencyTests
         workerDeployment.Should().NotContain("stocktrader-data");
         apiDeployment.Should().Contain("OptimizationWorkerTransport__Enabled");
         apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseTransportEnabled");
-        apiDeployment.Should().Contain("value: \"true\"");
+        apiDeployment.Should().Contain("__OPTIMIZATION_WORKER_LEASE_TRANSPORT_ENABLED__");
+        deploymentScript.Should().Contain("STOCKTRADER_OPTIMIZATION_LEASE_TRANSPORT_ENABLED");
         apiDeployment.Should().Contain("https://+:5443");
         workerDeployment.Should().Contain("https://stocktrader-api:3443");
         workerDeployment.Should().Contain("STOCKTRADER_WORKER_CLIENT_CERT_PATH");
@@ -4072,12 +4074,18 @@ public class ArchitectureDependencyTests
             repository, "workers/optimization-worker/MutualTlsHttpClient.fs"));
         var workerControlPlane = File.ReadAllText(Path.Combine(
             repository, "workers/optimization-worker/ControlPlaneClient.fs"));
+        var workerHealth = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/HealthHost.fs"));
         var workerDeployment = File.ReadAllText(Path.Combine(
             repository, "k8s/deployment-optimization-worker.yaml"));
         var leaseStore = string.Join("\n", Directory.EnumerateFiles(
                 Path.Combine(repository, "Data/Repositories"),
                 "OptimizationWorkerLeaseCoordinator*.cs")
             .Select(File.ReadAllText));
+        var remoteExecutor = File.ReadAllText(Path.Combine(
+            repository, "BackgroundServices/RemoteOptimizationJobExecutor.cs"));
+        var backgroundRegistration = File.ReadAllText(Path.Combine(
+            repository, "Extensions/BackgroundServiceExtensions.cs"));
         var workerProject = File.ReadAllText(Path.Combine(
             repository, "workers/optimization-worker/StockTrader.OptimizationWorker.fsproj"));
         var apiDeployment = File.ReadAllText(Path.Combine(
@@ -4098,11 +4106,18 @@ public class ArchitectureDependencyTests
         endpoints.Should().Contain("/leases/heartbeat");
         endpoints.Should().Contain("/leases/result");
         leaseStore.Should().Contain("OptimizationWorkerLeases");
-        leaseStore.Should().NotContain("OptimizationResults.Add");
+        leaseStore.Should().Contain("IOptimizationRemoteResultCommitter");
+        leaseStore.Should().Contain("CanonicalCommittedAt");
+        remoteExecutor.Should().Contain("PublishRemoteAsync");
+        remoteExecutor.Should().Contain("TryCommitAsync");
+        remoteExecutor.Should().NotContain("OptimizationCandidateEvaluator");
+        remoteExecutor.Should().NotContain("BacktestOptimizationService");
+        backgroundRegistration.Should().Contain("OptimizationWorkerTransportMode.Remote");
+        backgroundRegistration.Should().Contain("RemoteOptimizationJobExecutor");
         workerProject.Should().NotContain("EntityFrameworkCore");
         workerProject.Should().NotContain("Sqlite");
         apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseTransportEnabled");
-        apiDeployment.Should().Contain("value: \"true\"");
+        apiDeployment.Should().Contain("__OPTIMIZATION_WORKER_LEASE_TRANSPORT_ENABLED__");
         apiDeployment.Should().Contain("ClientCertificateMode");
         apiDeployment.Should().Contain("name: public-http");
         apiDeployment.Should().Contain("name: worker-tls");
@@ -4115,7 +4130,11 @@ public class ArchitectureDependencyTests
         workerTls.Should().Contain("RemoteCertificateNameMismatch");
         workerTls.Should().Contain("X509ChainTrustMode.CustomRootTrust");
         workerControlPlane.Should().Contain("JsonStringEnumConverter");
+        workerHealth.Should().Contain("statusCode = 503");
+        workerHealth.Should().Contain("stocktrader_optimization_worker_active_lease");
+        workerHealth.Should().Contain("stocktrader_optimization_worker_failures_total");
         workerDeployment.Should().Contain("https://stocktrader-api:3443");
+        apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseSeconds");
         security.Should().Contain("OptimizationWorkerAuthenticationHandler");
         security.Should().Contain("RequireClaim(\"service\", \"optimization-worker\")");
         settings.Should().Contain("\"OptimizationWorkerTransport\"");

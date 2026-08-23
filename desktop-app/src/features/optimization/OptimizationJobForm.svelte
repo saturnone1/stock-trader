@@ -7,6 +7,7 @@
   export let timeFrameOptions = []
   export let dataSourceOptions = []
   export let rankOptions = []
+  export let execution = null
   export let entryRuleOptions = []
   export let exitRuleOptions = []
   export let baseline = null
@@ -32,6 +33,14 @@
       <p class="mt-1 text-sm text-gray-400">한 번에 한 영역만 비교해야 결과의 원인을 해석하기 쉽습니다.</p>
     </div>
   </div>
+
+  {#if execution}
+    <div class="mb-6 rounded-xl border border-cyan-900/60 bg-cyan-950/20 px-4 py-3 text-sm text-cyan-100">
+      {execution.usesRemoteWorker
+        ? `전용 계산 Worker ${execution.maxConcurrentJobs}개가 후보를 나눠 계산합니다. 결과 저장은 전략 연구 서비스 한 곳에서만 처리합니다.`
+        : '현재는 앱 내부 계산 모드입니다. 전용 Worker 결과는 비교 검증에만 사용됩니다.'}
+    </div>
+  {/if}
 
   {#if baseline}
     <div class="mb-6 grid grid-cols-2 gap-3 rounded-xl border border-blue-900/60 bg-blue-950/20 p-4 text-sm lg:grid-cols-4">

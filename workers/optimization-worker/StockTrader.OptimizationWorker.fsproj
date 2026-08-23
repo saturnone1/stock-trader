@@ -13,7 +13,7 @@
     <Compile Include="MutualTlsHttpClient.fs" />
     <Compile Include="ControlPlaneClient.fs" />
     <Compile Include="LeaseHeartbeatPump.fs" />
-    <Compile Include="ShadowLeaseProcessor.fs" />
+    <Compile Include="LeaseProcessor.fs" />
     <Compile Include="ControlPlaneProbe.fs" />
     <Compile Include="HealthHost.fs" />
     <Compile Include="Program.fs" />

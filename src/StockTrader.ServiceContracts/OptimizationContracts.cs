@@ -3,15 +3,16 @@ namespace StockTrader.ServiceContracts.Optimization;
 public static class OptimizationWorkerContractCatalog
 {
     public const int EvaluationInputVersion = 2;
-    public const int LeaseVersion = 2;
-    public const int HeartbeatVersion = 2;
-    public const int ResultVersion = 2;
+    public const int LeaseVersion = 3;
+    public const int HeartbeatVersion = 3;
+    public const int ResultVersion = 3;
     public const string EngineSemanticsVersion = "long-position-session-v1";
     public const string IndicatorCatalogVersion = "indicator-catalog-v1";
     public const string PatternCatalogVersion = "pattern-catalog-v1";
     public const string OptimizationCostModelVersion = "adaptive-cost-v1";
     public const string ShadowValidationPurpose = "shadow-contract-validation-v1";
     public const string ShadowComputePurpose = "shadow-optimization-compute-v1";
+    public const string OptimizationComputePurpose = "optimization-compute-v1";
 }
 
 public static class OptimizationWorkerHttpHeaders
@@ -154,7 +155,8 @@ public static class OptimizationLeaseCompatibilityPolicy
         if (string.IsNullOrWhiteSpace(lease.LeaseId) || lease.JobId <= 0 || lease.LeaseGeneration < 1)
             return "invalid-lease-identity";
         if (lease.Purpose != OptimizationWorkerContractCatalog.ShadowValidationPurpose
-            && lease.Purpose != OptimizationWorkerContractCatalog.ShadowComputePurpose)
+            && lease.Purpose != OptimizationWorkerContractCatalog.ShadowComputePurpose
+            && lease.Purpose != OptimizationWorkerContractCatalog.OptimizationComputePurpose)
             return "unsupported-lease-purpose";
         if (lease.ExpiresAt <= lease.LeasedAt)
             return "invalid-lease-window";

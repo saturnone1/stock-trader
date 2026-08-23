@@ -18,6 +18,10 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var record = await db.OptimizationWorkerLeases.AsNoTracking()
             .SingleOrDefaultAsync(lease => lease.LeaseId == heartbeat.LeaseId, ct);
+        if (record is not null
+            && record.Status == OptimizationWorkerLeaseStatus.Cancelled
+            && record.WorkerId == workerId)
+            return StopHeartbeat(record.CancellationGeneration, "lease-cancelled", now);
         if (record is null || record.Status != OptimizationWorkerLeaseStatus.Leased
             || record.WorkerId != workerId)
             return StopHeartbeat(heartbeat.CancellationGeneration, "stale-lease", now);

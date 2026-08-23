@@ -5,6 +5,7 @@ using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Optimization;
 using StockTrader.Domain.Strategies;
 using StockTrader.Models.Enums;
+using StockTrader.Configuration;
 
 namespace StockTrader.Api.Contracts;
 
@@ -60,6 +61,12 @@ public sealed record OptimizationRankMetadataResponse(
     string Code,
     string DisplayName,
     bool IsDefault);
+public sealed record OptimizationExecutionMetadataResponse(
+    string Mode,
+    bool UsesRemoteWorker,
+    bool SupportsDurationLimit,
+    int MaxConcurrentJobs,
+    int LeaseSeconds);
 public sealed record ExitMethodMetadataResponse(
     string Code,
     string DisplayName,
@@ -86,10 +93,12 @@ public sealed record StrategyBuilderMetadataResponse(
     IReadOnlyList<ExitMethodMetadataResponse> TargetMethods,
     IReadOnlyList<SlippageModelMetadataResponse> SlippageModels,
     IReadOnlyList<OptimizationRankMetadataResponse> OptimizationRankings,
+    OptimizationExecutionMetadataResponse OptimizationExecution,
     LiveStrategyConstraintsMetadataResponse LiveStrategyConstraints)
 {
-    public static StrategyBuilderMetadataResponse Create() => new(
-        SchemaVersion: 6,
+    public static StrategyBuilderMetadataResponse Create(
+        OptimizationWorkerTransportOptions optimization) => new(
+        SchemaVersion: 7,
         DocumentVersion: StrategyDocumentVersions.Current,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
@@ -148,6 +157,14 @@ public sealed record StrategyBuilderMetadataResponse(
                 item.Code,
                 item.DisplayName,
                 item.IsDefault)).ToArray(),
+        OptimizationExecution: new(
+            optimization.Mode.ToString(),
+            optimization.Mode == OptimizationWorkerTransportMode.Remote,
+            optimization.Mode != OptimizationWorkerTransportMode.Remote,
+            optimization.Mode == OptimizationWorkerTransportMode.Remote
+                ? optimization.MaxConcurrentRemoteJobs
+                : 1,
+            optimization.LeaseSeconds),
         LiveStrategyConstraints: new(
             LiveStrategyCompatibilityPolicy.SupportedTimeFrames,
             LiveStrategyCompatibilityPolicy.SupportedEntryModes,

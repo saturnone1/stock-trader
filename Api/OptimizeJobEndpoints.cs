@@ -30,6 +30,11 @@ public static class OptimizeJobEndpoints
                 cancellationToken);
             if (result.Outcome == OptimizationJobCreateOutcome.InvalidName)
                 return Results.BadRequest(new { error = "Job 이름을 입력하세요." });
+            if (result.Outcome == OptimizationJobCreateOutcome.UnsupportedRemoteDuration)
+                return Results.BadRequest(new
+                {
+                    error = "원격 최적화에서는 시간 제한 대신 최대 테스트 조합 수를 사용하세요."
+                });
 
             var created = OptimizationJobApiMapper.ToSummary(result.Job!);
             return Results.Created($"/api/optimize-jobs/{created.Id}", created);

@@ -14,10 +14,13 @@ public static class HealthEndpoints
             TimeProvider clock,
             DatabaseMigrationStatusProvider migrations,
             IOptimizationShadowResultCoordinator comparisons,
+            IOptimizationWorkerLeaseMonitor workerLeases,
             CancellationToken ct) =>
         {
             var databaseMigration = await migrations.GetAsync(ct);
             var shadowComparisons = await comparisons.GetSummaryAsync(ct);
+            var optimizationWorker = await workerLeases.GetOperationalSummaryAsync(
+                clock.GetUtcNow().UtcDateTime, ct);
             return Results.Ok(new
             {
                 status = "ok",
@@ -25,6 +28,7 @@ public static class HealthEndpoints
                 alpacaConfigured = alpaca.Value.HasConfiguredCredentials,
                 databaseMigration,
                 shadowComparisons,
+                optimizationWorker,
                 timestamp = clock.GetUtcNow(),
             });
         });

@@ -16,6 +16,11 @@ migration_container="stocktrader-migrate-${release_tag}"
 tls_generation="${STOCKTRADER_WORKER_TLS_GENERATION:-}"
 server_tls_secret=""
 client_tls_secret=""
+lease_transport_enabled="${STOCKTRADER_OPTIMIZATION_LEASE_TRANSPORT_ENABLED:-true}"
+optimization_mode="${STOCKTRADER_OPTIMIZATION_MODE:-Remote}"
+optimization_mode_label="$(printf '%s' "$optimization_mode" | tr '[:upper:]' '[:lower:]')"
+optimization_worker_replicas="${STOCKTRADER_OPTIMIZATION_WORKER_REPLICAS:-2}"
+optimization_worker_concurrency="${STOCKTRADER_OPTIMIZATION_WORKER_CONCURRENCY:-2}"
 
 deploy_api=false
 deploy_desktop=false
@@ -54,6 +59,31 @@ fi
 
 if $deploy_api && { [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; }; then
   echo "STOCKTRADER_DATA_DIR must be a safe absolute path below the filesystem root." >&2
+  exit 1
+fi
+
+if $deploy_api && [[ "$lease_transport_enabled" != "true" && "$lease_transport_enabled" != "false" ]]; then
+  echo "STOCKTRADER_OPTIMIZATION_LEASE_TRANSPORT_ENABLED must be true or false." >&2
+  exit 1
+fi
+if { $deploy_api || $deploy_worker; } && [[ "$optimization_mode" != "Shadow" && "$optimization_mode" != "Remote" ]]; then
+  echo "STOCKTRADER_OPTIMIZATION_MODE must be Shadow or Remote." >&2
+  exit 1
+fi
+if { $deploy_api || $deploy_worker; } \
+  && { [[ ! "$optimization_worker_replicas" =~ ^[1-9][0-9]*$ ]] \
+    || (( optimization_worker_replicas > 16 )); }; then
+  echo "STOCKTRADER_OPTIMIZATION_WORKER_REPLICAS must be between 1 and 16." >&2
+  exit 1
+fi
+if $deploy_api \
+  && { [[ ! "$optimization_worker_concurrency" =~ ^[1-9][0-9]*$ ]] \
+    || (( optimization_worker_concurrency > 16 )); }; then
+  echo "STOCKTRADER_OPTIMIZATION_WORKER_CONCURRENCY must be between 1 and 16." >&2
+  exit 1
+fi
+if $deploy_api && [[ "$optimization_mode" == "Remote" && "$lease_transport_enabled" != "true" ]]; then
+  echo "Remote optimization mode requires lease transport to be enabled." >&2
   exit 1
 fi
 
@@ -155,6 +185,9 @@ if $deploy_api; then
     -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|" k8s/deployment-api.yaml \
     | sed -e "s|__OPTIMIZATION_WORKER_SERVER_TLS_SECRET__|$server_tls_secret|" \
       -e "s|__OPTIMIZATION_WORKER_CLIENT_TLS_SECRET__|$client_tls_secret|" \
+      -e "s|__OPTIMIZATION_WORKER_LEASE_TRANSPORT_ENABLED__|$lease_transport_enabled|" \
+      -e "s|__OPTIMIZATION_WORKER_MODE__|$optimization_mode|" \
+      -e "s|__OPTIMIZATION_WORKER_CONCURRENCY__|$optimization_worker_concurrency|" \
     | sudo k3s kubectl apply -f -
 fi
 if $deploy_desktop; then
@@ -166,6 +199,9 @@ if $deploy_worker; then
   sed -e "s|localhost/stock-trader/optimization-worker:latest|$worker_image|" \
     k8s/deployment-optimization-worker.yaml \
     | sed -e "s|__OPTIMIZATION_WORKER_CLIENT_TLS_SECRET__|$client_tls_secret|" \
+      -e "s|__OPTIMIZATION_WORKER_MODE__|$optimization_mode|" \
+      -e "s|__OPTIMIZATION_WORKER_MODE_LABEL__|$optimization_mode_label|" \
+      -e "s|__OPTIMIZATION_WORKER_REPLICAS__|$optimization_worker_replicas|" \
     | sudo k3s kubectl apply -f -
 fi
 

@@ -201,7 +201,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<OptimizationWorkerLeaseRecord>(entity =>
         {
             entity.HasKey(lease => lease.LeaseId);
-            entity.HasIndex(lease => new { lease.JobId, lease.Purpose, lease.InputHash })
+            entity.HasIndex(lease => new
+                { lease.JobId, lease.Purpose, lease.InputHash, lease.Authority })
                 .IsUnique();
             entity.HasIndex(lease => new { lease.Status, lease.ExpiresAt, lease.CreatedAt });
             entity.HasIndex(lease => lease.SubmissionId)
