@@ -5,6 +5,7 @@ using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
+using StockTrader.ServiceContracts.MarketData;
 
 namespace StockTrader.Tests;
 
@@ -70,6 +71,20 @@ public sealed class OhlcvRepositoryTests
         reader.GetString(2).Should().Be("302.06");
         reader.GetString(3).Should().Be("305.305");
         reader.GetString(4).Should().Be("304.078448");
+    }
+
+    [Fact]
+    public void RollbackParityTreatsDecimalScaleAsRepresentationNotPrice()
+    {
+        var timestamp = new DateTime(2026, 8, 13, 4, 0, 0, DateTimeKind.Utc);
+        var expected = new MarketDataBar(
+            "AAPL", "Daily", timestamp, 304.205m, 306m, 302.06m, 305.305m,
+            100, 304.078448m);
+        var projected = expected with { High = 306.0m };
+
+        MarketDataContractParity.ContentEquals([expected], [projected]).Should().BeTrue();
+        MarketDataContractParity.ContentEquals(
+            [expected], [projected with { High = 306.01m }]).Should().BeFalse();
     }
 
     private static OhlcvBar Bar(

@@ -38,11 +38,11 @@ public sealed class MarketDataRollbackProjector(
             await local.AddBarsAsync(bars, ct);
             var projected = await local.GetBarsAsync(
                 item.Symbol, frame, item.FirstBarUtc, item.LastBarUtc, ct);
-            var projectedHash = MarketDataContractHash.Content(
-                projected.Select(MarketDataContractMapper.ToContract));
-            if (!string.Equals(projectedHash, response.Evidence.ContentHash, StringComparison.Ordinal))
+            if (!MarketDataContractParity.ContentEquals(
+                    response.Bars,
+                    projected.Select(MarketDataContractMapper.ToContract)))
                 throw new InvalidDataException(
-                    $"Rollback projection hash mismatch for {item.Symbol}/{frame}.");
+                    $"Rollback projection content mismatch for {item.Symbol}/{frame}.");
             logger.LogInformation(
                 "Projected Market Data rollback series {Provider}/{Symbol}/{TimeFrame}: {Count} bars.",
                 selected, item.Symbol, frame, bars.Length);

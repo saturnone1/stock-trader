@@ -35,12 +35,15 @@ public sealed class MarketDataServiceArchitectureTests
             "Extensions", "DataServiceExtensions.cs"));
         var streaming = File.ReadAllText(Path.Combine(Root,
             "BackgroundServices", "AlpacaStreamingService.cs"));
+        var rollback = File.ReadAllText(Path.Combine(Root,
+            "Services", "DataFeed", "MarketDataRollbackProjector.cs"));
 
         adapters.Should().Contain("MarketDataTransportMode.Remote");
         adapters.Should().Contain("MarketDataServiceClient");
         registrations.Should().Contain("IOhlcvRepository, MarketDataRepositoryRouter");
         registrations.Should().Contain("MarketDataFeedRouter");
         streaming.Should().Contain("In-process Alpaca streaming disabled");
+        rollback.Should().Contain("MarketDataContractParity.ContentEquals(");
     }
 
     [Fact]
