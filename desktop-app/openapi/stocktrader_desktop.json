@@ -5,6 +5,18 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/health/live": {
+      "get": {
+        "tags": [
+          "StockTrader"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
