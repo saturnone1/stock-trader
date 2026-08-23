@@ -60,3 +60,12 @@ export function buildPatternPreviewModel(workspace, selectedNode, buildPayload, 
 
   return { pattern: buildPayload(workspace), selectedRuleSummary }
 }
+
+export function buildPatternBacktestContext(selectedPattern, workspace, previewContext = {}) {
+  return {
+    source: 'pattern-builder', patternId: selectedPattern?.id, patternName: workspace?.name ?? '',
+    symbolsText: previewContext.symbol || 'TQQQ', from: previewContext.from?.slice(0, 10) || '',
+    to: previewContext.to?.slice(0, 10) || '',
+    timeFrame: previewContext.timeFrame || workspace?.timeFrame || 'Daily'
+  }
+}

@@ -23,9 +23,15 @@
   let username = ''
   let password = ''
   let confirmPassword = ''
+  let researchContext = null
 
   function handleNav(e) {
     currentPage = e.detail
+  }
+
+  function handleResearchNavigate(e) {
+    researchContext = e.detail?.context ?? null
+    currentPage = e.detail?.page ?? currentPage
   }
 
   onMount(async () => {
@@ -104,7 +110,7 @@
           {#if !hasUsers}
             최초 사용자 계정을 생성하세요.
           {:else}
-            로그인 후 전략 가이드에서 `전략 만들기 → 백테스트 → 최적화` 흐름부터 시작하세요.
+            로그인 후 전략 가이드에서 `전략 만들기 → 백테스트 → 수치 다듬기` 흐름부터 시작하세요.
           {/if}
         </p>
 
@@ -169,15 +175,15 @@
       {:else if currentPage === 'pattern-stats'}
         <PatternStats />
       {:else if currentPage === 'patterns'}
-        <PatternBuilder />
+        <PatternBuilder on:researchnavigate={handleResearchNavigate} />
       {:else if currentPage === 'history'}
         <History />
       {:else if currentPage === 'portfolio'}
         <Portfolio />
       {:else if currentPage === 'optimization'}
-        <Optimization />
+        <Optimization initialContext={researchContext} />
       {:else if currentPage === 'backtest'}
-        <Backtest />
+        <Backtest initialContext={researchContext} on:researchnavigate={handleResearchNavigate} />
       {:else if currentPage === 'accounts'}
         <Accounts />
       {:else if currentPage === 'settings'}

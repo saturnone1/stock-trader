@@ -59,6 +59,30 @@ test('combination estimate multiplies only enabled timing axes', () => {
   assert.equal(estimatedCombinationCount(form), 8)
 })
 
+test('investor-focused tuning changes only one strategy area', () => {
+  const focused = { ...form, tuningFocus: 'entry', sweepRequireBullRegime: true, includeRiskExitAxes: true }
+  const { payload } = buildOptimizationJob(focused, { name: '추세', raw: { name: '추세' } })
+
+  assert.equal(estimatedCombinationCount(focused), 2)
+  assert.deepEqual(payload.optimizeRequest.optimizeParams.ruleParamOverrides, [
+    { scope: 'Entry', ruleIndex: 0, paramKey: 'period', values: [10, 20] }
+  ])
+  assert.equal(payload.optimizeRequest.optimizeParams.atrStopMultiplier, null)
+  assert.equal(payload.optimizeRequest.optimizeParams.requireBullRegimeOptions, null)
+})
+
+test('risk tuning compares only stop and target ranges', () => {
+  const focused = { ...form, tuningFocus: 'risk', timingFocusMode: false, includeRiskExitAxes: true }
+  const { payload } = buildOptimizationJob(focused, { name: '추세', raw: { name: '추세' } })
+  const params = payload.optimizeRequest.optimizeParams
+
+  assert.deepEqual(params.ruleParamOverrides, [])
+  assert.deepEqual(params.atrStopMultiplier, { min: 1.5, max: 3, step: 0.5 })
+  assert.deepEqual(params.atrTargetMultiplier, { min: 2, max: 5, step: 0.5 })
+  assert.equal(params.maxHoldingBars, null)
+  assert.equal(params.defaultAllocationPercent, null)
+})
+
 test('multi-result insights format signed median deltas without a runtime error', () => {
   const results = [
     { tradeCount: 10, maxDrawdown: .2, profitFactor: 1.2, totalReturn: .1 },

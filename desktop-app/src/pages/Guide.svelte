@@ -20,8 +20,8 @@
       </div>
       <div class="rounded-xl border border-cyan-800/50 bg-gray-950/80 p-5">
         <div class="text-xs font-semibold uppercase tracking-wide text-cyan-300">3단계</div>
-        <div class="mt-2 text-xl font-bold text-white">최적화</div>
-        <div class="mt-2 text-sm text-gray-300">이미 방향이 맞는 전략에 한해 기간·오버레이·실행 옵션만 좁게 미세조정합니다.</div>
+        <div class="mt-2 text-xl font-bold text-white">수치 다듬기</div>
+        <div class="mt-2 text-sm text-gray-300">검증된 전략에서 진입·청산·손절 목표 중 한 영역만 좁게 비교합니다.</div>
       </div>
     </div>
   </section>
@@ -43,7 +43,7 @@
       </div>
       <div class="rounded-xl border border-gray-800 bg-gray-950 p-5">
         <div class="text-lg font-semibold text-white">어디를 마지막에 다듬나?</div>
-        <div class="mt-2 text-sm text-gray-300">최적화가 담당합니다. 좋은 조합을 찾은 뒤에만 진입/청산 기간과 실행 옵션을 좁게 조정합니다.</div>
+        <div class="mt-2 text-sm text-gray-300">수치 다듬기가 담당합니다. 좋은 조합을 찾은 뒤 진입·청산·손절 목표 중 한 영역만 좁게 조정합니다.</div>
       </div>
     </div>
   </section>
@@ -54,7 +54,7 @@
       <ul class="space-y-3 text-sm text-gray-200">
         <li><span class="text-white">시장 타이밍</span>: 대칭/비대칭 진입·청산, 레짐 기반 비중 조절</li>
         <li><span class="text-white">개별 종목 타이밍</span>: 종목 자체의 20일선/추세 조건 추가</li>
-        <li><span class="text-white">전략 만들기 → 백테스트 → 최적화</span>: 매수·매도 조건 설계와 검증 흐름</li>
+        <li><span class="text-white">전략 만들기 → 백테스트 → 수치 다듬기</span>: 매수·매도 조건 설계와 검증 흐름</li>
         <li><span class="text-white">포트폴리오 비중 전략</span>: 강세/약세/과열 구간별 가중치 실험</li>
         <li><span class="text-white">시총 유니버스 빌더</span>: 시총 백분위, 섹터, 산업 기준 후보군 구성</li>
         <li><span class="text-white">재무 팩터 빌더</span>: 저PER, 저PBR, 흑자, 턴어라운드, 성장률 비교 + 자동 수집 파이프라인 + SEC 외부 동기화</li>
@@ -78,7 +78,7 @@
         <li>2. <span class="text-white">유니버스 빌더 / 재무 팩터 빌더</span>에서 먼저 후보군을 정합니다. 이 단계는 "무엇을 살까"를 정리하는 단계입니다.</li>
         <li>3. <span class="text-white">백테스트의 타이밍 연구실</span>에서 현재 입력 / 시총 필터 / 재무 필터 / 교집합 필터를 같은 시나리오로 비교합니다. 이 단계가 메인 검증 단계입니다.</li>
         <li>4. <span class="text-white">팩터 실험실</span>에서 여러 재무 프리셋, 현재 빌더 조건, 사용자 정의 조합을 자동 비교하고, 최소 종목 수와 랭킹 기준으로 좁힙니다.</li>
-        <li>5. <span class="text-white">최적화</span>는 마지막에만 씁니다. 과한 전역 탐색보다 진입/청산 기간과 실행 옵션을 보수적으로 조정합니다.</li>
+        <li>5. <span class="text-white">수치 다듬기</span>는 마지막에만 씁니다. 진입·청산·손절 목표 중 한 영역만 보수적으로 비교합니다.</li>
       </ol>
     </section>
 
@@ -87,7 +87,7 @@
       <ul class="space-y-3 text-sm text-gray-300">
         <li><span class="text-white">종목 추천</span>: 처음 진입점으로 보지 말고, 보조 아이디어 소스로만 보세요.</li>
         <li><span class="text-white">포트폴리오 / 거래 내역 / 계좌 관리</span>: 연구가 아니라 운영에 가까운 화면입니다.</li>
-        <li><span class="text-white">고급 최적화 옵션</span>: 초반에는 건드리지 말고 기본 구조가 맞는지부터 확인하세요.</li>
+        <li><span class="text-white">전문가 실행 설정</span>: 초반에는 건드리지 말고 기본 구조가 맞는지부터 확인하세요.</li>
       </ul>
     </section>
 
@@ -97,7 +97,7 @@
         <li>1. <span class="text-white">전략 하나를 단순하게 만든다</span>: 매수·매도 조건을 먼저 짧게 세웁니다.</li>
         <li>2. <span class="text-white">백테스트에서 타이밍만 비교한다</span>: 기본 vs 시장 vs 시장+종목을 20/20, 20/10 정도로 먼저 봅니다.</li>
         <li>3. <span class="text-white">후보 종목군을 좁힌다</span>: 필요하면 시총/재무 필터를 켜서 무엇을 살지 정리합니다.</li>
-        <li>4. <span class="text-white">마지막에 최적화한다</span>: 잘 나온 조합에만 진입 기간, 청산 기간, 오버레이 on/off를 좁게 돌립니다.</li>
+        <li>4. <span class="text-white">마지막에 수치를 다듬는다</span>: 잘 나온 전략에서 한 영역의 현재값 주변만 좁게 비교합니다.</li>
       </ol>
     </section>
   </div>

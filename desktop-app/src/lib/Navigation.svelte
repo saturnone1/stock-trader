@@ -23,7 +23,7 @@
       items: [
         { id: 'patterns', label: '전략 만들기', icon: LayoutTemplate },
         { id: 'backtest', label: '백테스트', icon: BarChart2 },
-        { id: 'optimization', label: '최적화', icon: Zap },
+        { id: 'optimization', label: '수치 다듬기', icon: Zap },
         { id: 'pattern-stats', label: '패턴 통계', icon: BarChart3 },
       ]
     },

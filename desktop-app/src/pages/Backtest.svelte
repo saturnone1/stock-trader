@@ -1,16 +1,14 @@
 <script>
-  import { onMount } from 'svelte'
-  import { RotateCcw } from 'lucide-svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
+  import { ArrowRight, ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-svelte'
   import { backtestApi, financialFactorApi, metadataApi, patternApi } from '../api/endpoints'
   import FinancialFactorBuilder from '../lib/FinancialFactorBuilder.svelte'
   import UniverseBuilder from '../lib/UniverseBuilder.svelte'
   import BacktestFactorLabPanel from '../features/backtest/BacktestFactorLabPanel.svelte'
   import BacktestFactorRanking from '../features/backtest/BacktestFactorRanking.svelte'
-  import BacktestExecutionInputs from '../features/backtest/BacktestExecutionInputs.svelte'
+  import BacktestBasicPanel from '../features/backtest/BacktestBasicPanel.svelte'
   import BacktestPerformanceBreakdown from '../features/backtest/BacktestPerformanceBreakdown.svelte'
-  import BacktestPatternSelection from '../features/backtest/BacktestPatternSelection.svelte'
   import BacktestResultSummary from '../features/backtest/BacktestResultSummary.svelte'
-  import BacktestRiskSettings from '../features/backtest/BacktestRiskSettings.svelte'
   import BacktestScenarioComparison from '../features/backtest/BacktestScenarioComparison.svelte'
   import BacktestTradeHistory from '../features/backtest/BacktestTradeHistory.svelte'
   import BacktestTimingOptions from '../features/backtest/BacktestTimingOptions.svelte'
@@ -21,6 +19,7 @@
   import { queryFactorLabCandidates } from '../features/backtest/backtestFactorLab'
   import { buildBacktestResearchPlans, buildBacktestViewModel } from '../features/backtest/backtestViewModel'
   import {
+    buildOptimizationContext,
     createBacktestForm,
     createCustomFactorExperiment,
     createFactorLab,
@@ -36,6 +35,9 @@
     timingWindowOptions,
     uniqueSymbols
   } from '../features/backtest/backtestResearch'
+
+  export let initialContext = null
+  const dispatch = createEventDispatcher()
 
   let timeFrameOptions = []
   let dataSourceOptions = [['', '기본 설정']]
@@ -62,6 +64,8 @@
   let factorLabSummaries = []
   let factorLabVariants = []
   let factorLabBaseSignature = ''
+  let showAdvancedResearch = false
+  let showRiskSettings = false
 
   let timingLab = createTimingLab()
   let universeComparison = createUniverseComparison()
@@ -77,8 +81,22 @@
 
   onMount(async () => {
     await Promise.all([loadMetadata(), loadPatterns()])
+    applyInitialContext()
     loading = false
   })
+
+  function applyInitialContext() {
+    if (!initialContext) return
+    if (initialContext.symbolsText) form.symbolsText = initialContext.symbolsText
+    if (initialContext.from) form.from = initialContext.from.slice(0, 10)
+    if (initialContext.to) form.to = initialContext.to.slice(0, 10)
+    if (initialContext.timeFrame) form.timeFrame = initialContext.timeFrame
+    if (initialContext.dataSource != null) form.dataSource = initialContext.dataSource
+    if (initialContext.patternId != null && patterns.some((item) => String(item.id) === String(initialContext.patternId))) {
+      selectedPatternIds = [String(initialContext.patternId)]
+    }
+    form = { ...form }
+  }
 
   async function loadMetadata() {
     try {
@@ -276,6 +294,14 @@
     factorLabSummaries = []
     factorLabVariants = []
     factorLabBaseSignature = ''
+    showAdvancedResearch = false
+    showRiskSettings = false
+  }
+
+  function openOptimization() {
+    if (!result || viewModel.selectedPatterns.length !== 1) return
+    const context = buildOptimizationContext(form, result, viewModel.selectedPatterns[0])
+    dispatch('researchnavigate', { page: 'optimization', context })
   }
 </script>
 
@@ -284,7 +310,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-3xl font-bold">백테스트</h2>
-        <p class="mt-2 text-sm text-gray-400">커스텀 패턴을 기준으로 과거 구간을 검증하고, 종목/레짐/워크포워드 결과까지 바로 확인합니다.</p>
+        <p class="mt-2 text-sm text-gray-400">먼저 선택한 전략을 같은 조건으로 검증합니다. 시장·재무 비교는 필요할 때만 고급 연구에서 켜세요.</p>
       </div>
       <button on:click={resetForm} class="flex items-center gap-2 rounded bg-gray-800 px-4 py-2 text-sm text-white transition hover:bg-gray-700">
         <RotateCcw size={16} />
@@ -295,6 +321,29 @@
     {#if error}
       <div class="rounded-lg border border-red-700 bg-red-900/20 p-4 text-red-300">{error}</div>
     {/if}
+
+    {#if initialContext?.source === 'pattern-builder'}
+      <div class="rounded-xl border border-emerald-800 bg-emerald-950/20 p-4 text-sm text-emerald-100">
+        <span class="font-semibold">전략 만들기에서 이어짐:</span> {initialContext.patternName} · {form.symbolsText} · {form.timeFrame}
+      </div>
+    {/if}
+
+    <BacktestBasicPanel
+      {form} {timeFrameOptions} {dataSourceOptions} {slippageOptions}
+      warning={viewModel.timeframeWarning} {patterns} {selectedPatternIds}
+      {loading} {running} {runStatus} bind:showRiskSettings
+      onTogglePattern={togglePattern} onRun={runBacktest}
+    />
+
+    <button on:click={() => showAdvancedResearch = !showAdvancedResearch} class="flex w-full items-center justify-between rounded-2xl border border-gray-800 bg-gray-950 px-6 py-5 text-left transition hover:border-gray-700">
+      <span class="flex items-center gap-3">
+        <SlidersHorizontal size={19} class="text-violet-300" />
+        <span><span class="block font-semibold text-white">고급 연구</span><span class="mt-1 block text-sm text-gray-400">시장 타이밍, 유니버스, 재무 팩터와 여러 시나리오 비교</span></span>
+      </span>
+      <ChevronDown size={18} class={showAdvancedResearch ? 'rotate-180' : ''} />
+    </button>
+
+    {#if showAdvancedResearch}
 
     <section class="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <div class="rounded-2xl border border-blue-700/50 bg-blue-950/20 p-5">
@@ -396,30 +445,7 @@
         이 연구실은 선택한 패턴을 저장하지 않고 실행 시점에만 복제해서 타이밍 오버레이를 붙입니다. 빠른 청산 비교를 위해 타이밍 청산은 기존 청산 규칙과 <span class="font-semibold text-white">OR</span>로 합쳐집니다.
       </div>
     </section>
-
-    <section class="rounded-2xl border border-gray-800 bg-gray-950 p-6">
-      <h3 class="mb-5 text-xl font-semibold">실행 설정</h3>
-
-      <BacktestExecutionInputs
-        {form}
-        {timeFrameOptions}
-        {dataSourceOptions}
-        {slippageOptions}
-        warning={viewModel.timeframeWarning}
-      />
-
-      <BacktestRiskSettings {form} />
-
-      <BacktestPatternSelection
-        {patterns}
-        {selectedPatternIds}
-        {loading}
-        {running}
-        {runStatus}
-        onToggle={togglePattern}
-        onRun={runBacktest}
-      />
-    </section>
+    {/if}
 
     {#if comparisonResults.length > 0}
       {#if viewModel.universeComparisonRows.length > 1}
@@ -445,6 +471,16 @@
 
     {#if result}
       <section class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-800 bg-emerald-950/20 p-5">
+          <div>
+            <div class="font-semibold text-emerald-100">검증 결과를 기준으로 수치를 다듬을까요?</div>
+            <div class="mt-1 text-sm text-emerald-200/70">진입·청산·손절 목표 중 한 영역만 좁게 비교합니다.</div>
+          </div>
+          <button on:click={openOptimization} disabled={viewModel.selectedPatterns.length !== 1 || result.errorMessage} class="flex items-center gap-2 rounded bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40">
+            이 전략 수치 다듬기
+            <ArrowRight size={16} />
+          </button>
+        </div>
         <BacktestResultSummary
           {result}
           timingReport={viewModel.timingReport}

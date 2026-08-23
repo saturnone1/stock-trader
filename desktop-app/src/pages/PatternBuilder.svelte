@@ -1,20 +1,20 @@
 <script>
-  import { onMount } from 'svelte'
-  import { ChevronRight, CircleHelp, Save } from 'lucide-svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
+  import { ArrowRight, ChevronRight, CircleHelp, Save } from 'lucide-svelte'
   import { metadataApi, patternApi } from '../api/endpoints'
   import PatternPreview from '../lib/PatternPreview.svelte'
   import { collectPatternValidationIssues } from '../features/pattern-builder/patternValidation'
   import { createPatternWorkspaceModel } from '../features/pattern-builder/patternWorkspace'
   import { createPatternEditorCommands } from '../features/pattern-builder/patternEditorCommands'
   import { emptyPatternMetadata, projectPatternMetadata } from '../features/pattern-builder/patternMetadata'
-  import { buildPatternPreviewModel, findSelectedRule, summarizeRule } from '../features/pattern-builder/patternPreviewModel'
+  import { buildPatternBacktestContext, buildPatternPreviewModel, findSelectedRule, summarizeRule } from '../features/pattern-builder/patternPreviewModel'
   import { dayOptions, glossaryTooltips, monthOptions, operatorLabels, paramKeyLabels } from '../features/pattern-builder/patternBuilderUiCatalog'
   import { createPatternPersistence, patternPersistenceError } from '../features/pattern-builder/patternPersistence'
   import PatternWorkspaceSidebar from '../features/pattern-builder/PatternWorkspaceSidebar.svelte'
   import PatternStrategyTree from '../features/pattern-builder/PatternStrategyTree.svelte'
   import PatternRuleInspector from '../features/pattern-builder/PatternRuleInspector.svelte'
-
   const workspaceModel = createPatternWorkspaceModel()
+  const dispatch = createEventDispatcher()
   const editorCommands = createPatternEditorCommands({
     blankRule: (...args) => workspaceModel.blankRule(...args),
     blankGroup: (...args) => workspaceModel.blankGroup(...args),
@@ -27,7 +27,6 @@
     buildWorkspace: (...args) => workspaceModel.buildWorkspace(...args),
     buildPatternPayload: (...args) => workspaceModel.buildPatternPayload(...args)
   })
-
   let builderMetadata = emptyPatternMetadata()
   let patterns = []
   let selectedPattern = null
@@ -41,8 +40,8 @@
   let showNewPattern = false
   let newPatternName = ''
   let validationIssues = []
+  let previewContext = null
   onMount(initialize)
-
   async function initialize() {
     loading = true
     try {
@@ -360,6 +359,15 @@
     touch()
     return next
   }
+
+  function openBacktest() {
+    if (dirty) {
+      error = '변경한 전략을 먼저 저장한 뒤 백테스트를 실행하세요.'
+      return
+    }
+    if (!selectedPattern || !workspace) return
+    dispatch('researchnavigate', { page: 'backtest', context: buildPatternBacktestContext(selectedPattern, workspace, previewContext) })
+  }
 </script>
 
 <div class="flex h-full overflow-hidden">
@@ -397,6 +405,7 @@
           {#if dirty}
             <span class="rounded bg-amber-950/60 px-3 py-1 text-xs text-amber-300">미저장 변경</span>
           {/if}
+          <button on:click={openBacktest} disabled={dirty || validationIssues.length > 0} class="flex items-center gap-2 rounded border border-emerald-600 bg-emerald-950/30 px-4 py-2 text-sm text-emerald-200 transition hover:bg-emerald-900/50 disabled:opacity-40">이 전략 검증하기 <ArrowRight size={16} /></button>
           <button on:click={savePattern} disabled={saving || validationIssues.length > 0} class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm text-white transition hover:bg-blue-700 disabled:opacity-50">
             <Save size={16} />
             {saving ? '저장 중...' : '저장'}
@@ -422,7 +431,7 @@
           </div>
         {/if}
 
-        <PatternPreview pattern={previewModel.pattern} selectedRuleSummary={previewModel.selectedRuleSummary} bind:timeFrame={workspace.timeFrame} on:timeframechange={touch} />
+        <PatternPreview pattern={previewModel.pattern} selectedRuleSummary={previewModel.selectedRuleSummary} bind:timeFrame={workspace.timeFrame} on:timeframechange={touch} on:contextchange={(event) => previewContext = event.detail} />
 
         <PatternStrategyTree
           {workspace}

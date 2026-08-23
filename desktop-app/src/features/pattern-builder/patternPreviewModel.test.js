@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildPatternBacktestContext,
   buildPatternPreviewModel,
   findSelectedRule,
   summarizeRule
@@ -46,6 +47,16 @@ test('selected rule lookup and summary preserve the chart explanation contract',
     summarizeRule(rule, labels),
     'RSI 과매도(기간:14) 이하 30 · 최근 3봉 내 · 2봉 연속'
   )
+})
+
+test('strategy verification carries the visible preview context into backtest', () => {
+  assert.deepEqual(buildPatternBacktestContext(
+    { id: 7 }, { name: '추세', timeFrame: 'Daily' },
+    { symbol: 'QQQ', from: '2026-01-01T09:30', to: '2026-02-01T16:00', timeFrame: 'FiveMinute' }
+  ), {
+    source: 'pattern-builder', patternId: 7, patternName: '추세', symbolsText: 'QQQ',
+    from: '2026-01-01', to: '2026-02-01', timeFrame: 'FiveMinute'
+  })
 })
 
 test('preview model combines the serialized strategy with selection-aware explanations', () => {

@@ -51,6 +51,8 @@ public class ArchitectureDependencyTests
             repository, "desktop-app/src/features/backtest/BacktestRiskSettings.svelte"));
         var patternSelection = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/BacktestPatternSelection.svelte"));
+        var basicPanel = File.ReadAllText(Path.Combine(
+            repository, "desktop-app/src/features/backtest/BacktestBasicPanel.svelte"));
         var scenarioPlanning = File.ReadAllText(Path.Combine(
             repository, "desktop-app/src/features/backtest/backtestScenarioPlanning.js"));
         var scenarioPlanningTests = File.ReadAllText(Path.Combine(
@@ -94,9 +96,10 @@ public class ArchitectureDependencyTests
         page.Should().Contain("<BacktestScenarioComparison");
         page.Should().Contain("<BacktestUniverseControls");
         page.Should().Contain("<BacktestUniverseComparison");
-        page.Should().Contain("<BacktestExecutionInputs");
-        page.Should().Contain("<BacktestRiskSettings");
-        page.Should().Contain("<BacktestPatternSelection");
+        page.Should().Contain("<BacktestBasicPanel");
+        basicPanel.Should().Contain("<BacktestExecutionInputs");
+        basicPanel.Should().Contain("<BacktestRiskSettings");
+        basicPanel.Should().Contain("<BacktestPatternSelection");
         page.Should().NotContain("백테스트 실패:");
         page.Should().NotContain("타이밍 리포트");
         page.Should().NotContain("종목별 성과");
@@ -2940,7 +2943,9 @@ public class ArchitectureDependencyTests
         backtestWorkspace.Should().NotContain("slippageModel: 'Adaptive'");
         optimizationPage.Should().NotContain("sizingModeOptions: ['FixedRisk'");
         optimizationPage.Should().NotContain("entryLogicOptions: ['AND'");
-        optimizationForm.Should().Contain("{#each sizingModeOptions as [value, label]}");
+        optimizationPage.Should().Contain("metadata?.sizingModes");
+        optimizationForm.Should().Contain("form.tuningFocus");
+        optimizationForm.Should().NotContain("sizingModeOptions");
         optimizationForm.Should().NotContain("[['FixedRisk'");
         optimizationForm.Should().NotContain("[['CurrentClose'");
     }

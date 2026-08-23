@@ -1,10 +1,13 @@
 import { uniqueSymbols } from './backtestResearch.js'
 
 export function createBacktestForm(defaultSlippageModel = '') {
+  const today = new Date()
+  const from = new Date(today)
+  from.setFullYear(from.getFullYear() - 1)
   return {
     symbolsText: 'SPY, QQQ, TQQQ',
-    from: '',
-    to: '',
+    from: toIsoDate(from),
+    to: toIsoDate(today),
     initialCapital: 100000,
     timeFrame: 'Daily',
     dataSource: '',
@@ -52,7 +55,7 @@ export function projectBacktestMetadata(metadata) {
 
 export function createTimingLab() {
   return {
-    enabled: true,
+    enabled: false,
     includeBaseScenario: true,
     marketSymbol: 'SPY',
     selectedStructures: ['market', 'market-stock'],
@@ -62,12 +65,17 @@ export function createTimingLab() {
 
 export function createUniverseComparison() {
   return {
-    enabled: true,
+    enabled: false,
     includeCurrentSymbols: true,
     includeUniverseBuilder: true,
     includeFinancialFactor: true,
     includeCombined: true
   }
+}
+
+function toIsoDate(value) {
+  const offset = value.getTimezoneOffset() * 60000
+  return new Date(value.getTime() - offset).toISOString().slice(0, 10)
 }
 
 export function createCustomFactorExperiment(ordinal, id = `custom-${ordinal}`) {
@@ -107,6 +115,16 @@ export function parseBacktestSymbols(symbolsText) {
 
 export function backtestSymbolSignature(symbols) {
   return uniqueSymbols(symbols).join('|')
+}
+
+export function buildOptimizationContext(form, result, pattern) {
+  return {
+    source: 'backtest', patternId: pattern.id, patternName: pattern.name,
+    symbolsText: form.symbolsText, from: form.from, to: form.to,
+    timeFrame: form.timeFrame, dataSource: form.dataSource,
+    baseline: { totalReturn: result.totalReturn, maxDrawdown: result.maxDrawdown,
+      tradeCount: result.totalTrades, sortinoRatio: result.sortinoRatio }
+  }
 }
 
 export function buildTimeframeWarning(form, dataProviders, timeFrameOptions) {

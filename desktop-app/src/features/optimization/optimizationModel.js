@@ -76,25 +76,30 @@ function rangeLength(range) {
 }
 
 export function estimatedCombinationCount(form) {
+  const focused = ['entry', 'exit', 'risk'].includes(form.tuningFocus)
   let total = 1
-  if (form.timingFocusMode) {
-    if (form.selectedEntryRuleIndex !== '') total *= Math.max(parseNumberList(form.entryPeriodValuesText).length, 1)
-    if (form.selectedExitRuleIndex !== '') total *= Math.max(parseNumberList(form.exitPeriodValuesText).length, 1)
-    if (form.sweepEntryLogic) total *= Math.max(form.entryLogicOptions.length, 1)
-    if (form.sweepExitLogic) total *= Math.max(form.exitLogicOptions.length, 1)
-    if (form.sweepRequireBullRegime) total *= Math.max(form.requireBullRegimeOptions.length, 1)
-    if (form.sweepEntryMode) total *= Math.max(form.entryModeOptions.length, 1)
-    if (form.sweepSizingMode) total *= Math.max(form.sizingModeOptions.length, 1)
+  if (form.timingFocusMode && (!focused || form.tuningFocus !== 'risk')) {
+    if (form.selectedEntryRuleIndex !== '' && (!focused || form.tuningFocus === 'entry')) total *= Math.max(parseNumberList(form.entryPeriodValuesText).length, 1)
+    if (form.selectedExitRuleIndex !== '' && (!focused || form.tuningFocus === 'exit')) total *= Math.max(parseNumberList(form.exitPeriodValuesText).length, 1)
+    if (!focused && form.sweepEntryLogic) total *= Math.max(form.entryLogicOptions.length, 1)
+    if (!focused && form.sweepExitLogic) total *= Math.max(form.exitLogicOptions.length, 1)
+    if (!focused && form.sweepRequireBullRegime) total *= Math.max(form.requireBullRegimeOptions.length, 1)
+    if (!focused && form.sweepEntryMode) total *= Math.max(form.entryModeOptions.length, 1)
+    if (!focused && form.sweepSizingMode) total *= Math.max(form.sizingModeOptions.length, 1)
   }
-  if (form.includeRiskExitAxes) {
-    total *= [
-      buildRange(form.atrStopMin, form.atrStopMax, form.atrStopStep),
-      buildRange(form.atrTargetMin, form.atrTargetMax, form.atrTargetStep),
-      buildRange(form.maxHoldingMin, form.maxHoldingMax, form.maxHoldingStep),
-      buildRange(form.trailingAtrMin, form.trailingAtrMax, form.trailingAtrStep),
-      buildRange(form.partialProfitMin, form.partialProfitMax, form.partialProfitStep),
-      buildRange(form.defaultAllocationMin, form.defaultAllocationMax, form.defaultAllocationStep)
-    ].map(rangeLength).reduce((product, length) => product * length, 1)
+  const useRiskRanges = focused ? form.tuningFocus === 'risk' : form.includeRiskExitAxes
+  if (useRiskRanges) {
+    const ranges = focused
+      ? [buildRange(form.atrStopMin, form.atrStopMax, form.atrStopStep), buildRange(form.atrTargetMin, form.atrTargetMax, form.atrTargetStep)]
+      : [
+          buildRange(form.atrStopMin, form.atrStopMax, form.atrStopStep),
+          buildRange(form.atrTargetMin, form.atrTargetMax, form.atrTargetStep),
+          buildRange(form.maxHoldingMin, form.maxHoldingMax, form.maxHoldingStep),
+          buildRange(form.trailingAtrMin, form.trailingAtrMax, form.trailingAtrStep),
+          buildRange(form.partialProfitMin, form.partialProfitMax, form.partialProfitStep),
+          buildRange(form.defaultAllocationMin, form.defaultAllocationMax, form.defaultAllocationStep)
+        ]
+    total *= ranges.map(rangeLength).reduce((product, length) => product * length, 1)
   }
   return total
 }
@@ -106,30 +111,34 @@ export function buildOptimizationJob(form, pattern) {
 
   const entryPeriods = parseNumberList(form.entryPeriodValuesText)
   const exitPeriods = parseNumberList(form.exitPeriodValuesText)
-  if (form.timingFocusMode && form.selectedEntryRuleIndex === '' && form.selectedExitRuleIndex === '')
+  const focused = ['entry', 'exit', 'risk'].includes(form.tuningFocus)
+  const useEntryPeriod = form.timingFocusMode && form.selectedEntryRuleIndex !== '' && (!focused || form.tuningFocus === 'entry')
+  const useExitPeriod = form.timingFocusMode && form.selectedExitRuleIndex !== '' && (!focused || form.tuningFocus === 'exit')
+  const useRiskRanges = focused ? form.tuningFocus === 'risk' : form.includeRiskExitAxes
+  if (form.timingFocusMode && (!focused || form.tuningFocus !== 'risk') && !useEntryPeriod && !useExitPeriod)
     return { error: '타이밍 최적화에서는 진입 규칙 또는 청산 규칙을 하나 이상 선택하세요.' }
-  if (form.timingFocusMode && form.selectedEntryRuleIndex !== '' && !entryPeriods.length)
+  if (useEntryPeriod && !entryPeriods.length)
     return { error: '진입 기간 후보를 하나 이상 입력하세요.' }
-  if (form.timingFocusMode && form.selectedExitRuleIndex !== '' && !exitPeriods.length)
+  if (useExitPeriod && !exitPeriods.length)
     return { error: '청산 기간 후보를 하나 이상 입력하세요.' }
 
-  const optionalRange = (min, max, step) => form.includeRiskExitAxes ? buildRange(min, max, step) : null
+  const optionalRange = (min, max, step) => useRiskRanges ? buildRange(min, max, step) : null
   const optimizeParams = {
     atrStopMultiplier: optionalRange(form.atrStopMin, form.atrStopMax, form.atrStopStep),
     atrTargetMultiplier: optionalRange(form.atrTargetMin, form.atrTargetMax, form.atrTargetStep),
-    maxHoldingBars: optionalRange(form.maxHoldingMin, form.maxHoldingMax, form.maxHoldingStep),
-    trailingAtr: optionalRange(form.trailingAtrMin, form.trailingAtrMax, form.trailingAtrStep),
-    partialProfitR: optionalRange(form.partialProfitMin, form.partialProfitMax, form.partialProfitStep),
-    defaultAllocationPercent: optionalRange(form.defaultAllocationMin, form.defaultAllocationMax, form.defaultAllocationStep),
+    maxHoldingBars: focused ? null : optionalRange(form.maxHoldingMin, form.maxHoldingMax, form.maxHoldingStep),
+    trailingAtr: focused ? null : optionalRange(form.trailingAtrMin, form.trailingAtrMax, form.trailingAtrStep),
+    partialProfitR: focused ? null : optionalRange(form.partialProfitMin, form.partialProfitMax, form.partialProfitStep),
+    defaultAllocationPercent: focused ? null : optionalRange(form.defaultAllocationMin, form.defaultAllocationMax, form.defaultAllocationStep),
     ruleParamOverrides: [
-      ...(form.timingFocusMode && form.selectedEntryRuleIndex !== '' ? [{ scope: 'Entry', ruleIndex: toNumber(form.selectedEntryRuleIndex), paramKey: 'period', values: entryPeriods }] : []),
-      ...(form.timingFocusMode && form.selectedExitRuleIndex !== '' ? [{ scope: 'Exit', ruleIndex: toNumber(form.selectedExitRuleIndex), paramKey: 'period', values: exitPeriods }] : [])
+      ...(useEntryPeriod ? [{ scope: 'Entry', ruleIndex: toNumber(form.selectedEntryRuleIndex), paramKey: 'period', values: entryPeriods }] : []),
+      ...(useExitPeriod ? [{ scope: 'Exit', ruleIndex: toNumber(form.selectedExitRuleIndex), paramKey: 'period', values: exitPeriods }] : [])
     ],
-    entryLogicOptions: form.timingFocusMode && !form.sweepEntryLogic ? null : form.entryLogicOptions,
-    exitLogicOptions: form.timingFocusMode && !form.sweepExitLogic ? null : form.exitLogicOptions,
-    requireBullRegimeOptions: form.timingFocusMode && !form.sweepRequireBullRegime ? null : form.requireBullRegimeOptions,
-    entryModeOptions: form.timingFocusMode && !form.sweepEntryMode ? null : form.entryModeOptions,
-    sizingModeOptions: form.timingFocusMode && !form.sweepSizingMode ? null : form.sizingModeOptions
+    entryLogicOptions: focused || (form.timingFocusMode && !form.sweepEntryLogic) ? null : form.entryLogicOptions,
+    exitLogicOptions: focused || (form.timingFocusMode && !form.sweepExitLogic) ? null : form.exitLogicOptions,
+    requireBullRegimeOptions: focused || (form.timingFocusMode && !form.sweepRequireBullRegime) ? null : form.requireBullRegimeOptions,
+    entryModeOptions: focused || (form.timingFocusMode && !form.sweepEntryMode) ? null : form.entryModeOptions,
+    sizingModeOptions: focused || (form.timingFocusMode && !form.sweepSizingMode) ? null : form.sizingModeOptions
   }
   return { payload: {
     name: form.jobName.trim() || `${pattern.name} 타이밍 최적화`,

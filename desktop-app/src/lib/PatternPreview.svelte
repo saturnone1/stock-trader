@@ -62,6 +62,7 @@
       timeFrameByValue = Object.fromEntries((metadata?.timeFrames ?? []).map((item) => [item.value, item]))
       fromDate = defaultFromDate(timeFrame, toDate)
       if (isIntraday(timeFrame)) fromDate = `${fromDate}T09:30`
+      emitContext()
       if (pattern) scheduleRefresh('filters', 0)
     } catch (e) {
       error = e?.response?.data?.error || e?.message || '시간축 정보를 불러오지 못했습니다.'
@@ -97,6 +98,7 @@
 
       result = response.data
       symbol = response.data.symbol
+      emitContext()
       if (reason === 'pattern' && previous?.summary && lastSuccessfulContext === context) {
         comparison = {
           entryDelta: result.summary.entryCount - previous.summary.entryCount,
@@ -127,6 +129,16 @@
   function changeTimeFrame(value) {
     timeFrame = value
     dispatch('timeframechange', { value })
+    emitContext()
+  }
+
+  function emitContext() {
+    dispatch('contextchange', {
+      symbol: symbol.trim().toUpperCase(),
+      from: fromDate,
+      to: toDate,
+      timeFrame
+    })
   }
 
   function applyPreset(days) {

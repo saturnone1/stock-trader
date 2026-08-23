@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   backtestSymbolSignature,
+  buildOptimizationContext,
   buildTimeframeWarning,
   createBacktestForm,
   createCustomFactorExperiment,
@@ -18,7 +19,10 @@ test('backtest reset factories return independent canonical research state', () 
   first.symbolsText = 'AAPL'
 
   assert.equal(second.symbolsText, 'SPY, QQQ, TQQQ')
+  assert.equal(createTimingLab().enabled, false)
   assert.deepEqual(createTimingLab().selectedWindows, ['20-20', '20-10'])
+  assert.equal(createBacktestForm().from.length, 10)
+  assert.equal(createBacktestForm().to.length, 10)
   assert.deepEqual(createFactorLab().customExperiments, [createCustomFactorExperiment(1, 'custom-1')])
   assert.equal(createBacktestForm().slippageModel, '')
   assert.equal(createBacktestForm('Adaptive').slippageModel, 'Adaptive')
@@ -59,4 +63,15 @@ test('timeframe warning uses the selected provider capability', () => {
     'Alpaca의 1분봉 조회 한도는 최대 30일입니다.'
   )
   assert.equal(buildTimeframeWarning({ ...form, to: '2026-01-15' }, providers, []), '')
+})
+
+test('tuning context preserves the exact successful backtest baseline', () => {
+  const context = buildOptimizationContext(
+    { symbolsText: 'TQQQ', from: '2025-01-01', to: '2026-01-01', timeFrame: 'Daily', dataSource: 'Alpaca' },
+    { totalReturn: .2, maxDrawdown: .1, totalTrades: 12, sortinoRatio: 1.4 },
+    { id: 3, name: '추세' }
+  )
+  assert.equal(context.patternId, 3)
+  assert.equal(context.symbolsText, 'TQQQ')
+  assert.deepEqual(context.baseline, { totalReturn: .2, maxDrawdown: .1, tradeCount: 12, sortinoRatio: 1.4 })
 })
