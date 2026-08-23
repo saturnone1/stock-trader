@@ -7,6 +7,7 @@ using StockTrader.Application.Authentication;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Auth;
+using StockTrader.Api;
 
 namespace StockTrader.Extensions;
 
@@ -33,6 +34,12 @@ public static class SecurityServiceExtensions
             .Validate(
                 settings => settings.LockoutMinutes > 0,
                 "LockoutMinutes must be positive")
+            .ValidateOnStart();
+        services.AddOptions<OptimizationWorkerTransportOptions>()
+            .Bind(configuration.GetSection(OptimizationWorkerTransportOptions.SectionName))
+            .Validate(settings => settings.IsValid(),
+                "Optimization worker transport requires a 32+ character secret when enabled "
+                + "and a lease duration between 30 and 1800 seconds")
             .ValidateOnStart();
 
         // HttpContextAccessor (needed by AuditService to read client IP)
@@ -88,9 +95,17 @@ public static class SecurityServiceExtensions
                         return Task.CompletedTask;
                     }
                 };
-            });
+            })
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions,
+                OptimizationWorkerAuthenticationHandler>(
+                OptimizationWorkerAuthenticationDefaults.Scheme,
+                _ => { });
 
-        services.AddAuthorization();
+        services.AddAuthorization(options => options.AddPolicy(
+            OptimizationWorkerAuthenticationDefaults.Policy,
+            policy => policy
+                .AddAuthenticationSchemes(OptimizationWorkerAuthenticationDefaults.Scheme)
+                .RequireClaim("service", "optimization-worker")));
 
         // Auth + Audit + Crypto services
         services.AddSingleton<ICryptoService, AesCryptoService>();
@@ -130,6 +145,14 @@ public static class SecurityServiceExtensions
                 policy.PermitLimit          = 60;
                 policy.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
                 policy.QueueLimit           = 2;
+            });
+
+            opts.AddFixedWindowLimiter("optimization-worker", policy =>
+            {
+                policy.Window = TimeSpan.FromMinutes(1);
+                policy.PermitLimit = 120;
+                policy.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                policy.QueueLimit = 0;
             });
         });
 

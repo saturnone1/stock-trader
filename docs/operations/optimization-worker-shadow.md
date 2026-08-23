@@ -23,6 +23,22 @@ The applied Pod reported the dedicated `stocktrader-optimization-worker` Service
 token automount, a read-only root filesystem, and the immutable source-tagged image. It has no data
 volume and no application secret.
 
+## Control-plane secret
+
+Create the independent authentication secret without writing it to the repository or shell output:
+
+```bash
+worker_secret="$(openssl rand -hex 32)"
+sudo k3s kubectl -n stocktrader create secret generic \
+  stocktrader-optimization-worker-auth \
+  --from-literal=shared-secret="$worker_secret"
+unset worker_secret
+```
+
+Both API and Worker manifests refer to this Secret. The deployment script fails before building if
+it is missing. Shadow mode tolerates probe downtime, but the present single-secret generation does
+not provide zero-downtime rotation and must not be treated as the final remote-compute identity.
+
 ## Routine verification
 
 ```bash
@@ -62,6 +78,8 @@ shadow release.
 
 - This is one physical K3s node and is not high availability.
 - No authenticated lease transport or remote computation is enabled.
+- The authenticated status handshake uses node-local cluster HTTP; executable leases require the
+  internal TLS/workload-identity gate.
 - Prometheus-format metrics exist, but no cluster scraper, retention, dashboard, or alert has yet
   been selected.
 - Idle resource evidence does not satisfy the Stage 2 load/chaos/cost gate.

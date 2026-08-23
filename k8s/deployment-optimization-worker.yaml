@@ -50,6 +50,17 @@ spec:
           value: "8080"
         - name: ASPNETCORE_ENVIRONMENT
           value: "Production"
+        - name: STOCKTRADER_CONTROL_API_URL
+          value: "http://stocktrader-api:3000"
+        - name: STOCKTRADER_WORKER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: STOCKTRADER_WORKER_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-optimization-worker-auth
+              key: shared-secret
         resources:
           requests:
             memory: "128Mi"

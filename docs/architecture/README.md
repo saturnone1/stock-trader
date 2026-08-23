@@ -57,6 +57,12 @@ an extracted library or folder alone is not a deployed microservice.
 The first shadow rollout evidence and rollback commands are recorded in the
 [Optimization Worker operations note](../operations/optimization-worker-shadow.md).
 
+[ADR 0073](adr/0073-authenticate-optimization-worker-control-plane.md) adds a separate fail-closed
+workload authentication scheme and an outbound F# shadow probe. The Worker uses neither desktop
+cookies nor a Kubernetes token; a cluster Secret is injected only into the API and Worker, while
+the default application configuration keeps the transport disabled. This handshake does not yet
+lease or execute jobs.
+
 ## Target modules
 
 | Module | Owns | Must not own |

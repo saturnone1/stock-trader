@@ -1701,10 +1701,16 @@ public class ArchitectureDependencyTests
             repository, "workers/optimization-worker/StockTrader.OptimizationWorker.fsproj"));
         var fsharpHealth = File.ReadAllText(Path.Combine(
             repository, "workers/optimization-worker/HealthHost.fs"));
+        var fsharpControlProbe = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/ControlPlaneProbe.fs"));
         var workerDockerfile = File.ReadAllText(Path.Combine(
             repository, "Dockerfile.optimization-worker"));
         var workerDeployment = File.ReadAllText(Path.Combine(
             repository, "k8s/deployment-optimization-worker.yaml"));
+        var apiDeployment = File.ReadAllText(Path.Combine(
+            repository, "k8s/deployment-api.yaml"));
+        var workerSecretExample = File.ReadAllText(Path.Combine(
+            repository, "k8s/secret-optimization-worker.example.yaml"));
         var deploymentScript = File.ReadAllText(Path.Combine(
             repository, "scripts/deploy-k3s.sh"));
         var compose = File.ReadAllText(Path.Combine(repository, "docker-compose.yml"));
@@ -1940,16 +1946,22 @@ public class ArchitectureDependencyTests
         fsharpProject.Should().NotContain("StockTrader.csproj");
         fsharpProject.Should().Contain("Microsoft.NET.Sdk.Web");
         fsharpProject.Should().Contain("HealthHost.fs");
+        fsharpProject.Should().Contain("ControlPlaneProbe.fs");
         fsharpWorker.Should().Contain("OptimizationLeaseCompatibilityPolicy.Error");
         fsharpWorker.Should().Contain("StrategyExecutionArtifactPolicy.CompatibilityError");
         fsharpWorker.Should().Contain("--serve");
         fsharpHealth.Should().Contain("/health/live");
         fsharpHealth.Should().Contain("/health/ready");
         fsharpHealth.Should().Contain("/metrics");
+        fsharpControlProbe.Should().Contain("OptimizationWorkerHttpHeaders.WorkerId");
+        fsharpControlProbe.Should().Contain("OptimizationWorkerHttpHeaders.Secret");
+        fsharpControlProbe.Should().NotContain("StockTrader.Models");
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/Program.fs"))
             .Length.Should().BeLessThanOrEqualTo(60);
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/HealthHost.fs"))
             .Length.Should().BeLessThanOrEqualTo(60);
+        File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/ControlPlaneProbe.fs"))
+            .Length.Should().BeLessThanOrEqualTo(100);
         workerDockerfile.Should().Contain("StockTrader.OptimizationWorker.fsproj");
         workerDockerfile.Should().Contain("USER $APP_UID");
         workerDockerfile.Should().NotContain("StockTrader.csproj");
@@ -1957,11 +1969,18 @@ public class ArchitectureDependencyTests
         workerDeployment.Should().Contain("automountServiceAccountToken: false");
         workerDeployment.Should().Contain("readOnlyRootFilesystem: true");
         workerDeployment.Should().Contain("path: /health/ready");
+        workerDeployment.Should().Contain("STOCKTRADER_CONTROL_API_URL");
+        workerDeployment.Should().Contain("stocktrader-optimization-worker-auth");
         workerDeployment.Should().Contain("cpu: \"2\"");
         workerDeployment.Should().NotContain("stocktrader-data");
+        apiDeployment.Should().Contain("OptimizationWorkerTransport__Enabled");
+        apiDeployment.Should().Contain("stocktrader-optimization-worker-auth");
+        workerSecretExample.Should().Contain("REPLACE_WITH_A_RANDOM_32_PLUS_CHARACTER_SECRET");
+        workerSecretExample.Should().NotContain("tjxodnjs1");
         deploymentScript.Should().Contain("optimization-worker)");
         deploymentScript.Should().Contain("Dockerfile.optimization-worker");
         deploymentScript.Should().Contain("deployment/stocktrader-optimization-worker");
+        deploymentScript.Should().Contain("stocktrader-optimization-worker-auth");
         compose.Should().Contain("optimization-worker:");
         worker.Should().Contain("Task.Delay(PollInterval, _clock, stoppingToken)");
         worker.Should().NotContain("DateTime.UtcNow");
@@ -4019,6 +4038,35 @@ public class ArchitectureDependencyTests
         var registrations = File.ReadAllText(Path.Combine(
             repository, "Extensions/NotificationServiceExtensions.cs"));
         registrations.Should().Contain("GetRequiredService<TimeProvider>()");
+    }
+
+    [Fact]
+    public void OptimizationWorkerControlApiUsesAnIndependentFailClosedCredential()
+    {
+        var repository = FindRepositoryRoot();
+        var options = File.ReadAllText(Path.Combine(
+            repository, "Configuration/OptimizationWorkerTransportOptions.cs"));
+        var handler = File.ReadAllText(Path.Combine(
+            repository, "Api/OptimizationWorkerAuthenticationHandler.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(
+            repository, "Api/OptimizationWorkerEndpoints.cs"));
+        var security = File.ReadAllText(Path.Combine(
+            repository, "Extensions/SecurityServiceExtensions.cs"));
+        var settings = File.ReadAllText(Path.Combine(repository, "appsettings.json"));
+
+        options.Should().Contain("MinimumSecretLength = 32");
+        options.Should().Contain("public bool Enabled { get; init; }");
+        handler.Should().Contain("OptimizationWorkerCredentialPolicy.IsAuthorized(");
+        handler.Should().Contain("OptimizationWorkerHttpHeaders.Secret");
+        handler.Should().NotContain("CookieAuthenticationDefaults");
+        endpoints.Should().Contain("/internal/optimization-worker");
+        endpoints.Should().Contain("ExcludeFromDescription()");
+        endpoints.Should().Contain("OptimizationWorkerAuthenticationDefaults.Policy");
+        security.Should().Contain("OptimizationWorkerAuthenticationHandler");
+        security.Should().Contain("RequireClaim(\"service\", \"optimization-worker\")");
+        settings.Should().Contain("\"OptimizationWorkerTransport\"");
+        settings.Should().Contain("\"Enabled\": false");
+        settings.Should().NotContain("SharedSecret");
     }
 
     private static string FindRepositoryRoot()

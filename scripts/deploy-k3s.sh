@@ -58,6 +58,12 @@ if $deploy_api && ! sudo k3s kubectl -n stocktrader get secret stocktrader-alpac
   echo "Create it from k8s/secret.example.yaml before deploying." >&2
   exit 1
 fi
+if { $deploy_api || $deploy_worker; } \
+  && ! sudo k3s kubectl -n stocktrader get secret stocktrader-optimization-worker-auth >/dev/null 2>&1; then
+  echo "Missing Kubernetes secret stocktrader/stocktrader-optimization-worker-auth." >&2
+  echo "Create it from k8s/secret-optimization-worker.example.yaml before deploying." >&2
+  exit 1
+fi
 
 if $deploy_api; then
   sudo buildah bud --layers -f Dockerfile.api -t "$api_image" .

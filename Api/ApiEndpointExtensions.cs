@@ -32,6 +32,7 @@ public static class ApiEndpointExtensions
         api.MapOptimizeApi();
         api.MapOptimizeJobApi();
         api.MapMetadataApi();
+        api.MapOptimizationWorkerApi();
 
         return app;
     }

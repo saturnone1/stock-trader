@@ -48,6 +48,15 @@ spec:
             secretKeyRef:
               name: stocktrader-alpaca
               key: Alpaca__EnableStreaming
+        - name: OptimizationWorkerTransport__Enabled
+          value: "true"
+        - name: OptimizationWorkerTransport__Mode
+          value: "Shadow"
+        - name: OptimizationWorkerTransport__SharedSecret
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-optimization-worker-auth
+              key: shared-secret
         resources:
           requests:
             memory: "256Mi"

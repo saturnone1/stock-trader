@@ -12,6 +12,9 @@ services:
       Alpaca__ApiSecret: ${ALPACA_API_SECRET:-}
       Alpaca__IsPaper: ${ALPACA_IS_PAPER:-true}
       Alpaca__EnableStreaming: ${ALPACA_ENABLE_STREAMING:-false}
+      OptimizationWorkerTransport__Enabled: ${OPTIMIZATION_WORKER_TRANSPORT_ENABLED:-false}
+      OptimizationWorkerTransport__Mode: Shadow
+      OptimizationWorkerTransport__SharedSecret: ${OPTIMIZATION_WORKER_SHARED_SECRET:-}
     ports:
       - "5239:5239"
     volumes:
@@ -38,6 +41,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
+      STOCKTRADER_CONTROL_API_URL: http://stocktrader-api:5239
+      STOCKTRADER_WORKER_ID: compose-optimization-worker
+      STOCKTRADER_WORKER_SECRET: ${OPTIMIZATION_WORKER_SHARED_SECRET:-}
     ports:
       - "8081:8080"
     restart: unless-stopped

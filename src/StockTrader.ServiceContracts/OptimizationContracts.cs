@@ -12,6 +12,12 @@ public static class OptimizationWorkerContractCatalog
     public const string OptimizationCostModelVersion = "adaptive-cost-v1";
 }
 
+public static class OptimizationWorkerHttpHeaders
+{
+    public const string Secret = "X-StockTrader-Worker-Key";
+    public const string WorkerId = "X-StockTrader-Worker-Id";
+}
+
 public sealed record StrategyExecutionArtifact(
     int ContractVersion,
     string StrategyDocumentJson,
