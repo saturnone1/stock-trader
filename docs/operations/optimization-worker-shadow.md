@@ -23,6 +23,23 @@ The applied Pod reported the dedicated `stocktrader-optimization-worker` Service
 token automount, a read-only root filesystem, and the immutable source-tagged image. It has no data
 volume and no application secret.
 
+## Verified control-plane handshake
+
+- Date: 2026-08-23
+- Source commit: `cd9b740`
+- Image: `localhost/stock-trader/optimization-worker:architecture-cd9b740`
+- API transport mode: authenticated status probe only
+
+The API and Worker were rolled out independently. The replacement Worker Pod reached `1/1 Ready`
+with zero restarts. After three 30-second probe intervals, `/health/ready` reported
+`controlConfigured=true`, `controlConnected=true`, and an empty `controlError`. Metrics reported
+three attempts and three successes. A request carrying an invalid secret returned HTTP 401, while
+the same status request with the mounted credential returned HTTP 200.
+
+Each probe attempt has a five-second deadline. This prevents an unreachable control service from
+stalling the background loop and leaves the Worker ready in shadow mode while exposing the failure
+type through `controlError` and warning logs.
+
 ## Control-plane secret
 
 Create the independent authentication secret without writing it to the repository or shell output:
@@ -38,6 +55,8 @@ unset worker_secret
 Both API and Worker manifests refer to this Secret. The deployment script fails before building if
 it is missing. Shadow mode tolerates probe downtime, but the present single-secret generation does
 not provide zero-downtime rotation and must not be treated as the final remote-compute identity.
+Use `--from-literal` as shown: creating the value from standard input can preserve a trailing
+newline, causing every otherwise valid request to be rejected with HTTP 401.
 
 ## Routine verification
 
