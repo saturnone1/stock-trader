@@ -121,7 +121,7 @@ spec:
           readOnly: true
         livenessProbe:
           httpGet:
-            path: /api/health
+            path: /api/health/live
             port: 5239
           initialDelaySeconds: 60
           periodSeconds: 10

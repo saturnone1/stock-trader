@@ -10,6 +10,14 @@ public static class HealthEndpoints
 {
     public static RouteGroupBuilder MapHealthApi(this RouteGroupBuilder api)
     {
+        // Liveness describes only this process. A downstream outage should remove the
+        // API from service through readiness, not restart it and amplify the failure.
+        api.MapGet("/health/live", () => Results.Ok(new
+        {
+            status = "ok",
+            service = "stocktrader-api",
+        }));
+
         api.MapGet("/health", async (
             IOptions<AlpacaSettings> alpaca,
             TimeProvider clock,

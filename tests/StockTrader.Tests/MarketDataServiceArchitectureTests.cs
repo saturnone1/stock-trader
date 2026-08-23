@@ -55,6 +55,18 @@ public sealed class MarketDataServiceArchitectureTests
         File.Exists(Path.Combine(Root, "scripts", "restore-market-data-backup.sh")).Should().BeTrue();
     }
 
+    [Fact]
+    public void Api_liveness_does_not_depend_on_the_market_data_service()
+    {
+        var health = File.ReadAllText(Path.Combine(Root, "Api", "HealthEndpoints.cs"));
+        var manifest = File.ReadAllText(Path.Combine(Root, "k8s", "deployment-api.yaml"));
+
+        health.Should().Contain("/health/live");
+        manifest.Should().Contain("path: /api/health/live");
+        manifest.Should().Contain("readinessProbe:");
+        manifest.Should().Contain("path: /api/health");
+    }
+
     private static string FindRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
