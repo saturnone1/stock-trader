@@ -9,7 +9,35 @@ public sealed record MlTrainingOptions(
 
 public sealed record MarketRegimeTrainingSet(
     string Symbol,
-    IReadOnlyList<OhlcvBar> Bars);
+    string Provider,
+    string TimeFrame,
+    string AdjustmentMode,
+    string CalendarVersion,
+    string ContentHash,
+    string EvidenceId,
+    DateTime FromUtc,
+    DateTime ToUtc,
+    IReadOnlyList<OhlcvBar> Bars)
+{
+    public MarketRegimeTrainingSet(string symbol, IReadOnlyList<OhlcvBar> bars)
+        : this(symbol, "Compatibility", "Daily", "Raw", "compatibility-v1",
+            StockTrader.ServiceContracts.MachineLearning.MlTrainingContractHash.Sha256(symbol),
+            StockTrader.ServiceContracts.MachineLearning.MlTrainingContractHash.Sha256($"evidence|{symbol}"),
+            bars.Count == 0 ? DateTime.UnixEpoch : bars.Min(bar => bar.Timestamp),
+            bars.Count == 0 ? DateTime.UnixEpoch : bars.Max(bar => bar.Timestamp), bars)
+    {
+    }
+}
+
+public interface IMlTrainingTransport
+{
+    Task<StockTrader.ServiceContracts.MachineLearning.MlTrainingJobResult> TrainAsync(
+        MarketRegimeTrainingSet regime,
+        IReadOnlyList<SignalScoringTrainingSample> signalSamples,
+        MlTrainingOptions options,
+        DateTime requestedAtUtc,
+        CancellationToken ct = default);
+}
 
 public interface IMarketRegimeTrainingDataSource
 {

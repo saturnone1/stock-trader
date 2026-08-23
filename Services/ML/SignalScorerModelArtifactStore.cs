@@ -27,6 +27,45 @@ internal sealed class SignalScorerModelArtifactStore(
     MLSettings settings,
     ILogger logger)
 {
+    public StoredSignalScorer? TryImport(
+        StockTrader.ServiceContracts.MachineLearning.MlModelArtifactContract artifact)
+    {
+        var error = StockTrader.ServiceContracts.MachineLearning.MlTrainingContractPolicy
+            .ArtifactError(artifact);
+        if (error is not null
+            || artifact.ModelKind != StockTrader.ServiceContracts.MachineLearning.MlModelKinds.SignalScorer)
+            return null;
+        var manifest = new SignalScorerModelManifest(
+            artifact.FeatureSchemaVersion, artifact.FeatureCount,
+            artifact.TrainedAtUtc, artifact.TrainingSamples,
+            artifact.ValidationAccuracy ?? 0, artifact.ValidationAuc ?? 0,
+            artifact.FeatureImportances.Select(x =>
+                new FeatureImportance(x.FeatureName, x.Importance)).ToList(),
+            artifact.ModelSha256);
+        var modelPath = GetModelPath();
+        var manifestPath = ManifestPath(modelPath);
+        var suffix = $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllBytes(modelPath + suffix, artifact.ModelBytes);
+            File.WriteAllText(manifestPath + suffix, JsonSerializer.Serialize(manifest));
+            File.Move(modelPath + suffix, modelPath, true);
+            File.Move(manifestPath + suffix, manifestPath, true);
+            using var stream = new MemoryStream(artifact.ModelBytes, writable: false);
+            return new StoredSignalScorer(mlContext.Model.Load(stream, out _), manifest);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "시그널 스코러 원격 아티팩트 가져오기 실패");
+            return null;
+        }
+        finally
+        {
+            if (File.Exists(modelPath + suffix)) File.Delete(modelPath + suffix);
+            if (File.Exists(manifestPath + suffix)) File.Delete(manifestPath + suffix);
+        }
+    }
+
     public bool TrySave(
         ITransformer model,
         SignalScorerModelManifest manifest,

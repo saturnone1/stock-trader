@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["workers/ml-training-service/StockTrader.MlTrainingService.fsproj", "workers/ml-training-service/"]
+COPY ["src/StockTrader.MlTrainingCompute/StockTrader.MlTrainingCompute.csproj", "src/StockTrader.MlTrainingCompute/"]
+COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
+RUN dotnet restore "workers/ml-training-service/StockTrader.MlTrainingService.fsproj"
+COPY . .
+RUN dotnet publish "workers/ml-training-service/StockTrader.MlTrainingService.fsproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+ENV ASPNETCORE_ENVIRONMENT=Production
+EXPOSE 8080 8443
+USER $APP_UID
+ENTRYPOINT ["dotnet", "StockTrader.MlTrainingService.dll"]

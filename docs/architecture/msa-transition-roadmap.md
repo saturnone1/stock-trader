@@ -5,7 +5,9 @@ Implementation is authorized only by extraction-specific ADRs. Stage 2 was compl
 under [ADR 0077](adr/0077-cut-over-remote-optimization-authority.md) at `b636cb7`; the production
 topology is now the modular application plus an independently deployed Optimization Worker service.
 Stage 3 Market Data was completed and accepted under
-[ADR 0078](adr/0078-extract-market-data-service.md) at `6587b65`. Stage 4 ML Training is next.
+[ADR 0078](adr/0078-extract-market-data-service.md) at `6587b65`. Stage 4 ML Training is in progress
+under [ADR 0079](adr/0079-extract-ml-training-service.md); no later service boundary may begin until
+its Remote cutover and resilience evidence is accepted.
 
 ## Baseline and feasibility finding
 
@@ -209,6 +211,10 @@ authoritative inputs to trading.
 
 Exit gate: a worker or consumer outage cannot change live trading state, and replay cannot duplicate
 financial or external-notification effects beyond the documented delivery policy.
+
+Status: **in progress under [ADR 0079](adr/0079-extract-ml-training-service.md)**. ML Training is the
+only active extraction. Reporting/Notifications remain deferred until the complete ML service batch
+passes.
 
 ## Stage 5 — Isolate Trading Core
 

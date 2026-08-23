@@ -25,6 +25,49 @@ internal sealed class MarketRegimeModelArtifactStore(
     MLSettings settings,
     ILogger logger)
 {
+    public StoredMarketRegimeModel? TryImport(
+        StockTrader.ServiceContracts.MachineLearning.MlModelArtifactContract artifact)
+    {
+        var error = StockTrader.ServiceContracts.MachineLearning.MlTrainingContractPolicy
+            .ArtifactError(artifact);
+        if (error is not null
+            || artifact.ModelKind != StockTrader.ServiceContracts.MachineLearning.MlModelKinds.MarketRegime)
+            return null;
+        var manifest = new MarketRegimeModelManifest(
+            artifact.FeatureSchemaVersion, artifact.FeatureCount,
+            artifact.ClusterLabels!.Count, artifact.TrainedAtUtc,
+            artifact.TrainingSamples, new Dictionary<uint, string>(artifact.ClusterLabels),
+            artifact.ModelSha256);
+        return TryImportBytes(artifact.ModelBytes, manifest);
+    }
+
+    private StoredMarketRegimeModel? TryImportBytes(
+        byte[] bytes, MarketRegimeModelManifest manifest)
+    {
+        var modelPath = GetModelPath();
+        var manifestPath = ManifestPath(modelPath);
+        var suffix = $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllBytes(modelPath + suffix, bytes);
+            File.WriteAllText(manifestPath + suffix, JsonSerializer.Serialize(manifest));
+            File.Move(modelPath + suffix, modelPath, true);
+            File.Move(manifestPath + suffix, manifestPath, true);
+            using var stream = new MemoryStream(bytes, writable: false);
+            return new StoredMarketRegimeModel(mlContext.Model.Load(stream, out _), manifest);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "시장 레짐 원격 아티팩트 가져오기 실패");
+            return null;
+        }
+        finally
+        {
+            if (File.Exists(modelPath + suffix)) File.Delete(modelPath + suffix);
+            if (File.Exists(manifestPath + suffix)) File.Delete(manifestPath + suffix);
+        }
+    }
+
     public bool TrySave(
         ITransformer model,
         MarketRegimeModelManifest manifest,

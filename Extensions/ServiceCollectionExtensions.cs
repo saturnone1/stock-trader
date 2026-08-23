@@ -173,6 +173,11 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.AutoRetrainMaxRetries > 0,
                 "AutoRetrainMaxRetries must be positive")
             .ValidateOnStart();
+        services.AddOptions<MlTrainingTransportOptions>()
+            .Bind(configuration.GetSection(MlTrainingTransportOptions.SectionName))
+            .Validate(settings => settings.IsValid(),
+                "ML Training transport requires HTTPS, mTLS files, a shared secret, and bounded timeouts outside Local mode")
+            .ValidateOnStart();
         services.AddOptions<PatternStatisticsSettings>()
             .Bind(configuration.GetSection("PatternStatistics"))
             .Validate(settings => settings.CacheMinutes > 0,
@@ -254,6 +259,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMarketRegimeClassifier, MarketRegimeClassifier>();
         services.AddSingleton<ISignalScorer, SignalScorer>();
         services.AddScoped<IMarketRegimeTrainingDataSource, MarketRegimeTrainingDataSource>();
+        services.AddSingleton<IMlTrainingTransport, MlTrainingTransport>();
         services.AddSingleton(serviceProvider =>
         {
             var settings = serviceProvider

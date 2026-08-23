@@ -148,6 +148,15 @@ public sealed class MarketRegimeClassifier : IMarketRegimeClassifier
         }
     }
 
+    public bool ImportArtifact(
+        StockTrader.ServiceContracts.MachineLearning.MlModelArtifactContract artifact)
+    {
+        var stored = _artifacts.TryImport(artifact);
+        if (stored is null) return false;
+        Publish(stored.Model, stored.Manifest);
+        return true;
+    }
+
     private void Publish(ITransformer model, MarketRegimeModelManifest manifest)
     {
         var engine = _mlContext.Model

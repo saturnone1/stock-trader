@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stocktrader-ml-training
+  namespace: stocktrader
+automountServiceAccountToken: false
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocktrader-ml-training
+  namespace: stocktrader
+  labels:
+    app: stocktrader-ml-training
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: stocktrader-ml-training
+  template:
+    metadata:
+      labels:
+        app: stocktrader-ml-training
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: stocktrader-ml-training
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: ml-training
+        image: localhost/stock-trader/ml-training:latest
+        imagePullPolicy: Never
+        ports:
+        - name: health
+          containerPort: 8080
+        - name: mtls
+          containerPort: 8443
+        env:
+        - name: STOCKTRADER_ML_TRAINING_DATA
+          value: "/data"
+        - name: STOCKTRADER_ML_TRAINING_POLL_MILLISECONDS
+          value: "500"
+        - name: STOCKTRADER_ML_TRAINING_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-ml-training-auth
+              key: shared-secret
+        - name: STOCKTRADER_ML_TRAINING_SERVER_CERT_PATH
+          value: "/tls/server/tls.crt"
+        - name: STOCKTRADER_ML_TRAINING_SERVER_KEY_PATH
+          value: "/tls/server/tls.key"
+        - name: STOCKTRADER_ML_TRAINING_CLIENT_CA_PATH
+          value: "/tls/client-ca/ca.crt"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "2"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: server-tls
+          mountPath: /tls/server
+          readOnly: true
+        - name: client-ca
+          mountPath: /tls/client-ca
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: health
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      - name: data
+        hostPath:
+          path: __ML_TRAINING_DATA_DIR__
+          type: DirectoryOrCreate
+      - name: server-tls
+        secret:
+          secretName: __ML_TRAINING_SERVER_TLS_SECRET__
+      - name: client-ca
+        secret:
+          secretName: __ML_TRAINING_CLIENT_TLS_SECRET__
+          items:
+          - key: ca.crt
+            path: ca.crt
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stocktrader-ml-training
+  namespace: stocktrader
+spec:
+  selector:
+    app: stocktrader-ml-training
+  ports:
+  - name: health
+    port: 8080
+    targetPort: health
+  - name: mtls
+    port: 8443
+    targetPort: mtls
+  type: ClusterIP

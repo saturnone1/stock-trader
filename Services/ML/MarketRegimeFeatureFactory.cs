@@ -27,7 +27,7 @@ internal static class MarketRegimeFeatureFactory
             Math.Max(0, ordered.Length - FirstFeatureBarIndex));
         for (var index = FirstFeatureBarIndex; index < ordered.Length; index++)
         {
-            var features = CreateAt(closes, volumes, index);
+            var features = CreateAt(closes, volumes, index, ordered[index].Timestamp);
             if (features is not null) samples.Add(features);
         }
         return samples;
@@ -41,7 +41,7 @@ internal static class MarketRegimeFeatureFactory
         var closes = ordered.Select(bar => (double)bar.Close).ToArray();
         var volumes = ordered.Select(bar => (double)bar.Volume).ToArray();
         return ordered.Length >= MinimumPredictionBars
-            ? CreateAt(closes, volumes, ordered.Length - 1)
+            ? CreateAt(closes, volumes, ordered.Length - 1, ordered[^1].Timestamp)
             : null;
     }
 
@@ -53,7 +53,8 @@ internal static class MarketRegimeFeatureFactory
     private static MarketRegimeFeatures? CreateAt(
         double[] closes,
         double[] volumes,
-        int index)
+        int index,
+        DateTime asOfUtc)
     {
         if (Enumerable.Range(index - 24, 25).Any(offset => closes[offset] <= 0))
             return null;
@@ -94,6 +95,7 @@ internal static class MarketRegimeFeatureFactory
             : (100d - 100d / (1d + averageGain / averageLoss)) / 100d;
 
         return new MarketRegimeFeatures(
+            asOfUtc.Kind == DateTimeKind.Utc ? asOfUtc : asOfUtc.ToUniversalTime(),
             (float)return5,
             (float)return10,
             (float)return20,

@@ -1229,7 +1229,7 @@ public class ArchitectureDependencyTests
             .Select(Path.GetFileName)
             .Should().BeEquivalentTo(
                 "Dockerfile.api", "Dockerfile.desktop", "Dockerfile.market-data",
-                "Dockerfile.optimization-worker");
+                "Dockerfile.ml-training", "Dockerfile.optimization-worker");
         Directory.EnumerateFiles(repository, "docker-compose*.yml")
             .Select(Path.GetFileName)
             .Should().Equal("docker-compose.yml");
@@ -2251,7 +2251,7 @@ public class ArchitectureDependencyTests
         File.ReadAllLines(trainerPath).Length.Should().BeLessThanOrEqualTo(150);
         artifacts.Should().Contain("ModelSha256");
         artifacts.Should().Contain("ComputeSha256(");
-        File.ReadAllLines(artifactsPath).Length.Should().BeLessThanOrEqualTo(180);
+        File.ReadAllLines(artifactsPath).Length.Should().BeLessThanOrEqualTo(200);
         dataset.Should().Contain("OrderBy(sample => sample.SignalBarAt)");
         dataset.Should().Contain("ordered[trainingCount..]");
         store.Should().Contain("GroupBy(trade => trade.SourceSignalId!.Value)");
@@ -2310,7 +2310,7 @@ public class ArchitectureDependencyTests
         classifier.Should().NotContain("KMeans(");
         File.ReadAllLines(classifierPath).Length.Should().BeLessThanOrEqualTo(180);
         File.ReadAllLines(featuresPath).Length.Should().BeLessThanOrEqualTo(130);
-        File.ReadAllLines(artifactsPath).Length.Should().BeLessThanOrEqualTo(180);
+        File.ReadAllLines(artifactsPath).Length.Should().BeLessThanOrEqualTo(200);
         registrations.Should().Contain(
             "== MarketRegimeClusterCatalog.RequiredClusterCount");
     }
@@ -2359,6 +2359,7 @@ public class ArchitectureDependencyTests
 
         service.Should().Contain("IMarketRegimeTrainingDataSource regimeData");
         service.Should().Contain("ISignalScoringTrainingStore trainingStore");
+        service.Should().Contain("IMlTrainingTransport transport");
         service.Should().Contain("MlTrainingRunState runState");
         statusQuery.Should().Contain("regimeClassifier.GetStatus()");
         statusQuery.Should().Contain("signalScorer.GetStatus()");
@@ -2379,6 +2380,8 @@ public class ArchitectureDependencyTests
             "AddSingleton<IMlModelStatusQuery, MlModelStatusQuery>()");
         registrations.Should().Contain(
             "AddScoped<IMarketRegimeTrainingDataSource, MarketRegimeTrainingDataSource>()");
+        registrations.Should().Contain(
+            "AddSingleton<IMlTrainingTransport, MlTrainingTransport>()");
         registrations.Should().Contain("AddSingleton<MlTrainingRunState>()");
         registrations.Should().NotContain(
             "AddSingleton<IMLModelTrainingService, MLModelTrainingService>()");
@@ -2475,7 +2478,7 @@ public class ArchitectureDependencyTests
         sync.Should().Contain("timeProvider.GetUtcNow()");
         sync.Should().NotContain("DateTime.UtcNow");
         ml.Should().Contain("_options.MinimumTrainingSamples");
-        ml.Should().Contain("_timeProvider.GetUtcNow()");
+        ml.Should().Contain("_clock.GetUtcNow()");
         ml.Should().NotContain("DateTime.UtcNow");
         regimeClassifier.Should().Contain("_timeProvider.GetUtcNow()");
         regimeClassifier.Should().NotContain("DateTime.UtcNow");

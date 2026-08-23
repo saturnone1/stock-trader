@@ -2,6 +2,7 @@ using StockTrader.Application.MachineLearning;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models.Enums;
 using StockTrader.Services.DataFeed;
+using StockTrader.ServiceContracts.MarketData;
 
 namespace StockTrader.Services.ML;
 
@@ -22,6 +23,20 @@ internal sealed class MarketRegimeTrainingDataSource(
             from,
             to,
             ct);
-        return new MarketRegimeTrainingSet(symbol, bars);
+        var timeFrame = TimeFrame.Daily;
+        var provider = selection.Source.ToString();
+        var adjustment = PriceAdjustmentCatalog.Resolve(selection.Source, timeFrame).ToString();
+        var calendar = MarketCalendarVersion.Current;
+        var contractBars = bars.Select(bar => new MarketDataBar(
+            symbol, timeFrame.ToString(), bar.Timestamp, bar.Open, bar.High,
+            bar.Low, bar.Close, bar.Volume, null)).ToArray();
+        var contentHash = MarketDataContractHash.Content(contractBars);
+        var first = bars.Count == 0 ? from : bars.Min(bar => bar.Timestamp);
+        var last = bars.Count == 0 ? to : bars.Max(bar => bar.Timestamp);
+        var evidenceId = MarketDataContractHash.Evidence(
+            provider, symbol, timeFrame.ToString(), adjustment, calendar, 0, contentHash);
+        return new MarketRegimeTrainingSet(
+            symbol, provider, timeFrame.ToString(), adjustment, calendar,
+            contentHash, evidenceId, first, last, bars);
     }
 }

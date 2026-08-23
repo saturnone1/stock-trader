@@ -25,6 +25,7 @@ public static class MarketRegimeClusterCatalog
 
 /// <summary>한 완료 일봉 시점에서 계산한 인과적 시장 레짐 피처입니다.</summary>
 public sealed record MarketRegimeFeatures(
+    DateTime AsOfUtc,
     float Return5Day,
     float Return10Day,
     float Return20Day,
@@ -48,6 +49,9 @@ public interface IMarketRegimeClassifier
     Task<bool> TrainAsync(
         OhlcvBar[] benchmarkBars,
         CancellationToken ct = default);
+
+    bool ImportArtifact(
+        StockTrader.ServiceContracts.MachineLearning.MlModelArtifactContract artifact);
 
     bool IsModelLoaded { get; }
     MarketRegimeClassifierStatus GetStatus();

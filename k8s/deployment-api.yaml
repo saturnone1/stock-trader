@@ -100,6 +100,23 @@ spec:
           value: "stocktrader-market-data"
         - name: MarketDataTransport__ShadowBackfillEnabled
           value: "__MARKET_DATA_SHADOW_BACKFILL_ENABLED__"
+        - name: MlTrainingTransport__Mode
+          value: "__ML_TRAINING_MODE__"
+        - name: MlTrainingTransport__Endpoint
+          value: "https://stocktrader-ml-training:8443"
+        - name: MlTrainingTransport__SharedSecret
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-ml-training-auth
+              key: shared-secret
+        - name: MlTrainingTransport__ClientCertificatePath
+          value: "/tls/ml-training-client/tls.crt"
+        - name: MlTrainingTransport__ClientCertificateKeyPath
+          value: "/tls/ml-training-client/tls.key"
+        - name: MlTrainingTransport__ServerCertificateAuthorityPath
+          value: "/tls/ml-training-client/ca.crt"
+        - name: MlTrainingTransport__ServerCertificateCommonName
+          value: "stocktrader-ml-training"
         resources:
           requests:
             memory: "256Mi"
@@ -118,6 +135,9 @@ spec:
           readOnly: true
         - name: market-data-client-tls
           mountPath: /tls/market-data-client
+          readOnly: true
+        - name: ml-training-client-tls
+          mountPath: /tls/ml-training-client
           readOnly: true
         livenessProbe:
           httpGet:
@@ -150,6 +170,9 @@ spec:
       - name: market-data-client-tls
         secret:
           secretName: __MARKET_DATA_CLIENT_TLS_SECRET__
+      - name: ml-training-client-tls
+        secret:
+          secretName: __ML_TRAINING_CLIENT_TLS_SECRET__
 
 ---
 apiVersion: v1

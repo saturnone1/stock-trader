@@ -8,6 +8,7 @@ using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Services.DataFeed;
 using StockTrader.Services.ML;
+using StockTrader.ServiceContracts.MachineLearning;
 
 namespace StockTrader.Tests;
 
@@ -35,11 +36,22 @@ public class MLModelTrainingServiceTests
         var samples = new Mock<ISignalScoringTrainingStore>();
         samples.Setup(value => value.GetRecentAsync(5000, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<SignalScoringTrainingSample>());
+        var transport = new Mock<IMlTrainingTransport>();
+        transport.Setup(value => value.TrainAsync(
+                It.Is<MarketRegimeTrainingSet>(set =>
+                    set.Symbol == DataProviderCatalog.KoreaRegimeBenchmark
+                    && set.Provider == nameof(DataSource.LsSecurities)),
+                It.IsAny<IReadOnlyList<SignalScoringTrainingSample>>(),
+                It.Is<MlTrainingOptions>(options => options.MinimumTrainingSamples == 3),
+                observedAt.UtcDateTime,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Insufficient(observedAt.UtcDateTime));
         var service = new MLModelTrainingService(
             new Mock<IMarketRegimeClassifier>().Object,
             new Mock<ISignalScorer>().Object,
             new MarketRegimeTrainingDataSource(feeds.Object),
             samples.Object,
+            transport.Object,
             new MlTrainingRunState(),
             new MlTrainingOptions(3, 90, 5000),
             new FixedTimeProvider(observedAt),
@@ -50,8 +62,9 @@ public class MLModelTrainingServiceTests
         result.Success.Should().BeFalse();
         result.RegimeSamples.Should().Be(0);
         result.TrainingDuration.Should().Be(TimeSpan.Zero);
-        result.Message.Should().Contain("최소 3개 인과적 샘플 필요");
+        result.Message.Should().Contain("현재 인과적 샘플 0개");
         feed.VerifyAll();
+        transport.VerifyAll();
     }
 
     [Fact]
@@ -111,11 +124,22 @@ public class MLModelTrainingServiceTests
         store.Setup(value => value.GetRecentAsync(5000, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         var runState = new MlTrainingRunState();
+        var transport = new Mock<IMlTrainingTransport>();
+        transport.Setup(value => value.TrainAsync(
+                It.IsAny<MarketRegimeTrainingSet>(),
+                It.IsAny<IReadOnlyList<SignalScoringTrainingSample>>(),
+                It.IsAny<MlTrainingOptions>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MarketRegimeTrainingSet _,
+                IReadOnlyList<SignalScoringTrainingSample> _, MlTrainingOptions _,
+                DateTime requested, CancellationToken _) => Insufficient(requested));
         MLModelTrainingService CreateService() => new(
             Mock.Of<IMarketRegimeClassifier>(),
             Mock.Of<ISignalScorer>(),
             regimeData.Object,
             store.Object,
+            transport.Object,
             runState,
             new MlTrainingOptions(3, 90, 5000),
             TimeProvider.System,
@@ -133,6 +157,11 @@ public class MLModelTrainingServiceTests
         await first;
         runState.Snapshot().IsTraining.Should().BeFalse();
     }
+
+    private static MlTrainingJobResult Insufficient(DateTime at) => new(
+        MlTrainingContractVersions.Current, "test-job", "test-hash",
+        MlTrainingJobStatuses.InsufficientData, "insufficient", 0,
+        at, at, at, 0, null, null, false);
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {

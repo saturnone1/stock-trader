@@ -133,6 +133,15 @@ public sealed class SignalScorer : ISignalScorer
         }
     }
 
+    public bool ImportArtifact(
+        StockTrader.ServiceContracts.MachineLearning.MlModelArtifactContract artifact)
+    {
+        var stored = _artifacts.TryImport(artifact);
+        if (stored is null) return false;
+        Publish(stored.Model, stored.Manifest);
+        return true;
+    }
+
     public SignalScorerStatus GetStatus()
     {
         lock (_modelLock)

@@ -67,6 +67,9 @@ public interface ISignalScorer
         IReadOnlyList<SignalScoringTrainingSample> samples,
         CancellationToken ct = default);
 
+    bool ImportArtifact(
+        StockTrader.ServiceContracts.MachineLearning.MlModelArtifactContract artifact);
+
     bool IsModelLoaded { get; }
     SignalScorerStatus GetStatus();
 }

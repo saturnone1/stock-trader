@@ -1,17 +1,18 @@
-using StockTrader.Models;
+using StockTrader.ServiceContracts.MachineLearning;
 
 namespace StockTrader.Application.MachineLearning;
 
-/// <summary>데이터 수집, 두 모델 학습, 결과와 원자적 상태 관측을 조율합니다.</summary>
+/// <summary>인과적 입력 준비와 검증된 학습 아티팩트 승격만 조율합니다.</summary>
 internal sealed class MLModelTrainingService : IMLModelTrainingService
 {
     private readonly IMarketRegimeClassifier _regimeClassifier;
     private readonly ISignalScorer _signalScorer;
     private readonly IMarketRegimeTrainingDataSource _regimeData;
     private readonly ISignalScoringTrainingStore _trainingStore;
+    private readonly IMlTrainingTransport _transport;
     private readonly MlTrainingRunState _runState;
     private readonly MlTrainingOptions _options;
-    private readonly TimeProvider _timeProvider;
+    private readonly TimeProvider _clock;
     private readonly ILogger<MLModelTrainingService> _logger;
 
     public MLModelTrainingService(
@@ -19,155 +20,79 @@ internal sealed class MLModelTrainingService : IMLModelTrainingService
         ISignalScorer signalScorer,
         IMarketRegimeTrainingDataSource regimeData,
         ISignalScoringTrainingStore trainingStore,
+        IMlTrainingTransport transport,
         MlTrainingRunState runState,
         MlTrainingOptions options,
-        TimeProvider timeProvider,
+        TimeProvider clock,
         ILogger<MLModelTrainingService> logger)
     {
         _regimeClassifier = regimeClassifier;
         _signalScorer = signalScorer;
         _regimeData = regimeData;
         _trainingStore = trainingStore;
+        _transport = transport;
         _runState = runState;
         _options = options;
-        _timeProvider = timeProvider;
+        _clock = clock;
         _logger = logger;
     }
 
     public async Task<MlTrainingResult> TrainAllAsync(CancellationToken ct = default)
     {
         if (!_runState.TryBegin())
-        {
-            return new MlTrainingResult
-            {
-                Success = false,
-                Message = "이미 학습이 진행 중입니다. 잠시 후 다시 시도하세요.",
-            };
-        }
+            return Failure("이미 학습이 진행 중입니다. 잠시 후 다시 시도하세요.");
 
+        var started = _clock.GetUtcNow().UtcDateTime;
         try
         {
-            var startTime = _timeProvider.GetUtcNow().UtcDateTime;
-            _logger.LogInformation("ML 학습 시작: 레짐 분류기");
+            _runState.SetStatus("학습 근거 데이터 준비 중...");
+            var regime = await _regimeData.LoadAsync(
+                started.AddDays(-_options.RegimeTrainingDays), started, ct);
+            var signals = await _trainingStore.GetRecentAsync(
+                _options.SignalSampleLimit, ct);
+            _runState.SetStatus("ML Training 서비스에서 모델 학습 중...");
+            var result = await _transport.TrainAsync(
+                regime, signals, _options, started, ct);
 
-            var regimeSymbol = "시장 레짐 기준 종목";
-            OhlcvBar[] regimeBars = [];
-            try
-            {
-                _runState.SetStatus("시장 레짐 기준 종목 데이터 수집 중...");
-                var observedAt = _timeProvider.GetUtcNow().UtcDateTime;
-                var trainingSet = await _regimeData.LoadAsync(
-                    observedAt.AddDays(-_options.RegimeTrainingDays),
-                    observedAt,
-                    ct);
-                regimeSymbol = trainingSet.Symbol;
-                regimeBars = trainingSet.Bars.ToArray();
-                _logger.LogInformation(
-                    "{Symbol} 데이터 수집 완료: {Count}개 바",
-                    regimeSymbol,
-                    regimeBars.Length);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                _logger.LogWarning(
-                    exception,
-                    "{Symbol} 데이터 수집 실패 — 레짐 분류기 학습 건너뜀",
-                    regimeSymbol);
-            }
+            if (result.Status is MlTrainingJobStatuses.Failed
+                or MlTrainingJobStatuses.Cancelled)
+                return Failure(result.Message);
 
-            var regimeTrained = false;
-            var regimeSamples = 0;
-            if (regimeBars.Length >= _options.MinimumTrainingSamples)
-            {
-                _runState.SetStatus("시장 레짐 분류기 학습 중...");
-                regimeTrained = await _regimeClassifier.TrainAsync(regimeBars, ct);
-                if (regimeTrained)
-                    regimeSamples = _regimeClassifier.GetStatus().TrainingSamples;
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "{Symbol} 데이터 부족으로 레짐 분류기 학습 건너뜀 ({Count}개)",
-                    regimeSymbol,
-                    regimeBars.Length);
-            }
+            var regimeImported = result.RegimeArtifact is not null
+                && _regimeClassifier.ImportArtifact(result.RegimeArtifact);
+            var signalImported = result.SignalArtifact is not null
+                && _signalScorer.ImportArtifact(result.SignalArtifact);
+            if (result.RegimeArtifact is not null && !regimeImported)
+                throw new InvalidOperationException("검증된 레짐 아티팩트를 추론 캐시에 승격하지 못했습니다.");
+            if (result.SignalArtifact is not null && !signalImported)
+                throw new InvalidOperationException("검증된 시그널 아티팩트를 추론 캐시에 승격하지 못했습니다.");
 
-            _runState.SetStatus("인과적 시그널 학습 샘플 로딩 중...");
-            _logger.LogInformation("ML 학습: 시그널 스코어러");
-            var samples = await _trainingStore.GetRecentAsync(
-                _options.SignalSampleLimit,
-                ct);
-
-            var scorerTrained = false;
-            double accuracy = 0;
-            double auc = 0;
-            if (samples.Count >= _options.MinimumTrainingSamples)
-            {
-                _runState.SetStatus(
-                    $"시그널 스코어러 학습 중... ({samples.Count}개 인과적 샘플)");
-                scorerTrained = await _signalScorer.TrainAsync(samples, ct);
-                if (scorerTrained)
-                {
-                    var scorerStatus = _signalScorer.GetStatus();
-                    accuracy = scorerStatus.ValidationAccuracy;
-                    auc = scorerStatus.ValidationAuc;
-                }
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "인과적 피처·결과 샘플 부족으로 시그널 스코러 학습 건너뜀 ({Count}개)",
-                    samples.Count);
-            }
-
-            var duration = _timeProvider.GetUtcNow().UtcDateTime - startTime;
+            var duration = _clock.GetUtcNow().UtcDateTime - started;
             _runState.SetStatus("완료");
-            var message = BuildResultMessage(
-                regimeTrained,
-                scorerTrained,
-                regimeSymbol,
-                regimeSamples,
-                samples.Count,
-                _options.MinimumTrainingSamples);
             _logger.LogInformation(
-                "ML 학습 완료: {Duration:F1}초, 레짐={Regime}, 스코어러={Scorer}",
-                duration.TotalSeconds,
-                regimeTrained,
-                scorerTrained);
-
+                "ML Training job {JobId} completed: {Status}, revision={Revision}",
+                result.JobId, result.Status, result.PublicationRevision);
             return new MlTrainingResult
             {
-                Success = regimeTrained || scorerTrained,
-                Message = message,
-                RegimeSamples = regimeSamples,
-                SignalSamples = samples.Count,
-                SignalScorerAccuracy = accuracy,
-                SignalScorerAuc = auc,
+                Success = regimeImported || signalImported,
+                Message = BuildMessage(result, signals.Count, _options.MinimumTrainingSamples),
+                RegimeSamples = result.RegimeArtifact?.TrainingSamples ?? 0,
+                SignalSamples = signals.Count,
+                SignalScorerAccuracy = result.SignalArtifact?.ValidationAccuracy ?? 0,
+                SignalScorerAuc = result.SignalArtifact?.ValidationAuc ?? 0,
                 TrainingDuration = duration,
             };
         }
         catch (OperationCanceledException)
         {
             _runState.SetStatus("취소됨");
-            return new MlTrainingResult
-            {
-                Success = false,
-                Message = "학습이 취소되었습니다.",
-            };
+            return Failure("학습이 취소되었습니다.");
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "ML 학습 중 예상치 못한 오류 발생");
+            _logger.LogError(exception, "ML 학습·승격 실패");
             _runState.SetStatus("오류 발생");
-            return new MlTrainingResult
-            {
-                Success = false,
-                Message = $"학습 중 오류 발생: {exception.Message}",
-            };
+            return Failure($"학습 중 오류 발생: {exception.Message}");
         }
         finally
         {
@@ -175,21 +100,21 @@ internal sealed class MLModelTrainingService : IMLModelTrainingService
         }
     }
 
-    private static string BuildResultMessage(
-        bool regimeTrained,
-        bool scorerTrained,
-        string regimeSymbol,
-        int regimeSamples,
-        int signalSamples,
-        int minimumTrainingSamples)
+    private static MlTrainingResult Failure(string message) => new()
     {
-        var regime = regimeTrained
-            ? $"레짐 분류기 학습 완료 ({regimeSamples}개 {regimeSymbol} 피처)"
-            : "레짐 분류기 건너뜀 (데이터 부족)";
-        var scorer = scorerTrained
-            ? $"시그널 스코러 학습 완료 ({signalSamples}개 인과적 샘플)"
-            : $"시그널 스코러 건너뜀 (최소 {minimumTrainingSamples}개 인과적 샘플 필요, "
-              + $"현재 {signalSamples}개)";
-        return $"{regime} | {scorer}";
+        Success = false,
+        Message = message,
+    };
+
+    private static string BuildMessage(
+        MlTrainingJobResult result, int signalSamples, int minimumTrainingSamples)
+    {
+        var regime = result.RegimeArtifact is null
+            ? "레짐 분류기 건너뜀 (데이터 부족)"
+            : $"레짐 분류기 학습 완료 ({result.RegimeArtifact.TrainingSamples}개 피처)";
+        var signal = result.SignalArtifact is null
+            ? $"시그널 스코러 건너뜀 (최소 {minimumTrainingSamples}개 필요, 현재 인과적 샘플 {signalSamples}개)"
+            : $"시그널 스코러 학습 완료 ({result.SignalArtifact.TrainingSamples}개 인과적 샘플)";
+        return $"{regime} | {signal}";
     }
 }
