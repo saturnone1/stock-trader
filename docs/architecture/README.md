@@ -54,6 +54,9 @@ cutover. MSA completion requires
 an independently built image and Kubernetes Deployment/Pod for each approved service boundary;
 an extracted library or folder alone is not a deployed microservice.
 
+The first shadow rollout evidence and rollback commands are recorded in the
+[Optimization Worker operations note](../operations/optimization-worker-shadow.md).
+
 ## Target modules
 
 | Module | Owns | Must not own |
