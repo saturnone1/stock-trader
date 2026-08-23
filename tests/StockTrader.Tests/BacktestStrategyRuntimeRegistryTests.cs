@@ -71,7 +71,7 @@ public class BacktestStrategyRuntimeRegistryTests
             CircuitBreakerJson = JsonSerializer.Serialize(circuitBreaker),
             ReentryJson = JsonSerializer.Serialize(reentry ?? new ReentryConfig())
         };
-        var detector = new RuleBasedDetector(new IndicatorService(), definition);
+        var detector = new RuleBasedDetector(definition);
         return new BacktestStrategyRuntimeRegistry(
             [detector],
             new Dictionary<string, PreparedSymbolData>(),

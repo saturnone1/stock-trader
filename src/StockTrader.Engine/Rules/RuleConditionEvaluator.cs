@@ -1,17 +1,18 @@
+using StockTrader.Engine.MarketData;
 using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
 using StockTrader.Application.Strategies;
 using StockTrader.Models;
-using EvalContext = StockTrader.Services.Patterns.RuleIndicatorEvaluationContext;
+using EvalContext = StockTrader.Engine.Rules.RuleIndicatorEvaluationContext;
 
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
 /// <summary>
 /// Evaluates one compiled strategy condition against an immutable bar snapshot.
 /// Reference data and its as-of boundary are explicit so historical evaluation cannot
 /// accidentally observe bars from the future.
 /// </summary>
-internal sealed class RuleConditionEvaluator
+public sealed class RuleConditionEvaluator
 {
     private readonly RuleIndicatorEvaluator _indicators;
 
@@ -23,7 +24,7 @@ internal sealed class RuleConditionEvaluator
     public RuleConditionResult Evaluate(
         EntryRule rule,
         EvalContext context,
-        IReadOnlyDictionary<string, OhlcvBar[]>? referenceData = null,
+        IReadOnlyDictionary<string, PriceBar[]>? referenceData = null,
         DateTime? referenceAsOf = null)
     {
         try
@@ -128,7 +129,7 @@ internal sealed class RuleConditionEvaluator
         }
     }
 
-    internal static bool Compare(
+    public static bool Compare(
         decimal current,
         decimal previous,
         string comparisonOperator,
@@ -158,7 +159,7 @@ internal sealed class RuleConditionEvaluator
     }
 }
 
-internal readonly record struct RuleConditionResult(bool IsMatch, string Details)
+public readonly record struct RuleConditionResult(bool IsMatch, string Details)
 {
     public static RuleConditionResult Passed(string details) => new(true, details);
     public static RuleConditionResult Failed(string details) => new(false, details);

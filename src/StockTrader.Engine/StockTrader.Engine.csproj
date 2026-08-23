@@ -20,6 +20,7 @@
     <Compile Include="..\..\Application\Strategies\StrategyCompiler.cs" Link="Application\Strategies\StrategyCompiler.cs" />
     <Compile Include="..\..\Application\Strategies\StrategyDocument.cs" Link="Application\Strategies\StrategyDocument.cs" />
     <Compile Include="..\..\Application\Strategies\StrategyDocumentVersionPolicy.cs" Link="Application\Strategies\StrategyDocumentVersionPolicy.cs" />
+    <Compile Include="..\..\Application\Strategies\StrategyEvaluationPolicy.cs" Link="Application\Strategies\StrategyEvaluationPolicy.cs" />
   </ItemGroup>
 
 </Project>

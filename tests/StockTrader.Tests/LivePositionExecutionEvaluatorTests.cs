@@ -81,7 +81,7 @@ public class LivePositionExecutionEvaluatorTests
         var indicators = new IndicatorService();
         var evaluator = new LivePositionExecutionEvaluator(
             indicators,
-            new CustomStrategyDetectorFactory(indicators),
+            new CustomStrategyDetectorFactory(),
             settings.Object,
             new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero)),
             NullLogger<LivePositionExecutionEvaluator>.Instance);
@@ -267,7 +267,7 @@ public class LivePositionExecutionEvaluatorTests
         var clock = new FixedTimeProvider(new DateTimeOffset(now, TimeSpan.Zero));
         var evaluator = new LivePositionExecutionEvaluator(
             indicators,
-            new CustomStrategyDetectorFactory(indicators),
+            new CustomStrategyDetectorFactory(),
             settings.Object,
             clock,
             NullLogger<LivePositionExecutionEvaluator>.Instance);

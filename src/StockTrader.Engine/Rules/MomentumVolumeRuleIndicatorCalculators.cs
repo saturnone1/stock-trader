@@ -1,4 +1,4 @@
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
 internal static class MomentumVolumeRuleIndicatorCalculators
 {

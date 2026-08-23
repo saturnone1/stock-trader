@@ -96,7 +96,7 @@ public class DynamicExitPricePolicyTests
             Close = close,
             Volume = 100_000
         }).ToArray();
-        var context = new RuleIndicatorEvaluator(new IndicatorService()).CreateContext(bars);
+        var context = new RuleIndicatorEvaluator().CreateContext(IndicatorService.ToEngineBars(bars));
         return (bars, context);
     }
 }

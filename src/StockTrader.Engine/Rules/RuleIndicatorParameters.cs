@@ -1,8 +1,8 @@
 using StockTrader.Domain.Strategies;
 
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
-internal readonly record struct RuleIndicatorParameters(
+public readonly record struct RuleIndicatorParameters(
     string Indicator,
     IReadOnlyDictionary<string, decimal> Values)
 {

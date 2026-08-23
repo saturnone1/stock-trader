@@ -54,7 +54,7 @@ public class CustomStrategyExecutionParityTests
         var strategy = compilation.Strategy!;
         var indicators = new IndicatorService();
         var atr = Enumerable.Repeat(1m, bars.Length).ToArray();
-        var factory = new CustomStrategyDetectorFactory(indicators);
+        var factory = new CustomStrategyDetectorFactory();
 
         var preview = await new PatternPreviewSimulationEngine().RunAsync(
             new PatternPreviewSimulationInput(
@@ -203,7 +203,7 @@ public class CustomStrategyExecutionParityTests
         var indicators = new IndicatorService();
         var risingAtr = Enumerable.Repeat(1m, rising.Length).ToArray();
         var fallingAtr = Enumerable.Repeat(1m, falling.Length).ToArray();
-        var factory = new CustomStrategyDetectorFactory(indicators);
+        var factory = new CustomStrategyDetectorFactory();
 
         async Task<PatternPreviewResult> Preview(string symbol, OhlcvBar[] bars, decimal[] atr) =>
             (await new PatternPreviewSimulationEngine().RunAsync(
@@ -291,7 +291,7 @@ public class CustomStrategyExecutionParityTests
         var strategy = compilation.Strategy!;
         var indicators = new IndicatorService();
         var atr = indicators.ATR(bars, 14);
-        var factory = new CustomStrategyDetectorFactory(indicators);
+        var factory = new CustomStrategyDetectorFactory();
 
         var preview = await new PatternPreviewSimulationEngine().RunAsync(
             new PatternPreviewSimulationInput(
@@ -476,7 +476,7 @@ public class CustomStrategyExecutionParityTests
         compilation.Errors.Should().BeEmpty();
         var strategy = compilation.Strategy!;
         var atr = Enumerable.Repeat(1m, bars.Length).ToArray();
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
+        var factory = new CustomStrategyDetectorFactory();
         var preview = await new PatternPreviewSimulationEngine().RunAsync(
             new PatternPreviewSimulationInput(
                 "AAA",

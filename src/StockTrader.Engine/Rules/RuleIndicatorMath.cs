@@ -1,6 +1,6 @@
-using StockTrader.Models;
+using StockTrader.Engine.MarketData;
 
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
 /// <summary>외부 지표 라이브러리에 없는 규칙 지표의 결정적 수학 구현.</summary>
 internal static class RuleIndicatorMath
@@ -26,7 +26,7 @@ internal static class RuleIndicatorMath
             * 100m;
     }
 
-    internal static decimal[] ComputeAdx(OhlcvBar[] bars, int period)
+    internal static decimal[] ComputeAdx(PriceBar[] bars, int period)
     {
         var count = bars.Length;
         var adx = new decimal[count];
@@ -83,7 +83,7 @@ internal static class RuleIndicatorMath
     }
 
     internal static (decimal[] K, decimal[] D) ComputeStochastic(
-        OhlcvBar[] bars,
+        PriceBar[] bars,
         int period,
         int smooth)
     {
@@ -112,7 +112,7 @@ internal static class RuleIndicatorMath
         return (k, d);
     }
 
-    internal static decimal CalculateRollingVwap(OhlcvBar[] bars, int index, int period)
+    internal static decimal CalculateRollingVwap(PriceBar[] bars, int index, int period)
     {
         if (index < period - 1) return 0;
         decimal priceVolumeTotal = 0;
@@ -126,7 +126,7 @@ internal static class RuleIndicatorMath
         return volumeTotal == 0 ? 0 : priceVolumeTotal / volumeTotal;
     }
 
-    internal static decimal CalculateCci(OhlcvBar[] bars, int index, int period)
+    internal static decimal CalculateCci(PriceBar[] bars, int index, int period)
     {
         if (index < period) return 0;
         var typicalPrices = new decimal[period];
@@ -142,7 +142,7 @@ internal static class RuleIndicatorMath
             : (typicalPrices[^1] - mean) / (0.015m * meanAbsoluteDeviation);
     }
 
-    internal static decimal CalculateWilliamsR(OhlcvBar[] bars, int index, int period)
+    internal static decimal CalculateWilliamsR(PriceBar[] bars, int index, int period)
     {
         if (index < period - 1) return -50;
         decimal highest = 0;
@@ -156,7 +156,7 @@ internal static class RuleIndicatorMath
         return range == 0 ? -50 : (highest - bars[index].Close) / range * -100;
     }
 
-    internal static decimal CalculateCmf(OhlcvBar[] bars, int index, int period)
+    internal static decimal CalculateCmf(PriceBar[] bars, int index, int period)
     {
         if (index < period) return 0;
         decimal moneyFlowVolumeTotal = 0;

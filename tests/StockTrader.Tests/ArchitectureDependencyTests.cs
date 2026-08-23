@@ -585,14 +585,15 @@ public class ArchitectureDependencyTests
     {
         var repository = FindRepositoryRoot();
         var detectorPath = Path.Combine(repository, "Services/Patterns/RuleBasedDetector.cs");
-        var evaluatorPath = Path.Combine(repository, "Services/Patterns/RuleIndicatorEvaluator.cs");
-        var contextPath = Path.Combine(repository, "Services/Patterns/RuleIndicatorEvaluationContext.cs");
-        var registryPath = Path.Combine(repository, "Services/Patterns/RuleIndicatorCalculatorRegistry.cs");
-        var standardPath = Path.Combine(repository, "Services/Patterns/StandardRuleIndicatorCalculators.cs");
-        var structurePath = Path.Combine(repository, "Services/Patterns/PriceStructureRuleIndicatorCalculators.cs");
-        var momentumPath = Path.Combine(repository, "Services/Patterns/MomentumVolumeRuleIndicatorCalculators.cs");
-        var mathPath = Path.Combine(repository, "Services/Patterns/RuleIndicatorMath.cs");
-        var conditionPath = Path.Combine(repository, "Services/Patterns/RuleConditionEvaluator.cs");
+        var evaluatorPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/RuleIndicatorEvaluator.cs");
+        var contextPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/RuleIndicatorEvaluationContext.cs");
+        var registryPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/RuleIndicatorCalculatorRegistry.cs");
+        var standardPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/StandardRuleIndicatorCalculators.cs");
+        var standardVolumePath = Path.Combine(repository, "src/StockTrader.Engine/Rules/StandardRuleIndicatorCalculators.Volume.cs");
+        var structurePath = Path.Combine(repository, "src/StockTrader.Engine/Rules/PriceStructureRuleIndicatorCalculators.cs");
+        var momentumPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/MomentumVolumeRuleIndicatorCalculators.cs");
+        var mathPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/RuleIndicatorMath.cs");
+        var conditionPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/RuleConditionEvaluator.cs");
         var detector = File.ReadAllText(detectorPath);
         var evaluator = File.ReadAllText(evaluatorPath);
         var context = File.ReadAllText(contextPath);
@@ -605,11 +606,13 @@ public class ArchitectureDependencyTests
         File.ReadAllLines(evaluatorPath).Length.Should().BeLessThanOrEqualTo(80);
         File.ReadAllLines(contextPath).Length.Should().BeLessThanOrEqualTo(100);
         File.ReadAllLines(registryPath).Length.Should().BeLessThanOrEqualTo(100);
-        File.ReadAllLines(standardPath).Length.Should().BeLessThanOrEqualTo(260);
+        File.ReadAllLines(standardPath).Length.Should().BeLessThanOrEqualTo(150);
+        File.ReadAllLines(standardVolumePath).Length.Should().BeLessThanOrEqualTo(150);
         File.ReadAllLines(structurePath).Length.Should().BeLessThanOrEqualTo(230);
         File.ReadAllLines(momentumPath).Length.Should().BeLessThanOrEqualTo(230);
         File.ReadAllLines(mathPath).Length.Should().BeLessThanOrEqualTo(230);
         detector.Should().Contain("_indicatorEvaluator.CreateContext(");
+        detector.Should().Contain("IndicatorService.ToEngineBars(");
         detector.Should().Contain("new RuleConditionEvaluator(_indicatorEvaluator)");
         conditions.Should().Contain("_indicators.Compute(");
         detector.Should().NotContain("switch (indicator.ToUpperInvariant())");
@@ -633,8 +636,8 @@ public class ArchitectureDependencyTests
     {
         var repository = FindRepositoryRoot();
         var detectorPath = Path.Combine(repository, "Services/Patterns/RuleBasedDetector.cs");
-        var conditionPath = Path.Combine(repository, "Services/Patterns/RuleConditionEvaluator.cs");
-        var groupPath = Path.Combine(repository, "Services/Patterns/RuleGroupEvaluator.cs");
+        var conditionPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/RuleConditionEvaluator.cs");
+        var groupPath = Path.Combine(repository, "src/StockTrader.Engine/Rules/RuleGroupEvaluator.cs");
         var detector = File.ReadAllText(detectorPath);
         var conditions = File.ReadAllText(conditionPath);
         var groups = File.ReadAllText(groupPath);
@@ -741,7 +744,8 @@ public class ArchitectureDependencyTests
             "미리보기·백테스트·최적화·실시간 경로는 구체 감지기를 직접 조립하거나 캐스팅하면 안 됩니다");
         contract.Should().Contain("public interface ICustomStrategyDetector : IPatternDetector");
         contract.Should().Contain("public interface ICustomStrategyDetectorFactory");
-        factory.Should().Contain("new RuleBasedDetector(_indicators, strategy)");
+        factory.Should().Contain("new RuleBasedDetector(strategy)");
+        factory.Should().NotContain("IIndicatorService");
         detector.Should().Contain("internal RuleBasedDetector(");
         registrations.Should().Contain(
             "AddSingleton<ICustomStrategyDetectorFactory, CustomStrategyDetectorFactory>()");
@@ -1638,6 +1642,9 @@ public class ArchitectureDependencyTests
         }.Select(path => File.ReadAllText(Path.Combine(repository, path))));
         var enginePriceBar = File.ReadAllText(Path.Combine(
             repository, "src/StockTrader.Engine/MarketData/PriceBar.cs"));
+        var engineRules = string.Join("\n", Directory.EnumerateFiles(
+                Path.Combine(repository, "src/StockTrader.Engine/Rules"), "*.cs")
+            .Select(File.ReadAllText));
         var engineSources = string.Join("\n", new[]
         {
             "Application/Strategies/CompiledStrategy.cs",
@@ -1645,6 +1652,7 @@ public class ArchitectureDependencyTests
             "Application/Strategies/StrategyCompiler.cs",
             "Application/Strategies/StrategyDocument.cs",
             "Application/Strategies/StrategyDocumentVersionPolicy.cs",
+            "Application/Strategies/StrategyEvaluationPolicy.cs",
             "Domain/MarketData/TimeFrame.cs",
             "Domain/MarketData/TimeFrameCatalog.cs",
             "Domain/Strategies/IndicatorCatalog.cs",
@@ -1656,6 +1664,17 @@ public class ArchitectureDependencyTests
             "src/StockTrader.Engine/MarketData/PriceBar.cs",
             "src/StockTrader.Engine/Indicators/IndicatorCalculator.cs",
             "src/StockTrader.Engine/Indicators/IndicatorCalculator.Bars.cs",
+            "src/StockTrader.Engine/Rules/MomentumVolumeRuleIndicatorCalculators.cs",
+            "src/StockTrader.Engine/Rules/PriceStructureRuleIndicatorCalculators.cs",
+            "src/StockTrader.Engine/Rules/RuleConditionEvaluator.cs",
+            "src/StockTrader.Engine/Rules/RuleGroupEvaluator.cs",
+            "src/StockTrader.Engine/Rules/RuleIndicatorCalculatorRegistry.cs",
+            "src/StockTrader.Engine/Rules/RuleIndicatorEvaluationContext.cs",
+            "src/StockTrader.Engine/Rules/RuleIndicatorEvaluator.cs",
+            "src/StockTrader.Engine/Rules/RuleIndicatorMath.cs",
+            "src/StockTrader.Engine/Rules/RuleIndicatorParameters.cs",
+            "src/StockTrader.Engine/Rules/StandardRuleIndicatorCalculators.cs",
+            "src/StockTrader.Engine/Rules/StandardRuleIndicatorCalculators.Volume.cs",
             "src/StockTrader.Engine/Strategies/StrategyRuleModels.cs"
         }.Select(path => File.ReadAllText(Path.Combine(repository, path))));
         var fsharpWorker = File.ReadAllText(Path.Combine(
@@ -1820,6 +1839,10 @@ public class ArchitectureDependencyTests
         engineIndicator.Should().NotContain("StockTrader.Services");
         enginePriceBar.Should().NotContain(" Id");
         enginePriceBar.Should().NotContain("Symbol");
+        engineRules.Should().NotContain("OhlcvBar");
+        engineRules.Should().NotContain("IIndicatorService");
+        engineRules.Should().NotContain("StockTrader.Services");
+        engineRules.Should().Contain("bar.Timestamp <= referenceAsOf.Value");
         indicatorAdapter.Should().Contain("IndicatorCalculator");
         indicatorAdapter.Should().Contain("ToEngineBars");
         indicatorAdapter.Should().NotContain("avgGain");
@@ -2642,7 +2665,7 @@ public class ArchitectureDependencyTests
         var detector = File.ReadAllText(Path.Combine(
             repository, "Services/Patterns/RuleBasedDetector.cs"));
         var conditions = File.ReadAllText(Path.Combine(
-            repository, "Services/Patterns/RuleConditionEvaluator.cs"));
+            repository, "src/StockTrader.Engine/Rules/RuleConditionEvaluator.cs"));
         var preparer = File.ReadAllText(Path.Combine(
             repository, "Services/Backtest/BacktestDataPreparer.cs"));
         var liveExecution = File.ReadAllText(Path.Combine(

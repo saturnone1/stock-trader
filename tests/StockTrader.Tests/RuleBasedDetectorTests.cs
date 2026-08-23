@@ -110,10 +110,10 @@ public class RuleBasedDetectorTests
             ExitGroupsLogic = "OR"
         };
 
-        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeTrue();
+        new RuleBasedDetector(definition).ShouldExit(bars).Should().BeTrue();
 
         definition.ExitGroupsLogic = "AND";
-        new RuleBasedDetector(new IndicatorService(), definition).ShouldExit(bars).Should().BeFalse();
+        new RuleBasedDetector(definition).ShouldExit(bars).Should().BeFalse();
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public class RuleBasedDetectorTests
                 EntryRulesJson = JsonSerializer.Serialize(rules),
                 EntryLogic = "OR"
             };
-            return await new RuleBasedDetector(new IndicatorService(), definition)
+            return await new RuleBasedDetector(definition)
                 .DetectAsync("AAPL", bars, BullRegime);
         }
 
@@ -214,7 +214,7 @@ public class RuleBasedDetectorTests
             AtrStopMultiplier = 2m,
             AtrTargetMultiplier = 3m
         };
-        var detector = new RuleBasedDetector(new IndicatorService(), definition);
+        var detector = new RuleBasedDetector(definition);
 
         var bars = CreateBars(Enumerable.Repeat(100m, 60).ToArray());
         var result = await detector.DetectAsync("AAPL", bars, BullRegime);
@@ -236,7 +236,7 @@ public class RuleBasedDetectorTests
             DefaultAllocationPercent = 100m
         };
 
-        return new RuleBasedDetector(new IndicatorService(), definition);
+        return new RuleBasedDetector(definition);
     }
 
     private static OhlcvBar[] CreateBars(IReadOnlyList<decimal> closes)

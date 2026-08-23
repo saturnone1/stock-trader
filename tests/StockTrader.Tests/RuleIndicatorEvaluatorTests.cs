@@ -1,9 +1,6 @@
 using FluentAssertions;
-using Moq;
 using StockTrader.Domain.Strategies;
-using StockTrader.Models;
-using StockTrader.Services.Indicators;
-using StockTrader.Services.Patterns;
+using StockTrader.Engine.MarketData;
 
 namespace StockTrader.Tests;
 
@@ -20,32 +17,29 @@ public class RuleIndicatorEvaluatorTests
     [Fact]
     public void Compute_UsesCatalogDefaultsAndCachesIndicatorWithinEvaluationContext()
     {
-        var values = Enumerable.Range(0, 60).Select(value => (decimal)value).ToArray();
-        var indicators = new Mock<IIndicatorService>();
-        indicators.Setup(service => service.RSI(It.IsAny<decimal[]>(), 14)).Returns(values);
-        var evaluator = new RuleIndicatorEvaluator(indicators.Object);
-        var context = evaluator.CreateContext(CreateBars(Enumerable.Repeat(100m, 60).ToArray()));
+        var evaluator = new RuleIndicatorEvaluator();
+        var context = evaluator.CreateContext(CreateBars(
+            Enumerable.Range(0, 60).Select(value => 100m + value).ToArray()));
 
         var first = evaluator.Compute("rsi", [], context, 0);
         var second = evaluator.Compute("RSI", [], context, 1);
+        var cached = context.GetRsi(14);
 
-        first.Should().Be((59m, 58m));
-        second.Should().Be((58m, 57m));
-        indicators.Verify(service => service.RSI(It.IsAny<decimal[]>(), 14), Times.Once);
+        first.Should().Be((cached[^1], cached[^2]));
+        second.Should().Be((cached[^2], cached[^3]));
+        context.GetRsi(14).Should().BeSameAs(cached);
     }
 
     [Fact]
     public void CreateContext_DoesNotLeakCachedValuesAcrossSymbols()
     {
-        var indicators = new Mock<IIndicatorService>();
-        indicators.Setup(service => service.SMA(It.IsAny<decimal[]>(), 20))
-            .Returns((decimal[] closes, int _) => Enumerable.Repeat(closes[^1], closes.Length).ToArray());
-        var evaluator = new RuleIndicatorEvaluator(indicators.Object);
+        var evaluator = new RuleIndicatorEvaluator();
+        var first = evaluator.CreateContext(CreateBars(Enumerable.Repeat(100m, 60).ToArray()));
+        var second = evaluator.CreateContext(CreateBars(Enumerable.Repeat(200m, 60).ToArray()));
 
-        evaluator.Compute("PRICE_VS_SMA", [], evaluator.CreateContext(CreateBars(Enumerable.Repeat(100m, 60).ToArray())), 0);
-        evaluator.Compute("PRICE_VS_SMA", [], evaluator.CreateContext(CreateBars(Enumerable.Repeat(200m, 60).ToArray())), 0);
-
-        indicators.Verify(service => service.SMA(It.IsAny<decimal[]>(), 20), Times.Exactly(2));
+        first.GetSma(20).Should().NotBeSameAs(second.GetSma(20));
+        first.GetSma(20)[^1].Should().Be(100m);
+        second.GetSma(20)[^1].Should().Be(200m);
     }
 
     [Fact]
@@ -55,7 +49,7 @@ public class RuleIndicatorEvaluatorTests
         closes[57] = 100m;
         closes[58] = 110m;
         closes[59] = 121m;
-        var evaluator = new RuleIndicatorEvaluator(new IndicatorService());
+        var evaluator = new RuleIndicatorEvaluator();
         var context = evaluator.CreateContext(CreateBars(closes));
 
         evaluator.Compute("PRICE_CHANGE", new() { ["bars"] = 1 }, context, 0).Should().Be((10m, 10m));
@@ -65,23 +59,17 @@ public class RuleIndicatorEvaluatorTests
     [Fact]
     public void Compute_UnknownIndicatorReturnsNeutralValues()
     {
-        var evaluator = new RuleIndicatorEvaluator(new IndicatorService());
+        var evaluator = new RuleIndicatorEvaluator();
         var context = evaluator.CreateContext(CreateBars(Enumerable.Repeat(100m, 60).ToArray()));
 
         evaluator.Compute("NOT_REGISTERED", [], context, 0).Should().Be((0m, 0m));
     }
 
-    private static OhlcvBar[] CreateBars(IReadOnlyList<decimal> closes)
+    private static PriceBar[] CreateBars(IReadOnlyList<decimal> closes)
     {
         var start = new DateTime(2024, 1, 1);
-        return closes.Select((close, index) => new OhlcvBar
-        {
-            Timestamp = start.AddDays(index),
-            Open = close,
-            High = close + 1m,
-            Low = close - 1m,
-            Close = close,
-            Volume = 100_000
-        }).ToArray();
+        return closes.Select((close, index) => new PriceBar(
+            start.AddDays(index), TimeFrame.Daily, close, close + 1m,
+            close - 1m, close, 100_000)).ToArray();
     }
 }

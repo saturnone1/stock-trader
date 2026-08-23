@@ -15,7 +15,7 @@ public class CustomStrategyDetectorFactoryTests
     [Fact]
     public async Task Create_FromDefinitionCompilesTheSharedRuntimeWithDeterministicBarTime()
     {
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
+        var factory = new CustomStrategyDetectorFactory();
         var bars = Bars();
 
         var detector = factory.Create(Definition("factory-clock"));
@@ -34,7 +34,7 @@ public class CustomStrategyDetectorFactoryTests
     public void Create_FromCompiledStrategyPreservesTheExactCompiledAggregate()
     {
         var compiled = StrategyCompiler.Compile(Definition("compiled-once")).Strategy!;
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
+        var factory = new CustomStrategyDetectorFactory();
 
         var detector = factory.Create(compiled);
 
@@ -45,7 +45,7 @@ public class CustomStrategyDetectorFactoryTests
     [Fact]
     public void Create_ReturnsAnIsolatedRuntimeForEveryExecutionScope()
     {
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
+        var factory = new CustomStrategyDetectorFactory();
         var definition = Definition("isolated-runtime");
 
         var first = factory.Create(definition);
@@ -57,7 +57,7 @@ public class CustomStrategyDetectorFactoryTests
     [Fact]
     public void Create_InvalidDefinitionCannotBypassCentralCompilation()
     {
-        var factory = new CustomStrategyDetectorFactory(new IndicatorService());
+        var factory = new CustomStrategyDetectorFactory();
         var invalid = Definition("invalid");
         invalid.EntryGroupsJson = "{broken";
 

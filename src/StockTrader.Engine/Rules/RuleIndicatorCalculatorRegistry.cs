@@ -1,8 +1,8 @@
 using StockTrader.Domain.Strategies;
 
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
-internal delegate (decimal current, decimal previous) RuleIndicatorCalculator(
+public delegate (decimal current, decimal previous) RuleIndicatorCalculator(
     RuleIndicatorParameters parameters,
     RuleIndicatorEvaluationContext context,
     int currentIndex,
@@ -11,13 +11,13 @@ internal delegate (decimal current, decimal previous) RuleIndicatorCalculator(
 /// <summary>
 /// 중앙 지표 카탈로그의 각 코드를 정확히 하나의 계산 구현에 연결한다.
 /// </summary>
-internal static class RuleIndicatorCalculatorRegistry
+public static class RuleIndicatorCalculatorRegistry
 {
     private static readonly IReadOnlyDictionary<string, RuleIndicatorCalculator> Calculators = Build();
 
-    internal static IReadOnlyCollection<string> Codes { get; } = Calculators.Keys.ToArray();
+    public static IReadOnlyCollection<string> Codes { get; } = Calculators.Keys.ToArray();
 
-    internal static bool TryGet(string indicator, out RuleIndicatorCalculator calculator) =>
+    public static bool TryGet(string indicator, out RuleIndicatorCalculator calculator) =>
         Calculators.TryGetValue(indicator, out calculator!);
 
     private static IReadOnlyDictionary<string, RuleIndicatorCalculator> Build()

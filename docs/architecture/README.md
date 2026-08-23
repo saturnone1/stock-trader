@@ -25,8 +25,10 @@ documents, compilation, rule models, timeframe identity, and central strategy/in
 compile into package-free `StockTrader.Engine`; shared artifact validation lives in
 `StockTrader.OptimizationProtocol`. Core indicator mathematics now also executes in the engine over
 storage-independent `PriceBar` values, while `IndicatorService` is only an `OhlcvBar` adapter.
-Rule evaluation and backtest simulation still remain in the monolith, so the worker is not yet a
-deployable optimization-compute Pod.
+The indicator registry, condition operators, grouped rule aggregation, warmup policy, and
+reference-symbol future-bar exclusion now execute in the engine as well. Fill processing and
+portfolio simulation still remain in the monolith, so the worker is not yet a deployable
+optimization-compute Pod.
 
 ## Target modules
 

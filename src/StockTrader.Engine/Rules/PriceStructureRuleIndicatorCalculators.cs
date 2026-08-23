@@ -1,6 +1,6 @@
-using StockTrader.Models;
+using StockTrader.Engine.MarketData;
 
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
 internal static class PriceStructureRuleIndicatorCalculators
 {
@@ -78,7 +78,7 @@ internal static class PriceStructureRuleIndicatorCalculators
             context.Closes[previousIndex] < previousLow ? 1m : 0m);
     }
 
-    private static decimal Highest(OhlcvBar[] bars, int start, int end)
+    private static decimal Highest(PriceBar[] bars, int start, int end)
     {
         decimal highest = 0;
         for (var i = start; i <= end; i++)
@@ -86,7 +86,7 @@ internal static class PriceStructureRuleIndicatorCalculators
         return highest;
     }
 
-    private static decimal Lowest(OhlcvBar[] bars, int start, int end)
+    private static decimal Lowest(PriceBar[] bars, int start, int end)
     {
         var lowest = decimal.MaxValue;
         for (var i = start; i <= end; i++)
@@ -106,7 +106,7 @@ internal static class PriceStructureRuleIndicatorCalculators
             previousIndex < 1 ? 0 : GapPercent(context.Bars, context.Closes, previousIndex));
     }
 
-    private static decimal GapPercent(OhlcvBar[] bars, decimal[] closes, int index) =>
+    private static decimal GapPercent(PriceBar[] bars, decimal[] closes, int index) =>
         closes[index - 1] == 0
             ? 0
             : (bars[index].Open - closes[index - 1]) / closes[index - 1] * 100;
@@ -128,10 +128,10 @@ internal static class PriceStructureRuleIndicatorCalculators
          CountSequence(context.Bars, previousIndex, 20, (current, previous) => current.High < previous.High));
 
     private static int CountSequence(
-        OhlcvBar[] bars,
+        PriceBar[] bars,
         int index,
         int maximum,
-        Func<OhlcvBar, OhlcvBar, bool> continues)
+        Func<PriceBar, PriceBar, bool> continues)
     {
         var count = 0;
         for (var i = index; i > 0 && i > index - maximum; i--)
@@ -154,7 +154,7 @@ internal static class PriceStructureRuleIndicatorCalculators
             previousIndex >= 1 && IsInside(context.Bars, previousIndex) ? 1m : 0m);
     }
 
-    private static bool IsInside(OhlcvBar[] bars, int index) =>
+    private static bool IsInside(PriceBar[] bars, int index) =>
         bars[index].High <= bars[index - 1].High && bars[index].Low >= bars[index - 1].Low;
 
     private static (decimal, decimal) Engulfing(
@@ -171,7 +171,7 @@ internal static class PriceStructureRuleIndicatorCalculators
                 : 0m);
     }
 
-    private static decimal EngulfingValue(OhlcvBar current, OhlcvBar previous)
+    private static decimal EngulfingValue(PriceBar current, PriceBar previous)
     {
         var currentBullish = current.Close > current.Open;
         var previousBullish = previous.Close > previous.Open;

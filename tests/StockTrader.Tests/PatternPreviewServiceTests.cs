@@ -44,7 +44,7 @@ public class PatternPreviewServiceTests
             repository.Object,
             feeds.Object,
             indicators,
-            new CustomStrategyDetectorFactory(indicators),
+            new CustomStrategyDetectorFactory(),
             new PatternPreviewSimulationEngine(),
             clock);
 
@@ -85,7 +85,7 @@ public class PatternPreviewServiceTests
             repository.Object,
             feeds.Object,
             indicators,
-            new CustomStrategyDetectorFactory(indicators),
+            new CustomStrategyDetectorFactory(),
             new PatternPreviewSimulationEngine(),
             clock);
 

@@ -43,7 +43,7 @@ public class BacktestSimulationGoldenTests
             AtrTargetMultiplier = 2m,
             MaxHoldingBars = 10
         };
-        var detector = new RuleBasedDetector(new IndicatorService(), definition);
+        var detector = new RuleBasedDetector(definition);
         var engine = CreateEngine();
 
         var result = await engine.RunAsync(
@@ -203,7 +203,7 @@ public class BacktestSimulationGoldenTests
                 MaxCorrelation = 0.8m
             })
         };
-        var detector = new RuleBasedDetector(new IndicatorService(), definition);
+        var detector = new RuleBasedDetector(definition);
 
         var result = await CreateEngine()
             .RunAsync(

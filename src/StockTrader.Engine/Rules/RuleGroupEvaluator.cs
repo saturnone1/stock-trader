@@ -1,14 +1,15 @@
+using StockTrader.Engine.MarketData;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
-using EvalContext = StockTrader.Services.Patterns.RuleIndicatorEvaluationContext;
+using EvalContext = StockTrader.Engine.Rules.RuleIndicatorEvaluationContext;
 
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
 /// <summary>
 /// Combines condition results using the strategy's inner- and outer-group logic.
 /// Weight accounting is kept here so entry confidence has one deterministic owner.
 /// </summary>
-internal sealed class RuleGroupEvaluator
+public sealed class RuleGroupEvaluator
 {
     private readonly RuleConditionEvaluator _conditions;
 
@@ -21,7 +22,7 @@ internal sealed class RuleGroupEvaluator
         IReadOnlyList<ConditionGroup> groups,
         string groupsLogic,
         EvalContext context,
-        IReadOnlyDictionary<string, OhlcvBar[]>? referenceData = null,
+        IReadOnlyDictionary<string, PriceBar[]>? referenceData = null,
         DateTime? referenceAsOf = null)
     {
         var combineGroupsWithAnd = string.Equals(groupsLogic, "AND", StringComparison.OrdinalIgnoreCase);
@@ -73,7 +74,7 @@ internal sealed class RuleGroupEvaluator
     }
 }
 
-internal readonly record struct RuleGroupResult(
+public readonly record struct RuleGroupResult(
     bool IsMatch,
     decimal MatchedWeight,
     decimal TotalWeight,

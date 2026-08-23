@@ -1,29 +1,29 @@
-using StockTrader.Models;
-using StockTrader.Services.Indicators;
+using StockTrader.Engine.MarketData;
+using StockTrader.Engine.Indicators;
 
-namespace StockTrader.Services.Patterns;
+namespace StockTrader.Engine.Rules;
 
 /// <summary>
 /// 중앙 지표 계산 레지스트리를 호출하고 한 평가 주기의 캐시 컨텍스트를 만든다.
 /// 규칙 결합과 진입·청산 정책은 소유하지 않는다.
 /// </summary>
-internal sealed class RuleIndicatorEvaluator
+public sealed class RuleIndicatorEvaluator
 {
-    private readonly IIndicatorService _indicators;
+    private readonly IndicatorCalculator _indicators;
 
-    internal RuleIndicatorEvaluator(IIndicatorService indicators)
+    public RuleIndicatorEvaluator(IndicatorCalculator? indicators = null)
     {
-        _indicators = indicators;
+        _indicators = indicators ?? new IndicatorCalculator();
     }
 
-    internal RuleIndicatorEvaluationContext CreateContext(OhlcvBar[] bars) =>
+    public RuleIndicatorEvaluationContext CreateContext(PriceBar[] bars) =>
         new(bars, _indicators);
 
     /// <summary>
     /// offset=0은 현재 봉, offset=1은 한 봉 전이다.
     /// 반환값은 crosses 연산에 필요한 선택 봉과 그 이전 봉의 값이다.
     /// </summary>
-    internal (decimal current, decimal prev) Compute(
+    public (decimal current, decimal prev) Compute(
         string indicator,
         Dictionary<string, decimal> parameters,
         RuleIndicatorEvaluationContext context,

@@ -1,8 +1,7 @@
 using FluentAssertions;
 using StockTrader.Domain.MarketData;
+using StockTrader.Engine.MarketData;
 using StockTrader.Models;
-using StockTrader.Services.Indicators;
-using StockTrader.Services.Patterns;
 
 namespace StockTrader.Tests;
 
@@ -38,19 +37,18 @@ public class RuleConditionEvaluatorTests
     [Fact]
     public void Evaluate_ReferenceSymbolCannotReadPastTheExplicitAsOfBoundary()
     {
-        var indicators = new RuleIndicatorEvaluator(new IndicatorService());
+        var indicators = new RuleIndicatorEvaluator();
         var sut = new RuleConditionEvaluator(indicators);
         var mainBars = CreateBars(Enumerable.Repeat(100m, 60).ToArray());
         var referenceBars = CreateBars(Enumerable.Repeat(100m, 61).ToArray());
-        referenceBars[^1].Close = 120m;
-        referenceBars[^1].High = 121m;
+        referenceBars[^1] = referenceBars[^1] with { Close = 120m, High = 121m };
         var rule = PriceChangeRule(">", 5m, 1m);
         rule.RefSymbol = "spy";
 
         var result = sut.Evaluate(
             rule,
             indicators.CreateContext(mainBars),
-            new Dictionary<string, OhlcvBar[]> { ["SPY"] = referenceBars },
+            new Dictionary<string, PriceBar[]> { ["SPY"] = referenceBars },
             mainBars[^1].Timestamp);
 
         result.IsMatch.Should().BeFalse();
@@ -60,7 +58,7 @@ public class RuleConditionEvaluatorTests
     [Fact]
     public void Evaluate_GroupsOwnsNestedLogicWeightAndExplanationAggregation()
     {
-        var indicators = new RuleIndicatorEvaluator(new IndicatorService());
+        var indicators = new RuleIndicatorEvaluator();
         var conditions = new RuleConditionEvaluator(indicators);
         var sut = new RuleGroupEvaluator(conditions);
         var closes = Enumerable.Repeat(100m, 60).ToArray();
@@ -93,7 +91,7 @@ public class RuleConditionEvaluatorTests
     [Fact]
     public void Evaluate_EmptyAndGroupSetDoesNotPassVacuously()
     {
-        var indicators = new RuleIndicatorEvaluator(new IndicatorService());
+        var indicators = new RuleIndicatorEvaluator();
         var sut = new RuleGroupEvaluator(new RuleConditionEvaluator(indicators));
 
         var result = sut.Evaluate(
@@ -115,17 +113,11 @@ public class RuleConditionEvaluatorTests
         Params = new Dictionary<string, decimal> { ["bars"] = 1 }
     };
 
-    private static OhlcvBar[] CreateBars(IReadOnlyList<decimal> closes)
+    private static PriceBar[] CreateBars(IReadOnlyList<decimal> closes)
     {
         var start = new DateTime(2024, 1, 1);
-        return closes.Select((close, index) => new OhlcvBar
-        {
-            Timestamp = start.AddDays(index),
-            Open = close,
-            High = close + 1m,
-            Low = close - 1m,
-            Close = close,
-            Volume = 100_000
-        }).ToArray();
+        return closes.Select((close, index) => new PriceBar(
+            start.AddDays(index), TimeFrame.Daily, close, close + 1m,
+            close - 1m, close, 100_000)).ToArray();
     }
 }

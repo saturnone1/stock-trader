@@ -26,6 +26,11 @@ calendar version identity. The next slice moves SMA, EMA, RSI, cumulative RSI, B
 MACD, Keltner, and OBV mathematics into the same assembly over a storage-independent immutable
 `PriceBar`.
 
+The following slice moves the complete indicator-code registry, indicator cache, condition
+comparison, nested group aggregation, reference-symbol as-of filtering, and warmup policy into the
+engine. `RuleBasedDetector` converts application bars and reference series at its boundary, then
+delegates rule semantics to the engine.
+
 `CustomPatternDefinition` remains in the application persistence model. The pure execution rule
 types move to the engine project under their compatibility namespace. Legacy compiler and catalog
 source paths are linked into the new project and excluded from the web project during this staged
@@ -65,11 +70,12 @@ StockTrader (ASP.NET) -> OptimizationProtocol -> Engine
 
 ## Agent working-set budget
 
-The engine now contains 18 owned or linked C# files, 905 nonblank source lines, and no direct
-dependency. Its largest file is `StrategyRuleModels.cs` at 156 nonblank lines; the compiler is 136.
-Indicator mathematics is split into files of 115 and 106 nonblank lines instead of one 258-line
-service. The F# shadow host remains 55 physical lines. Duplicated artifact compatibility and
-indicator formula lines are zero because both the application and worker consume shared assemblies.
+The engine now contains 30 owned or linked C# files, 2,022 nonblank source lines, and no direct
+dependency. Every engine source file remains below 200 physical lines; the largest rule calculator
+is 192 lines. Indicator mathematics is split into files of 115 and 106 nonblank lines instead of one
+258-line service, and the standard rule calculator is split into 114- and 119-line files. The F#
+shadow host remains 55 physical lines. Duplicated artifact, indicator, comparison, and group-policy
+lines are zero because both the application and worker consume shared assemblies.
 
 ## Verification and next gate
 
@@ -80,9 +86,9 @@ strategy compiler, preview, backtest, optimization, and live characterization te
 unchanged and green.
 
 This ADR does not claim the complete deterministic engine has been extracted. Before remote
-optimization computation is enabled, indicator evaluation, fills, portfolio simulation, result
-metrics, and prepared-data contracts must also compile into package-bounded engine assemblies and
-pass the shared semantic conformance corpus.
+optimization computation is enabled, fills, portfolio simulation, result metrics, and prepared-data
+contracts must also compile into package-bounded engine assemblies and pass the shared semantic
+conformance corpus.
 
 ## Rollback
 

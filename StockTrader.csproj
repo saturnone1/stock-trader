@@ -26,6 +26,7 @@
     <Compile Remove="Application\Strategies\StrategyCompiler.cs" />
     <Compile Remove="Application\Strategies\StrategyDocument.cs" />
     <Compile Remove="Application\Strategies\StrategyDocumentVersionPolicy.cs" />
+    <Compile Remove="Application\Strategies\StrategyEvaluationPolicy.cs" />
     <Content Remove="tests\**\*" />
     <EmbeddedResource Remove="tests\**\*" />
     <None Remove="tests\**\*" />

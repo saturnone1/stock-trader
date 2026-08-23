@@ -1,5 +1,4 @@
 using StockTrader.Application.Strategies;
-using StockTrader.Services.Indicators;
 
 namespace StockTrader.Services.Patterns;
 
@@ -8,16 +7,9 @@ namespace StockTrader.Services.Patterns;
 /// </summary>
 public sealed class CustomStrategyDetectorFactory : ICustomStrategyDetectorFactory
 {
-    private readonly IIndicatorService _indicators;
-
-    public CustomStrategyDetectorFactory(IIndicatorService indicators)
-    {
-        _indicators = indicators;
-    }
-
     public ICustomStrategyDetector Create(StrategyDocument definition) =>
-        new RuleBasedDetector(_indicators, definition);
+        new RuleBasedDetector(definition);
 
     public ICustomStrategyDetector Create(CompiledStrategy strategy) =>
-        new RuleBasedDetector(_indicators, strategy);
+        new RuleBasedDetector(strategy);
 }

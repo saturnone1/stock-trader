@@ -4,7 +4,8 @@ using StockTrader.Models.Enums;
 using StockTrader.Domain.Strategies;
 using StockTrader.Domain.MarketData;
 using StockTrader.Services.Indicators;
-using EvalContext = StockTrader.Services.Patterns.RuleIndicatorEvaluationContext;
+using StockTrader.Engine.Rules;
+using EvalContext = StockTrader.Engine.Rules.RuleIndicatorEvaluationContext;
 
 namespace StockTrader.Services.Patterns;
 
@@ -31,7 +32,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
     private readonly DynamicExitConfig? _dynamicExit;
 
     // 참조 종목 데이터 (BacktestService에서 주입)
-    private Dictionary<string, OhlcvBar[]>? _referenceData;
+    private Dictionary<string, StockTrader.Engine.MarketData.PriceBar[]>? _referenceData;
     private DateTime? _referenceAsOf;
 
     public PatternType PatternType => PatternType.Custom;
@@ -40,17 +41,15 @@ public class RuleBasedDetector : ICustomStrategyDetector
     public CompiledStrategy Strategy => _strategy;
 
     internal RuleBasedDetector(
-        IIndicatorService indicators,
         StrategyDocument definition)
-        : this(indicators, Compile(definition))
+        : this(Compile(definition))
     {
     }
 
     internal RuleBasedDetector(
-        IIndicatorService indicators,
         CompiledStrategy strategy)
     {
-        _indicatorEvaluator = new RuleIndicatorEvaluator(indicators);
+        _indicatorEvaluator = new RuleIndicatorEvaluator();
         _conditionEvaluator = new RuleConditionEvaluator(_indicatorEvaluator);
         _groupEvaluator = new RuleGroupEvaluator(_conditionEvaluator);
         _strategy = strategy;
@@ -76,7 +75,10 @@ public class RuleBasedDetector : ICustomStrategyDetector
     /// <summary>참조 종목 데이터를 설정합니다. BacktestService에서 매 심볼 루프 전에 호출.</summary>
     public void SetReferenceData(Dictionary<string, OhlcvBar[]> refData, DateTime? asOf = null)
     {
-        _referenceData = refData;
+        _referenceData = refData.ToDictionary(
+            pair => pair.Key,
+            pair => IndicatorService.ToEngineBars(pair.Value),
+            StringComparer.OrdinalIgnoreCase);
         _referenceAsOf = asOf;
     }
 
@@ -98,7 +100,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
             return Task.FromResult<PatternSignal?>(null);
 
         // 공유 계산 캐시
-        var ctx = _indicatorEvaluator.CreateContext(bars);
+        var ctx = _indicatorEvaluator.CreateContext(IndicatorService.ToEngineBars(bars));
 
         // ── 진입 조건 평가: 그룹 우선, 없으면 flat rules ──
         bool entryPassed;
@@ -218,7 +220,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
     public bool ShouldExit(OhlcvBar[] bars)
     {
         if (_exitGroups.Count == 0 && _exitRules.Count == 0) return false;
-        var ctx = _indicatorEvaluator.CreateContext(bars);
+        var ctx = _indicatorEvaluator.CreateContext(IndicatorService.ToEngineBars(bars));
 
         if (_exitGroups.Count > 0)
             return _groupEvaluator.Evaluate(
@@ -253,7 +255,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
             if (currentProfitPct < sr.MinProfitPercent) continue;
             if (sr.Conditions.Count == 0) continue;
 
-            var ctx = _indicatorEvaluator.CreateContext(bars);
+            var ctx = _indicatorEvaluator.CreateContext(IndicatorService.ToEngineBars(bars));
             var isAnd = string.Equals(sr.Logic, "AND", StringComparison.OrdinalIgnoreCase);
             var allMatch = true;
             var anyMatch = false;
