@@ -92,6 +92,13 @@
     sizingModeOptions: []
   }
 
+  // Keep these projections reactive to both the asynchronously loaded catalog and
+  // the selected strategy. Calling a zero-argument helper from markup hides those
+  // dependencies from Svelte and can leave the tuning choices permanently empty.
+  $: tuningPattern = patterns.find((item) => String(item.id) === String(form.patternId))
+  $: entryRuleOptions = tuningPattern?.raw ? selectableRules(entryRules(tuningPattern.raw)) : []
+  $: exitRuleOptions = tuningPattern?.raw ? selectableRules(exitRules(tuningPattern.raw)) : []
+
   onMount(() => {
     initialize()
     refreshInterval = setInterval(loadJobs, 4000)
@@ -165,18 +172,6 @@
     } finally {
       refreshing = false
     }
-  }
-
-  function timingEntryRules() {
-    const pattern = currentPattern()
-    if (!pattern?.raw) return []
-    return selectableRules(entryRules(pattern.raw))
-  }
-
-  function timingExitRules() {
-    const pattern = currentPattern()
-    if (!pattern?.raw) return []
-    return selectableRules(exitRules(pattern.raw))
   }
 
   function syncTimingDefaults(pattern) {
@@ -326,8 +321,8 @@
       {timeFrameOptions}
       {dataSourceOptions}
       {rankOptions}
-      entryRuleOptions={timingEntryRules()}
-      exitRuleOptions={timingExitRules()}
+      {entryRuleOptions}
+      {exitRuleOptions}
       baseline={initialContext?.baseline}
       {creating}
       {loading}

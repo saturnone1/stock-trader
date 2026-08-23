@@ -205,6 +205,9 @@ public class ArchitectureDependencyTests
         page.Should().Contain("<OptimizationJobForm");
         page.Should().Contain("<OptimizationJobList");
         page.Should().Contain("buildOptimizationJob(form, pattern)");
+        page.Should().Contain("$: entryRuleOptions = tuningPattern?.raw");
+        page.Should().Contain("$: exitRuleOptions = tuningPattern?.raw");
+        page.Should().NotContain("entryRuleOptions={timingEntryRules()}");
         page.Should().NotContain("function parseNumberList(");
         page.Should().NotContain("function getResultInsights(");
         page.Should().NotContain("formatSignedPercent(");
