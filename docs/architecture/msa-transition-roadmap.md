@@ -4,7 +4,8 @@ This roadmap turns [ADR 0069](adr/0069-adopt-evolutionary-service-extraction.md)
 Implementation is authorized only by extraction-specific ADRs. Stage 2 was completed and accepted
 under [ADR 0077](adr/0077-cut-over-remote-optimization-authority.md) at `b636cb7`; the production
 topology is now the modular application plus an independently deployed Optimization Worker service.
-Stage 3 Market Data is next and requires its own approved boundary and cutover evidence.
+Stage 3 Market Data was completed and accepted under
+[ADR 0078](adr/0078-extract-market-data-service.md) at `6587b65`. Stage 4 ML Training is next.
 
 ## Baseline and feasibility finding
 
@@ -187,6 +188,14 @@ reconcilable. Dual writes are not the steady state.
 
 Exit gate: historical parity, correction replay, provider outage, stale-data rejection, backup,
 restore, and rollback are proven for every supported timeframe.
+
+Status: **complete (2026-08-24 KST)**. Market Data now owns provider REST/WebSocket access,
+normalized bars, evidence ranges, and correction revisions in its own F# image, Pod, credentials,
+and SQLite volume. The accepted production batch covers Shadow parity, Remote consumers without a
+legacy writer, provider/service failures with no fallback, Pod persistence, parallel load,
+backup/restore, private-CA rotation/rollback, and value-exact Local rollback projection. The service
+uses one replica because SQLite is the canonical single-writer store; a replicated datastore would
+require a new ADR.
 
 ## Stage 4 — Extract ML Training and optional event consumers
 

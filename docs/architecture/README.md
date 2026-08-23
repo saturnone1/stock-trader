@@ -90,6 +90,14 @@ including two-Pod load, cancellation, Pod loss, lease reclaim, API restart, mTLS
 preserved-generation rollback. ADR 0077 is Accepted and MSA Stage 2 is complete; Market Data is the
 next service boundary.
 
+[ADR 0078](adr/0078-extract-market-data-service.md) completes that Market Data boundary. The F#
+service is the exclusive provider and normalized-bar authority in Remote mode, with its own SQLite
+volume, correction revisions, evidence hashes, mTLS identity, provider credentials, probes,
+metrics, backup/restore, and rollback projection. The production batch passed at `6587b65`; its
+evidence is recorded in the
+[Market Data cutover operations note](../operations/market-data-cutover.md). MSA Stage 3 is complete
+and ML Training is the next extraction candidate.
+
 ## Target modules
 
 | Module | Owns | Must not own |

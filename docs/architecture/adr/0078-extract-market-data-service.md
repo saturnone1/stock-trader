@@ -1,6 +1,6 @@
 # 0078 — Extract Market Data as the exclusive normalized-bar owner
 
-- Status: Proposed, pending complete service cutover verification
+- Status: Accepted
 - Date: 2026-08-23
 - Baseline: b6f4a24
 
@@ -80,7 +80,24 @@ policy, and duplicated timeframe/provider/catalog policy has a target of zero. P
 adapters may exceed the shell budget only when their pagination/authentication state machine would
 be less reviewable if compressed.
 
-## Completion evidence required
+## Acceptance evidence
+
+The production service-level batch passed on 2026-08-24 KST at implementation head `6587b65`.
+The full command-level record and recovery points are in
+[Market Data cutover operations](../../operations/market-data-cutover.md). The batch proved the
+independent F# image/Pod/database boundary, exact six-series Shadow parity, authenticated provider
+REST and WebSocket paths, Remote preview/backtest/optimization consumption, absence of legacy dual
+writes, service and provider outage behavior, Pod persistence, parallel load, backup/restore, TLS
+rotation and preserved-generation rollback, and verified Remote-to-Local projection followed by
+Remote recutover.
+
+The drill found and fixed four release-blocking integration defects: API liveness depended on the
+Market Data readiness check, protected backups could not pass the restore script's privilege
+boundary, SQLite decimal/boundary representation made rollback verification incorrect, and the
+Alpaca stream success token was parsed as `authorized` instead of `authenticated`. The final batch
+reran the affected lifecycle gates after each correction.
+
+The following requirements remain the regression gate for later releases:
 
 This ADR becomes Accepted only when one batch proves:
 
@@ -95,4 +112,5 @@ This ADR becomes Accepted only when one batch proves:
 - `Remote` to `Local` rollback with the required legacy evidence restored;
 - preview/backtest/optimization results remain tied to explicit, matching market-data evidence.
 
-Until those conditions pass, Market Data is incomplete and ML Training extraction must not begin.
+These conditions passed for the accepted release. ML Training is the next extraction boundary; it
+must not change Market Data ownership or reopen a legacy normalized-bar writer.
