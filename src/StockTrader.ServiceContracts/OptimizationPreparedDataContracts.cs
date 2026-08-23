@@ -1,5 +1,7 @@
 namespace StockTrader.ServiceContracts.Optimization;
 
+using System.Text.Json;
+
 public sealed record OptimizationBar(
     DateTime Timestamp,
     decimal Open,
@@ -41,18 +43,23 @@ public sealed record OptimizationPreparedDataSet(
     string DataHash,
     IReadOnlyList<OptimizationPreparedSeries> Series,
     IReadOnlyList<OptimizationRegimeSnapshot> Regimes,
-    OptimizationRiskSnapshot Risk);
+    OptimizationRiskSnapshot Risk)
+{
+    public string PatternSettingsJson { get; init; } = "{}";
+}
 
 public static class OptimizationPreparedDataIdentity
 {
     public static string Compute(
         IReadOnlyList<OptimizationPreparedSeries> series,
         IReadOnlyList<OptimizationRegimeSnapshot> regimes,
-        OptimizationRiskSnapshot risk) => CanonicalJsonHash.Compute(new
+        OptimizationRiskSnapshot risk,
+        string patternSettingsJson = "{}") => CanonicalJsonHash.Compute(new
         {
             Series = series,
             Regimes = regimes,
-            Risk = risk
+            Risk = risk,
+            PatternSettingsJson = patternSettingsJson
         });
 }
 
@@ -69,8 +76,11 @@ public static class OptimizationPreparedDataCompatibilityPolicy
             return "duplicate-prepared-series";
         if (data.Series.Any(HasInvalidShape))
             return "invalid-prepared-series-shape";
+        if (!IsJsonObject(data.PatternSettingsJson))
+            return "invalid-pattern-settings";
 
-        var expected = OptimizationPreparedDataIdentity.Compute(data.Series, data.Regimes, data.Risk);
+        var expected = OptimizationPreparedDataIdentity.Compute(
+            data.Series, data.Regimes, data.Risk, data.PatternSettingsJson);
         return string.Equals(expected, data.DataHash, StringComparison.Ordinal)
             ? null
             : "prepared-data-hash-mismatch";
@@ -87,5 +97,18 @@ public static class OptimizationPreparedDataCompatibilityPolicy
             || series.TqqqProtectiveStopFloor.Count != count
             || series.CumulativeRsi2.Count != count
             || series.CumulativeRsi2TrendMa.Count != count;
+    }
+
+    private static bool IsJsonObject(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 }

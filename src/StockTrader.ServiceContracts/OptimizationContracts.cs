@@ -11,6 +11,7 @@ public static class OptimizationWorkerContractCatalog
     public const string PatternCatalogVersion = "pattern-catalog-v1";
     public const string OptimizationCostModelVersion = "adaptive-cost-v1";
     public const string ShadowValidationPurpose = "shadow-contract-validation-v1";
+    public const string ShadowComputePurpose = "shadow-optimization-compute-v1";
 }
 
 public static class OptimizationWorkerHttpHeaders
@@ -47,7 +48,12 @@ public sealed record OptimizationSymbolDataEvidence(
     DateTime? LastObservedBar,
     int BarCount,
     OptimizationDataCompleteness Completeness,
-    string ContentHash);
+    string ContentHash)
+{
+    public string MarketTimeZoneId { get; init; } = string.Empty;
+    public int WarmupCalendarDays { get; init; }
+    public int RequiredWarmupBars { get; init; }
+}
 
 public sealed record OptimizationDataEvidenceSet(
     int ContractVersion,
@@ -147,7 +153,8 @@ public static class OptimizationLeaseCompatibilityPolicy
             return "unsupported-contract";
         if (string.IsNullOrWhiteSpace(lease.LeaseId) || lease.JobId <= 0 || lease.LeaseGeneration < 1)
             return "invalid-lease-identity";
-        if (lease.Purpose != OptimizationWorkerContractCatalog.ShadowValidationPurpose)
+        if (lease.Purpose != OptimizationWorkerContractCatalog.ShadowValidationPurpose
+            && lease.Purpose != OptimizationWorkerContractCatalog.ShadowComputePurpose)
             return "unsupported-lease-purpose";
         if (lease.ExpiresAt <= lease.LeasedAt)
             return "invalid-lease-window";
@@ -159,8 +166,26 @@ public static class OptimizationLeaseCompatibilityPolicy
             lease.Input.PreparedData.DataHash);
         if (!string.Equals(expected, lease.Input.InputHash, StringComparison.Ordinal))
             return "input-hash-mismatch";
-        return OptimizationDataEvidenceCompatibilityPolicy.Error(lease.Input.DataEvidence)
+        var payloadError = OptimizationDataEvidenceCompatibilityPolicy.Error(lease.Input.DataEvidence)
             ?? OptimizationPreparedDataCompatibilityPolicy.Error(lease.Input.PreparedData);
+        return payloadError ?? SeriesAlignmentError(
+            lease.Input.DataEvidence, lease.Input.PreparedData);
+    }
+
+    private static string? SeriesAlignmentError(
+        OptimizationDataEvidenceSet evidence,
+        OptimizationPreparedDataSet prepared)
+    {
+        if (evidence.Series.Count != prepared.Series.Count)
+            return "data-series-mismatch";
+        var claims = evidence.Series.ToDictionary(
+            item => $"{item.TimeFrame}|{item.Symbol}",
+            StringComparer.OrdinalIgnoreCase);
+        return prepared.Series.All(series =>
+            claims.TryGetValue($"{series.TimeFrame}|{series.Symbol}", out var claim)
+            && claim.BarCount == series.Bars.Count)
+            ? null
+            : "data-series-mismatch";
     }
 }
 

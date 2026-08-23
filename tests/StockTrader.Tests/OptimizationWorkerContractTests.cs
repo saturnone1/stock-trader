@@ -67,6 +67,8 @@ public class OptimizationWorkerContractTests
         first.PreparedData.Series[0].Bars.Should().HaveCount(2);
         first.PreparedData.Series[0].Atr.Should().Equal(1m, 1m);
         OptimizationPreparedDataCompatibilityPolicy.Error(first.PreparedData).Should().BeNull();
+        first.DataEvidence.Series[0].MarketTimeZoneId.Should().Be("America/New_York");
+        first.DataEvidence.Series[0].RequiredWarmupBars.Should().Be(200);
     }
 
     [Fact]
@@ -123,6 +125,30 @@ public class OptimizationWorkerContractTests
         OptimizationLeaseCompatibilityPolicy.Error(
             lease with { Input = input with { InputHash = "DIFFERENT" } })
             .Should().Be("input-hash-mismatch");
+        var mismatchedPrepared = input.PreparedData with
+        {
+            Series = [input.PreparedData.Series[0] with { Symbol = "SPY" }]
+        };
+        mismatchedPrepared = mismatchedPrepared with
+        {
+            DataHash = OptimizationPreparedDataIdentity.Compute(
+                mismatchedPrepared.Series,
+                mismatchedPrepared.Regimes,
+                mismatchedPrepared.Risk,
+                mismatchedPrepared.PatternSettingsJson)
+        };
+        var mismatchedInput = input with
+        {
+            PreparedData = mismatchedPrepared,
+            InputHash = OptimizationEvaluationInputIdentity.Compute(
+                input.ContractVersion,
+                input.RequestJson,
+                input.Strategy.ContentHash,
+                input.DataEvidence.EvidenceId,
+                mismatchedPrepared.DataHash)
+        };
+        OptimizationLeaseCompatibilityPolicy.Error(lease with { Input = mismatchedInput })
+            .Should().Be("data-series-mismatch");
         Evaluate(lease, submission, 4, false, leasedAt.AddMinutes(2))
             .Should().Be(OptimizationResultAcceptance.Accepted);
         Evaluate(lease, submission, 4, true, leasedAt.AddMinutes(2))

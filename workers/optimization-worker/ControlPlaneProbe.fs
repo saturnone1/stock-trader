@@ -44,7 +44,8 @@ type Worker(
                         | Ok () ->
                             state.Succeed()
                             logger.LogInformation(
-                                "Shadow lease {LeaseId} contract validation submitted", lease.LeaseId)
+                                "Shadow lease {LeaseId} result submitted for {Purpose}",
+                                lease.LeaseId, lease.Purpose)
                         | Error error ->
                             state.Fail(error)
                             logger.LogWarning(

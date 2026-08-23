@@ -16,7 +16,7 @@ let emit status detail =
     |> Console.WriteLine
 
 let selfCheck () =
-    emit "ready" "contract-validation-only"
+    emit "ready" "prepared-data-optimization-compute"
     0
 
 let validateLease path =

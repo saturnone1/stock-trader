@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using StockTrader.Application.Optimization;
 using StockTrader.Models;
 using StockTrader.ServiceContracts.Optimization;
 
@@ -31,7 +32,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
             ToLease(record), submission, record.CancellationGeneration, duplicate, now);
         if (acceptance != OptimizationResultAcceptance.Accepted)
             return Result(acceptance);
-        if (!IsMatchingValidationResult(record, submission.ResultJson))
+        if (!IsMatchingResult(record, submission.ResultJson))
             return Result(OptimizationResultAcceptance.InvalidResultPayload);
 
         var affected = await db.OptimizationWorkerLeases
@@ -58,6 +59,17 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
             : OptimizationResultAcceptance.StaleLease);
     }
 
+    private static bool IsMatchingResult(
+        OptimizationWorkerLeaseRecord record,
+        string resultJson) => record.Purpose switch
+        {
+            OptimizationWorkerContractCatalog.ShadowValidationPurpose =>
+                IsMatchingValidationResult(record, resultJson),
+            OptimizationWorkerContractCatalog.ShadowComputePurpose =>
+                IsMatchingComputeResult(record, resultJson),
+            _ => false
+        };
+
     private static bool IsMatchingValidationResult(
         OptimizationWorkerLeaseRecord record,
         string resultJson)
@@ -76,6 +88,50 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
                 && result.PreparedDataHash == input.PreparedData.DataHash
                 && result.SeriesCount == input.PreparedData.Series.Count
                 && result.BarCount == input.PreparedData.Series.Sum(series => series.Bars.Count);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsMatchingComputeResult(
+        OptimizationWorkerLeaseRecord record,
+        string resultJson)
+    {
+        try
+        {
+            var result = JsonSerializer.Deserialize<OptimizationWorkerComputeResult>(
+                resultJson, JsonOptions);
+            var input = DeserializeInput(record.InputJson);
+            var request = OptimizeRequestJsonCodec.Deserialize(input.RequestJson);
+            return result is not null
+                && request is not null
+                && result.ContractVersion == OptimizationWorkerContractCatalog.ResultVersion
+                && result.Purpose == record.Purpose
+                && result.InputHash == input.InputHash
+                && result.TotalCombinations >= 0
+                && result.TestedCombinations >= 0
+                && result.TestedCombinations <= result.TotalCombinations
+                && result.ElapsedMs >= 0
+                && result.Results.Count <= request.MaxResults
+                && result.Results.All(IsValidCandidate);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsValidCandidate(OptimizationWorkerCandidateResult result)
+    {
+        if (result.Rank < 1 || result.TotalTrades < 0 || result.OosTotalTrades < 0
+            || string.IsNullOrWhiteSpace(result.ParametersJson))
+            return false;
+        try
+        {
+            using var parameters = JsonDocument.Parse(result.ParametersJson);
+            return parameters.RootElement.ValueKind == JsonValueKind.Object;
         }
         catch (JsonException)
         {

@@ -19,8 +19,11 @@ public static class OptimizationDataEvidenceCompatibilityPolicy
             return "duplicate-data-evidence-series";
         if (evidence.Series.Any(item => string.IsNullOrWhiteSpace(item.Symbol)
                 || string.IsNullOrWhiteSpace(item.TimeFrame)
+                || string.IsNullOrWhiteSpace(item.MarketTimeZoneId)
                 || string.IsNullOrWhiteSpace(item.ContentHash)
-                || item.BarCount < 0))
+                || item.BarCount < 0
+                || item.WarmupCalendarDays < 0
+                || item.RequiredWarmupBars < 0))
             return "invalid-data-evidence-series";
 
         var expected = OptimizationDataEvidenceIdentity.Compute(evidence.Series);

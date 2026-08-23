@@ -3,7 +3,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.Domain.Strategies;
 using StockTrader.Domain.MarketData;
-using StockTrader.Services.Indicators;
+using StockTrader.Application.MarketData;
 using StockTrader.Engine.Rules;
 using EvalContext = StockTrader.Engine.Rules.RuleIndicatorEvaluationContext;
 
@@ -77,7 +77,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
     {
         _referenceData = refData.ToDictionary(
             pair => pair.Key,
-            pair => IndicatorService.ToEngineBars(pair.Value),
+            pair => EnginePriceBarMapper.Map(pair.Value),
             StringComparer.OrdinalIgnoreCase);
         _referenceAsOf = asOf;
     }
@@ -100,7 +100,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
             return Task.FromResult<PatternSignal?>(null);
 
         // 공유 계산 캐시
-        var ctx = _indicatorEvaluator.CreateContext(IndicatorService.ToEngineBars(bars));
+        var ctx = _indicatorEvaluator.CreateContext(EnginePriceBarMapper.Map(bars));
 
         // ── 진입 조건 평가: 그룹 우선, 없으면 flat rules ──
         bool entryPassed;
@@ -220,7 +220,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
     public bool ShouldExit(OhlcvBar[] bars)
     {
         if (_exitGroups.Count == 0 && _exitRules.Count == 0) return false;
-        var ctx = _indicatorEvaluator.CreateContext(IndicatorService.ToEngineBars(bars));
+        var ctx = _indicatorEvaluator.CreateContext(EnginePriceBarMapper.Map(bars));
 
         if (_exitGroups.Count > 0)
             return _groupEvaluator.Evaluate(
@@ -255,7 +255,7 @@ public class RuleBasedDetector : ICustomStrategyDetector
             if (currentProfitPct < sr.MinProfitPercent) continue;
             if (sr.Conditions.Count == 0) continue;
 
-            var ctx = _indicatorEvaluator.CreateContext(IndicatorService.ToEngineBars(bars));
+            var ctx = _indicatorEvaluator.CreateContext(EnginePriceBarMapper.Map(bars));
             var isAnd = string.Equals(sr.Logic, "AND", StringComparison.OrdinalIgnoreCase);
             var allMatch = true;
             var anyMatch = false;

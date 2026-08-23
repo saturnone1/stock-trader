@@ -110,6 +110,9 @@ public sealed class OptimizationEvaluationContextPreparer
                 regimes,
                 risk,
                 evidenceByTimeFrame,
-                defaultEvidence));
+                defaultEvidence)
+            {
+                PatternSettings = _patternSettings
+            });
     }
 }

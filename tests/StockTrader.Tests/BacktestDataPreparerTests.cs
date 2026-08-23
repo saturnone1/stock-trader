@@ -70,7 +70,7 @@ public class BacktestDataPreparerTests
             LongTrendMaPeriod = 10,
         };
 
-        var sliced = preparer.Slice(
+        var sliced = new PreparedBacktestDataSlicer().Slice(
             full.Symbols, ["TQQQ"], TimeFrame.Daily,
             bars[450].Timestamp, bars[^1].Timestamp, slicePolicy,
             new Tqqq200SmaConfig { SmaPeriod = 25, SmaStopMultiplier = 0.97m },

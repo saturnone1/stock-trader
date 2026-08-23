@@ -12,16 +12,16 @@ namespace StockTrader.Services.Backtest;
 /// <summary>이미 준비된 시세 범위를 슬라이싱하고 공통 시뮬레이션 엔진을 호출합니다.</summary>
 public sealed class BacktestPreparedSimulationRunner
 {
-    private readonly BacktestDataPreparer _dataPreparer;
+    private readonly PreparedBacktestDataSlicer _dataSlicer;
     private readonly BacktestSimulationEngine _simulation;
     private readonly PatternSettings _basePatternSettings;
 
     public BacktestPreparedSimulationRunner(
-        BacktestDataPreparer dataPreparer,
+        PreparedBacktestDataSlicer dataSlicer,
         BacktestSimulationEngine simulation,
         IOptions<PatternSettings> patternSettings)
     {
-        _dataPreparer = dataPreparer;
+        _dataSlicer = dataSlicer;
         _simulation = simulation;
         _basePatternSettings = patternSettings.Value;
     }
@@ -53,7 +53,7 @@ public sealed class BacktestPreparedSimulationRunner
             .Concat(BacktestDetectorMetadata.CollectReferenceSymbols(detectors))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var prepared = _dataPreparer.Slice(
+        var prepared = _dataSlicer.Slice(
             fullDataMap,
             sliceSymbols,
             timeFrame,

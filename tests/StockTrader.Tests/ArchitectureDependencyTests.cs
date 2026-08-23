@@ -612,7 +612,8 @@ public class ArchitectureDependencyTests
         File.ReadAllLines(momentumPath).Length.Should().BeLessThanOrEqualTo(230);
         File.ReadAllLines(mathPath).Length.Should().BeLessThanOrEqualTo(230);
         detector.Should().Contain("_indicatorEvaluator.CreateContext(");
-        detector.Should().Contain("IndicatorService.ToEngineBars(");
+        detector.Should().Contain("EnginePriceBarMapper.Map(");
+        detector.Should().NotContain("IndicatorService");
         detector.Should().Contain("new RuleConditionEvaluator(_indicatorEvaluator)");
         conditions.Should().Contain("_indicators.Compute(");
         detector.Should().NotContain("switch (indicator.ToUpperInvariant())");
@@ -1290,7 +1291,8 @@ public class ArchitectureDependencyTests
         service.Should().NotContain("WalkForwardEfficiency =");
         service.Should().NotContain("private async Task<BacktestResult> RunSimulationAsync(");
         service.Should().NotContain("volatilityFactor");
-        runner.Should().Contain("_dataPreparer.Slice(");
+        runner.Should().Contain("_dataSlicer.Slice(");
+        runner.Should().NotContain("BacktestDataPreparer");
         runner.Should().Contain("_simulation.RunAsync(");
         File.ReadAllLines(runnerPath).Length.Should().BeLessThanOrEqualTo(150);
         File.ReadAllLines(walkForwardPath).Length.Should().BeLessThanOrEqualTo(150);
@@ -1945,6 +1947,7 @@ public class ArchitectureDependencyTests
         fsharpProject.Should().Contain("StockTrader.ServiceContracts.csproj");
         fsharpProject.Should().Contain("StockTrader.Engine.csproj");
         fsharpProject.Should().Contain("StockTrader.OptimizationProtocol.csproj");
+        fsharpProject.Should().Contain("StockTrader.OptimizationCompute.csproj");
         fsharpProject.Should().NotContain("StockTrader.csproj");
         fsharpProject.Should().Contain("Microsoft.NET.Sdk.Web");
         fsharpProject.Should().Contain("HealthHost.fs");

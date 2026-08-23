@@ -100,8 +100,11 @@ shadow release.
 - This is one physical K3s node and is not high availability.
 - Durable lease APIs exist behind `LeaseTransportEnabled=false`; no executable lease transport or
   remote computation is enabled in K3s.
+- The Worker image now contains the complete prepared-data optimization calculation, but local
+  build/test evidence is not permission to enable it over the cluster channel.
 - The authenticated status handshake uses node-local cluster HTTP; executable leases require the
   internal TLS/workload-identity gate.
+- Canonical in-process versus Worker result comparison and mismatch alerting are not implemented.
 - Prometheus-format metrics exist, but no cluster scraper, retention, dashboard, or alert has yet
   been selected.
 - Idle resource evidence does not satisfy the Stage 2 load/chaos/cost gate.

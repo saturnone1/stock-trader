@@ -39,7 +39,7 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
         claims.Should().ContainSingle(lease => lease != null);
         var lease = claims.Single(item => item is not null)!;
         lease.Input.InputHash.Should().Be(input.InputHash);
-        lease.Purpose.Should().Be(OptimizationWorkerContractCatalog.ShadowValidationPurpose);
+        lease.Purpose.Should().Be(OptimizationWorkerContractCatalog.ShadowComputePurpose);
         lease.LeaseGeneration.Should().Be(1);
     }
 
@@ -155,26 +155,28 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
         OptimizationWorkLease lease,
         DateTime at)
     {
-        var input = lease.Input;
-        var result = new OptimizationWorkerValidationResult(
+        var result = new OptimizationWorkerComputeResult(
             OptimizationWorkerContractCatalog.ResultVersion,
             lease.Purpose,
-            input.InputHash,
-            input.Strategy.ContentHash,
-            input.DataEvidence.EvidenceId,
-            input.PreparedData.DataHash,
-            input.PreparedData.Series.Count,
-            input.PreparedData.Series.Sum(series => series.Bars.Count));
+            lease.Input.InputHash,
+            1,
+            1,
+            10,
+            null,
+            null,
+            null,
+            null,
+            []);
         var resultJson = JsonSerializer.Serialize(
             result, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         return new(
             OptimizationWorkerContractCatalog.ResultVersion,
-            lease.LeaseId + ":validation:v1",
+            lease.LeaseId + ":compute:v1",
             lease.LeaseId,
             lease.JobId,
             lease.LeaseGeneration,
             lease.CancellationGeneration,
-            input.InputHash,
+            lease.Input.InputHash,
             CanonicalJsonHash.Compute(resultJson),
             resultJson,
             at);
@@ -201,7 +203,12 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
         var evidenceSeries = new OptimizationSymbolDataEvidence(
             "TQQQ", "Daily", "Alpaca", "UnitedStates", "SplitAdjusted",
             "RegularSessionOnly", "us-equities-v1", Now.AddDays(-2), Now,
-            bar.Timestamp, bar.Timestamp, 1, OptimizationDataCompleteness.Unverified, "bars");
+            bar.Timestamp, bar.Timestamp, 1, OptimizationDataCompleteness.Unverified, "bars")
+        {
+            MarketTimeZoneId = "America/New_York",
+            WarmupCalendarDays = 300,
+            RequiredWarmupBars = 200
+        };
         var evidence = new OptimizationDataEvidenceSet(
             OptimizationWorkerContractCatalog.EvaluationInputVersion,
             OptimizationDataEvidenceIdentity.Compute([evidenceSeries]),

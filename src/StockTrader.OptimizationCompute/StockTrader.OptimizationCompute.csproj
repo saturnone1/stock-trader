@@ -1,0 +1,91 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\StockTrader.Engine\StockTrader.Engine.csproj" />
+    <ProjectReference Include="..\StockTrader.OptimizationProtocol\StockTrader.OptimizationProtocol.csproj" />
+    <ProjectReference Include="..\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Application\Backtesting\BacktestEntryEligibilityPolicy.cs" Link="Application\Backtesting\BacktestEntryEligibilityPolicy.cs" />
+    <Compile Include="..\..\Application\Backtesting\BacktestTimeFramePolicy.cs" Link="Application\Backtesting\BacktestTimeFramePolicy.cs" />
+    <Compile Include="..\..\Application\Backtesting\PortfolioCorrelationPolicy.cs" Link="Application\Backtesting\PortfolioCorrelationPolicy.cs" />
+    <Compile Include="..\..\Application\Backtesting\PreparedBacktestData.cs" Link="Application\Backtesting\PreparedBacktestData.cs" />
+    <Compile Include="..\..\Application\Backtesting\PreparedBacktestDataSlicer.cs" Link="Application\Backtesting\PreparedBacktestDataSlicer.cs" />
+    <Compile Include="..\..\Application\Execution\CompiledStrategyPositionInstructionResolver.cs" Link="Application\Execution\CompiledStrategyPositionInstructionResolver.cs" />
+    <Compile Include="..\..\Application\Execution\CumulativeRsi2ExitDecisionPolicy.cs" Link="Application\Execution\CumulativeRsi2ExitDecisionPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\HoldingPeriodPolicy.cs" Link="Application\Execution\HoldingPeriodPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\LongPositionExitPolicyCatalog.cs" Link="Application\Execution\LongPositionExitPolicyCatalog.cs" />
+    <Compile Include="..\..\Application\Execution\PositionAllocationPolicy.cs" Link="Application\Execution\PositionAllocationPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\PositionScaleInCapacityPolicy.cs" Link="Application\Execution\PositionScaleInCapacityPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\StrategyCompletedTrade.cs" Link="Application\Execution\StrategyCompletedTrade.cs" />
+    <Compile Include="..\..\Application\Execution\StrategyEntryEligibilityPolicy.cs" Link="Application\Execution\StrategyEntryEligibilityPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\StrategyTradeTransitionPolicy.cs" Link="Application\Execution\StrategyTradeTransitionPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\Tqqq200SmaExecutionPolicy.cs" Link="Application\Execution\Tqqq200SmaExecutionPolicy.cs" />
+    <Compile Include="..\..\Application\MarketData\EnginePriceBarMapper.cs" Link="Application\MarketData\EnginePriceBarMapper.cs" />
+    <Compile Include="..\..\Application\MarketData\MarketDataEvidence.cs" Link="Application\MarketData\MarketDataEvidence.cs" />
+    <Compile Include="..\..\Application\Optimization\IOptimizationCandidateEvaluator.cs" Link="Application\Optimization\IOptimizationCandidateEvaluator.cs" />
+    <Compile Include="..\..\Application\Optimization\IOptimizationEvaluationContextPreparer.cs" Link="Application\Optimization\IOptimizationEvaluationContextPreparer.cs" />
+    <Compile Include="..\..\Application\Optimization\OptimizationBacktestAssumptions.cs" Link="Application\Optimization\OptimizationBacktestAssumptions.cs" />
+    <Compile Include="..\..\Application\Optimization\OptimizationJobExecutionPolicy.cs" Link="Application\Optimization\OptimizationJobExecutionPolicy.cs" />
+    <Compile Include="..\..\Application\Optimization\OptimizationModels.cs" Link="Application\Optimization\OptimizationModels.cs" />
+    <Compile Include="..\..\Application\Optimization\OptimizationResultProjection.cs" Link="Application\Optimization\OptimizationResultProjection.cs" />
+    <Compile Include="..\..\Application\Optimization\OptimizationResultRanker.cs" Link="Application\Optimization\OptimizationResultRanker.cs" />
+    <Compile Include="..\..\Application\Optimization\OptimizationRankingPolicy.cs" Link="Application\Optimization\OptimizationRankingPolicy.cs" />
+    <Compile Include="..\..\Application\Optimization\OptimizeRequestJsonCodec.cs" Link="Application\Optimization\OptimizeRequestJsonCodec.cs" />
+    <Compile Include="..\..\Application\Optimization\StrategyOptimizationSpace.cs" Link="Application\Optimization\StrategyOptimizationSpace.cs" />
+    <Compile Include="..\..\Application\Optimization\StrategyVariantFactory.cs" Link="Application\Optimization\StrategyVariantFactory.cs" />
+    <Compile Include="..\..\Application\Strategies\ICompiledStrategyRuntime.cs" Link="Application\Strategies\ICompiledStrategyRuntime.cs" />
+    <Compile Include="..\..\Application\Strategies\MarketRegimeTrendPolicy.cs" Link="Application\Strategies\MarketRegimeTrendPolicy.cs" />
+    <Compile Include="..\..\Configuration\PatternSettings.cs" Link="Configuration\PatternSettings.cs" />
+    <Compile Include="..\..\Domain\Strategies\PatternCatalog.cs" Link="Domain\Strategies\PatternCatalog.cs" />
+    <Compile Include="..\..\Domain\Strategies\PatternType.cs" Link="Domain\Strategies\PatternType.cs" />
+    <Compile Include="..\..\Domain\MarketData\DataProviderCatalog.cs" Link="Domain\MarketData\DataProviderCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\DataSource.cs" Link="Domain\MarketData\DataSource.cs" />
+    <Compile Include="..\..\Domain\MarketData\ExchangeCalendarCatalog.cs" Link="Domain\MarketData\ExchangeCalendarCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\MarketRegionCatalog.cs" Link="Domain\MarketData\MarketRegionCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\MarketSymbolPolicy.cs" Link="Domain\MarketData\MarketSymbolPolicy.cs" />
+    <Compile Include="..\..\Domain\MarketData\PriceAdjustmentCatalog.cs" Link="Domain\MarketData\PriceAdjustmentCatalog.cs" />
+    <Compile Include="..\..\Domain\Optimization\OptimizationRankingCatalog.cs" Link="Domain\Optimization\OptimizationRankingCatalog.cs" />
+    <Compile Include="..\..\Domain\Statistics\PatternStatisticsMetricPolicy.cs" Link="Domain\Statistics\PatternStatisticsMetricPolicy.cs" />
+    <Compile Include="..\..\Domain\Trading\PositionReturnPolicy.cs" Link="Domain\Trading\PositionReturnPolicy.cs" />
+    <Compile Include="..\..\Domain\Trading\RiskRewardRatioPolicy.cs" Link="Domain\Trading\RiskRewardRatioPolicy.cs" />
+    <Compile Include="..\..\Models\BacktestResult.cs" Link="Models\BacktestResult.cs" />
+    <Compile Include="..\..\Models\MarketRegime.cs" Link="Models\MarketRegime.cs" />
+    <Compile Include="..\..\Models\OhlcvBar.cs" Link="Models\OhlcvBar.cs" />
+    <Compile Include="..\..\Models\PatternSignal.cs" Link="Models\PatternSignal.cs" />
+    <Compile Include="..\..\Models\PatternStats.cs" Link="Models\PatternStats.cs" />
+    <Compile Include="..\..\Models\TradeRecord.cs" Link="Models\TradeRecord.cs" />
+    <Compile Include="..\..\Models\Enums\*.cs" Link="Models\Enums\%(Filename)%(Extension)" />
+    <Compile Include="..\..\Services\Backtest\BacktestDetectorMetadata.cs" Link="Services\Backtest\BacktestDetectorMetadata.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestEntryContracts.cs" Link="Services\Backtest\BacktestEntryContracts.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestExecutionAdapter.cs" Link="Services\Backtest\BacktestExecutionAdapter.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestExecutionCostLedger.cs" Link="Services\Backtest\BacktestExecutionCostLedger.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestOptimizationService.cs" Link="Services\Backtest\BacktestOptimizationService.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestPendingEntryProcessor.cs" Link="Services\Backtest\BacktestPendingEntryProcessor.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestPortfolioState.cs" Link="Services\Backtest\BacktestPortfolioState.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestPositionExitProcessor.cs" Link="Services\Backtest\BacktestPositionExitProcessor.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestPreparedSimulationRunner.cs" Link="Services\Backtest\BacktestPreparedSimulationRunner.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestResultBuilder.cs" Link="Services\Backtest\BacktestResultBuilder.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestRiskParameters.cs" Link="Services\Backtest\BacktestRiskParameters.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestSignalEntryProcessor.cs" Link="Services\Backtest\BacktestSignalEntryProcessor.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestSimulationEngine.cs" Link="Services\Backtest\BacktestSimulationEngine.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestStrategyExecutionInstructionResolver.cs" Link="Services\Backtest\BacktestStrategyExecutionInstructionResolver.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestStrategyRuntime.cs" Link="Services\Backtest\BacktestStrategyRuntime.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestStrategyRuntimeRegistry.cs" Link="Services\Backtest\BacktestStrategyRuntimeRegistry.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestTerminalPositionLiquidator.cs" Link="Services\Backtest\BacktestTerminalPositionLiquidator.cs" />
+    <Compile Include="..\..\Services\Backtest\BacktestTradeLedger.cs" Link="Services\Backtest\BacktestTradeLedger.cs" />
+    <Compile Include="..\..\Services\Backtest\OptimizationCandidateEvaluator.cs" Link="Services\Backtest\OptimizationCandidateEvaluator.cs" />
+    <Compile Include="..\..\Services\Backtest\PatternOverrideMerger.cs" Link="Services\Backtest\PatternOverrideMerger.cs" />
+    <Compile Include="..\..\Services\Backtest\PerformanceCalculator.cs" Link="Services\Backtest\PerformanceCalculator.cs" />
+    <Compile Include="..\..\Services\Patterns\CustomStrategyDetectorFactory.cs" Link="Services\Patterns\CustomStrategyDetectorFactory.cs" />
+    <Compile Include="..\..\Services\Patterns\DynamicExitPricePolicy.cs" Link="Services\Patterns\DynamicExitPricePolicy.cs" />
+    <Compile Include="..\..\Services\Patterns\ICustomStrategyDetector.cs" Link="Services\Patterns\ICustomStrategyDetector.cs" />
+    <Compile Include="..\..\Services\Patterns\IPatternDetector.cs" Link="Services\Patterns\IPatternDetector.cs" />
+    <Compile Include="..\..\Services\Patterns\RuleBasedDetector.cs" Link="Services\Patterns\RuleBasedDetector.cs" />
+  </ItemGroup>
+</Project>

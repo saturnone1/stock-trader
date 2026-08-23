@@ -1,4 +1,5 @@
 using StockTrader.Application.Backtesting;
+using System.Text.Json;
 using StockTrader.ServiceContracts.Optimization;
 
 namespace StockTrader.Application.Optimization;
@@ -29,13 +30,18 @@ public static class OptimizationPreparedDataFactory
             context.Risk.DailyLossLimitPercent,
             context.Risk.MaxTotalPositions,
             context.Risk.MaxPositionsPerSector);
-        var hash = OptimizationPreparedDataIdentity.Compute(series, regimes, risk);
+        var settingsJson = JsonSerializer.Serialize(
+            context.PatternSettings, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var hash = OptimizationPreparedDataIdentity.Compute(series, regimes, risk, settingsJson);
         return new OptimizationPreparedDataSet(
             OptimizationWorkerContractCatalog.EvaluationInputVersion,
             hash,
             series,
             regimes,
-            risk);
+            risk)
+        {
+            PatternSettingsJson = settingsJson
+        };
     }
 
     private static OptimizationPreparedSeries CreateSeries(

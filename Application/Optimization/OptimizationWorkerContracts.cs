@@ -29,12 +29,17 @@ public static class OptimizationDataEvidenceFactory
     private static OptimizationSymbolDataEvidence CreateSeries(
         OptimizeRequest request, string symbol, TimeFrame frame,
         IReadOnlyList<OhlcvBar> bars, MarketDataEvidence evidence) => new(
-            symbol.Trim().ToUpperInvariant(), frame.ToString(), evidence.Provider.ToString(),
-            evidence.MarketRegion.ToString(), evidence.AdjustmentMode.ToString(),
-            evidence.SessionScope.ToString(), evidence.CalendarVersion, request.From, request.To,
-            bars.Count == 0 ? null : bars[0].Timestamp,
-            bars.Count == 0 ? null : bars[^1].Timestamp,
-            bars.Count, OptimizationDataCompleteness.Unverified, HashBars(bars));
+        symbol.Trim().ToUpperInvariant(), frame.ToString(), evidence.Provider.ToString(),
+        evidence.MarketRegion.ToString(), evidence.AdjustmentMode.ToString(),
+        evidence.SessionScope.ToString(), evidence.CalendarVersion, request.From, request.To,
+        bars.Count == 0 ? null : bars[0].Timestamp,
+        bars.Count == 0 ? null : bars[^1].Timestamp,
+        bars.Count, OptimizationDataCompleteness.Unverified, HashBars(bars))
+    {
+        MarketTimeZoneId = evidence.MarketTimeZoneId,
+        WarmupCalendarDays = evidence.WarmupCalendarDays,
+        RequiredWarmupBars = evidence.RequiredWarmupBars
+    };
 
     private static string HashBars(IReadOnlyList<OhlcvBar> bars)
     {

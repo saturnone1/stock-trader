@@ -41,7 +41,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
             return;
 
         var now = Utc(observedAt);
-        var validationLease = new OptimizationWorkLease(
+        var computeLease = new OptimizationWorkLease(
             OptimizationWorkerContractCatalog.LeaseVersion,
             "validation",
             jobId,
@@ -49,8 +49,11 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
             0,
             now,
             now.AddSeconds(_transport.LeaseSeconds),
-            input);
-        var compatibilityError = OptimizationLeaseCompatibilityPolicy.Error(validationLease)
+            input)
+        {
+            Purpose = OptimizationWorkerContractCatalog.ShadowComputePurpose
+        };
+        var compatibilityError = OptimizationLeaseCompatibilityPolicy.Error(computeLease)
             ?? StrategyExecutionArtifactPolicy.CompatibilityError(input.Strategy);
         if (compatibilityError is not null)
             throw new InvalidOperationException(
@@ -59,7 +62,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var exists = await db.OptimizationWorkerLeases.AsNoTracking().AnyAsync(
             lease => lease.JobId == jobId
-                && lease.Purpose == OptimizationWorkerContractCatalog.ShadowValidationPurpose
+                && lease.Purpose == OptimizationWorkerContractCatalog.ShadowComputePurpose
                 && lease.InputHash == input.InputHash,
             ct);
         if (exists) return;
@@ -68,7 +71,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
         {
             LeaseId = $"opt-{jobId}-{Guid.NewGuid():N}",
             JobId = jobId,
-            Purpose = OptimizationWorkerContractCatalog.ShadowValidationPurpose,
+            Purpose = OptimizationWorkerContractCatalog.ShadowComputePurpose,
             InputHash = input.InputHash,
             InputJson = JsonSerializer.Serialize(input, JsonOptions),
             Status = OptimizationWorkerLeaseStatus.Pending,
@@ -83,7 +86,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
             db.ChangeTracker.Clear();
             if (!await db.OptimizationWorkerLeases.AsNoTracking().AnyAsync(
                     lease => lease.JobId == jobId
-                        && lease.Purpose == OptimizationWorkerContractCatalog.ShadowValidationPurpose
+                        && lease.Purpose == OptimizationWorkerContractCatalog.ShadowComputePurpose
                         && lease.InputHash == input.InputHash,
                     ct))
                 throw;

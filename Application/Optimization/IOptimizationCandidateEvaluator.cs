@@ -2,6 +2,7 @@ using StockTrader.Application.Backtesting;
 using StockTrader.Application.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Configuration;
 
 namespace StockTrader.Application.Optimization;
 
@@ -15,6 +16,8 @@ public sealed record OptimizationEvaluationContext(
     IReadOnlyDictionary<TimeFrame, MarketDataEvidence> EvidenceByTimeFrame,
     MarketDataEvidence DefaultEvidence)
 {
+    public PatternSettings PatternSettings { get; init; } = new();
+
     /// <summary>
     /// 해당 타임프레임의 데이터 근거. 같은 공급자라도 타임프레임에 따라 조정 모드가
     /// 다를 수 있으므로(LS증권 분봉), 실행에 사용한 데이터와 짝이 맞는 근거를 반환한다.

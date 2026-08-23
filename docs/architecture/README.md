@@ -63,9 +63,16 @@ lease or execute jobs.
 
 [ADR 0074](adr/0074-establish-durable-optimization-leases.md) adds Strategy Research-owned durable
 lease records and authenticated claim, heartbeat, and idempotent result APIs. The F# Worker can
-submit only a contract-validation receipt; it cannot write canonical optimization or financial
-results. A separate `LeaseTransportEnabled=false` gate remains fixed in K3s because executable
-prepared data requires internal TLS/workload identity before real-Pod activation.
+submit only an audited shadow result; it cannot write canonical optimization or financial results.
+A separate `LeaseTransportEnabled=false` gate remains fixed in K3s because executable prepared data
+requires internal TLS/workload identity before real-Pod activation.
+
+[ADR 0075](adr/0075-extract-prepared-data-optimization-compute.md) adds the first complete service
+calculation boundary. `StockTrader.OptimizationCompute` runs the existing Stage 1/Stage 2 search,
+prepared-data simulation, ranking, and OOS semantics without a provider or database. The F# Worker
+maintains and cancels leases while calling that shared C# computation instead of translating trading
+rules. Dedicated compute tests pass from contract data alone, but K3s execution remains disabled
+until TLS, real-Pod conformance, shadow-result comparison, and load/rollback gates pass.
 
 ## Target modules
 
@@ -75,7 +82,7 @@ prepared data requires internal TLS/workload identity before real-Pod activation
 | Engine | Indicators, rule evaluation, fills, portfolio simulation, metrics | Database and broker access |
 | Application | Preview, backtest, optimize, scan, evaluate, order use cases | Provider implementations |
 | Infrastructure | SQLite, Alpaca, Yahoo, LS, notifications, system clock | Trading policy |
-| API/Workers | Authentication, contracts, scheduling, composition | Strategy calculations |
+| API/Workers | Authentication, contracts, scheduling, compute composition | Duplicated strategy rules or direct financial writes |
 | Desktop | Presentation and interaction | Duplicated backend catalogs |
 
 Dependencies point inward. Infrastructure implements application ports; the domain never imports

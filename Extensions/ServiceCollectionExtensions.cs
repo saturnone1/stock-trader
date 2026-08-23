@@ -32,6 +32,7 @@ using StockTrader.Application.Dashboard;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Trading;
 using StockTrader.Application.MarketData;
+using StockTrader.Application.Backtesting;
 using StockTrader.Application.MachineLearning;
 using StockTrader.Services.Dashboard;
 using StockTrader.Services.DataFeed;
@@ -312,6 +313,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BacktestDataPreparer>();
         services.AddScoped<BacktestSignalEntryProcessor>();
         services.AddScoped<BacktestSimulationEngine>();
+        services.AddScoped<PreparedBacktestDataSlicer>();
         services.AddScoped<BacktestPreparedSimulationRunner>();
         services.AddScoped<WalkForwardAnalysisRunner>();
         services.AddScoped<IOptimizationCandidateEvaluator, OptimizationCandidateEvaluator>();
