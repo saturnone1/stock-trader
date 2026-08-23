@@ -144,7 +144,7 @@ public class CentralCatalogTests
         var contract = StrategyBuilderMetadataResponse.Create(
             new OptimizationWorkerTransportOptions());
 
-        contract.SchemaVersion.Should().Be(7);
+        contract.SchemaVersion.Should().Be(8);
         contract.DocumentVersion.Should().Be(StrategyDocumentVersions.Current);
         contract.EntryModes.Select(item => item.Code).Should().BeEquivalentTo(StrategyCatalog.EntryModes.Select(item => item.Code));
         contract.StopMethods.Should().NotBeEmpty();
@@ -194,7 +194,7 @@ public class CentralCatalogTests
         var yahoo = root.GetProperty("dataProviders").EnumerateArray()
             .Single(item => item.GetProperty("value").GetString() == "Yahoo");
 
-        root.GetProperty("schemaVersion").GetInt32().Should().Be(7);
+        root.GetProperty("schemaVersion").GetInt32().Should().Be(8);
         root.GetProperty("timeFrames")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);
         yahoo.GetProperty("maximumLookbackDays").GetProperty("OneMinute").GetInt32().Should().Be(7);
         root.GetProperty("slippageModels")[0].GetProperty("value").ValueKind.Should().Be(JsonValueKind.String);

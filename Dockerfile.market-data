@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["workers/market-data-service/StockTrader.MarketDataService.fsproj", "workers/market-data-service/"]
+COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
+COPY ["src/StockTrader.Engine/StockTrader.Engine.csproj", "src/StockTrader.Engine/"]
+RUN dotnet restore "workers/market-data-service/StockTrader.MarketDataService.fsproj"
+COPY . .
+RUN dotnet publish "workers/market-data-service/StockTrader.MarketDataService.fsproj" \
+    -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app/publish .
+ENV ASPNETCORE_HTTP_PORTS=7443
+ENV ASPNETCORE_ENVIRONMENT=Production
+EXPOSE 7443
+USER $APP_UID
+ENTRYPOINT ["dotnet", "StockTrader.MarketDataService.dll"]

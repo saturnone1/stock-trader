@@ -81,6 +81,25 @@ spec:
           value: "/tls/server/tls.key"
         - name: Kestrel__Endpoints__WorkerHttps__ClientCertificateMode
           value: "AllowCertificate"
+        - name: MarketDataTransport__Mode
+          value: "__MARKET_DATA_MODE__"
+        - name: MarketDataTransport__Endpoint
+          value: "https://stocktrader-market-data:7443"
+        - name: MarketDataTransport__SharedSecret
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-market-data-auth
+              key: shared-secret
+        - name: MarketDataTransport__ClientCertificatePath
+          value: "/tls/market-data-client/tls.crt"
+        - name: MarketDataTransport__ClientCertificateKeyPath
+          value: "/tls/market-data-client/tls.key"
+        - name: MarketDataTransport__ServerCertificateAuthorityPath
+          value: "/tls/market-data-client/ca.crt"
+        - name: MarketDataTransport__ServerCertificateCommonName
+          value: "stocktrader-market-data"
+        - name: MarketDataTransport__ShadowBackfillEnabled
+          value: "__MARKET_DATA_SHADOW_BACKFILL_ENABLED__"
         resources:
           requests:
             memory: "256Mi"
@@ -96,6 +115,9 @@ spec:
           readOnly: true
         - name: optimization-worker-client-ca
           mountPath: /tls/client-ca
+          readOnly: true
+        - name: market-data-client-tls
+          mountPath: /tls/market-data-client
           readOnly: true
         livenessProbe:
           httpGet:
@@ -125,6 +147,9 @@ spec:
           items:
           - key: ca.crt
             path: ca.crt
+      - name: market-data-client-tls
+        secret:
+          secretName: __MARKET_DATA_CLIENT_TLS_SECRET__
 
 ---
 apiVersion: v1

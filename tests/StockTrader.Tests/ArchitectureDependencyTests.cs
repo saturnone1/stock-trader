@@ -1228,7 +1228,8 @@ public class ArchitectureDependencyTests
         Directory.EnumerateFiles(repository, "Dockerfile*")
             .Select(Path.GetFileName)
             .Should().BeEquivalentTo(
-                "Dockerfile.api", "Dockerfile.desktop", "Dockerfile.optimization-worker");
+                "Dockerfile.api", "Dockerfile.desktop", "Dockerfile.market-data",
+                "Dockerfile.optimization-worker");
         Directory.EnumerateFiles(repository, "docker-compose*.yml")
             .Select(Path.GetFileName)
             .Should().Equal("docker-compose.yml");
@@ -2650,9 +2651,9 @@ public class ArchitectureDependencyTests
         buffer.Should().Contain("_processingLock");
         buffer.Should().Contain("batch retained for retry");
         buffer.Should().Contain("_sink.PersistAndPublishAsync(_pendingBatch, ct)");
-        sink.Should().Contain("await repository.AddBarsAsync(bars, ct)");
+        sink.Should().Contain("await writer.WriteAsync(new MarketDataBarWrite(DataSource.Alpaca, bars), ct)");
         sink.Should().Contain("await symbolChannel.Writer.WriteAsync(symbol, ct)");
-        sink.IndexOf("await repository.AddBarsAsync(bars, ct)",
+        sink.IndexOf("await writer.WriteAsync(new MarketDataBarWrite(DataSource.Alpaca, bars), ct)",
                 StringComparison.Ordinal)
             .Should().BeLessThan(sink.IndexOf(
                 "await symbolChannel.Writer.WriteAsync(symbol, ct)",

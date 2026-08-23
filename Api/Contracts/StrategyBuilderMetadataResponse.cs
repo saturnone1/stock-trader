@@ -67,6 +67,10 @@ public sealed record OptimizationExecutionMetadataResponse(
     bool SupportsDurationLimit,
     int MaxConcurrentJobs,
     int LeaseSeconds);
+public sealed record MarketDataExecutionMetadataResponse(
+    string Mode,
+    bool UsesRemoteService,
+    bool LocalCompatibilityAvailable);
 public sealed record ExitMethodMetadataResponse(
     string Code,
     string DisplayName,
@@ -94,11 +98,13 @@ public sealed record StrategyBuilderMetadataResponse(
     IReadOnlyList<SlippageModelMetadataResponse> SlippageModels,
     IReadOnlyList<OptimizationRankMetadataResponse> OptimizationRankings,
     OptimizationExecutionMetadataResponse OptimizationExecution,
+    MarketDataExecutionMetadataResponse MarketDataExecution,
     LiveStrategyConstraintsMetadataResponse LiveStrategyConstraints)
 {
     public static StrategyBuilderMetadataResponse Create(
-        OptimizationWorkerTransportOptions optimization) => new(
-        SchemaVersion: 7,
+        OptimizationWorkerTransportOptions optimization,
+        MarketDataTransportOptions? marketData = null) => new(
+        SchemaVersion: 8,
         DocumentVersion: StrategyDocumentVersions.Current,
         Indicators: IndicatorCatalog.All.Select(item => new IndicatorMetadataResponse(
             item.Code,
@@ -165,6 +171,10 @@ public sealed record StrategyBuilderMetadataResponse(
                 ? optimization.MaxConcurrentRemoteJobs
                 : 1,
             optimization.LeaseSeconds),
+        MarketDataExecution: new(
+            (marketData ?? new MarketDataTransportOptions()).Mode.ToString(),
+            (marketData ?? new MarketDataTransportOptions()).Mode == MarketDataTransportMode.Remote,
+            true),
         LiveStrategyConstraints: new(
             LiveStrategyCompatibilityPolicy.SupportedTimeFrames,
             LiveStrategyCompatibilityPolicy.SupportedEntryModes,

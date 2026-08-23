@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 using StockTrader.Application.MarketData;
-using StockTrader.Data.Repositories;
+using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 
 namespace StockTrader.Services.DataFeed;
@@ -15,8 +15,8 @@ public sealed class RealtimeBarBatchSink(
         CancellationToken ct = default)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IOhlcvRepository>();
-        await repository.AddBarsAsync(bars, ct);
+        var writer = scope.ServiceProvider.GetRequiredService<IMarketDataBarWriter>();
+        await writer.WriteAsync(new MarketDataBarWrite(DataSource.Alpaca, bars), ct);
 
         foreach (var symbol in bars
                      .Select(bar => bar.Symbol)

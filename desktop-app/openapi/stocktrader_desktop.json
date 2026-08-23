@@ -4454,6 +4454,25 @@
           }
         }
       },
+      "MarketDataExecutionMetadataResponse": {
+        "required": [
+          "mode",
+          "usesRemoteService",
+          "localCompatibilityAvailable"
+        ],
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "usesRemoteService": {
+            "type": "boolean"
+          },
+          "localCompatibilityAvailable": {
+            "type": "boolean"
+          }
+        }
+      },
       "MlFeatureImportanceResponse": {
         "required": [
           "featureName",
@@ -7515,6 +7534,7 @@
           "slippageModels",
           "optimizationRankings",
           "optimizationExecution",
+          "marketDataExecution",
           "liveStrategyConstraints"
         ],
         "type": "object",
@@ -7607,6 +7627,9 @@
           },
           "optimizationExecution": {
             "$ref": "#/components/schemas/OptimizationExecutionMetadataResponse"
+          },
+          "marketDataExecution": {
+            "$ref": "#/components/schemas/MarketDataExecutionMetadataResponse"
           },
           "liveStrategyConstraints": {
             "$ref": "#/components/schemas/LiveStrategyConstraintsMetadataResponse"

@@ -31,6 +31,8 @@ public static class BackgroundServiceExtensions
             return services;
 
         services.AddHostedService<AlpacaStreamingService>();
+        services.AddHostedService<MarketDataSubscriptionSyncService>();
+        services.AddHostedService<MarketDataShadowBackfillService>();
         services.AddHostedService<MarketDataIngestionService>();
         services.AddHostedService<PatternScannerService>();
         services.AddHostedService<DailyDataSyncService>();

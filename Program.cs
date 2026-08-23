@@ -64,6 +64,14 @@ try
         Environment.ExitCode = await app.MigrateDatabaseOnlyAsync() ? 0 : 2;
         return;
     }
+    if (args.Contains("--project-market-data-rollback", StringComparer.Ordinal))
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        await scope.ServiceProvider
+            .GetRequiredService<StockTrader.Services.DataFeed.MarketDataRollbackProjector>()
+            .ProjectAsync(CancellationToken.None);
+        return;
+    }
     if (!isOpenApiGeneration)
         await app.InitializeStockTraderAsync();
     app.UseStockTraderPipeline();

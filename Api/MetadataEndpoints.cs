@@ -11,8 +11,9 @@ public static class MetadataEndpoints
         var group = api.MapGroup("/metadata").RequireAuthorization();
 
         group.MapGet("/strategy-builder", (
-            IOptions<OptimizationWorkerTransportOptions> optimization) =>
-            Results.Ok(StrategyBuilderMetadataResponse.Create(optimization.Value)))
+            IOptions<OptimizationWorkerTransportOptions> optimization,
+            IOptions<MarketDataTransportOptions> marketData) =>
+            Results.Ok(StrategyBuilderMetadataResponse.Create(optimization.Value, marketData.Value)))
             .Produces<StrategyBuilderMetadataResponse>();
 
         return api;

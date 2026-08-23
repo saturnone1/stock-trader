@@ -15,6 +15,7 @@ public class AlpacaStreamingService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IRealtimeBarIngestionBuffer _barIngestion;
     private readonly AlpacaSettings _settings;
+    private readonly MarketDataTransportOptions _marketDataTransport;
     private readonly StreamingSettings _streamingSettings;
     private readonly TimeProvider _timeProvider;
     private readonly IStreamingStatusService _streamingStatus;
@@ -32,6 +33,7 @@ public class AlpacaStreamingService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IRealtimeBarIngestionBuffer barIngestion,
         IOptions<AlpacaSettings> settings,
+        IOptions<MarketDataTransportOptions> marketDataTransport,
         IOptions<StreamingSettings> streamingSettings,
         TimeProvider timeProvider,
         IStreamingStatusService streamingStatus,
@@ -41,6 +43,7 @@ public class AlpacaStreamingService : BackgroundService
         _scopeFactory = scopeFactory;
         _barIngestion = barIngestion;
         _settings = settings.Value;
+        _marketDataTransport = marketDataTransport.Value;
         _streamingSettings = streamingSettings.Value;
         _timeProvider = timeProvider;
         _streamingStatus = streamingStatus;
@@ -50,6 +53,11 @@ public class AlpacaStreamingService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (_marketDataTransport.Mode == MarketDataTransportMode.Remote)
+        {
+            _logger.LogInformation("In-process Alpaca streaming disabled; Market Data service owns streaming.");
+            return;
+        }
         if (!_settings.HasConfiguredCredentials)
         {
             _logger.LogWarning("AlpacaStreamingService disabled (credentials not configured)");

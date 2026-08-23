@@ -10,6 +10,7 @@ namespace StockTrader.Services.DataFeed;
 public sealed class DailyMarketDataSyncData(
     IDataFeedServiceFactory dataFeeds,
     IOhlcvRepository bars,
+    IMarketDataBarWriter writer,
     ISettingsRepository settings,
     IStatisticsService statistics) : IDailyMarketDataSyncData
 {
@@ -23,6 +24,7 @@ public sealed class DailyMarketDataSyncData(
             MarketSymbolPolicy.NormalizeMany(userSettings.WatchlistSymbols),
             selection.Service,
             bars,
+            writer,
             statistics);
     }
 
@@ -31,6 +33,7 @@ public sealed class DailyMarketDataSyncData(
         IReadOnlyList<string> watchlistSymbols,
         IDataFeedService feed,
         IOhlcvRepository bars,
+        IMarketDataBarWriter writer,
         IStatisticsService statistics) : IDailyMarketDataSyncSession
     {
         public DataSource Source { get; } = source;
@@ -58,7 +61,7 @@ public sealed class DailyMarketDataSyncData(
         public Task SaveBarsAsync(
             IReadOnlyList<OhlcvBar> values,
             CancellationToken ct = default) =>
-            bars.AddBarsAsync(values, ct);
+            writer.WriteAsync(new MarketDataBarWrite(source, values), ct);
 
         public Task RefreshStatisticsAsync(CancellationToken ct = default) =>
             statistics.RefreshAllStatsAsync(ct);

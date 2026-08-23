@@ -44,12 +44,7 @@
     <Compile Include="..\..\Configuration\PatternSettings.cs" Link="Configuration\PatternSettings.cs" />
     <Compile Include="..\..\Domain\Strategies\PatternCatalog.cs" Link="Domain\Strategies\PatternCatalog.cs" />
     <Compile Include="..\..\Domain\Strategies\PatternType.cs" Link="Domain\Strategies\PatternType.cs" />
-    <Compile Include="..\..\Domain\MarketData\DataProviderCatalog.cs" Link="Domain\MarketData\DataProviderCatalog.cs" />
-    <Compile Include="..\..\Domain\MarketData\DataSource.cs" Link="Domain\MarketData\DataSource.cs" />
     <Compile Include="..\..\Domain\MarketData\ExchangeCalendarCatalog.cs" Link="Domain\MarketData\ExchangeCalendarCatalog.cs" />
-    <Compile Include="..\..\Domain\MarketData\MarketRegionCatalog.cs" Link="Domain\MarketData\MarketRegionCatalog.cs" />
-    <Compile Include="..\..\Domain\MarketData\MarketSymbolPolicy.cs" Link="Domain\MarketData\MarketSymbolPolicy.cs" />
-    <Compile Include="..\..\Domain\MarketData\PriceAdjustmentCatalog.cs" Link="Domain\MarketData\PriceAdjustmentCatalog.cs" />
     <Compile Include="..\..\Domain\Optimization\OptimizationRankingCatalog.cs" Link="Domain\Optimization\OptimizationRankingCatalog.cs" />
     <Compile Include="..\..\Domain\Statistics\PatternStatisticsMetricPolicy.cs" Link="Domain\Statistics\PatternStatisticsMetricPolicy.cs" />
     <Compile Include="..\..\Domain\Trading\PositionReturnPolicy.cs" Link="Domain\Trading\PositionReturnPolicy.cs" />

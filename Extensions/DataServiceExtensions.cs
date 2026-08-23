@@ -26,7 +26,13 @@ public static class DataServiceExtensions
         IConfiguration configuration)
     {
         // Repositories
-        services.AddScoped<IOhlcvRepository, OhlcvRepository>();
+        services.AddScoped<OhlcvRepository>();
+        services.AddScoped<RemoteOhlcvRepository>();
+        services.AddScoped<LocalMarketDataBarWriter>();
+        services.AddScoped<RemoteMarketDataBarWriter>();
+        services.AddScoped<IMarketDataBarWriter, MarketDataBarWriterRouter>();
+        services.AddScoped<IOhlcvRepository, MarketDataRepositoryRouter>();
+        services.AddScoped<MarketDataRollbackProjector>();
         services.AddScoped<IPatternStatsRepository, PatternStatsRepository>();
         services.AddSingleton<ITradeHistoryStore, TradeHistoryStore>();
         services.AddSingleton<IOpenPositionStore, OpenPositionStore>();
@@ -70,8 +76,18 @@ public static class DataServiceExtensions
         services.AddScoped<DatabaseMigrationStatusProvider>();
 
         // Data Feed - Keyed services for multiple providers
-        services.AddKeyedScoped<IDataFeedService, AlpacaDataFeedService>(DataSource.Alpaca);
-        services.AddKeyedScoped<IDataFeedService, YahooFinanceDataFeedService>(DataSource.Yahoo);
+        services.AddScoped<AlpacaDataFeedService>();
+        services.AddHttpClient<MarketDataServiceClient>((serviceProvider, client) =>
+        {
+            var transport = serviceProvider
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()
+                .Value;
+            client.BaseAddress = transport.Endpoint;
+            client.Timeout = TimeSpan.FromSeconds(transport.TimeoutSeconds);
+        }).ConfigurePrimaryHttpMessageHandler(serviceProvider =>
+            MarketDataServiceClient.CreateHandler(serviceProvider
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()
+                .Value));
 
         // HttpClient for Yahoo Finance
         services.AddHttpClient<YahooFinanceDataFeedService>(client =>
@@ -96,8 +112,21 @@ public static class DataServiceExtensions
 
         // HttpClient + Keyed DI for LS Securities
         services.AddHttpClient<LsSecuritiesDataFeedService>();
-        services.AddKeyedScoped<IDataFeedService>(DataSource.LsSecurities,
-            (sp, _) => sp.GetRequiredService<LsSecuritiesDataFeedService>());
+        services.AddKeyedScoped<IDataFeedService>(DataSource.Alpaca, (sp, _) =>
+            new MarketDataFeedRouter(DataSource.Alpaca,
+                sp.GetRequiredService<AlpacaDataFeedService>(),
+                sp.GetRequiredService<MarketDataServiceClient>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
+        services.AddKeyedScoped<IDataFeedService>(DataSource.Yahoo, (sp, _) =>
+            new MarketDataFeedRouter(DataSource.Yahoo,
+                sp.GetRequiredService<YahooFinanceDataFeedService>(),
+                sp.GetRequiredService<MarketDataServiceClient>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
+        services.AddKeyedScoped<IDataFeedService>(DataSource.LsSecurities, (sp, _) =>
+            new MarketDataFeedRouter(DataSource.LsSecurities,
+                sp.GetRequiredService<LsSecuritiesDataFeedService>(),
+                sp.GetRequiredService<MarketDataServiceClient>(),
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
 
         // Data Feed Factory for runtime provider switching
         services.AddScoped<IDataFeedServiceFactory, DataFeedServiceFactory>();

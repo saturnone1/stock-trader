@@ -31,6 +31,7 @@ public class DataFeedSelectionTests
             services,
             settings.Object,
             Options.Create(new AlpacaSettings()),
+            Options.Create(new MarketDataTransportOptions()),
             NullLogger<DataFeedServiceFactory>.Instance);
 
         var selection = await factory.SelectAsync(null);
@@ -53,6 +54,7 @@ public class DataFeedSelectionTests
             services,
             settings.Object,
             Options.Create(new AlpacaSettings()),
+            Options.Create(new MarketDataTransportOptions()),
             NullLogger<DataFeedServiceFactory>.Instance);
 
         var selection = await factory.SelectAsync(DataSource.Alpaca);

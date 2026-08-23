@@ -9,6 +9,7 @@ deploy_scope="${STOCKTRADER_DEPLOY_SCOPE:-all}"
 api_image="localhost/stock-trader/api:architecture-${release_tag}"
 desktop_image="localhost/stock-trader/desktop:architecture-${release_tag}"
 worker_image="localhost/stock-trader/optimization-worker:architecture-${release_tag}"
+market_data_image="localhost/stock-trader/market-data:architecture-${release_tag}"
 archive_dir="$(mktemp -d /tmp/stocktrader-deploy.XXXXXX)"
 data_dir=""
 stocktrader_host=""
@@ -21,17 +22,25 @@ optimization_mode="${STOCKTRADER_OPTIMIZATION_MODE:-Remote}"
 optimization_mode_label="$(printf '%s' "$optimization_mode" | tr '[:upper:]' '[:lower:]')"
 optimization_worker_replicas="${STOCKTRADER_OPTIMIZATION_WORKER_REPLICAS:-2}"
 optimization_worker_concurrency="${STOCKTRADER_OPTIMIZATION_WORKER_CONCURRENCY:-2}"
+market_data_mode="${STOCKTRADER_MARKET_DATA_MODE:-Local}"
+market_data_shadow_backfill="${STOCKTRADER_MARKET_DATA_SHADOW_BACKFILL_ENABLED:-false}"
+market_data_dir="${STOCKTRADER_MARKET_DATA_DIR:-}"
+market_data_tls_generation="${STOCKTRADER_MARKET_DATA_TLS_GENERATION:-}"
+market_data_server_tls_secret=""
+market_data_client_tls_secret=""
 
 deploy_api=false
 deploy_desktop=false
 deploy_worker=false
+deploy_market_data=false
 case "$deploy_scope" in
-  all) deploy_api=true; deploy_desktop=true; deploy_worker=true ;;
+  all) deploy_api=true; deploy_desktop=true; deploy_worker=true; deploy_market_data=true ;;
   api) deploy_api=true ;;
   desktop) deploy_desktop=true ;;
   optimization-worker) deploy_worker=true ;;
+  market-data) deploy_market_data=true ;;
   *)
-    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, or optimization-worker." >&2
+    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, optimization-worker, or market-data." >&2
     exit 1
     ;;
 esac
@@ -41,6 +50,9 @@ if $deploy_api; then
 fi
 if $deploy_desktop; then
   stocktrader_host="${STOCKTRADER_HOST:?Set STOCKTRADER_HOST to the public hostname}"
+fi
+if $deploy_market_data; then
+  market_data_dir="${market_data_dir:?Set STOCKTRADER_MARKET_DATA_DIR to the absolute host data directory}"
 fi
 if $deploy_api || $deploy_worker; then
   if [[ -z "$tls_generation" ]]; then
@@ -56,9 +68,34 @@ if $deploy_api || $deploy_worker; then
   server_tls_secret="stocktrader-optimization-worker-server-tls-$tls_generation"
   client_tls_secret="stocktrader-optimization-worker-client-tls-$tls_generation"
 fi
+if $deploy_api || $deploy_market_data; then
+  if [[ -z "$market_data_tls_generation" ]]; then
+    market_data_tls_generation="$(sudo k3s kubectl -n stocktrader get configmap \
+      stocktrader-market-data-tls-active -o jsonpath='{.data.generation}' 2>/dev/null || true)"
+  fi
+  if [[ ! "$market_data_tls_generation" =~ ^[a-z0-9][a-z0-9-]{0,13}$ ]]; then
+    echo "No valid Market Data TLS generation is active." >&2
+    echo "Run scripts/rotate-market-data-tls.sh first." >&2
+    exit 1
+  fi
+  market_data_server_tls_secret="stocktrader-market-data-server-tls-$market_data_tls_generation"
+  market_data_client_tls_secret="stocktrader-market-data-client-tls-$market_data_tls_generation"
+fi
 
 if $deploy_api && { [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; }; then
   echo "STOCKTRADER_DATA_DIR must be a safe absolute path below the filesystem root." >&2
+  exit 1
+fi
+if $deploy_market_data && { [[ ! "$market_data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$market_data_dir" == "/" ]]; }; then
+  echo "STOCKTRADER_MARKET_DATA_DIR must be a safe absolute path below the filesystem root." >&2
+  exit 1
+fi
+if { $deploy_api || $deploy_market_data; } && [[ "$market_data_mode" != "Local" && "$market_data_mode" != "Shadow" && "$market_data_mode" != "Remote" ]]; then
+  echo "STOCKTRADER_MARKET_DATA_MODE must be Local, Shadow, or Remote." >&2
+  exit 1
+fi
+if [[ "$market_data_shadow_backfill" != "true" && "$market_data_shadow_backfill" != "false" ]]; then
+  echo "STOCKTRADER_MARKET_DATA_SHADOW_BACKFILL_ENABLED must be true or false." >&2
   exit 1
 fi
 
@@ -94,7 +131,7 @@ fi
 
 cleanup() {
   sudo buildah rm "$migration_container" >/dev/null 2>&1 || true
-  sudo rm -f -- "$archive_dir/api.tar" "$archive_dir/desktop.tar" "$archive_dir/worker.tar"
+  sudo rm -f -- "$archive_dir/api.tar" "$archive_dir/desktop.tar" "$archive_dir/worker.tar" "$archive_dir/market-data.tar"
   rmdir "$archive_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -102,6 +139,9 @@ trap cleanup EXIT
 sudo k3s kubectl apply -f k8s/namespace.yaml
 if $deploy_api || $deploy_worker; then
   sudo k3s kubectl apply -f k8s/network-policy-optimization-worker.yaml
+fi
+if $deploy_api || $deploy_market_data; then
+  sudo k3s kubectl apply -f k8s/network-policy-market-data.yaml
 fi
 if $deploy_api && ! sudo k3s kubectl -n stocktrader get secret stocktrader-alpaca >/dev/null 2>&1; then
   echo "Missing Kubernetes secret stocktrader/stocktrader-alpaca." >&2
@@ -122,6 +162,25 @@ for tls_secret in "$server_tls_secret" "$client_tls_secret"; do
     exit 1
   fi
 done
+if { $deploy_api || $deploy_market_data; } \
+  && ! sudo k3s kubectl -n stocktrader get secret stocktrader-market-data-auth >/dev/null 2>&1; then
+  echo "Missing Kubernetes secret stocktrader/stocktrader-market-data-auth." >&2
+  echo "Create it from k8s/secret-market-data.example.yaml before deploying." >&2
+  exit 1
+fi
+if $deploy_market_data \
+  && ! sudo k3s kubectl -n stocktrader get secret stocktrader-market-data-providers >/dev/null 2>&1; then
+  echo "Missing Kubernetes secret stocktrader/stocktrader-market-data-providers." >&2
+  exit 1
+fi
+for tls_secret in "$market_data_server_tls_secret" "$market_data_client_tls_secret"; do
+  if { $deploy_api || $deploy_market_data; } \
+    && ! sudo k3s kubectl -n stocktrader get secret "$tls_secret" >/dev/null 2>&1; then
+    echo "Missing Kubernetes secret stocktrader/$tls_secret." >&2
+    echo "Create or rotate it with scripts/rotate-market-data-tls.sh." >&2
+    exit 1
+  fi
+done
 
 if $deploy_api; then
   sudo buildah bud --layers -f Dockerfile.api -t "$api_image" .
@@ -136,6 +195,30 @@ fi
 if $deploy_worker; then
   sudo buildah bud --layers -f Dockerfile.optimization-worker -t "$worker_image" .
   sudo buildah push "$worker_image" "oci-archive:$archive_dir/worker.tar:$worker_image"
+fi
+if $deploy_market_data; then
+  sudo buildah bud --layers -f Dockerfile.market-data -t "$market_data_image" .
+  sudo buildah push "$market_data_image" "oci-archive:$archive_dir/market-data.tar:$market_data_image"
+fi
+
+if $deploy_api && [[ "$market_data_mode" == "Local" ]] \
+  && sudo k3s kubectl -n stocktrader get deployment stocktrader-api >/dev/null 2>&1; then
+  current_market_data_mode="$(sudo k3s kubectl -n stocktrader get deployment stocktrader-api \
+    -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="MarketDataTransport__Mode")].value}')"
+  if [[ "$current_market_data_mode" == "Remote" ]]; then
+    sudo install -d -m 0750 "$data_dir/backups"
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+      echo "sqlite3 is required to back up the compatibility database before rollback." >&2
+      exit 1
+    fi
+    rollback_backup="$data_dir/backups/stocktrader-before-market-data-rollback-${release_tag}-$(date -u +%Y%m%dT%H%M%SZ).db"
+    sudo sqlite3 "$data_dir/stocktrader.db" ".backup '$rollback_backup'"
+    sudo sqlite3 "$rollback_backup" "PRAGMA quick_check;" | grep -qx ok
+    echo "Pre-projection compatibility backup: $rollback_backup"
+    echo "Projecting authoritative Market Data into the Local compatibility store before rollback."
+    sudo k3s kubectl -n stocktrader exec deployment/stocktrader-api -- \
+      dotnet StockTrader.dll --project-market-data-rollback
+  fi
 fi
 
 if $deploy_api && sudo k3s kubectl -n stocktrader get deployment stocktrader-api >/dev/null 2>&1; then
@@ -167,6 +250,19 @@ if $deploy_api; then
   sudo buildah run "$migration_container" -- dotnet StockTrader.dll --migrate-database
   sudo buildah rm "$migration_container" >/dev/null
 fi
+if $deploy_market_data; then
+  sudo install -d -m 0750 "$market_data_dir/backups"
+  if sudo test -f "$market_data_dir/marketdata.db"; then
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+      echo "sqlite3 is required to back up the Market Data database." >&2
+      exit 1
+    fi
+    market_data_backup="$market_data_dir/backups/marketdata-pre-${release_tag}-$(date -u +%Y%m%dT%H%M%SZ).db"
+    sudo sqlite3 "$market_data_dir/marketdata.db" ".backup '$market_data_backup'"
+    sudo sqlite3 "$market_data_backup" "PRAGMA quick_check;" | grep -qx ok
+    echo "Market Data database backup: $market_data_backup"
+  fi
+fi
 
 # Import immediately before the manifests reference these tags. Otherwise K3s image
 # garbage collection can remove the still-unreferenced images during backup/migration.
@@ -179,6 +275,18 @@ fi
 if $deploy_worker; then
   sudo k3s ctr images import "$archive_dir/worker.tar"
 fi
+if $deploy_market_data; then
+  sudo k3s ctr images import "$archive_dir/market-data.tar"
+fi
+
+if $deploy_market_data; then
+  sed -e "s|localhost/stock-trader/market-data:latest|$market_data_image|" \
+    -e "s|__MARKET_DATA_DATA_DIR__|$market_data_dir|" \
+    -e "s|__MARKET_DATA_SERVER_TLS_SECRET__|$market_data_server_tls_secret|" \
+    -e "s|__MARKET_DATA_CLIENT_TLS_SECRET__|$market_data_client_tls_secret|" \
+    k8s/deployment-market-data.yaml | sudo k3s kubectl apply -f -
+  sudo k3s kubectl -n stocktrader rollout status deployment/stocktrader-market-data --timeout=300s
+fi
 
 if $deploy_api; then
   sed -e "s|localhost/stock-trader/api:latest|$api_image|" \
@@ -188,6 +296,9 @@ if $deploy_api; then
       -e "s|__OPTIMIZATION_WORKER_LEASE_TRANSPORT_ENABLED__|$lease_transport_enabled|" \
       -e "s|__OPTIMIZATION_WORKER_MODE__|$optimization_mode|" \
       -e "s|__OPTIMIZATION_WORKER_CONCURRENCY__|$optimization_worker_concurrency|" \
+      -e "s|__MARKET_DATA_MODE__|$market_data_mode|" \
+      -e "s|__MARKET_DATA_SHADOW_BACKFILL_ENABLED__|$market_data_shadow_backfill|" \
+      -e "s|__MARKET_DATA_CLIENT_TLS_SECRET__|$market_data_client_tls_secret|" \
     | sudo k3s kubectl apply -f -
 fi
 if $deploy_desktop; then
@@ -203,6 +314,9 @@ if $deploy_worker; then
       -e "s|__OPTIMIZATION_WORKER_MODE_LABEL__|$optimization_mode_label|" \
       -e "s|__OPTIMIZATION_WORKER_REPLICAS__|$optimization_worker_replicas|" \
     | sudo k3s kubectl apply -f -
+fi
+if $deploy_market_data; then
+  sudo k3s kubectl -n stocktrader rollout status deployment/stocktrader-market-data --timeout=300s
 fi
 
 if $deploy_api; then
@@ -220,6 +334,7 @@ selected_apps=()
 $deploy_api && selected_apps+=(stocktrader-api)
 $deploy_desktop && selected_apps+=(stocktrader-desktop)
 $deploy_worker && selected_apps+=(stocktrader-optimization-worker)
+$deploy_market_data && selected_apps+=(stocktrader-market-data)
 sudo k3s kubectl -n stocktrader get deployment "${selected_apps[@]}"
 selector="$(IFS=,; echo "${selected_apps[*]}")"
 sudo k3s kubectl -n stocktrader get pods -l "app in (${selector})"

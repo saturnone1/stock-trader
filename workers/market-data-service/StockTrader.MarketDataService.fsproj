@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Configuration.fs" />
+    <Compile Include="ContractPolicy.fs" />
+    <Compile Include="BarStore.fs" />
+    <Compile Include="ProviderGateway.fs" />
+    <Compile Include="Streaming.fs" />
+    <Compile Include="HttpHost.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StockTrader.Engine\StockTrader.Engine.csproj" />
+    <ProjectReference Include="..\..\src\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+</Project>

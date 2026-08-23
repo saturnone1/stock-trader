@@ -47,6 +47,11 @@ public static class ServiceCollectionExtensions
     {
         // Configuration binding
         services.Configure<AlpacaSettings>(configuration.GetSection("Alpaca"));
+        services.AddOptions<MarketDataTransportOptions>()
+            .Bind(configuration.GetSection(MarketDataTransportOptions.SectionName))
+            .Validate(settings => settings.IsValid(),
+                "Market Data transport requires HTTPS, mTLS files, a shared secret, and bounded timeouts outside Local mode")
+            .ValidateOnStart();
         services.AddOptions<StreamingSettings>()
             .Bind(configuration.GetSection("Streaming"))
             .Validate(settings => settings.MaxReconnectAttempts >= 0,

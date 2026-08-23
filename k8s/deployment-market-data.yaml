@@ -1,0 +1,172 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stocktrader-market-data
+  namespace: stocktrader
+automountServiceAccountToken: false
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocktrader-market-data
+  namespace: stocktrader
+  labels:
+    app: stocktrader-market-data
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 300
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: stocktrader-market-data
+  template:
+    metadata:
+      labels:
+        app: stocktrader-market-data
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "7443"
+        prometheus.io/scheme: "https"
+    spec:
+      serviceAccountName: stocktrader-market-data
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: market-data
+        image: localhost/stock-trader/market-data:latest
+        imagePullPolicy: Never
+        ports:
+        - name: https
+          containerPort: 7443
+        env:
+        - name: ASPNETCORE_URLS
+          value: "https://+:7443"
+        - name: ASPNETCORE_Kestrel__Certificates__Default__Path
+          value: "/tls/server/tls.crt"
+        - name: ASPNETCORE_Kestrel__Certificates__Default__KeyPath
+          value: "/tls/server/tls.key"
+        - name: MARKET_DATA_DATABASE_PATH
+          value: "/data/marketdata.db"
+        - name: MARKET_DATA_SHARED_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-market-data-auth
+              key: shared-secret
+        - name: MARKET_DATA_CLIENT_CA_PATH
+          value: "/tls/client-ca/ca.crt"
+        - name: MARKET_DATA_CLIENT_COMMON_NAME
+          value: "stocktrader-api"
+        - name: ALPACA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-market-data-providers
+              key: Alpaca__ApiKey
+              optional: true
+        - name: ALPACA_API_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-market-data-providers
+              key: Alpaca__ApiSecret
+              optional: true
+        - name: ALPACA_DATA_FEED
+          value: "iex"
+        - name: ALPACA_DATA_BASE_URL
+          value: "https://data.alpaca.markets"
+        - name: ALPACA_STREAM_URL
+          value: "wss://stream.data.alpaca.markets/v2/iex"
+        - name: LS_APP_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-market-data-providers
+              key: LsSecurities__AppKey
+              optional: true
+        - name: LS_APP_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-market-data-providers
+              key: LsSecurities__AppSecret
+              optional: true
+        - name: LS_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-market-data-providers
+              key: LsSecurities__BaseUrl
+              optional: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: market-data
+          mountPath: /data
+        - name: server-tls
+          mountPath: /tls/server
+          readOnly: true
+        - name: client-ca
+          mountPath: /tls/client-ca
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            scheme: HTTPS
+            path: /health/live
+            port: https
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            scheme: HTTPS
+            path: /health/ready
+            port: https
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      - name: market-data
+        hostPath:
+          path: __MARKET_DATA_DATA_DIR__
+          type: DirectoryOrCreate
+      - name: server-tls
+        secret:
+          secretName: __MARKET_DATA_SERVER_TLS_SECRET__
+      - name: client-ca
+        secret:
+          secretName: __MARKET_DATA_CLIENT_TLS_SECRET__
+          items:
+          - key: ca.crt
+            path: ca.crt
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stocktrader-market-data
+  namespace: stocktrader
+spec:
+  selector:
+    app: stocktrader-market-data
+  ports:
+  - name: https
+    protocol: TCP
+    port: 7443
+    targetPort: 7443
+  type: ClusterIP

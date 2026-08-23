@@ -3332,6 +3332,11 @@ export interface components {
             supportsPartialExit: boolean;
             supportsScaling: boolean;
         };
+        MarketDataExecutionMetadataResponse: {
+            mode: string;
+            usesRemoteService: boolean;
+            localCompatibilityAvailable: boolean;
+        };
         MlFeatureImportanceResponse: {
             featureName: string;
             /** Format: double */
@@ -4186,6 +4191,7 @@ export interface components {
             slippageModels: components["schemas"]["SlippageModelMetadataResponse"][];
             optimizationRankings: components["schemas"]["OptimizationRankMetadataResponse"][];
             optimizationExecution: components["schemas"]["OptimizationExecutionMetadataResponse"];
+            marketDataExecution: components["schemas"]["MarketDataExecutionMetadataResponse"];
             liveStrategyConstraints: components["schemas"]["LiveStrategyConstraintsMetadataResponse"];
         };
         StrategyDocument: {

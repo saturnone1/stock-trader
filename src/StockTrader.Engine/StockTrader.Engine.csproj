@@ -10,6 +10,11 @@
     <!-- Legacy source locations remain linked during the staged physical module move. -->
     <Compile Include="..\..\Domain\MarketData\TimeFrame.cs" Link="Domain\MarketData\TimeFrame.cs" />
     <Compile Include="..\..\Domain\MarketData\TimeFrameCatalog.cs" Link="Domain\MarketData\TimeFrameCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\DataSource.cs" Link="Domain\MarketData\DataSource.cs" />
+    <Compile Include="..\..\Domain\MarketData\DataProviderCatalog.cs" Link="Domain\MarketData\DataProviderCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\MarketRegionCatalog.cs" Link="Domain\MarketData\MarketRegionCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\PriceAdjustmentCatalog.cs" Link="Domain\MarketData\PriceAdjustmentCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\MarketSymbolPolicy.cs" Link="Domain\MarketData\MarketSymbolPolicy.cs" />
     <Compile Include="..\..\Domain\Backtesting\BacktestExecutionCatalog.cs" Link="Domain\Backtesting\BacktestExecutionCatalog.cs" />
     <Compile Include="..\..\Domain\Strategies\IndicatorCatalog.cs" Link="Domain\Strategies\IndicatorCatalog.cs" />
     <Compile Include="..\..\Domain\Strategies\RuleOperatorCatalog.cs" Link="Domain\Strategies\RuleOperatorCatalog.cs" />

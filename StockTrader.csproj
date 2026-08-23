@@ -16,6 +16,11 @@
     <Compile Remove="src\**\*.cs" />
     <Compile Remove="Domain\MarketData\TimeFrame.cs" />
     <Compile Remove="Domain\MarketData\TimeFrameCatalog.cs" />
+    <Compile Remove="Domain\MarketData\DataSource.cs" />
+    <Compile Remove="Domain\MarketData\DataProviderCatalog.cs" />
+    <Compile Remove="Domain\MarketData\MarketRegionCatalog.cs" />
+    <Compile Remove="Domain\MarketData\PriceAdjustmentCatalog.cs" />
+    <Compile Remove="Domain\MarketData\MarketSymbolPolicy.cs" />
     <Compile Remove="Domain\Backtesting\BacktestExecutionCatalog.cs" />
     <Compile Remove="Domain\Strategies\IndicatorCatalog.cs" />
     <Compile Remove="Domain\Strategies\RuleOperatorCatalog.cs" />

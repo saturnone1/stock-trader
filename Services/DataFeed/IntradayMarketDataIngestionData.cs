@@ -9,7 +9,7 @@ namespace StockTrader.Services.DataFeed;
 /// <summary>설정, 선택된 공급자, SQLite 분봉, 스캐너 채널을 한 수집 세션으로 묶는 어댑터입니다.</summary>
 public sealed class IntradayMarketDataIngestionData(
     IDataFeedServiceFactory dataFeeds,
-    IOhlcvRepository bars,
+    IMarketDataBarWriter writer,
     ISettingsRepository settings,
     Channel<string> symbolChannel) : IIntradayMarketDataIngestionData
 {
@@ -22,7 +22,7 @@ public sealed class IntradayMarketDataIngestionData(
             selection.Source,
             MarketSymbolPolicy.NormalizeMany(userSettings.WatchlistSymbols),
             selection.Service,
-            bars,
+            writer,
             symbolChannel.Writer);
     }
 
@@ -30,7 +30,7 @@ public sealed class IntradayMarketDataIngestionData(
         DataSource source,
         IReadOnlyList<string> watchlistSymbols,
         IDataFeedService feed,
-        IOhlcvRepository bars,
+        IMarketDataBarWriter writer,
         ChannelWriter<string> symbols) : IIntradayMarketDataIngestionSession
     {
         public DataSource Source { get; } = source;
@@ -44,7 +44,7 @@ public sealed class IntradayMarketDataIngestionData(
         public Task SaveBarsAsync(
             IReadOnlyList<OhlcvBar> values,
             CancellationToken ct = default) =>
-            bars.AddBarsAsync(values, ct);
+            writer.WriteAsync(new MarketDataBarWrite(source, values), ct);
 
         public async Task PublishIngestedSymbolsAsync(
             IReadOnlyList<string> values,

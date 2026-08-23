@@ -23,17 +23,20 @@ public class DataFeedServiceFactory : IDataFeedServiceFactory
     private readonly IServiceProvider _serviceProvider;
     private readonly ISettingsRepository _settingsRepo;
     private readonly AlpacaSettings _alpacaSettings;
+    private readonly MarketDataTransportOptions _transport;
     private readonly ILogger<DataFeedServiceFactory> _logger;
 
     public DataFeedServiceFactory(
         IServiceProvider serviceProvider,
         ISettingsRepository settingsRepo,
         IOptions<AlpacaSettings> alpacaSettings,
+        IOptions<MarketDataTransportOptions> transport,
         ILogger<DataFeedServiceFactory> logger)
     {
         _serviceProvider = serviceProvider;
         _settingsRepo = settingsRepo;
         _alpacaSettings = alpacaSettings.Value;
+        _transport = transport.Value;
         _logger = logger;
     }
 
@@ -46,16 +49,18 @@ public class DataFeedServiceFactory : IDataFeedServiceFactory
     {
         var source = requestedSource
             ?? (await _settingsRepo.GetAsync(ct)).PreferredDataSource;
-        var resolvedSource = source == DataSource.Alpaca
+        var resolvedSource = _transport.Mode != MarketDataTransportMode.Remote
+                             && source == DataSource.Alpaca
                              && !_alpacaSettings.HasConfiguredCredentials
             ? DataSource.Yahoo
             : source;
-        return new DataFeedSelection(resolvedSource, GetService(source));
+        return new DataFeedSelection(resolvedSource, GetService(resolvedSource));
     }
 
     public IDataFeedService GetService(DataSource dataSource)
     {
-        if (dataSource == DataSource.Alpaca && !_alpacaSettings.HasConfiguredCredentials)
+        if (_transport.Mode != MarketDataTransportMode.Remote
+            && dataSource == DataSource.Alpaca && !_alpacaSettings.HasConfiguredCredentials)
         {
             _logger.LogWarning(
                 "Alpaca credentials are not configured. Falling back to Yahoo Finance data feed.");
