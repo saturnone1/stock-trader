@@ -1,8 +1,8 @@
 # 0077 — Cut over optimization computation to the remote Worker
 
-- Status: Proposed, pending production cutover verification
+- Status: Accepted
 - Date: 2026-08-23
-- Baseline: 4e23e3f
+- Baseline: b636cb7
 
 ## Context
 
@@ -68,19 +68,32 @@ the transport itself is unsafe, set lease transport to `false`; the in-process p
 new Worker lease is claimable. Canonical rows already committed before rollback remain valid and no
 financial or broker state is involved.
 
-## Completion evidence required
+## Completion evidence
 
-This ADR becomes Accepted only after one final service-level verification batch proves:
+The final service-level verification batch passed on the production K3s deployment at `b636cb7`:
 
-- required backend, Worker, compute, generated API, desktop, and architecture suites;
-- canonical result parity on a real Remote-mode job with no in-process evaluation;
-- two concurrent jobs distributed across two Worker Pods;
-- user cancellation and Worker cancellation telemetry;
-- Pod deletion, lease expiry, higher-generation reclaim, and stale-result rejection;
-- duplicate result idempotency and API restart recovery;
-- certificate rotation and preserved-generation rollback;
-- Remote-to-Shadow rollback and successful in-process job execution;
-- resource use and startup/error logs under the exercised load.
+- the backend build and all 1,000 backend tests passed; Worker build, two compute tests, generated API
+  check, 75 desktop tests, desktop build, migration model check, architecture tests, and Linux script
+  syntax checks also passed;
+- two simultaneous four-candidate TQQQ daily jobs were claimed by different Worker Pods and produced
+  the same ordered financial metrics and normalized canonical hash as the prior in-process result;
+- a live 10,000-candidate cancellation invalidated its lease and produced Worker cancellation
+  telemetry without a canonical commit;
+- deleting the active Worker Pod caused the expired generation-1 lease to be reclaimed by the other
+  Pod as generation 2; all 10,000 candidates then committed once;
+- restarting the API during another active 10,000-candidate job reused the same durable lease and
+  committed once; an independent coordinator retry returned the existing canonical commit;
+- a full `Shadow` deployment completed an in-process four-candidate job, produced comparison-only
+  Worker state, and was then returned to `Remote`;
+- internal CA generation `otls-b636cb7` was deployed, the preserved generation
+  `20260823114459` was successfully restored, and production was returned to `otls-b636cb7`;
+- the final API and two Worker Pods were Ready on source-tagged images with zero restarts. Both
+  Workers reported control connected, contract version 3, and no active lease. Idle samples were
+  39–41 millicores and 33–35 MiB per Worker. Expected connection-refused retries occurred only while
+  the API Pod was intentionally unavailable during the joint certificate rollout; readiness and
+  control connectivity recovered without intervention and the final API log contained no warning or
+  error.
 
-Until all of those pass, Optimization Worker extraction is incomplete and Market Data extraction
-must not begin.
+This completes the Optimization Worker as the first independently deployable MSA service. It does
+not make the single-node K3s cluster highly available and does not complete the wider MSA program.
+The next extraction boundary is Market Data.

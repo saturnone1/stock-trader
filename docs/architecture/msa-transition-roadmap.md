@@ -1,8 +1,10 @@
 # Evolutionary MSA transition roadmap
 
 This roadmap turns [ADR 0069](adr/0069-adopt-evolutionary-service-extraction.md) into decision gates.
-It does not authorize implementation. The production baseline remains the modular monolith at
-`main` commit `0e0acb6` until a separately approved extraction ADR says otherwise.
+Implementation is authorized only by extraction-specific ADRs. Stage 2 was completed and accepted
+under [ADR 0077](adr/0077-cut-over-remote-optimization-authority.md) at `b636cb7`; the production
+topology is now the modular application plus an independently deployed Optimization Worker service.
+Stage 3 Market Data is next and requires its own approved boundary and cutover evidence.
 
 ## Baseline and feasibility finding
 
@@ -155,6 +157,12 @@ financial write reversal is required.
 
 Exit gate: equivalent results, cancellation, crash recovery, stale-result rejection, resource
 isolation, and rollback are proven under load.
+
+Status: **complete (2026-08-23)**. The accepted evidence covers exclusive remote computation,
+exactly-once canonical acceptance, two-Pod concurrent load, user cancellation, Pod loss and
+higher-generation reclaim, API restart, Remote/Shadow rollback, private-CA rotation and rollback,
+resource samples, and final workload health. The cluster still has one physical node, so two Pods
+provide workload redundancy and scaling but not infrastructure high availability.
 
 ## Stage 3 — Extract Market Data
 

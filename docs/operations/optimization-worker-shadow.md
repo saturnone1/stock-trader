@@ -1,4 +1,4 @@
-# Optimization Worker shadow operations
+# Optimization Worker operations
 
 ## Verified rollout
 
@@ -66,6 +66,48 @@ semantically equal result also exposed decimal scale (`10.0` versus `10`) as an 
 hash inequality. The comparison identity now normalizes decimal scale, guarded by a characterization
 test. Failed validation jobs 1 and 2 were removed through the authenticated application API after
 the corrected conformance job passed.
+
+## Verified Remote authority cutover
+
+- Date: 2026-08-23
+- Source/images: `b636cb7`
+- Runtime mode: `Remote`
+- Worker replicas/concurrency: 2 / 2
+- Active TLS generation after the drill: `otls-b636cb7`
+
+This was one final service-level verification batch after the entire Optimization Worker authority
+boundary was implemented. Local verification passed the backend build and all 1,000 tests, Worker
+build, two compute tests, EF pending-model check, generated API check, 75 desktop tests, desktop
+build, and Linux syntax checks for both operational scripts.
+
+Remote jobs 4 and 5 ran simultaneously and were claimed by different Worker Pods. Each evaluated
+the same four TQQQ daily candidates and produced the same ranks, periods, trade counts, financial
+metrics, and normalized canonical hash as the prior in-process job 3. Job 7 was cancelled during a
+10,000-candidate lease: both job and lease became cancelled, Worker cancellation telemetry advanced,
+and no canonical result was committed.
+
+For job 8, the generation-1 owner Pod was deleted while 10,000 candidates were running. The other
+Pod reclaimed the expired lease as generation 2 and committed all results once. Job 9 survived an
+API Pod deletion while its generation-1 lease remained active, then committed all 10,000 results
+once after the replacement API recovered. Coordinator retry characterization also proved that an
+already accepted result cannot create a second canonical result set.
+
+The application and Worker were then deployed together in `Shadow`. Job 10 completed four
+candidates through the in-process authority, created only a comparison lease, and matched the Worker
+result. The official deployment script returned both workloads to `Remote`.
+
+The TLS rotation script created generation `otls-b636cb7`. API and Worker jointly rolled to it and
+reconnected successfully. They then jointly rolled back to preserved generation `20260823114459`,
+remained healthy in `Remote`, and finally returned to `otls-b636cb7`. Prior generations remain
+available for a controlled rollback.
+
+The final API and two Worker Pods were Ready with zero restarts on `architecture-b636cb7`. Both
+Workers reported ready `1`, control connected `1`, contract version `3`, and no active lease. Idle
+samples were 39–41 millicores CPU and 33–35 MiB memory per Pod. Connection-refused warnings and
+failure counters on one Worker corresponded to the intentional API downtime during joint rollout;
+the retry loop recovered, final control connectivity was healthy, and the final API log had no
+warning or error. Public `/api/health` returned `ok`, and authenticated strategy metadata reported
+`Remote`, `usesRemoteWorker=true`, and two concurrent jobs.
 
 ## Control-plane secret
 
@@ -143,13 +185,9 @@ generation passes the rotation and rollback drills.
 ## Current limitations
 
 - This is one physical K3s node and is not high availability.
-- The real-Pod conformance gate has passed for one small daily-bar job. Broader timeframe, load,
-  cancellation, lease-expiry, and Pod-loss characterization is still required before authority can
-  move out of process.
-- Only fresh unrestricted jobs are comparable. Resumed or execution-limited jobs remain exclusively
-  authoritative in-process and do not create a misleading full-run comparison.
-- A mismatch emits an API error log and durable audit state, but no external alert receiver is yet
-  configured.
+- Remote mode intentionally rejects wall-clock duration limits because stopping on elapsed time is
+  not deterministic across Pods. Deterministic tested-combination limits remain supported.
 - Prometheus-format metrics exist, but no cluster scraper, retention, dashboard, or alert has yet
   been selected.
-- Idle resource evidence does not satisfy the Stage 2 load/chaos/cost gate.
+- Resource evidence is from the exercised single-node environment and is not a general capacity
+  model or an SLO.

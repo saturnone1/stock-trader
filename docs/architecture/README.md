@@ -85,8 +85,10 @@ independent of database Job ID across synchronous, background, and Worker paths.
 completion boundary. Remote mode makes the Worker the exclusive candidate evaluator while Strategy
 Research remains the single canonical database writer. Durable exactly-once commit, cancellation,
 lease-generation reclaim, two-Pod bounded capacity, dependency-aware readiness, and an explicit
-Shadow rollback are implemented; the ADR remains proposed until the complete service-level K3s
-verification batch passes.
+Shadow rollback are implemented. The production service-level K3s batch passed at `b636cb7`,
+including two-Pod load, cancellation, Pod loss, lease reclaim, API restart, mTLS rotation and
+preserved-generation rollback. ADR 0077 is Accepted and MSA Stage 2 is complete; Market Data is the
+next service boundary.
 
 ## Target modules
 
