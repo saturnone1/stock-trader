@@ -1653,6 +1653,7 @@ public class ArchitectureDependencyTests
             "Application/Strategies/StrategyDocument.cs",
             "Application/Strategies/StrategyDocumentVersionPolicy.cs",
             "Application/Strategies/StrategyEvaluationPolicy.cs",
+            "Application/Backtesting/BacktestPerformancePolicy.cs",
             "Application/Execution/LongPositionCloseDecisionPolicy.cs",
             "Application/Execution/LongPositionExecutionPolicy.cs",
             "Application/Execution/LongPositionExecutionContracts.cs",
@@ -1843,6 +1844,7 @@ public class ArchitectureDependencyTests
         engineSources.Should().NotContain("Alpaca.Markets");
         engineSources.Should().NotContain("StockTrader.ServiceContracts");
         webProject.Should().Contain("Compile Remove=\"Application\\Strategies\\StrategyCompiler.cs\"");
+        webProject.Should().Contain("Compile Remove=\"Application\\Backtesting\\BacktestPerformancePolicy.cs\"");
         webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongPositionExecutionPolicy.cs\"");
         webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongEntryFillPolicy.cs\"");
         webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongPositionExecutionSessionPolicy.cs\"");
@@ -1882,6 +1884,11 @@ public class ArchitectureDependencyTests
         portfolioAdapter.Should().Contain("PortfolioAccountingLedger");
         portfolioAdapter.Should().NotContain("unrealizedPnl");
         portfolioAdapter.Should().NotContain("_peakMarkedEquity");
+        var periodPerformance = File.ReadAllText(Path.Combine(
+            repository, "Application/Backtesting/BacktestPerformancePolicy.cs"));
+        periodPerformance.Should().NotContain("TradeRecord");
+        periodPerformance.Should().NotContain("BacktestResult");
+        periodPerformance.Should().Contain("evaluationTo - evaluationFrom");
         File.ReadAllLines(Path.Combine(repository,
             "Services/Indicators/IndicatorService.cs")).Length.Should().BeLessThanOrEqualTo(70);
         File.ReadAllLines(Path.Combine(repository,
