@@ -1,11 +1,12 @@
 using FluentAssertions;
 using System.Text.Json;
 using StockTrader.Application.Backtesting;
-using StockTrader.Application.Contracts;
 using StockTrader.Application.MarketData;
 using StockTrader.Application.Optimization;
 using StockTrader.Application.Strategies;
 using StockTrader.Models;
+using StockTrader.ServiceContracts;
+using StockTrader.ServiceContracts.Optimization;
 
 namespace StockTrader.Tests;
 
@@ -23,7 +24,8 @@ public class OptimizationWorkerContractTests
 
         first.ContentHash.Should().Be(sameDocumentAtAnotherStorageId.ContentHash);
         first.ContentHash.Should().NotBe(changedPeriod.ContentHash);
-        first.Document.StoredStrategyId.Should().BeNull();
+        JsonSerializer.Deserialize<StrategyDocument>(first.StrategyDocumentJson)!
+            .StoredStrategyId.Should().BeNull();
         StrategyExecutionArtifactPolicy.CompatibilityError(first).Should().BeNull();
         StrategyExecutionArtifactPolicy.CompatibilityError(
             first with { EngineSemanticsVersion = "future-engine" })
@@ -84,6 +86,10 @@ public class OptimizationWorkerContractTests
             resultJson,
             leasedAt.AddMinutes(1));
 
+        OptimizationLeaseCompatibilityPolicy.Error(lease).Should().BeNull();
+        OptimizationLeaseCompatibilityPolicy.Error(
+            lease with { Input = input with { InputHash = "DIFFERENT" } })
+            .Should().Be("input-hash-mismatch");
         Evaluate(lease, submission, 4, false, leasedAt.AddMinutes(2))
             .Should().Be(OptimizationResultAcceptance.Accepted);
         Evaluate(lease, submission, 4, true, leasedAt.AddMinutes(2))

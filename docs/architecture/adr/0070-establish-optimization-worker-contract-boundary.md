@@ -86,9 +86,11 @@ the actual single-node K3s cost and recovery constraints.
 It also does not move job lifecycle or accepted-result ownership. Strategy Research remains the sole
 owner. An Optimization Worker will own only an expiring computation lease.
 
-Before the F# worker project is created, contracts and the deterministic engine must be buildable as
-independent .NET libraries. Referencing the ASP.NET web project from the worker is forbidden because
-it would preserve the monolith under a second executable name.
+The contract-only F# shadow validator may be created after the contracts become an independent .NET
+library. It may validate and report on a lease but cannot claim, evaluate, heartbeat, or submit work.
+Before computation is enabled, the deterministic engine must also be an independent .NET library.
+Referencing the ASP.NET web project from the worker is forbidden because it would preserve the
+monolith under a second executable name.
 
 ## Rollback
 

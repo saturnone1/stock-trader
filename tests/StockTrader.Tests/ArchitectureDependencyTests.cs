@@ -1180,6 +1180,8 @@ public class ArchitectureDependencyTests
         settings.Should().NotContain("\"Kestrel\"");
         apiDockerfile.Should().Contain("ASPNETCORE_HTTP_PORTS=5239");
         apiDockerfile.Should().Contain("EXPOSE 5239");
+        apiDockerfile.Should().Contain(
+            "src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj");
         apiDockerfile.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().Contain("containerPort: 5239");
@@ -1608,6 +1610,14 @@ public class ArchitectureDependencyTests
             repository, "Data/Repositories/OptimizationAutoTuneStore.cs"));
         var workerContracts = File.ReadAllText(Path.Combine(
             repository, "Application/Optimization/OptimizationWorkerContracts.cs"));
+        var serviceContracts = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.ServiceContracts/OptimizationContracts.cs"));
+        var contractProject = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj"));
+        var fsharpWorker = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/Program.fs"));
+        var fsharpProject = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/StockTrader.OptimizationWorker.fsproj"));
         var backgroundRegistration = File.ReadAllText(Path.Combine(
             repository, "Extensions/BackgroundServiceExtensions.cs"));
 
@@ -1738,13 +1748,22 @@ public class ArchitectureDependencyTests
         source.Should().Contain(": IOptimizationWorkExecutor");
         backgroundRegistration.Should().Contain(
             "AddSingleton<IOptimizationWorkExecutor, OptimizationJobExecutor>()");
-        workerContracts.Should().Contain("StrategyExecutionArtifact");
-        workerContracts.Should().Contain("OptimizationDataEvidenceSet");
-        workerContracts.Should().Contain("OptimizationWorkLease");
-        workerContracts.Should().Contain("OptimizationWorkerHeartbeat");
-        workerContracts.Should().Contain("OptimizationResultAcceptancePolicy");
+        workerContracts.Should().Contain("StrategyExecutionArtifactFactory");
+        workerContracts.Should().Contain("OptimizationDataEvidenceFactory");
         workerContracts.Should().NotContain("StockTrader.Data");
         workerContracts.Should().NotContain("Microsoft.EntityFrameworkCore");
+        serviceContracts.Should().Contain("StrategyExecutionArtifact");
+        serviceContracts.Should().Contain("OptimizationWorkLease");
+        serviceContracts.Should().Contain("OptimizationWorkerHeartbeat");
+        serviceContracts.Should().Contain("OptimizationResultAcceptancePolicy");
+        serviceContracts.Should().NotContain("StockTrader.Application");
+        serviceContracts.Should().NotContain("StockTrader.Domain");
+        contractProject.Should().NotContain("ProjectReference");
+        fsharpProject.Should().Contain("StockTrader.ServiceContracts.csproj");
+        fsharpProject.Should().NotContain("StockTrader.csproj");
+        fsharpWorker.Should().Contain("OptimizationLeaseCompatibilityPolicy.Error");
+        File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/Program.fs"))
+            .Length.Should().BeLessThanOrEqualTo(60);
         worker.Should().Contain("Task.Delay(PollInterval, _clock, stoppingToken)");
         worker.Should().NotContain("DateTime.UtcNow");
         worker.Should().NotContain("IOptimizationRepository");

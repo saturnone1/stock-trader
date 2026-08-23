@@ -1,0 +1,31 @@
+{
+  "contractVersion": 1,
+  "leaseId": "shadow-lease-1",
+  "jobId": 1,
+  "leaseGeneration": 1,
+  "cancellationGeneration": 0,
+  "leasedAt": "2026-08-23T10:00:00Z",
+  "expiresAt": "2026-08-23T10:05:00Z",
+  "input": {
+    "contractVersion": 1,
+    "inputHash": "AEE22D66C6924469117510466832FDA0F830FC05A56C1D1F8BC24EDDF088FBE6",
+    "requestJson": "{}",
+    "strategy": {
+      "contractVersion": 1,
+      "strategyDocumentJson": "{}",
+      "contentHash": "STRATEGY",
+      "strategyDocumentVersion": 1,
+      "compilerSchemaVersion": 1,
+      "engineSemanticsVersion": "long-position-session-v1",
+      "indicatorCatalogVersion": "indicator-catalog-v1",
+      "patternCatalogVersion": "pattern-catalog-v1",
+      "calendarVersion": "2024-2027.1",
+      "costModelVersion": "adaptive-cost-v1"
+    },
+    "dataEvidence": {
+      "contractVersion": 1,
+      "evidenceId": "EVIDENCE",
+      "series": []
+    }
+  }
+}

@@ -13,6 +13,7 @@
   <ItemGroup>
     <!-- Exclude test project files from main project compilation -->
     <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="src\**\*.cs" />
     <Content Remove="tests\**\*" />
     <EmbeddedResource Remove="tests\**\*" />
     <None Remove="tests\**\*" />
@@ -42,6 +43,10 @@
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
     <PackageReference Include="TimeZoneConverter" Version="7.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="src\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

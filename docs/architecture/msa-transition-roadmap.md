@@ -47,6 +47,19 @@ Trading Core <----- broker evidence -----------------------> Broker adapters
 The arrows do not imply shared databases. User-facing aggregation belongs at the Edge API; financial
 commands terminate at Trading Core. Research cannot directly place an order.
 
+## MSA deployment-unit definition
+
+A library, namespace, executable, or background service split is only a preparation step. A module
+counts as extracted only when it has its own OCI image and Kubernetes workload (`Deployment`,
+`StatefulSet`, or `Job` as appropriate), creates independently managed Pods, and can be released,
+scaled, observed, stopped, and rolled back without rebuilding or restarting the monolith.
+
+Every extracted workload must also have an explicit ServiceAccount, least-privilege configuration
+and secret boundary, resource requests and limits, health/readiness behavior, structured telemetry,
+and a K3s rollout/rollback path in `scripts/deploy-k3s.sh`. Services may share a cluster and shared
+contract/engine build artifacts, but they cannot share database write ownership or use an in-process
+call as their production service boundary.
+
 ## Implementation language policy
 
 Extracted compute and orchestration services default to **F# on .NET**. They reference shared C#
@@ -54,11 +67,19 @@ contract and deterministic-engine assemblies instead of reimplementing strategy,
 cost, or portfolio semantics. This keeps service hosts concise while preserving one executable
 meaning across preview, backtest, optimization, and live trading.
 
-The ASP.NET application project is not a shared library. Before the first F# host is introduced,
-contracts and deterministic engine code must compile as independent .NET libraries with architecture
-tests enforcing their dependency direction. Engine-free projection/notification services may
-evaluate Go in an extraction-specific ADR, but language diversity must demonstrate a material line
-count or operational benefit and must not duplicate a trading catalog or policy.
+The ASP.NET application project is not a shared library. A contract-only F# validator may reference
+only the independent contract library. Before computation is enabled in an F# host, contracts and
+deterministic engine code must compile as independent .NET libraries with architecture tests
+enforcing their dependency direction. Engine-free projection/notification services may evaluate Go
+in an extraction-specific ADR, but language diversity must demonstrate a material line count or
+operational benefit and must not duplicate a trading catalog or policy.
+
+Each extraction ADR must also record an **agent working-set budget**: service-owned source files,
+nonblank source lines, largest source file, direct project dependencies, and duplicated contract or
+policy lines (target: zero). A new service shell starts below 150 nonblank lines and no orchestration
+file starts above 200 lines unless the ADR explains why a shorter representation would reduce safety.
+When two runtimes are semantically equivalent, prefer the prototype with the smaller working set and
+fewer generated or build files because that directly lowers review context and agent token use.
 
 ## Service scorecard
 
@@ -121,6 +142,8 @@ owning canonical strategy/job data.
 Approved implementation would:
 
 - keep optimization job lifecycle and accepted results in Strategy Research;
+- build the worker as an independent image and run it as a separately scalable Kubernetes
+  `Deployment` whose replicas create optimization-worker Pods;
 - lease immutable jobs to workers with bounded concurrency and resource quotas;
 - include engine/artifact/data-evidence versions in every job and result;
 - accept a result only while its lease, cancellation generation, and input hash still match;

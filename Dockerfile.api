@@ -1,6 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY ["StockTrader.csproj", "./"]
+COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
 RUN dotnet restore "StockTrader.csproj"
 COPY . .
 RUN dotnet publish "StockTrader.csproj" -c Release -o /app/publish /p:UseAppHost=false

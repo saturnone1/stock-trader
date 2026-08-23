@@ -16,6 +16,9 @@ The optimization scheduler now depends on a process-neutral execution port, and 
 market-data evidence, lease, heartbeat, and result-acceptance contracts exist for conformance work.
 The adapter remains in-process; no remote worker, shared database, or second writer is active. New
 extracted computation/orchestration hosts default to F# while sharing the existing C# engine.
+`StockTrader.ServiceContracts` is now an ASP.NET-independent library. The first F# executable is a
+contract-only shadow validator; it cannot claim or execute jobs until the deterministic engine is an
+independent library and the Stage 2 release gates are approved.
 
 ## Target modules
 
