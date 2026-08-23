@@ -49,7 +49,10 @@ export function entryRules(rawPattern) {
 }
 
 export function exitRules(rawPattern) {
-  return safeParse(rawPattern?.exitRulesJson, [])
+  const groups = safeParse(rawPattern?.exitGroupsJson, [])
+  return Array.isArray(groups) && groups.length > 0
+    ? groups.flatMap((group) => group.rules ?? group.Rules ?? [])
+    : safeParse(rawPattern?.exitRulesJson, [])
 }
 
 function ruleLabel(rule, index) {

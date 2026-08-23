@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildOptimizationJob,
+  entryRules,
   estimatedCombinationCount,
+  exitRules,
   projectOptimizationRankingMetadata,
   resultInsights
 } from './optimizationModel.js'
@@ -57,6 +59,20 @@ test('optimization ranking choices and default come from server metadata', () =>
 
 test('combination estimate multiplies only enabled timing axes', () => {
   assert.equal(estimatedCombinationCount(form), 8)
+})
+
+test('tuning reads grouped buy and sell rules with legacy fallbacks', () => {
+  const grouped = {
+    entryGroupsJson: JSON.stringify([{ rules: [{ indicator: 'BREAKOUT_HIGH', params: { period: 20 } }] }]),
+    exitGroupsJson: JSON.stringify([{ Rules: [{ Indicator: 'BREAKOUT_LOW', Params: { period: 10 } }] }]),
+    entryRulesJson: JSON.stringify([{ indicator: 'RSI' }]),
+    exitRulesJson: JSON.stringify([{ indicator: 'ATR' }])
+  }
+  assert.equal(entryRules(grouped)[0].indicator, 'BREAKOUT_HIGH')
+  assert.equal(exitRules(grouped)[0].Indicator, 'BREAKOUT_LOW')
+
+  assert.equal(entryRules({ entryRulesJson: grouped.entryRulesJson })[0].indicator, 'RSI')
+  assert.equal(exitRules({ exitRulesJson: grouped.exitRulesJson })[0].indicator, 'ATR')
 })
 
 test('investor-focused tuning changes only one strategy area', () => {
