@@ -30,5 +30,17 @@ services:
       - "8000:8000"
     restart: unless-stopped
 
+  optimization-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimization-worker
+    image: stock-trader/optimization-worker:local
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
 volumes:
   stocktrader_data:

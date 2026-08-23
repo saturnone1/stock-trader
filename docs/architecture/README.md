@@ -43,7 +43,14 @@ equity-curve replacement, and peak drawdown now also execute in a storage-indepe
 ledger. Position orchestration and result aggregation still remain in the monolith, so the worker
 uses the same Engine-owned full-period CAGR, Calmar, Sharpe, and Sortino policy as the monolith.
 Trade-cycle aggregation and prepared-data transport still remain in the monolith, so the worker is
-not yet a deployable optimization-compute Pod. MSA completion requires
+not yet an optimization-compute Pod.
+
+[ADR 0072](adr/0072-deploy-shadow-optimization-worker.md) adds the first independent deployment
+unit: a dedicated F# Optimization Worker image and Kubernetes Deployment/Pod in non-computing
+`shadow` mode. It has its own ServiceAccount, probes, metrics, resource limits, security context,
+and deploy scope, and mounts neither the monolith database nor a data volume. This proves the Pod
+shell and rollback boundary but does not yet enable remote leases or claim Stage 2 computation
+cutover. MSA completion requires
 an independently built image and Kubernetes Deployment/Pod for each approved service boundary;
 an extracted library or folder alone is not a deployed microservice.
 

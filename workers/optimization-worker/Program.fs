@@ -48,8 +48,9 @@ let validateLease path =
 [<EntryPoint>]
 let main args =
     match args with
+    | [| "--serve" |] -> StockTrader.OptimizationWorker.HealthHost.run args
     | [||] | [| "--self-check" |] -> selfCheck ()
     | [| "--validate-lease"; path |] -> validateLease path
     | _ ->
-        emit "invalid" "usage: --self-check | --validate-lease <file>"
+        emit "invalid" "usage: --serve | --self-check | --validate-lease <file>"
         64

@@ -1226,7 +1226,8 @@ public class ArchitectureDependencyTests
 
         Directory.EnumerateFiles(repository, "Dockerfile*")
             .Select(Path.GetFileName)
-            .Should().BeEquivalentTo("Dockerfile.api", "Dockerfile.desktop");
+            .Should().BeEquivalentTo(
+                "Dockerfile.api", "Dockerfile.desktop", "Dockerfile.optimization-worker");
         Directory.EnumerateFiles(repository, "docker-compose*.yml")
             .Select(Path.GetFileName)
             .Should().Equal("docker-compose.yml");
@@ -1698,6 +1699,15 @@ public class ArchitectureDependencyTests
             repository, "workers/optimization-worker/Program.fs"));
         var fsharpProject = File.ReadAllText(Path.Combine(
             repository, "workers/optimization-worker/StockTrader.OptimizationWorker.fsproj"));
+        var fsharpHealth = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/HealthHost.fs"));
+        var workerDockerfile = File.ReadAllText(Path.Combine(
+            repository, "Dockerfile.optimization-worker"));
+        var workerDeployment = File.ReadAllText(Path.Combine(
+            repository, "k8s/deployment-optimization-worker.yaml"));
+        var deploymentScript = File.ReadAllText(Path.Combine(
+            repository, "scripts/deploy-k3s.sh"));
+        var compose = File.ReadAllText(Path.Combine(repository, "docker-compose.yml"));
         var backgroundRegistration = File.ReadAllText(Path.Combine(
             repository, "Extensions/BackgroundServiceExtensions.cs"));
 
@@ -1928,10 +1938,31 @@ public class ArchitectureDependencyTests
         fsharpProject.Should().Contain("StockTrader.Engine.csproj");
         fsharpProject.Should().Contain("StockTrader.OptimizationProtocol.csproj");
         fsharpProject.Should().NotContain("StockTrader.csproj");
+        fsharpProject.Should().Contain("Microsoft.NET.Sdk.Web");
+        fsharpProject.Should().Contain("HealthHost.fs");
         fsharpWorker.Should().Contain("OptimizationLeaseCompatibilityPolicy.Error");
         fsharpWorker.Should().Contain("StrategyExecutionArtifactPolicy.CompatibilityError");
+        fsharpWorker.Should().Contain("--serve");
+        fsharpHealth.Should().Contain("/health/live");
+        fsharpHealth.Should().Contain("/health/ready");
+        fsharpHealth.Should().Contain("/metrics");
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/Program.fs"))
             .Length.Should().BeLessThanOrEqualTo(60);
+        File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/HealthHost.fs"))
+            .Length.Should().BeLessThanOrEqualTo(60);
+        workerDockerfile.Should().Contain("StockTrader.OptimizationWorker.fsproj");
+        workerDockerfile.Should().Contain("USER $APP_UID");
+        workerDockerfile.Should().NotContain("StockTrader.csproj");
+        workerDeployment.Should().Contain("kind: ServiceAccount");
+        workerDeployment.Should().Contain("automountServiceAccountToken: false");
+        workerDeployment.Should().Contain("readOnlyRootFilesystem: true");
+        workerDeployment.Should().Contain("path: /health/ready");
+        workerDeployment.Should().Contain("cpu: \"2\"");
+        workerDeployment.Should().NotContain("stocktrader-data");
+        deploymentScript.Should().Contain("optimization-worker)");
+        deploymentScript.Should().Contain("Dockerfile.optimization-worker");
+        deploymentScript.Should().Contain("deployment/stocktrader-optimization-worker");
+        compose.Should().Contain("optimization-worker:");
         worker.Should().Contain("Task.Delay(PollInterval, _clock, stoppingToken)");
         worker.Should().NotContain("DateTime.UtcNow");
         worker.Should().NotContain("IOptimizationRepository");
