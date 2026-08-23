@@ -74,6 +74,13 @@ maintains and cancels leases while calling that shared C# computation instead of
 rules. Dedicated compute tests pass from contract data alone, but K3s execution remains disabled
 until TLS, real-Pod conformance, shadow-result comparison, and load/rollback gates pass.
 
+[ADR 0076](adr/0076-secure-and-compare-shadow-optimization-compute.md) closes the executable
+transport gate with an internal mTLS endpoint, client-certificate workload identity, the existing
+shared secret as a second factor, and Worker egress restriction. Fresh unrestricted jobs now run in
+both processes while only the in-process executor writes canonical results. Normalized exact result
+hashes produce durable awaiting/match/mismatch audit states. Stage 2 candidate selection is also now
+independent of database Job ID across synchronous, background, and Worker paths.
+
 ## Target modules
 
 | Module | Owns | Must not own |

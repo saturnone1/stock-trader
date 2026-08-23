@@ -92,15 +92,13 @@ public static class OptimizationJobExecutionPolicy
         IEnumerable<OptimizeParamSnapshot> preferredCandidates,
         List<OptimizeParamSnapshot> stage1Combinations,
         List<OptimizeParamSnapshot> allCombinations,
-        int budget,
-        int randomSeed)
+        int budget)
     {
         if (budget <= 0) return [];
 
         static string SnapshotKey(OptimizeParamSnapshot snapshot) =>
             JsonSerializer.Serialize(snapshot);
 
-        var rng = new Random(randomSeed);
         var selected = new List<OptimizeParamSnapshot>(budget);
         var seenKeys = new HashSet<string>(stage1Combinations.Select(SnapshotKey));
 
@@ -116,7 +114,7 @@ public static class OptimizationJobExecutionPolicy
             if (selected.Count >= budget) return selected;
         }
 
-        foreach (var candidate in allCombinations.OrderBy(_ => rng.Next()))
+        foreach (var candidate in allCombinations)
         {
             TryAdd(candidate);
             if (selected.Count >= budget) break;

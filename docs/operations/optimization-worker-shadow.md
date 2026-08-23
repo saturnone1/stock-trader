@@ -95,16 +95,33 @@ commit and redeploy only the `optimization-worker` scope. Confirm the in-process
 enabled before any future remote-compute rollback; that condition is automatic in the current
 shadow release.
 
+## mTLS certificate rotation
+
+Generate separate API-server and Worker-client Secrets from one short-lived internal CA without
+printing private material:
+
+```bash
+./scripts/rotate-optimization-worker-tls.sh
+```
+
+The default leaf validity is 90 days and can be changed to 7–397 days with
+`STOCKTRADER_WORKER_TLS_DAYS`. Each rotation creates a generation-named pair of Secrets and updates
+the active-generation ConfigMap without deleting prior generations. Redeploy API and Worker together
+through `scripts/deploy-k3s.sh` after rotation. Verify the API still answers `/api/health` on port 5239, the Worker reports an empty
+`controlError`, and a plaintext or certificate-less request to the internal Worker endpoint is
+rejected. For certificate rollback, set `STOCKTRADER_WORKER_TLS_GENERATION` to the previous preserved
+generation and redeploy API and Worker together. Delete old certificate Secrets only after the new
+generation passes the rotation and rollback drills.
+
 ## Current limitations
 
 - This is one physical K3s node and is not high availability.
-- Durable lease APIs exist behind `LeaseTransportEnabled=false`; no executable lease transport or
-  remote computation is enabled in K3s.
-- The Worker image now contains the complete prepared-data optimization calculation, but local
-  build/test evidence is not permission to enable it over the cluster channel.
-- The authenticated status handshake uses node-local cluster HTTP; executable leases require the
-  internal TLS/workload-identity gate.
-- Canonical in-process versus Worker result comparison and mismatch alerting are not implemented.
+- ADR 0076 adds mTLS, workload certificate validation, and exact shadow-result comparison; the first
+  real-Pod conformance rollout is pending.
+- Only fresh unrestricted jobs are comparable. Resumed or execution-limited jobs remain exclusively
+  authoritative in-process and do not create a misleading full-run comparison.
+- A mismatch emits an API error log and durable audit state, but no external alert receiver is yet
+  configured.
 - Prometheus-format metrics exist, but no cluster scraper, retention, dashboard, or alert has yet
   been selected.
 - Idle resource evidence does not satisfy the Stage 2 load/chaos/cost gate.

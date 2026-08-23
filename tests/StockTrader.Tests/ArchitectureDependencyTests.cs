@@ -1984,7 +1984,10 @@ public class ArchitectureDependencyTests
         workerDeployment.Should().NotContain("stocktrader-data");
         apiDeployment.Should().Contain("OptimizationWorkerTransport__Enabled");
         apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseTransportEnabled");
-        apiDeployment.Should().Contain("value: \"false\"");
+        apiDeployment.Should().Contain("value: \"true\"");
+        apiDeployment.Should().Contain("https://+:5443");
+        workerDeployment.Should().Contain("https://stocktrader-api:3443");
+        workerDeployment.Should().Contain("STOCKTRADER_WORKER_CLIENT_CERT_PATH");
         apiDeployment.Should().Contain("stocktrader-optimization-worker-auth");
         workerSecretExample.Should().Contain("REPLACE_WITH_A_RANDOM_32_PLUS_CHARACTER_SECRET");
         workerSecretExample.Should().NotContain("tjxodnjs1");
@@ -4063,6 +4066,12 @@ public class ArchitectureDependencyTests
             repository, "Api/OptimizationWorkerEndpoints.cs"));
         var security = File.ReadAllText(Path.Combine(
             repository, "Extensions/SecurityServiceExtensions.cs"));
+        var certificateValidator = File.ReadAllText(Path.Combine(
+            repository, "Application/Optimization/OptimizationWorkerCertificateValidator.cs"));
+        var workerTls = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/MutualTlsHttpClient.fs"));
+        var workerDeployment = File.ReadAllText(Path.Combine(
+            repository, "k8s/deployment-optimization-worker.yaml"));
         var leaseStore = string.Join("\n", Directory.EnumerateFiles(
                 Path.Combine(repository, "Data/Repositories"),
                 "OptimizationWorkerLeaseCoordinator*.cs")
@@ -4090,7 +4099,15 @@ public class ArchitectureDependencyTests
         workerProject.Should().NotContain("EntityFrameworkCore");
         workerProject.Should().NotContain("Sqlite");
         apiDeployment.Should().Contain("OptimizationWorkerTransport__LeaseTransportEnabled");
-        apiDeployment.Should().Contain("value: \"false\"");
+        apiDeployment.Should().Contain("value: \"true\"");
+        apiDeployment.Should().Contain("ClientCertificateMode");
+        handler.Should().Contain("GetClientCertificateAsync");
+        handler.Should().Contain("certificates.IsTrusted");
+        certificateValidator.Should().Contain("X509ChainTrustMode.CustomRootTrust");
+        certificateValidator.Should().Contain("1.3.6.1.5.5.7.3.2");
+        workerTls.Should().Contain("RemoteCertificateNameMismatch");
+        workerTls.Should().Contain("X509ChainTrustMode.CustomRootTrust");
+        workerDeployment.Should().Contain("https://stocktrader-api:3443");
         security.Should().Contain("OptimizationWorkerAuthenticationHandler");
         security.Should().Contain("RequireClaim(\"service\", \"optimization-worker\")");
         settings.Should().Contain("\"OptimizationWorkerTransport\"");

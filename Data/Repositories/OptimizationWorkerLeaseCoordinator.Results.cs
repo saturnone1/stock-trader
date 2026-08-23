@@ -48,7 +48,11 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
                 .SetProperty(lease => lease.ResultJson, submission.ResultJson)
                 .SetProperty(lease => lease.CompletedAt, now),
                 ct);
-        if (affected == 1) return Result(OptimizationResultAcceptance.Accepted);
+        if (affected == 1)
+        {
+            await CompleteWorkerComparisonAsync(db, record.LeaseId, now, ct);
+            return Result(OptimizationResultAcceptance.Accepted);
+        }
 
         var existingSubmission = await db.OptimizationWorkerLeases.AsNoTracking()
             .Where(lease => lease.LeaseId == record.LeaseId)

@@ -28,6 +28,13 @@ public class OptimizationWorkerTransportSecurityTests
         {
             LeaseTransportEnabled = true
         }.IsValid().Should().BeFalse();
+        new OptimizationWorkerTransportOptions
+        {
+            Enabled = true,
+            LeaseTransportEnabled = true,
+            SharedSecret = ValidSecret,
+            ClientCertificateAuthorityPath = "/tls/client-ca/ca.crt"
+        }.IsValid().Should().BeTrue();
     }
 
     [Theory]

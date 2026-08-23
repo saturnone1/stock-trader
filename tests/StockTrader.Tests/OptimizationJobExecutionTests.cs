@@ -198,13 +198,31 @@ public class OptimizationJobExecutionTests
             preferred,
             stage1,
             all,
-            budget: 4,
-            randomSeed: 42);
+            budget: 4);
 
         selected.Should().HaveCount(4);
         selected.Select(s => s.AtrStopMultiplier).Should().OnlyHaveUniqueItems();
         selected.Select(s => s.AtrStopMultiplier).Should().NotContain([1m, 2m]);
         selected.First().AtrStopMultiplier.Should().Be(3m);
+        selected.Select(s => s.AtrStopMultiplier).Should().Equal(3m, 4m, 5m, 6m);
+    }
+
+    [Fact]
+    public void Stage2CandidatePool_UsesStableGeneratedOrderBecauseJobSeedChangedHistoricalResults()
+    {
+        var stage1 = new List<OptimizeParamSnapshot> { CreateSnapshot(1m) };
+        var all = Enumerable.Range(1, 8)
+            .Select(value => CreateSnapshot(value))
+            .ToList();
+
+        var first = OptimizationJobExecutionPolicy.BuildStage2CandidatePool(
+            [], stage1, all, 4);
+        var repeated = OptimizationJobExecutionPolicy.BuildStage2CandidatePool(
+            [], stage1, all, 4);
+
+        repeated.Select(item => item.AtrStopMultiplier)
+            .Should().Equal(first.Select(item => item.AtrStopMultiplier));
+        first.Select(item => item.AtrStopMultiplier).Should().Equal(2m, 3m, 4m, 5m);
     }
 
     [Fact]

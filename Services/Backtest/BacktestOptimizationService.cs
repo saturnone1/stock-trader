@@ -69,7 +69,12 @@ public sealed class BacktestOptimizationService
                 seeds.Select(result => result.Params).ToList(),
                 request.OptimizeParams,
                 fineBudget,
-                allCombinations);
+                coarseCombinations);
+            neighbors = OptimizationJobExecutionPolicy.BuildStage2CandidatePool(
+                neighbors,
+                coarseCombinations,
+                allCombinations,
+                fineBudget);
             _logger.LogInformation(
                 "Stage 2 정밀 탐색: {Count}개 이웃 조합 테스트", neighbors.Count);
 

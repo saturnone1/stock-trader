@@ -8,6 +8,16 @@ public enum OptimizationWorkerLeaseStatus
     Cancelled
 }
 
+public enum OptimizationShadowComparisonStatus
+{
+    AwaitingBoth,
+    AwaitingAuthoritative,
+    AwaitingWorker,
+    Match,
+    Mismatch,
+    Ineligible
+}
+
 /// <summary>
 /// Strategy Research가 단독 소유하는 원격 계산 임대 기록입니다. Worker는 이 테이블이나
 /// 애플리케이션 데이터베이스에 직접 접근하지 않고 인증된 계약 API만 사용합니다.
@@ -32,4 +42,9 @@ public sealed class OptimizationWorkerLeaseRecord
     public string? ResultHash { get; set; }
     public string? ResultJson { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public string? AuthoritativeResultHash { get; set; }
+    public string? AuthoritativeResultJson { get; set; }
+    public OptimizationShadowComparisonStatus ComparisonStatus { get; set; }
+    public DateTime? ComparedAt { get; set; }
+    public string? ComparisonDetail { get; set; }
 }

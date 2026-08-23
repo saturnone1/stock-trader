@@ -51,7 +51,13 @@ spec:
         - name: ASPNETCORE_ENVIRONMENT
           value: "Production"
         - name: STOCKTRADER_CONTROL_API_URL
-          value: "http://stocktrader-api:3000"
+          value: "https://stocktrader-api:3443"
+        - name: STOCKTRADER_WORKER_CLIENT_CERT_PATH
+          value: "/tls/client/tls.crt"
+        - name: STOCKTRADER_WORKER_CLIENT_KEY_PATH
+          value: "/tls/client/tls.key"
+        - name: STOCKTRADER_WORKER_SERVER_CA_PATH
+          value: "/tls/client/ca.crt"
         - name: STOCKTRADER_WORKER_ID
           valueFrom:
             fieldRef:
@@ -73,6 +79,10 @@ spec:
           readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
+        volumeMounts:
+        - name: optimization-worker-client-tls
+          mountPath: /tls/client
+          readOnly: true
         livenessProbe:
           httpGet:
             path: /health/live
@@ -87,3 +97,7 @@ spec:
           initialDelaySeconds: 3
           periodSeconds: 5
           timeoutSeconds: 3
+      volumes:
+      - name: optimization-worker-client-tls
+        secret:
+          secretName: __OPTIMIZATION_WORKER_CLIENT_TLS_SECRET__

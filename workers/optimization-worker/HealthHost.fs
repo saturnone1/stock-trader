@@ -5,9 +5,11 @@ open System.Net.Http
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.DependencyInjection
+open Microsoft.Extensions.Configuration
 open StockTrader.ServiceContracts.Optimization
 open StockTrader.OptimizationWorker.ControlPlaneProbe
 open StockTrader.OptimizationWorker.WorkerState
+open StockTrader.OptimizationWorker.MutualTlsHttpClient
 
 let private status (probe: ProbeSnapshot) =
     {| service = "optimization-worker"
@@ -21,7 +23,8 @@ let private status (probe: ProbeSnapshot) =
 let run (_: string array) =
     let builder = WebApplication.CreateBuilder(Array.empty<string>)
     builder.Services.AddSingleton<ProbeState>() |> ignore
-    builder.Services.AddSingleton<HttpClient>() |> ignore
+    builder.Services.AddSingleton<HttpClient>(fun services ->
+        create (services.GetRequiredService<IConfiguration>())) |> ignore
     builder.Services.AddHostedService<Worker>() |> ignore
     let app = builder.Build()
     let probe = app.Services.GetRequiredService<ProbeState>()

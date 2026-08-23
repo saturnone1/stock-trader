@@ -13,6 +13,9 @@ archive_dir="$(mktemp -d /tmp/stocktrader-deploy.XXXXXX)"
 data_dir=""
 stocktrader_host=""
 migration_container="stocktrader-migrate-${release_tag}"
+tls_generation="${STOCKTRADER_WORKER_TLS_GENERATION:-}"
+server_tls_secret=""
+client_tls_secret=""
 
 deploy_api=false
 deploy_desktop=false
@@ -34,6 +37,20 @@ fi
 if $deploy_desktop; then
   stocktrader_host="${STOCKTRADER_HOST:?Set STOCKTRADER_HOST to the public hostname}"
 fi
+if $deploy_api || $deploy_worker; then
+  if [[ -z "$tls_generation" ]]; then
+    tls_generation="$(sudo k3s kubectl -n stocktrader get configmap \
+      stocktrader-optimization-worker-tls-active \
+      -o jsonpath='{.data.generation}' 2>/dev/null || true)"
+  fi
+  if [[ ! "$tls_generation" =~ ^[a-z0-9][a-z0-9-]{0,13}$ ]]; then
+    echo "No valid Optimization Worker TLS generation is active." >&2
+    echo "Run scripts/rotate-optimization-worker-tls.sh first." >&2
+    exit 1
+  fi
+  server_tls_secret="stocktrader-optimization-worker-server-tls-$tls_generation"
+  client_tls_secret="stocktrader-optimization-worker-client-tls-$tls_generation"
+fi
 
 if $deploy_api && { [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; }; then
   echo "STOCKTRADER_DATA_DIR must be a safe absolute path below the filesystem root." >&2
@@ -53,6 +70,9 @@ cleanup() {
 trap cleanup EXIT
 
 sudo k3s kubectl apply -f k8s/namespace.yaml
+if $deploy_api || $deploy_worker; then
+  sudo k3s kubectl apply -f k8s/network-policy-optimization-worker.yaml
+fi
 if $deploy_api && ! sudo k3s kubectl -n stocktrader get secret stocktrader-alpaca >/dev/null 2>&1; then
   echo "Missing Kubernetes secret stocktrader/stocktrader-alpaca." >&2
   echo "Create it from k8s/secret.example.yaml before deploying." >&2
@@ -64,6 +84,14 @@ if { $deploy_api || $deploy_worker; } \
   echo "Create it from k8s/secret-optimization-worker.example.yaml before deploying." >&2
   exit 1
 fi
+for tls_secret in "$server_tls_secret" "$client_tls_secret"; do
+  if { $deploy_api || $deploy_worker; } \
+    && ! sudo k3s kubectl -n stocktrader get secret "$tls_secret" >/dev/null 2>&1; then
+    echo "Missing Kubernetes secret stocktrader/$tls_secret." >&2
+    echo "Create or rotate it with scripts/rotate-optimization-worker-tls.sh." >&2
+    exit 1
+  fi
+done
 
 if $deploy_api; then
   sudo buildah bud --layers -f Dockerfile.api -t "$api_image" .
@@ -125,6 +153,8 @@ fi
 if $deploy_api; then
   sed -e "s|localhost/stock-trader/api:latest|$api_image|" \
     -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|" k8s/deployment-api.yaml \
+    | sed -e "s|__OPTIMIZATION_WORKER_SERVER_TLS_SECRET__|$server_tls_secret|" \
+      -e "s|__OPTIMIZATION_WORKER_CLIENT_TLS_SECRET__|$client_tls_secret|" \
     | sudo k3s kubectl apply -f -
 fi
 if $deploy_desktop; then
@@ -135,6 +165,7 @@ fi
 if $deploy_worker; then
   sed -e "s|localhost/stock-trader/optimization-worker:latest|$worker_image|" \
     k8s/deployment-optimization-worker.yaml \
+    | sed -e "s|__OPTIMIZATION_WORKER_CLIENT_TLS_SECRET__|$client_tls_secret|" \
     | sudo k3s kubectl apply -f -
 fi
 

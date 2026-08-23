@@ -18,11 +18,21 @@ public sealed class OptimizationWorkerAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> schemes,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    IOptions<OptimizationWorkerTransportOptions> transport)
+    IOptions<OptimizationWorkerTransportOptions> transport,
+    IOptimizationWorkerCertificateValidator certificates)
     : AuthenticationHandler<AuthenticationSchemeOptions>(schemes, logger, encoder)
 {
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (transport.Value.LeaseTransportEnabled)
+        {
+            var certificate = Request.IsHttps
+                ? await Context.Connection.GetClientCertificateAsync(Context.RequestAborted)
+                : null;
+            if (!certificates.IsTrusted(certificate))
+                return AuthenticateResult.Fail("invalid-worker-certificate");
+        }
+
         var workerId = Request.Headers[OptimizationWorkerHttpHeaders.WorkerId]
             .ToString().Trim();
         var secret = Request.Headers[OptimizationWorkerHttpHeaders.Secret]
@@ -33,7 +43,7 @@ public sealed class OptimizationWorkerAuthenticationHandler(
                 secret,
                 workerId))
         {
-            return Task.FromResult(AuthenticateResult.Fail("invalid-worker-credential"));
+            return AuthenticateResult.Fail("invalid-worker-credential");
         }
 
         var identity = new ClaimsIdentity(
@@ -42,9 +52,9 @@ public sealed class OptimizationWorkerAuthenticationHandler(
                 new Claim("service", "optimization-worker")
             ],
             OptimizationWorkerAuthenticationDefaults.Scheme);
-        return Task.FromResult(AuthenticateResult.Success(
+        return AuthenticateResult.Success(
             new AuthenticationTicket(
                 new ClaimsPrincipal(identity),
-                OptimizationWorkerAuthenticationDefaults.Scheme)));
+                OptimizationWorkerAuthenticationDefaults.Scheme));
     }
 }

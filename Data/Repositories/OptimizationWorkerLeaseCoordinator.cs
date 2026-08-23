@@ -21,13 +21,16 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
 
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly OptimizationWorkerTransportOptions _transport;
+    private readonly ILogger<OptimizationWorkerLeaseCoordinator> _logger;
 
     public OptimizationWorkerLeaseCoordinator(
         IDbContextFactory<AppDbContext> dbFactory,
-        IOptions<OptimizationWorkerTransportOptions> transport)
+        IOptions<OptimizationWorkerTransportOptions> transport,
+        ILogger<OptimizationWorkerLeaseCoordinator> logger)
     {
         _dbFactory = dbFactory;
         _transport = transport.Value;
+        _logger = logger;
     }
 
     public async Task PublishShadowAsync(
@@ -75,6 +78,7 @@ public sealed partial class OptimizationWorkerLeaseCoordinator
             InputHash = input.InputHash,
             InputJson = JsonSerializer.Serialize(input, JsonOptions),
             Status = OptimizationWorkerLeaseStatus.Pending,
+            ComparisonStatus = OptimizationShadowComparisonStatus.AwaitingBoth,
             CreatedAt = now
         });
         try

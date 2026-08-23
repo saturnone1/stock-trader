@@ -31,3 +31,16 @@ public interface IOptimizationWorkerLeaseCoordinator
         DateTime observedAt,
         CancellationToken ct);
 }
+
+public sealed record OptimizationShadowComparisonSummary(
+    int Awaiting,
+    int Matches,
+    int Mismatches,
+    DateTime? LastComparedAt);
+
+public interface IOptimizationShadowResultCoordinator
+{
+    Task RecordAuthoritativeAsync(int jobId, DateTime observedAt, CancellationToken ct);
+
+    Task<OptimizationShadowComparisonSummary> GetSummaryAsync(CancellationToken ct);
+}

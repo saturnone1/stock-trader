@@ -44,6 +44,7 @@ public class OptimizationJobExecutor : IOptimizationWorkExecutor
         var candidateEvaluator = sp.GetRequiredService<IOptimizationCandidateEvaluator>();
         var executionStore = sp.GetRequiredService<IOptimizationJobExecutionStore>();
         var shadowLeases = sp.GetRequiredService<OptimizationShadowLeasePublisher>();
+        var shadowResults = sp.GetRequiredService<OptimizationShadowResultRecorder>();
 
         // ── 1. RequestJson 역직렬화 ──
         OptimizeRequest request;
@@ -66,7 +67,16 @@ public class OptimizationJobExecutor : IOptimizationWorkExecutor
         if (!preparation.IsSuccess)
             throw new InvalidOperationException(preparation.Message);
         var evaluation = preparation.Context!;
-        await shadowLeases.PublishAsync(job.Id, evaluation, ct);
+        var shadowEligible = OptimizationShadowEligibilityPolicy.CanCompare(job);
+        if (shadowEligible)
+        {
+            var shadowRequest = OptimizationShadowEligibilityPolicy.CreateComparableRequest(
+                request, job);
+            await shadowLeases.PublishAsync(
+                job.Id,
+                evaluation with { Request = shadowRequest },
+                ct);
+        }
 
         // ── 4. 전체 조합 생성 / TotalCombinations 업데이트 ──
         var allCombinations = StrategyOptimizationSpace.GenerateOptimizeCombinations(request.OptimizeParams);
@@ -267,6 +277,8 @@ public class OptimizationJobExecutor : IOptimizationWorkExecutor
         _logger.LogInformation(
             "[Optimization] Job {Id} 완료 — 총 {N}건 테스트",
             job.Id, job.TestedCombinations);
+        if (shadowEligible)
+            await shadowResults.RecordAsync(job.Id, UtcNow, ct);
         return OptimizationJobExecutionDisposition.Completed;
     }
 
@@ -324,8 +336,7 @@ public class OptimizationJobExecutor : IOptimizationWorkExecutor
             neighbors,
             stage1Combinations,
             allCombinations,
-            stage2Budget,
-            job.Id);
+            stage2Budget);
     }
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;

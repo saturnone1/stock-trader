@@ -16,16 +16,19 @@ public static class OptimizationWorkerEndpoints
             .RequireRateLimiting("optimization-worker")
             .ExcludeFromDescription();
 
-        group.MapGet("/status", (
+        group.MapGet("/status", async (
             ClaimsPrincipal worker,
-            IOptions<OptimizationWorkerTransportOptions> transport) => Results.Ok(new
+            IOptions<OptimizationWorkerTransportOptions> transport,
+            IOptimizationShadowResultCoordinator comparisons,
+            CancellationToken ct) => Results.Ok(new
         {
             service = "strategy-research",
             workerId = worker.FindFirstValue(ClaimTypes.NameIdentifier),
             mode = transport.Value.Mode.ToString(),
             leaseTransportEnabled = transport.Value.LeaseTransportEnabled,
             contractVersion = OptimizationWorkerContractCatalog.LeaseVersion,
-            engineSemanticsVersion = OptimizationWorkerContractCatalog.EngineSemanticsVersion
+            engineSemanticsVersion = OptimizationWorkerContractCatalog.EngineSemanticsVersion,
+            shadowComparisons = await comparisons.GetSummaryAsync(ct)
         }));
 
         group.MapPost("/leases/claim", async (

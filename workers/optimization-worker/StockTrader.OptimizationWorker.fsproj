@@ -10,6 +10,7 @@
     <ProjectReference Include="..\..\src\StockTrader.OptimizationProtocol\StockTrader.OptimizationProtocol.csproj" />
     <ProjectReference Include="..\..\src\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
     <Compile Include="WorkerState.fs" />
+    <Compile Include="MutualTlsHttpClient.fs" />
     <Compile Include="ControlPlaneClient.fs" />
     <Compile Include="LeaseHeartbeatPump.fs" />
     <Compile Include="ShadowLeaseProcessor.fs" />

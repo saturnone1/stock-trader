@@ -19,9 +19,14 @@ public sealed class OptimizationWorkerTransportOptions
         OptimizationWorkerTransportMode.Shadow;
     public string SharedSecret { get; init; } = string.Empty;
     public int LeaseSeconds { get; init; } = 300;
+    public string ClientCertificateAuthorityPath { get; init; } = string.Empty;
+    public string ClientCertificateCommonName { get; init; } =
+        "stocktrader-optimization-worker";
 
     public bool IsValid() =>
         LeaseSeconds is >= MinimumLeaseSeconds and <= MaximumLeaseSeconds
         && (!Enabled || SharedSecret.Length >= MinimumSecretLength)
-        && (!LeaseTransportEnabled || Enabled);
+        && (!LeaseTransportEnabled || Enabled
+            && !string.IsNullOrWhiteSpace(ClientCertificateAuthorityPath)
+            && !string.IsNullOrWhiteSpace(ClientCertificateCommonName));
 }

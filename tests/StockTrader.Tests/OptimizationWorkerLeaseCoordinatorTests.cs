@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using StockTrader.Application.Optimization;
 using StockTrader.Application.Strategies;
 using StockTrader.Configuration;
@@ -76,6 +77,13 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
         var stored = await db.OptimizationWorkerLeases.SingleAsync();
         stored.Status.Should().Be(OptimizationWorkerLeaseStatus.Completed);
         stored.SubmissionId.Should().Be(submission.SubmissionId);
+        stored.ComparisonStatus.Should().Be(OptimizationShadowComparisonStatus.AwaitingAuthoritative);
+
+        await fixture.Store.RecordAuthoritativeAsync(lease.JobId, Now.AddSeconds(8), default);
+        await db.Entry(stored).ReloadAsync();
+        stored.ComparisonStatus.Should().Be(OptimizationShadowComparisonStatus.Match);
+        stored.AuthoritativeResultHash.Should().NotBeNullOrWhiteSpace();
+        stored.ComparedAt.Should().Be(Now.AddSeconds(8));
     }
 
     [Fact]
@@ -162,8 +170,8 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
             1,
             1,
             10,
-            null,
-            null,
+            Now.AddDays(-2),
+            Now.AddDays(-1),
             null,
             null,
             []);
@@ -213,7 +221,19 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
             OptimizationWorkerContractCatalog.EvaluationInputVersion,
             OptimizationDataEvidenceIdentity.Compute([evidenceSeries]),
             [evidenceSeries]);
-        const string requestJson = "{}";
+        var requestJson = OptimizeRequestJsonCodec.Serialize(new OptimizeRequest
+        {
+            BasePattern = new StrategyDocument
+            {
+                Name = "lease-test",
+                EntryRulesJson = artifact.StrategyDocumentJson
+            },
+            Symbols = ["TQQQ"],
+            From = Now.AddDays(-2),
+            To = Now.AddDays(-1),
+            OosPercent = 0,
+            MaxResults = 10
+        });
         var inputHash = OptimizationEvaluationInputIdentity.Compute(
             OptimizationWorkerContractCatalog.EvaluationInputVersion,
             requestJson, artifact.ContentHash, evidence.EvidenceId, prepared.DataHash);
@@ -257,6 +277,8 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
                     Name = "lease-test",
                     Status = OptimizationJobStatus.Running,
                     RequestJson = "{}",
+                    TotalCombinations = 1,
+                    TestedCombinations = 1,
                     CreatedAt = Now
                 });
                 await db.SaveChangesAsync();
@@ -270,8 +292,10 @@ public sealed class OptimizationWorkerLeaseCoordinatorTests
                 LeaseSeconds = leaseSeconds
             });
             return new(path, factory,
-                new OptimizationWorkerLeaseCoordinator(factory, configured),
-                new OptimizationWorkerLeaseCoordinator(factory, configured));
+                new OptimizationWorkerLeaseCoordinator(
+                    factory, configured, NullLogger<OptimizationWorkerLeaseCoordinator>.Instance),
+                new OptimizationWorkerLeaseCoordinator(
+                    factory, configured, NullLogger<OptimizationWorkerLeaseCoordinator>.Instance));
         }
 
         public async Task<OptimizationWorkLease> PublishAndLeaseAsync(DateTime at)

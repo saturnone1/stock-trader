@@ -21,6 +21,8 @@ spec:
         imagePullPolicy: Never
         ports:
         - containerPort: 5239
+        - name: worker-tls
+          containerPort: 5443
         env:
         - name: ASPNETCORE_ENVIRONMENT
           value: "Production"
@@ -51,7 +53,7 @@ spec:
         - name: OptimizationWorkerTransport__Enabled
           value: "true"
         - name: OptimizationWorkerTransport__LeaseTransportEnabled
-          value: "false"
+          value: "true"
         - name: OptimizationWorkerTransport__Mode
           value: "Shadow"
         - name: OptimizationWorkerTransport__SharedSecret
@@ -59,6 +61,20 @@ spec:
             secretKeyRef:
               name: stocktrader-optimization-worker-auth
               key: shared-secret
+        - name: OptimizationWorkerTransport__ClientCertificateAuthorityPath
+          value: "/tls/client-ca/ca.crt"
+        - name: OptimizationWorkerTransport__ClientCertificateCommonName
+          value: "stocktrader-optimization-worker"
+        - name: Kestrel__Endpoints__WorkerHttps__Url
+          value: "https://+:5443"
+        - name: Kestrel__Endpoints__PublicHttp__Url
+          value: "http://+:5239"
+        - name: Kestrel__Endpoints__WorkerHttps__Certificate__Path
+          value: "/tls/server/tls.crt"
+        - name: Kestrel__Endpoints__WorkerHttps__Certificate__KeyPath
+          value: "/tls/server/tls.key"
+        - name: Kestrel__Endpoints__WorkerHttps__ClientCertificateMode
+          value: "AllowCertificate"
         resources:
           requests:
             memory: "256Mi"
@@ -69,6 +85,12 @@ spec:
         volumeMounts:
         - name: stocktrader-data
           mountPath: /data
+        - name: optimization-worker-server-tls
+          mountPath: /tls/server
+          readOnly: true
+        - name: optimization-worker-client-ca
+          mountPath: /tls/client-ca
+          readOnly: true
         livenessProbe:
           httpGet:
             path: /api/health
@@ -88,6 +110,15 @@ spec:
         hostPath:
           path: __STOCKTRADER_DATA_DIR__
           type: DirectoryOrCreate
+      - name: optimization-worker-server-tls
+        secret:
+          secretName: __OPTIMIZATION_WORKER_SERVER_TLS_SECRET__
+      - name: optimization-worker-client-ca
+        secret:
+          secretName: __OPTIMIZATION_WORKER_CLIENT_TLS_SECRET__
+          items:
+          - key: ca.crt
+            path: ca.crt
 
 ---
 apiVersion: v1
@@ -102,4 +133,8 @@ spec:
   - protocol: TCP
     port: 3000
     targetPort: 5239
+  - name: worker-tls
+    protocol: TCP
+    port: 3443
+    targetPort: 5443
   type: ClusterIP

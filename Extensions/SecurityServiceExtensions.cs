@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using StockTrader.Application.Authentication;
+using StockTrader.Application.Optimization;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Services.Auth;
@@ -44,6 +45,8 @@ public static class SecurityServiceExtensions
 
         // HttpContextAccessor (needed by AuditService to read client IP)
         services.AddHttpContextAccessor();
+        services.AddSingleton<IOptimizationWorkerCertificateValidator,
+            OptimizationWorkerCertificateValidator>();
 
         // DataProtection: 쿠키 암호화 키를 /data에 영구 저장.
         // 컨테이너 재시작해도 기존 로그인 세션이 유지된다.
