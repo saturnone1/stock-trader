@@ -26,9 +26,10 @@ compile into package-free `StockTrader.Engine`; shared artifact validation lives
 `StockTrader.OptimizationProtocol`. Core indicator mathematics now also executes in the engine over
 storage-independent `PriceBar` values, while `IndicatorService` is only an `OhlcvBar` adapter.
 The indicator registry, condition operators, grouped rule aggregation, warmup policy, and
-reference-symbol future-bar exclusion now execute in the engine as well. Fill processing and
-portfolio simulation still remain in the monolith, so the worker is not yet a deployable
-optimization-compute Pod.
+reference-symbol future-bar exclusion now execute in the engine as well. Long-position conservative
+intrabar ordering, entry repricing, partial exits, stops, targets, scaling, and sizing also execute
+there through one `EnginePriceBarMapper`. Cost ledgers, portfolio simulation, and result aggregation
+still remain in the monolith, so the worker is not yet a deployable optimization-compute Pod.
 
 ## Target modules
 

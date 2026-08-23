@@ -27,6 +27,13 @@
     <Compile Remove="Application\Strategies\StrategyDocument.cs" />
     <Compile Remove="Application\Strategies\StrategyDocumentVersionPolicy.cs" />
     <Compile Remove="Application\Strategies\StrategyEvaluationPolicy.cs" />
+    <Compile Remove="Application\Execution\LongPositionCloseDecisionPolicy.cs" />
+    <Compile Remove="Application\Execution\LongPositionExecutionPolicy.cs" />
+    <Compile Remove="Application\Execution\LongPositionExecutionContracts.cs" />
+    <Compile Remove="Application\Execution\LongEntryFillPolicy.cs" />
+    <Compile Remove="Application\Execution\LongPositionExecutionSessionPolicy.cs" />
+    <Compile Remove="Application\Execution\LongPositionScalingPolicy.cs" />
+    <Compile Remove="Application\Execution\LongPositionSizingPolicy.cs" />
     <Content Remove="tests\**\*" />
     <EmbeddedResource Remove="tests\**\*" />
     <None Remove="tests\**\*" />

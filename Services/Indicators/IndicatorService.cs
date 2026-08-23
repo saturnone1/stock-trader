@@ -1,5 +1,6 @@
 using StockTrader.Engine.Indicators;
 using StockTrader.Engine.MarketData;
+using StockTrader.Application.MarketData;
 using StockTrader.Models;
 
 namespace StockTrader.Services.Indicators;
@@ -44,21 +45,5 @@ public sealed class IndicatorService : IIndicatorService
     }
 
     public static PriceBar[] ToEngineBars(IReadOnlyList<OhlcvBar> bars)
-    {
-        var result = new PriceBar[bars.Count];
-        for (var i = 0; i < bars.Count; i++)
-        {
-            var bar = bars[i];
-            result[i] = new(
-                bar.Timestamp,
-                bar.TimeFrame,
-                bar.Open,
-                bar.High,
-                bar.Low,
-                bar.Close,
-                bar.Volume,
-                bar.Vwap);
-        }
-        return result;
-    }
+        => EnginePriceBarMapper.Map(bars);
 }

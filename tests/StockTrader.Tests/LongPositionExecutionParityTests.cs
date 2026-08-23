@@ -1,6 +1,6 @@
 using FluentAssertions;
 using StockTrader.Application.Execution;
-using StockTrader.Models;
+using StockTrader.Engine.MarketData;
 
 namespace StockTrader.Tests;
 
@@ -37,13 +37,7 @@ public class LongPositionExecutionParityTests
         var barIndex = timeExitReached ? 10 : 5;
         var barResult = LongPositionExecutionPolicy.Evaluate(
             state,
-            new OhlcvBar
-            {
-                Open = currentPrice,
-                High = currentPrice,
-                Low = currentPrice,
-                Close = currentPrice
-            },
+            FlatBar(currentPrice),
             barIndex,
             2m,
             Policy,
@@ -196,13 +190,8 @@ public class LongPositionExecutionParityTests
             "live quantity changes only after the broker fill is reconciled");
     }
 
-    private static OhlcvBar FlatBar(decimal price) => new()
-    {
-        Open = price,
-        High = price,
-        Low = price,
-        Close = price
-    };
+    private static PriceBar FlatBar(decimal price) => new(
+        DateTime.UnixEpoch, TimeFrame.Daily, price, price, price, price, 0);
 
     private static LongPositionExecutionState State() => new(
         EntryPrice: 100m,

@@ -1,6 +1,6 @@
 using FluentAssertions;
 using StockTrader.Application.Execution;
-using StockTrader.Models;
+using StockTrader.Engine.MarketData;
 
 namespace StockTrader.Tests;
 
@@ -136,13 +136,7 @@ public class LongPositionExecutionPolicyTests
         EntryBarIndex: 5,
         CurrentQuantity: 100);
 
-    private static OhlcvBar Bar(decimal open, decimal high, decimal low, decimal close) => new()
-    {
-        Timestamp = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc),
-        Open = open,
-        High = high,
-        Low = low,
-        Close = close,
-        Volume = 1_000_000,
-    };
+    private static PriceBar Bar(decimal open, decimal high, decimal low, decimal close) => new(
+        new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc),
+        TimeFrame.Daily, open, high, low, close, 1_000_000);
 }

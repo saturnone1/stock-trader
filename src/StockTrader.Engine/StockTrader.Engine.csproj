@@ -21,6 +21,13 @@
     <Compile Include="..\..\Application\Strategies\StrategyDocument.cs" Link="Application\Strategies\StrategyDocument.cs" />
     <Compile Include="..\..\Application\Strategies\StrategyDocumentVersionPolicy.cs" Link="Application\Strategies\StrategyDocumentVersionPolicy.cs" />
     <Compile Include="..\..\Application\Strategies\StrategyEvaluationPolicy.cs" Link="Application\Strategies\StrategyEvaluationPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\LongPositionCloseDecisionPolicy.cs" Link="Application\Execution\LongPositionCloseDecisionPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\LongPositionExecutionPolicy.cs" Link="Application\Execution\LongPositionExecutionPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\LongPositionExecutionContracts.cs" Link="Application\Execution\LongPositionExecutionContracts.cs" />
+    <Compile Include="..\..\Application\Execution\LongEntryFillPolicy.cs" Link="Application\Execution\LongEntryFillPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\LongPositionExecutionSessionPolicy.cs" Link="Application\Execution\LongPositionExecutionSessionPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\LongPositionScalingPolicy.cs" Link="Application\Execution\LongPositionScalingPolicy.cs" />
+    <Compile Include="..\..\Application\Execution\LongPositionSizingPolicy.cs" Link="Application\Execution\LongPositionSizingPolicy.cs" />
   </ItemGroup>
 
 </Project>

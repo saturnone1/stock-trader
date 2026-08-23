@@ -1,7 +1,7 @@
 using FluentAssertions;
 using StockTrader.Application.Execution;
 using StockTrader.Domain.Strategies;
-using StockTrader.Models;
+using StockTrader.Engine.MarketData;
 
 namespace StockTrader.Tests;
 
@@ -104,11 +104,6 @@ public class LongPositionExecutionSessionPolicyTests
         20, false, 0m, 0m, partial, partial ? 1m : 0m, true, false,
         BreakevenAtrMultiplier: 0m);
 
-    private static OhlcvBar Bar(decimal high, decimal close) => new()
-    {
-        Open = 100m,
-        High = high,
-        Low = 99m,
-        Close = close,
-    };
+    private static PriceBar Bar(decimal high, decimal close) => new(
+        DateTime.UnixEpoch, TimeFrame.Daily, 100m, high, 99m, close, 0);
 }

@@ -1,5 +1,6 @@
 using StockTrader.Models;
 using StockTrader.Models.Enums;
+using StockTrader.Application.MarketData;
 
 namespace StockTrader.Application.Execution;
 
@@ -51,13 +52,13 @@ public static class LiveLongPositionExecutionAdapter
                 state.EntryPrice * state.CurrentQuantity,
                 RealizedPnl: 0m,
                 scalingExecutionCounts ?? new Dictionary<int, int>()),
-            new OhlcvBar
+            EnginePriceBarMapper.Map(new OhlcvBar
             {
                 Open = currentPrice,
                 High = currentPrice,
                 Low = currentPrice,
                 Close = currentPrice,
-            },
+            }),
             barIndex,
             currentAtr,
             policy,

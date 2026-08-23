@@ -31,6 +31,11 @@ comparison, nested group aggregation, reference-symbol as-of filtering, and warm
 engine. `RuleBasedDetector` converts application bars and reference series at its boundary, then
 delegates rule semantics to the engine.
 
+The execution slice moves long-position bar ordering, conservative stop precedence, entry
+repricing, partial exits, target/strategy/time exits, protective-stop advancement, scaling, and
+position sizing into the engine. Preview, backtest, and live adapters map `OhlcvBar` through the
+single `EnginePriceBarMapper` before invoking the shared session policy.
+
 `CustomPatternDefinition` remains in the application persistence model. The pure execution rule
 types move to the engine project under their compatibility namespace. Legacy compiler and catalog
 source paths are linked into the new project and excluded from the web project during this staged
@@ -70,12 +75,13 @@ StockTrader (ASP.NET) -> OptimizationProtocol -> Engine
 
 ## Agent working-set budget
 
-The engine now contains 30 owned or linked C# files, 2,022 nonblank source lines, and no direct
+The engine now contains 37 owned or linked C# files, 2,681 nonblank source lines, and no direct
 dependency. Every engine source file remains below 200 physical lines; the largest rule calculator
-is 192 lines. Indicator mathematics is split into files of 115 and 106 nonblank lines instead of one
-258-line service, and the standard rule calculator is split into 114- and 119-line files. The F#
-shadow host remains 55 physical lines. Duplicated artifact, indicator, comparison, and group-policy
-lines are zero because both the application and worker consume shared assemblies.
+is 191 lines. Indicator mathematics is split into files of 115 and 106 nonblank lines instead of one
+258-line service, and the standard rule calculator is split into 114- and 119-line files. Execution
+contracts, one-bar ordering, and entry repricing are also separate files of 59, 147, and 80 lines.
+The F# shadow host remains 55 physical lines. Duplicated artifact, indicator, comparison, group, and
+long-position execution policy lines are zero because all adapters consume shared assemblies.
 
 ## Verification and next gate
 
@@ -86,9 +92,9 @@ strategy compiler, preview, backtest, optimization, and live characterization te
 unchanged and green.
 
 This ADR does not claim the complete deterministic engine has been extracted. Before remote
-optimization computation is enabled, fills, portfolio simulation, result metrics, and prepared-data
-contracts must also compile into package-bounded engine assemblies and pass the shared semantic
-conformance corpus.
+optimization computation is enabled, execution-cost ledgers, portfolio simulation, result metrics,
+and prepared-data contracts must also compile into package-bounded engine assemblies and pass the
+shared semantic conformance corpus.
 
 ## Rollback
 

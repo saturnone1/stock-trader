@@ -1653,6 +1653,13 @@ public class ArchitectureDependencyTests
             "Application/Strategies/StrategyDocument.cs",
             "Application/Strategies/StrategyDocumentVersionPolicy.cs",
             "Application/Strategies/StrategyEvaluationPolicy.cs",
+            "Application/Execution/LongPositionCloseDecisionPolicy.cs",
+            "Application/Execution/LongPositionExecutionPolicy.cs",
+            "Application/Execution/LongPositionExecutionContracts.cs",
+            "Application/Execution/LongEntryFillPolicy.cs",
+            "Application/Execution/LongPositionExecutionSessionPolicy.cs",
+            "Application/Execution/LongPositionScalingPolicy.cs",
+            "Application/Execution/LongPositionSizingPolicy.cs",
             "Domain/MarketData/TimeFrame.cs",
             "Domain/MarketData/TimeFrameCatalog.cs",
             "Domain/Strategies/IndicatorCatalog.cs",
@@ -1833,6 +1840,9 @@ public class ArchitectureDependencyTests
         engineSources.Should().NotContain("Alpaca.Markets");
         engineSources.Should().NotContain("StockTrader.ServiceContracts");
         webProject.Should().Contain("Compile Remove=\"Application\\Strategies\\StrategyCompiler.cs\"");
+        webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongPositionExecutionPolicy.cs\"");
+        webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongEntryFillPolicy.cs\"");
+        webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongPositionExecutionSessionPolicy.cs\"");
         webProject.Should().Contain("Compile Remove=\"Domain\\MarketData\\TimeFrameCatalog.cs\"");
         webProject.Should().Contain("StockTrader.Engine\\StockTrader.Engine.csproj");
         engineIndicator.Should().NotContain("OhlcvBar");
@@ -1944,7 +1954,12 @@ public class ArchitectureDependencyTests
         preview.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
         backtest.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
         liveExecution.Should().Contain("LongPositionExecutionSessionPolicy.Evaluate(");
+        preview.Should().Contain("EnginePriceBarMapper.Map(");
+        backtest.Should().Contain("EnginePriceBarMapper.Map(");
+        liveExecution.Should().Contain("EnginePriceBarMapper.Map(");
         executionSession.Should().Contain("LongPositionExecutionPolicy.Evaluate(");
+        executionSession.Should().Contain("PriceBar bar");
+        executionSession.Should().NotContain("OhlcvBar");
         preview.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         backtest.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
         liveExecution.Should().NotContain("LongPositionExecutionPolicy.Evaluate(");
@@ -2595,7 +2610,7 @@ public class ArchitectureDependencyTests
         // 두 경로 모두 전략 기하에서 값을 도출하는 같은 함수를 통해야 한다.
         var repository = FindRepositoryRoot();
         var owner = File.ReadAllText(Path.Combine(
-            repository, "Application/Execution/LongPositionExecutionPolicy.cs"));
+            repository, "Application/Execution/LongEntryFillPolicy.cs"));
         var preview = File.ReadAllText(Path.Combine(
             repository, "Application/StrategyPreview/PatternPreviewSimulationEngine.cs"));
         var pending = File.ReadAllText(Path.Combine(

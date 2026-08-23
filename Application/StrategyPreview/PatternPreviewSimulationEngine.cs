@@ -1,5 +1,6 @@
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.Execution;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Strategies;
 using StockTrader.Domain.MarketData;
 using StockTrader.Domain.Strategies;
@@ -217,7 +218,7 @@ public sealed class PatternPreviewSimulationEngine
 
                 var result = LongPositionExecutionSessionPolicy.Evaluate(
                     position.ToSessionState(),
-                    current,
+                    EnginePriceBarMapper.Map(current),
                     index,
                     input.Atr[index],
                     exitPolicy,

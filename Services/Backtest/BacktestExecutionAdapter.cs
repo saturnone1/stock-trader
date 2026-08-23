@@ -1,5 +1,6 @@
 using StockTrader.Configuration;
 using StockTrader.Application.Execution;
+using StockTrader.Application.MarketData;
 using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -63,7 +64,7 @@ internal sealed class BacktestExecutionAdapter
         };
         var result = LongPositionExecutionSessionPolicy.Evaluate(
             ToSessionState(openPosition),
-            currentBar,
+            EnginePriceBarMapper.Map(currentBar),
             barIndex,
             currentAtr,
             policy,

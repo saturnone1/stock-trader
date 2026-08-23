@@ -1,4 +1,4 @@
-using StockTrader.Models;
+using StockTrader.Engine.MarketData;
 
 namespace StockTrader.Application.Execution;
 
@@ -47,7 +47,7 @@ public static class LongPositionExecutionSessionPolicy
 {
     public static LongPositionSessionResult Evaluate(
         LongPositionSessionState state,
-        OhlcvBar bar,
+        PriceBar bar,
         int barIndex,
         decimal currentAtr,
         LongPositionExitPolicy exitPolicy,
@@ -56,7 +56,6 @@ public static class LongPositionExecutionSessionPolicy
         LongPositionScalingInstruction? scaling = null)
     {
         ArgumentNullException.ThrowIfNull(state);
-        ArgumentNullException.ThrowIfNull(bar);
 
         var barResult = LongPositionExecutionPolicy.Evaluate(
             state.Execution,
