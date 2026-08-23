@@ -4070,6 +4070,8 @@ public class ArchitectureDependencyTests
             repository, "Application/Optimization/OptimizationWorkerCertificateValidator.cs"));
         var workerTls = File.ReadAllText(Path.Combine(
             repository, "workers/optimization-worker/MutualTlsHttpClient.fs"));
+        var workerControlPlane = File.ReadAllText(Path.Combine(
+            repository, "workers/optimization-worker/ControlPlaneClient.fs"));
         var workerDeployment = File.ReadAllText(Path.Combine(
             repository, "k8s/deployment-optimization-worker.yaml"));
         var leaseStore = string.Join("\n", Directory.EnumerateFiles(
@@ -4112,6 +4114,7 @@ public class ArchitectureDependencyTests
         certificateValidator.Should().Contain("1.3.6.1.5.5.7.3.2");
         workerTls.Should().Contain("RemoteCertificateNameMismatch");
         workerTls.Should().Contain("X509ChainTrustMode.CustomRootTrust");
+        workerControlPlane.Should().Contain("JsonStringEnumConverter");
         workerDeployment.Should().Contain("https://stocktrader-api:3443");
         security.Should().Contain("OptimizationWorkerAuthenticationHandler");
         security.Should().Contain("RequireClaim(\"service\", \"optimization-worker\")");

@@ -5,11 +5,13 @@ open System.Net
 open System.Net.Http
 open System.Text
 open System.Text.Json
+open System.Text.Json.Serialization
 open System.Threading
 open StockTrader.ServiceContracts.Optimization
 
 type Client(http: HttpClient, baseUrl: string, workerId: string, secret: string) =
     let json = JsonSerializerOptions(JsonSerializerDefaults.Web)
+    do json.Converters.Add(JsonStringEnumConverter())
     let endpoint = baseUrl.TrimEnd('/') + "/api/internal/optimization-worker"
 
     let request path payload =
