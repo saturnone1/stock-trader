@@ -40,6 +40,33 @@ Each probe attempt has a five-second deadline. This prevents an unreachable cont
 stalling the background loop and leaves the Worker ready in shadow mode while exposing the failure
 type through `controlError` and warning logs.
 
+## Verified remote-compute conformance
+
+- Date: 2026-08-23
+- API source/image: `5d8d79d` / `localhost/stock-trader/api:architecture-5d8d79d`
+- Worker source/image: `62ed797` / `localhost/stock-trader/optimization-worker:architecture-62ed797`
+- TLS generation: `20260823114459`
+- Conformance job: `3` (`msa-shadow-conformance-5d8d79d`)
+
+The supported deployment script built, imported, and independently rolled out the API and Worker.
+Both Pods reached `1/1 Ready` with zero restarts. The Worker reported contract version 2,
+`controlConnected=true`, an empty `controlError`, and shadow mode. A certificate-less request to the
+internal HTTPS endpoint returned HTTP 401.
+
+Job 3 evaluated four TQQQ daily-bar parameter combinations over 2025-01-01 through 2025-06-30 and
+completed all four. The in-process authoritative run and the isolated Worker produced the same
+ordered candidates, periods, trade counts, and financial metrics. Their normalized result hashes
+were identical. `/api/health` then reported `awaiting=0`, `matches=1`, and `mismatches=0`; the API log
+recorded `Optimization shadow comparison matched for Job 3`.
+
+The integrated rollout exposed and corrected three deployment/contract defects before this match:
+the API Service lacked a valid named multi-port mapping, the private client CA was rejected before
+endpoint validation, and the Worker did not share the API's string-enum JSON convention. A first
+semantically equal result also exposed decimal scale (`10.0` versus `10`) as an invalid source of
+hash inequality. The comparison identity now normalizes decimal scale, guarded by a characterization
+test. Failed validation jobs 1 and 2 were removed through the authenticated application API after
+the corrected conformance job passed.
+
 ## Control-plane secret
 
 Create the independent authentication secret without writing it to the repository or shell output:
@@ -53,8 +80,8 @@ unset worker_secret
 ```
 
 Both API and Worker manifests refer to this Secret. The deployment script fails before building if
-it is missing. Shadow mode tolerates probe downtime, but the present single-secret generation does
-not provide zero-downtime rotation and must not be treated as the final remote-compute identity.
+it is missing. It is a second factor in addition to the generation-scoped mTLS workload identity.
+The present single shared-secret generation does not provide zero-downtime secret rotation.
 Use `--from-literal` as shown: creating the value from standard input can preserve a trailing
 newline, causing every otherwise valid request to be rejected with HTTP 401.
 
@@ -79,10 +106,10 @@ curl --fail http://127.0.0.1:18080/metrics
 
 ## Rollback
 
-The currently deployed handshake release owns no durable lease. Releases containing ADR 0074 add
-Strategy Research-owned audit records, but the K3s lease switch remains false and the Worker still
-owns no database. Rollback does not delete those records or require financial reconciliation. Stop
-the workload immediately with:
+The Worker owns no database and cannot write canonical optimization or financial results. Strategy
+Research owns durable lease/audit records, while the in-process optimizer remains authoritative in
+shadow mode. Rollback does not delete those records or require financial reconciliation. Stop the
+workload immediately with:
 
 ```bash
 sudo k3s kubectl -n stocktrader scale \
@@ -116,8 +143,9 @@ generation passes the rotation and rollback drills.
 ## Current limitations
 
 - This is one physical K3s node and is not high availability.
-- ADR 0076 adds mTLS, workload certificate validation, and exact shadow-result comparison; the first
-  real-Pod conformance rollout is pending.
+- The real-Pod conformance gate has passed for one small daily-bar job. Broader timeframe, load,
+  cancellation, lease-expiry, and Pod-loss characterization is still required before authority can
+  move out of process.
 - Only fresh unrestricted jobs are comparable. Resumed or execution-limited jobs remain exclusively
   authoritative in-process and do not create a misleading full-run comparison.
 - A mismatch emits an API error log and durable audit state, but no external alert receiver is yet
