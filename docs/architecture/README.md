@@ -30,8 +30,10 @@ reference-symbol future-bar exclusion now execute in the engine as well. Long-po
 intrabar ordering, entry repricing, partial exits, stops, targets, scaling, and sizing also execute
 there through one `EnginePriceBarMapper`. Execution-cost settlement and fixed/adaptive slippage now
 also have one storage-independent engine owner; the monolith adapter only projects that result onto
-its persisted trade model. Portfolio simulation and result aggregation still remain in the
-monolith, so the worker is not yet a deployable optimization-compute Pod. MSA completion requires
+its persisted trade model. Realized equity, daily-loss accounting, open-position mark-to-market,
+equity-curve replacement, and peak drawdown now also execute in a storage-independent portfolio
+ledger. Position orchestration and result aggregation still remain in the monolith, so the worker
+is not yet a deployable optimization-compute Pod. MSA completion requires
 an independently built image and Kubernetes Deployment/Pod for each approved service boundary;
 an extracted library or folder alone is not a deployed microservice.
 

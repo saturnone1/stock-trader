@@ -1,4 +1,5 @@
 using StockTrader.Application.Backtesting;
+using StockTrader.Engine.Portfolio;
 using StockTrader.Models;
 
 namespace StockTrader.Services.Backtest;
@@ -8,20 +9,18 @@ namespace StockTrader.Services.Backtest;
 /// </summary>
 internal sealed class BacktestPortfolioState(decimal initialCapital, DateTime startedAt)
 {
-    private readonly Dictionary<string, decimal> _latestPrices =
-        new(StringComparer.OrdinalIgnoreCase);
-    private decimal _dailyStartEquity = initialCapital;
-    private DateOnly _dailyLossDate = DateOnly.MinValue;
-    private decimal _peakMarkedEquity = initialCapital;
+    private readonly PortfolioAccountingLedger _accounting = new(initialCapital, startedAt);
 
     public Dictionary<string, BacktestExecutionAdapter.OpenPosition> OpenPositions { get; } =
         new(StringComparer.OrdinalIgnoreCase);
-    public List<EquityPoint> EquityCurve { get; } = [new(startedAt, initialCapital)];
-    public decimal CurrentEquity { get; private set; } = initialCapital;
-    public decimal MaxDrawdown { get; private set; }
+    public List<EquityPoint> EquityCurve => _accounting.EquityCurve
+        .Select(point => new EquityPoint(point.Timestamp, point.Equity))
+        .ToList();
+    public decimal CurrentEquity => _accounting.CurrentEquity;
+    public decimal MaxDrawdown => _accounting.MaxDrawdown;
     public int WeightReducedTrades { get; private set; }
 
-    public void ApplyRealizedTrade(TradeRecord trade) => CurrentEquity += trade.PnL;
+    public void ApplyRealizedTrade(TradeRecord trade) => _accounting.ApplyRealizedPnl(trade.PnL);
 
     public void UpdateLatestPrices(
         DateTime timestamp,
@@ -30,44 +29,24 @@ internal sealed class BacktestPortfolioState(decimal initialCapital, DateTime st
         foreach (var (symbol, data) in symbolData)
         {
             if (data.TimestampToIndex.TryGetValue(timestamp, out var barIndex))
-                _latestPrices[symbol] = data.Bars[barIndex].Close;
+                _accounting.ObservePrice(symbol, data.Bars[barIndex].Close);
         }
     }
 
-    public void BeginTradingDay(DateOnly tradingDay)
-    {
-        if (tradingDay == _dailyLossDate) return;
-
-        _dailyLossDate = tradingDay;
-        _dailyStartEquity = CurrentEquity;
-    }
+    public void BeginTradingDay(DateOnly tradingDay) => _accounting.BeginTradingDay(tradingDay);
 
     public bool HasReachedDailyLossLimit(decimal dailyLossLimitPercent) =>
-        dailyLossLimitPercent > 0
-        && _dailyStartEquity > 0
-        && CurrentEquity <= _dailyStartEquity * (1 - dailyLossLimitPercent);
+        _accounting.HasReachedDailyLossLimit(dailyLossLimitPercent);
 
     public void RecordMarkedEquity(DateTime timestamp)
     {
-        var unrealizedPnl = OpenPositions.Sum(pair =>
-            _latestPrices.TryGetValue(pair.Key, out var price)
-                ? (price - pair.Value.EntryPrice)
-                    * (pair.Value.CurrentQuantity > 0
-                        ? pair.Value.CurrentQuantity
-                        : pair.Value.Quantity)
-                : 0m);
-        var markedEquity = CurrentEquity + unrealizedPnl;
-        if (markedEquity > _peakMarkedEquity) _peakMarkedEquity = markedEquity;
-
-        var drawdown = _peakMarkedEquity > 0
-            ? (_peakMarkedEquity - markedEquity) / _peakMarkedEquity
-            : 0m;
-        if (drawdown > MaxDrawdown) MaxDrawdown = drawdown;
-
-        if (EquityCurve.Count > 0 && EquityCurve[^1].Date == timestamp)
-            EquityCurve[^1] = new EquityPoint(timestamp, markedEquity);
-        else
-            EquityCurve.Add(new EquityPoint(timestamp, markedEquity));
+        _accounting.RecordMarkedEquity(timestamp, OpenPositions.Select(pair =>
+            new PositionMark(
+                pair.Key,
+                pair.Value.EntryPrice,
+                pair.Value.CurrentQuantity > 0
+                    ? pair.Value.CurrentQuantity
+                    : pair.Value.Quantity)));
     }
 
     public void RegisterWeightReductions(int count = 1) => WeightReducedTrades += Math.Max(0, count);

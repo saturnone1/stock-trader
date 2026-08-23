@@ -1673,6 +1673,7 @@ public class ArchitectureDependencyTests
             "src/StockTrader.Engine/Indicators/IndicatorCalculator.cs",
             "src/StockTrader.Engine/Indicators/IndicatorCalculator.Bars.cs",
             "src/StockTrader.Engine/Execution/ExecutionCostLedger.cs",
+            "src/StockTrader.Engine/Portfolio/PortfolioAccountingLedger.cs",
             "src/StockTrader.Engine/Rules/MomentumVolumeRuleIndicatorCalculators.cs",
             "src/StockTrader.Engine/Rules/PriceStructureRuleIndicatorCalculators.cs",
             "src/StockTrader.Engine/Rules/RuleConditionEvaluator.cs",
@@ -1871,6 +1872,16 @@ public class ArchitectureDependencyTests
         executionCostAdapter.Should().Contain("ExecutionCostLedger<TradeRecord>");
         executionCostAdapter.Should().NotContain("Math.Sqrt");
         executionCostAdapter.Should().NotContain("volatilityFactor");
+        var portfolioEngine = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.Engine/Portfolio/PortfolioAccountingLedger.cs"));
+        var portfolioAdapter = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestPortfolioState.cs"));
+        portfolioEngine.Should().NotContain("TradeRecord");
+        portfolioEngine.Should().NotContain("OhlcvBar");
+        portfolioEngine.Should().NotContain("PreparedSymbolData");
+        portfolioAdapter.Should().Contain("PortfolioAccountingLedger");
+        portfolioAdapter.Should().NotContain("unrealizedPnl");
+        portfolioAdapter.Should().NotContain("_peakMarkedEquity");
         File.ReadAllLines(Path.Combine(repository,
             "Services/Indicators/IndicatorService.cs")).Length.Should().BeLessThanOrEqualTo(70);
         File.ReadAllLines(Path.Combine(repository,
