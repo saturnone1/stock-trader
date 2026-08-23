@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -72,13 +73,18 @@ public class OhlcvRepository : IOhlcvRepository
             {
                 pSym.Value   = bar.Symbol;
                 pTf.Value    = (int)bar.TimeFrame;
-                pTs.Value    = bar.Timestamp.ToString("O"); // ISO 8601 — SQLite stores as TEXT
-                pOpen.Value  = bar.Open;
-                pHigh.Value  = bar.High;
-                pLow.Value   = bar.Low;
-                pClose.Value = bar.Close;
+                pTs.Value    = bar.Timestamp.ToString("O", CultureInfo.InvariantCulture); // ISO 8601 — SQLite stores as TEXT
+                // Bind decimals as their contract text. Binding System.Decimal directly makes
+                // Microsoft.Data.Sqlite add a representation-only `.0` to integral values,
+                // which breaks evidence hashes after a rollback projection.
+                pOpen.Value  = bar.Open.ToString("G29", CultureInfo.InvariantCulture);
+                pHigh.Value  = bar.High.ToString("G29", CultureInfo.InvariantCulture);
+                pLow.Value   = bar.Low.ToString("G29", CultureInfo.InvariantCulture);
+                pClose.Value = bar.Close.ToString("G29", CultureInfo.InvariantCulture);
                 pVol.Value   = bar.Volume;
-                pVwap.Value  = bar.Vwap.HasValue ? (object)bar.Vwap.Value : DBNull.Value;
+                pVwap.Value  = bar.Vwap.HasValue
+                    ? bar.Vwap.Value.ToString("G29", CultureInfo.InvariantCulture)
+                    : DBNull.Value;
 
                 await cmd.ExecuteNonQueryAsync(ct);
             }
