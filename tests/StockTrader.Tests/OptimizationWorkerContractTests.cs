@@ -3,6 +3,7 @@ using System.Text.Json;
 using StockTrader.Application.Backtesting;
 using StockTrader.Application.MarketData;
 using StockTrader.Application.Optimization;
+using StockTrader.Optimization.Protocol;
 using StockTrader.Application.Strategies;
 using StockTrader.Models;
 using StockTrader.ServiceContracts;

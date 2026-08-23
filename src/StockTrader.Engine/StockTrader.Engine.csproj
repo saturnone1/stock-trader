@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Legacy source locations remain linked during the staged physical module move. -->
+    <Compile Include="..\..\Domain\MarketData\TimeFrame.cs" Link="Domain\MarketData\TimeFrame.cs" />
+    <Compile Include="..\..\Domain\Strategies\IndicatorCatalog.cs" Link="Domain\Strategies\IndicatorCatalog.cs" />
+    <Compile Include="..\..\Domain\Strategies\RuleOperatorCatalog.cs" Link="Domain\Strategies\RuleOperatorCatalog.cs" />
+    <Compile Include="..\..\Domain\Strategies\StrategyCatalog.cs" Link="Domain\Strategies\StrategyCatalog.cs" />
+    <Compile Include="..\..\Domain\Strategies\StrategyDocumentDefaults.cs" Link="Domain\Strategies\StrategyDocumentDefaults.cs" />
+    <Compile Include="..\..\Domain\Strategies\StrategyDocumentVersions.cs" Link="Domain\Strategies\StrategyDocumentVersions.cs" />
+    <Compile Include="..\..\Application\Strategies\CompiledStrategy.cs" Link="Application\Strategies\CompiledStrategy.cs" />
+    <Compile Include="..\..\Application\Strategies\LiveStrategyCompatibilityPolicy.cs" Link="Application\Strategies\LiveStrategyCompatibilityPolicy.cs" />
+    <Compile Include="..\..\Application\Strategies\StrategyCompiler.cs" Link="Application\Strategies\StrategyCompiler.cs" />
+    <Compile Include="..\..\Application\Strategies\StrategyDocument.cs" Link="Application\Strategies\StrategyDocument.cs" />
+    <Compile Include="..\..\Application\Strategies\StrategyDocumentVersionPolicy.cs" Link="Application\Strategies\StrategyDocumentVersionPolicy.cs" />
+  </ItemGroup>
+
+</Project>

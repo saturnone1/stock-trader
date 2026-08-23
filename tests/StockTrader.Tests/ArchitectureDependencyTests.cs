@@ -1182,6 +1182,10 @@ public class ArchitectureDependencyTests
         apiDockerfile.Should().Contain("EXPOSE 5239");
         apiDockerfile.Should().Contain(
             "src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj");
+        apiDockerfile.Should().Contain(
+            "src/StockTrader.Engine/StockTrader.Engine.csproj");
+        apiDockerfile.Should().Contain(
+            "src/StockTrader.OptimizationProtocol/StockTrader.OptimizationProtocol.csproj");
         apiDockerfile.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().NotContain("ASPNETCORE_URLS");
         deployment.Should().Contain("containerPort: 5239");
@@ -1614,6 +1618,33 @@ public class ArchitectureDependencyTests
             repository, "src/StockTrader.ServiceContracts/OptimizationContracts.cs"));
         var contractProject = File.ReadAllText(Path.Combine(
             repository, "src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj"));
+        var engineProject = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.Engine/StockTrader.Engine.csproj"));
+        var engineRuleModels = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.Engine/Strategies/StrategyRuleModels.cs"));
+        var persistentStrategy = File.ReadAllText(Path.Combine(
+            repository, "Models/CustomPatternDefinition.cs"));
+        var optimizationProtocol = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.OptimizationProtocol/StrategyExecutionArtifactPolicy.cs"));
+        var optimizationProtocolProject = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.OptimizationProtocol/StockTrader.OptimizationProtocol.csproj"));
+        var webProject = File.ReadAllText(Path.Combine(repository, "StockTrader.csproj"));
+        var engineSources = string.Join("\n", new[]
+        {
+            "Application/Strategies/CompiledStrategy.cs",
+            "Application/Strategies/LiveStrategyCompatibilityPolicy.cs",
+            "Application/Strategies/StrategyCompiler.cs",
+            "Application/Strategies/StrategyDocument.cs",
+            "Application/Strategies/StrategyDocumentVersionPolicy.cs",
+            "Domain/MarketData/TimeFrame.cs",
+            "Domain/Strategies/IndicatorCatalog.cs",
+            "Domain/Strategies/RuleOperatorCatalog.cs",
+            "Domain/Strategies/StrategyCatalog.cs",
+            "Domain/Strategies/StrategyDocumentDefaults.cs",
+            "Domain/Strategies/StrategyDocumentVersions.cs",
+            "src/StockTrader.Engine/MarketData/MarketCalendarVersion.cs",
+            "src/StockTrader.Engine/Strategies/StrategyRuleModels.cs"
+        }.Select(path => File.ReadAllText(Path.Combine(repository, path))));
         var fsharpWorker = File.ReadAllText(Path.Combine(
             repository, "workers/optimization-worker/Program.fs"));
         var fsharpProject = File.ReadAllText(Path.Combine(
@@ -1759,9 +1790,34 @@ public class ArchitectureDependencyTests
         serviceContracts.Should().NotContain("StockTrader.Application");
         serviceContracts.Should().NotContain("StockTrader.Domain");
         contractProject.Should().NotContain("ProjectReference");
+        engineProject.Should().Contain("StrategyCompiler.cs");
+        engineProject.Should().Contain("StrategyDocument.cs");
+        engineProject.Should().NotContain("PackageReference");
+        engineProject.Should().NotContain("ProjectReference");
+        engineSources.Should().NotContain("Microsoft.EntityFrameworkCore");
+        engineSources.Should().NotContain("Microsoft.AspNetCore");
+        engineSources.Should().NotContain("HttpClient");
+        engineSources.Should().NotContain("IConfiguration");
+        engineSources.Should().NotContain("Alpaca.Markets");
+        engineSources.Should().NotContain("StockTrader.ServiceContracts");
+        webProject.Should().Contain("Compile Remove=\"Application\\Strategies\\StrategyCompiler.cs\"");
+        webProject.Should().Contain("StockTrader.Engine\\StockTrader.Engine.csproj");
+        engineRuleModels.Should().Contain("public class EntryRule");
+        engineRuleModels.Should().Contain("public class ScalingRule");
+        engineRuleModels.Should().NotContain("CreatedAt");
+        persistentStrategy.Should().Contain("public class CustomPatternDefinition");
+        persistentStrategy.Should().NotContain("public class EntryRule");
+        optimizationProtocol.Should().Contain("StrategyExecutionArtifactPolicy");
+        optimizationProtocol.Should().Contain("StrategyCompiler.Compile(document)");
+        optimizationProtocolProject.Should().Contain("StockTrader.Engine.csproj");
+        optimizationProtocolProject.Should().Contain("StockTrader.ServiceContracts.csproj");
+        optimizationProtocolProject.Should().NotContain("StockTrader.csproj");
         fsharpProject.Should().Contain("StockTrader.ServiceContracts.csproj");
+        fsharpProject.Should().Contain("StockTrader.Engine.csproj");
+        fsharpProject.Should().Contain("StockTrader.OptimizationProtocol.csproj");
         fsharpProject.Should().NotContain("StockTrader.csproj");
         fsharpWorker.Should().Contain("OptimizationLeaseCompatibilityPolicy.Error");
+        fsharpWorker.Should().Contain("StrategyExecutionArtifactPolicy.CompatibilityError");
         File.ReadAllLines(Path.Combine(repository, "workers/optimization-worker/Program.fs"))
             .Length.Should().BeLessThanOrEqualTo(60);
         worker.Should().Contain("Task.Delay(PollInterval, _clock, stoppingToken)");

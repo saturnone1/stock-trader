@@ -1,5 +1,4 @@
 using StockTrader.Models;
-using StockTrader.Models.Enums;
 
 namespace StockTrader.Application.Strategies;
 

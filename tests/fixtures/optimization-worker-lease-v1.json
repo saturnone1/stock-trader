@@ -8,12 +8,12 @@
   "expiresAt": "2026-08-23T10:05:00Z",
   "input": {
     "contractVersion": 1,
-    "inputHash": "AEE22D66C6924469117510466832FDA0F830FC05A56C1D1F8BC24EDDF088FBE6",
+    "inputHash": "C7E7379837C2BA27817F7EE6A9A982094C4A2070376BBC15ECD4C96356985AAE",
     "requestJson": "{}",
     "strategy": {
       "contractVersion": 1,
-      "strategyDocumentJson": "{}",
-      "contentHash": "STRATEGY",
+      "strategyDocumentJson": "{\"documentVersion\":1,\"name\":\"worker-contract\",\"entryRulesJson\":\"[{\\\"indicator\\\":\\\"RSI\\\",\\\"params\\\":{\\\"period\\\":20},\\\"operator\\\":\\\"<=\\\",\\\"value\\\":30}]\",\"atrStopMultiplier\":2,\"atrTargetMultiplier\":4,\"maxHoldingBars\":20}",
+      "contentHash": "32A0B6BA52508F878027CD86C5BBF1503FEBA118B9E68E886F78F3659A001B37",
       "strategyDocumentVersion": 1,
       "compilerSchemaVersion": 1,
       "engineSemanticsVersion": "long-position-session-v1",

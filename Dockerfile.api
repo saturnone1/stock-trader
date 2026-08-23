@@ -1,6 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY ["StockTrader.csproj", "./"]
+COPY ["src/StockTrader.Engine/StockTrader.Engine.csproj", "src/StockTrader.Engine/"]
+COPY ["src/StockTrader.OptimizationProtocol/StockTrader.OptimizationProtocol.csproj", "src/StockTrader.OptimizationProtocol/"]
 COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
 RUN dotnet restore "StockTrader.csproj"
 COPY . .

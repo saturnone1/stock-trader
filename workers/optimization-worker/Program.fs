@@ -1,6 +1,7 @@
 open System
 open System.IO
 open System.Text.Json
+open StockTrader.Optimization.Protocol
 open StockTrader.ServiceContracts.Optimization
 
 let json = JsonSerializerOptions(JsonSerializerDefaults.Web)
@@ -30,8 +31,13 @@ let validateLease path =
         | Some lease ->
             match OptimizationLeaseCompatibilityPolicy.Error lease with
             | null ->
-                emit "accepted" lease.Input.InputHash
-                0
+                match StrategyExecutionArtifactPolicy.CompatibilityError lease.Input.Strategy with
+                | null ->
+                    emit "accepted" lease.Input.InputHash
+                    0
+                | error ->
+                    emit "rejected" error
+                    2
             | error ->
                 emit "rejected" error
                 2

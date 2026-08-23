@@ -20,6 +20,12 @@ extracted computation/orchestration hosts default to F# while sharing the existi
 contract-only shadow validator; it cannot claim or execute jobs until the deterministic engine is an
 independent library and the Stage 2 release gates are approved.
 
+[ADR 0071](adr/0071-extract-deterministic-strategy-kernel.md) starts that engine split. Strategy
+documents, compilation, rule models, timeframe identity, and central strategy/indicator catalogs now
+compile into package-free `StockTrader.Engine`; shared artifact validation lives in
+`StockTrader.OptimizationProtocol`. Backtest simulation and indicator calculation still remain in
+the monolith, so the worker is not yet a deployable optimization-compute Pod.
+
 ## Target modules
 
 | Module | Owns | Must not own |
