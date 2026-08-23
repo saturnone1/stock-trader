@@ -1662,6 +1662,7 @@ public class ArchitectureDependencyTests
             "Application/Execution/LongPositionSizingPolicy.cs",
             "Domain/MarketData/TimeFrame.cs",
             "Domain/MarketData/TimeFrameCatalog.cs",
+            "Domain/Backtesting/BacktestExecutionCatalog.cs",
             "Domain/Strategies/IndicatorCatalog.cs",
             "Domain/Strategies/RuleOperatorCatalog.cs",
             "Domain/Strategies/StrategyCatalog.cs",
@@ -1671,6 +1672,7 @@ public class ArchitectureDependencyTests
             "src/StockTrader.Engine/MarketData/PriceBar.cs",
             "src/StockTrader.Engine/Indicators/IndicatorCalculator.cs",
             "src/StockTrader.Engine/Indicators/IndicatorCalculator.Bars.cs",
+            "src/StockTrader.Engine/Execution/ExecutionCostLedger.cs",
             "src/StockTrader.Engine/Rules/MomentumVolumeRuleIndicatorCalculators.cs",
             "src/StockTrader.Engine/Rules/PriceStructureRuleIndicatorCalculators.cs",
             "src/StockTrader.Engine/Rules/RuleConditionEvaluator.cs",
@@ -1844,6 +1846,7 @@ public class ArchitectureDependencyTests
         webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongEntryFillPolicy.cs\"");
         webProject.Should().Contain("Compile Remove=\"Application\\Execution\\LongPositionExecutionSessionPolicy.cs\"");
         webProject.Should().Contain("Compile Remove=\"Domain\\MarketData\\TimeFrameCatalog.cs\"");
+        webProject.Should().Contain("Compile Remove=\"Domain\\Backtesting\\BacktestExecutionCatalog.cs\"");
         webProject.Should().Contain("StockTrader.Engine\\StockTrader.Engine.csproj");
         engineIndicator.Should().NotContain("OhlcvBar");
         engineIndicator.Should().NotContain("StockTrader.Services");
@@ -1858,6 +1861,16 @@ public class ArchitectureDependencyTests
         indicatorAdapter.Should().NotContain("avgGain");
         indicatorAdapter.Should().NotContain("cumulativeTPV");
         indicatorAdapter.Should().NotContain("trueRanges");
+        var executionCostEngine = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.Engine/Execution/ExecutionCostLedger.cs"));
+        var executionCostAdapter = File.ReadAllText(Path.Combine(
+            repository, "Services/Backtest/BacktestExecutionCostLedger.cs"));
+        executionCostEngine.Should().NotContain("TradeRecord");
+        executionCostEngine.Should().NotContain("StockTrader.Models");
+        executionCostEngine.Should().NotContain("StockTrader.Services");
+        executionCostAdapter.Should().Contain("ExecutionCostLedger<TradeRecord>");
+        executionCostAdapter.Should().NotContain("Math.Sqrt");
+        executionCostAdapter.Should().NotContain("volatilityFactor");
         File.ReadAllLines(Path.Combine(repository,
             "Services/Indicators/IndicatorService.cs")).Length.Should().BeLessThanOrEqualTo(70);
         File.ReadAllLines(Path.Combine(repository,

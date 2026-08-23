@@ -28,8 +28,12 @@ storage-independent `PriceBar` values, while `IndicatorService` is only an `Ohlc
 The indicator registry, condition operators, grouped rule aggregation, warmup policy, and
 reference-symbol future-bar exclusion now execute in the engine as well. Long-position conservative
 intrabar ordering, entry repricing, partial exits, stops, targets, scaling, and sizing also execute
-there through one `EnginePriceBarMapper`. Cost ledgers, portfolio simulation, and result aggregation
-still remain in the monolith, so the worker is not yet a deployable optimization-compute Pod.
+there through one `EnginePriceBarMapper`. Execution-cost settlement and fixed/adaptive slippage now
+also have one storage-independent engine owner; the monolith adapter only projects that result onto
+its persisted trade model. Portfolio simulation and result aggregation still remain in the
+monolith, so the worker is not yet a deployable optimization-compute Pod. MSA completion requires
+an independently built image and Kubernetes Deployment/Pod for each approved service boundary;
+an extracted library or folder alone is not a deployed microservice.
 
 ## Target modules
 
