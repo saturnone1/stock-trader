@@ -15,6 +15,7 @@
     <Compile Remove="tests\**\*.cs" />
     <Compile Remove="src\**\*.cs" />
     <Compile Remove="Domain\MarketData\TimeFrame.cs" />
+    <Compile Remove="Domain\MarketData\TimeFrameCatalog.cs" />
     <Compile Remove="Domain\Strategies\IndicatorCatalog.cs" />
     <Compile Remove="Domain\Strategies\RuleOperatorCatalog.cs" />
     <Compile Remove="Domain\Strategies\StrategyCatalog.cs" />

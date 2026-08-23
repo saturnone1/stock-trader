@@ -22,7 +22,9 @@ persistence entity inside the deterministic engine boundary.
 Create package-free `StockTrader.Engine` as the shared deterministic C# kernel. Its first slice owns
 the strategy document, compiler, compiled model, execution rule models, timeframe identity, strategy
 and indicator catalogs, document defaults/version policy, live-compatibility policy, and market
-calendar version identity.
+calendar version identity. The next slice moves SMA, EMA, RSI, cumulative RSI, Bollinger, VWAP, ATR,
+MACD, Keltner, and OBV mathematics into the same assembly over a storage-independent immutable
+`PriceBar`.
 
 `CustomPatternDefinition` remains in the application persistence model. The pure execution rule
 types move to the engine project under their compatibility namespace. Legacy compiler and catalog
@@ -38,6 +40,10 @@ and the F# worker does not duplicate validation policy.
 The F# shadow worker references the engine, protocol, and service-contract assemblies directly. It
 uses the shared compiler when validating a lease but still cannot claim, evaluate, heartbeat, or
 submit work. This is not yet a Kubernetes service extraction.
+
+The existing `IndicatorService` remains only as a compatibility adapter from persisted `OhlcvBar`
+objects to `PriceBar`; it contains no indicator formulas. This preserves existing application ports
+while making the calculation implementation directly reusable by the worker.
 
 ## Dependency rules
 
@@ -59,16 +65,19 @@ StockTrader (ASP.NET) -> OptimizationProtocol -> Engine
 
 ## Agent working-set budget
 
-The initial engine slice contains 14 owned or linked C# files, 639 nonblank source lines, and no
-direct dependency. Its largest file is `StrategyRuleModels.cs` at 156 nonblank lines; the compiler
-is 136. The F# shadow host remains 55 physical lines. Duplicated artifact compatibility policy lines
-are zero because both the application and worker use `StockTrader.OptimizationProtocol`.
+The engine now contains 18 owned or linked C# files, 905 nonblank source lines, and no direct
+dependency. Its largest file is `StrategyRuleModels.cs` at 156 nonblank lines; the compiler is 136.
+Indicator mathematics is split into files of 115 and 106 nonblank lines instead of one 258-line
+service. The F# shadow host remains 55 physical lines. Duplicated artifact compatibility and
+indicator formula lines are zero because both the application and worker consume shared assemblies.
 
 ## Verification and next gate
 
 Architecture tests enforce the dependency edges, persistence/rule-model split, worker references,
-and shared artifact policy. Existing strategy compiler, preview, backtest, optimization, and live
-characterization tests must remain unchanged and green.
+shared artifact policy, formula-free application adapter, and storage-free engine price bars.
+Indicator parity tests compare every adapter result with the independent engine result. Existing
+strategy compiler, preview, backtest, optimization, and live characterization tests must remain
+unchanged and green.
 
 This ADR does not claim the complete deterministic engine has been extracted. Before remote
 optimization computation is enabled, indicator evaluation, fills, portfolio simulation, result

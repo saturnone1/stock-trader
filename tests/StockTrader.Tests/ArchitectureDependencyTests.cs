@@ -1629,6 +1629,15 @@ public class ArchitectureDependencyTests
         var optimizationProtocolProject = File.ReadAllText(Path.Combine(
             repository, "src/StockTrader.OptimizationProtocol/StockTrader.OptimizationProtocol.csproj"));
         var webProject = File.ReadAllText(Path.Combine(repository, "StockTrader.csproj"));
+        var indicatorAdapter = File.ReadAllText(Path.Combine(
+            repository, "Services/Indicators/IndicatorService.cs"));
+        var engineIndicator = string.Join("\n", new[]
+        {
+            "src/StockTrader.Engine/Indicators/IndicatorCalculator.cs",
+            "src/StockTrader.Engine/Indicators/IndicatorCalculator.Bars.cs"
+        }.Select(path => File.ReadAllText(Path.Combine(repository, path))));
+        var enginePriceBar = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.Engine/MarketData/PriceBar.cs"));
         var engineSources = string.Join("\n", new[]
         {
             "Application/Strategies/CompiledStrategy.cs",
@@ -1637,12 +1646,16 @@ public class ArchitectureDependencyTests
             "Application/Strategies/StrategyDocument.cs",
             "Application/Strategies/StrategyDocumentVersionPolicy.cs",
             "Domain/MarketData/TimeFrame.cs",
+            "Domain/MarketData/TimeFrameCatalog.cs",
             "Domain/Strategies/IndicatorCatalog.cs",
             "Domain/Strategies/RuleOperatorCatalog.cs",
             "Domain/Strategies/StrategyCatalog.cs",
             "Domain/Strategies/StrategyDocumentDefaults.cs",
             "Domain/Strategies/StrategyDocumentVersions.cs",
             "src/StockTrader.Engine/MarketData/MarketCalendarVersion.cs",
+            "src/StockTrader.Engine/MarketData/PriceBar.cs",
+            "src/StockTrader.Engine/Indicators/IndicatorCalculator.cs",
+            "src/StockTrader.Engine/Indicators/IndicatorCalculator.Bars.cs",
             "src/StockTrader.Engine/Strategies/StrategyRuleModels.cs"
         }.Select(path => File.ReadAllText(Path.Combine(repository, path))));
         var fsharpWorker = File.ReadAllText(Path.Combine(
@@ -1801,7 +1814,23 @@ public class ArchitectureDependencyTests
         engineSources.Should().NotContain("Alpaca.Markets");
         engineSources.Should().NotContain("StockTrader.ServiceContracts");
         webProject.Should().Contain("Compile Remove=\"Application\\Strategies\\StrategyCompiler.cs\"");
+        webProject.Should().Contain("Compile Remove=\"Domain\\MarketData\\TimeFrameCatalog.cs\"");
         webProject.Should().Contain("StockTrader.Engine\\StockTrader.Engine.csproj");
+        engineIndicator.Should().NotContain("OhlcvBar");
+        engineIndicator.Should().NotContain("StockTrader.Services");
+        enginePriceBar.Should().NotContain(" Id");
+        enginePriceBar.Should().NotContain("Symbol");
+        indicatorAdapter.Should().Contain("IndicatorCalculator");
+        indicatorAdapter.Should().Contain("ToEngineBars");
+        indicatorAdapter.Should().NotContain("avgGain");
+        indicatorAdapter.Should().NotContain("cumulativeTPV");
+        indicatorAdapter.Should().NotContain("trueRanges");
+        File.ReadAllLines(Path.Combine(repository,
+            "Services/Indicators/IndicatorService.cs")).Length.Should().BeLessThanOrEqualTo(70);
+        File.ReadAllLines(Path.Combine(repository,
+            "src/StockTrader.Engine/Indicators/IndicatorCalculator.cs")).Length.Should().BeLessThanOrEqualTo(150);
+        File.ReadAllLines(Path.Combine(repository,
+            "src/StockTrader.Engine/Indicators/IndicatorCalculator.Bars.cs")).Length.Should().BeLessThanOrEqualTo(150);
         engineRuleModels.Should().Contain("public class EntryRule");
         engineRuleModels.Should().Contain("public class ScalingRule");
         engineRuleModels.Should().NotContain("CreatedAt");
