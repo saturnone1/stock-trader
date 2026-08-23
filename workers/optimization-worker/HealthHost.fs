@@ -14,6 +14,7 @@ let private status (probe: ProbeSnapshot) =
        status = "ready"
        controlConfigured = probe.Configured
        controlConnected = probe.Connected
+       controlError = probe.LastError
        contractVersion = OptimizationWorkerContractCatalog.LeaseVersion |}
 
 let run (_: string array) =

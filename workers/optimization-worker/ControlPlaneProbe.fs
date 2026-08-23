@@ -65,12 +65,22 @@ type Worker(
                     use request = new HttpRequestMessage(HttpMethod.Get, endpoint)
                     request.Headers.Add(OptimizationWorkerHttpHeaders.WorkerId, workerId)
                     request.Headers.Add(OptimizationWorkerHttpHeaders.Secret, secret)
-                    use! response = client.SendAsync(request, ct)
-                    if response.IsSuccessStatusCode then state.Succeed()
-                    else state.Fail($"http-{int response.StatusCode}")
+                    use attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct)
+                    attemptTimeout.CancelAfter(TimeSpan.FromSeconds(5.0))
+                    use! response = client.SendAsync(request, attemptTimeout.Token)
+                    if response.IsSuccessStatusCode then
+                        state.Succeed()
+                        logger.LogDebug("Control API shadow handshake succeeded")
+                    else
+                        let failure = $"http-{int response.StatusCode}"
+                        state.Fail(failure)
+                        logger.LogWarning("Control API shadow handshake failed: {Failure}", failure)
                 with
                 | :? OperationCanceledException when ct.IsCancellationRequested -> ()
-                | error -> state.Fail(error.GetType().Name)
+                | error ->
+                    let failure = error.GetType().Name
+                    state.Fail(failure)
+                    logger.LogWarning("Control API shadow handshake failed: {Failure}", failure)
                 if not ct.IsCancellationRequested then
                     do! Task.Delay(30_000, ct)
     }
