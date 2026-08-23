@@ -71,6 +71,25 @@ public sealed class MarketDataShadowBackfillService(
         if (options.Mode != MarketDataTransportMode.Shadow || !options.ShadowBackfillEnabled)
             return;
 
+        try
+        {
+            await BackfillAsync(options, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal host shutdown.
+        }
+        catch (Exception error)
+        {
+            logger.LogError(error,
+                "Market Data shadow backfill failed; local market data remains authoritative.");
+        }
+    }
+
+    private async Task BackfillAsync(
+        MarketDataTransportOptions options,
+        CancellationToken stoppingToken)
+    {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var settings = await scope.ServiceProvider.GetRequiredService<ISettingsRepository>()
@@ -85,6 +104,8 @@ public sealed class MarketDataShadowBackfillService(
                 From = group.Min(bar => bar.Timestamp),
                 To = group.Max(bar => bar.Timestamp)
             })
+            .OrderBy(group => group.Symbol)
+            .ThenBy(group => group.TimeFrame)
             .Take(options.ShadowBackfillMaxGroups)
             .ToListAsync(stoppingToken);
 

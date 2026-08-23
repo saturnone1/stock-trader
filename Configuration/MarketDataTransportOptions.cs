@@ -26,6 +26,7 @@ public sealed class MarketDataTransportOptions
     public bool IsValid() => Mode == MarketDataTransportMode.Local ||
         (Endpoint.Scheme == Uri.UriSchemeHttps &&
          SharedSecret is { Length: >= 32 } &&
+         !SharedSecret.Any(char.IsControl) &&
          File.Exists(ClientCertificatePath) &&
          File.Exists(ClientCertificateKeyPath) &&
          File.Exists(ServerCertificateAuthorityPath) &&

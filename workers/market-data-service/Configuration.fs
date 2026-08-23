@@ -57,6 +57,8 @@ module ServiceSettings =
     let validate settings =
         [ if settings.SharedSecret.Length < 32 then
               "MARKET_DATA_SHARED_SECRET must contain at least 32 characters"
+          if settings.SharedSecret |> Seq.exists Char.IsControl then
+              "MARKET_DATA_SHARED_SECRET must not contain control characters"
           if String.IsNullOrWhiteSpace(settings.ClientCaPath) then
               "MARKET_DATA_CLIENT_CA_PATH is required"
           if String.IsNullOrWhiteSpace(settings.DatabasePath) then
