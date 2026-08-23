@@ -37,6 +37,9 @@ public interface IMlTrainingTransport
         MlTrainingOptions options,
         DateTime requestedAtUtc,
         CancellationToken ct = default);
+
+    Task<StockTrader.ServiceContracts.MachineLearning.MlTrainingPublicationSnapshot?>
+        GetLatestPublicationAsync(CancellationToken ct = default);
 }
 
 public interface IMarketRegimeTrainingDataSource

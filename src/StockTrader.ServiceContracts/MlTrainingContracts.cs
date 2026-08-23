@@ -154,6 +154,12 @@ public sealed record MlTrainingServiceStatus(
     DateTime? LastCompletedAtUtc,
     string? LastError);
 
+public sealed record MlTrainingPublicationSnapshot(
+    int ContractVersion,
+    long PublicationRevision,
+    MlModelArtifactContract? RegimeArtifact,
+    MlModelArtifactContract? SignalArtifact);
+
 public static class MlTrainingContractHash
 {
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;

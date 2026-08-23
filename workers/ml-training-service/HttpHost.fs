@@ -50,6 +50,8 @@ module HttpHost =
             $"stocktrader_ml_training_pending {status.PendingJobs}\nstocktrader_ml_training_running {status.RunningJobs}\nstocktrader_ml_training_publication_revision {status.PublicationRevision}\n")) |> ignore
         app.MapGet("/v1/status", Func<HttpContext,JobStore,IResult>(fun ctx store ->
             if authorized ctx then Results.Ok(store.Status()) else Results.Unauthorized())) |> ignore
+        app.MapGet("/v1/publications/latest", Func<HttpContext,JobStore,IResult>(fun ctx store ->
+            if authorized ctx then Results.Ok(store.LatestPublication()) else Results.Unauthorized())) |> ignore
         app.MapPost("/v1/training/jobs", Func<HttpContext,JobStore,MlTrainingJobRequest,IResult>(fun ctx store request ->
             if not (authorized ctx) then Results.Unauthorized()
             else

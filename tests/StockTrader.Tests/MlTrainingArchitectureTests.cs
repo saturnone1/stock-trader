@@ -15,6 +15,9 @@ public sealed class MlTrainingArchitectureTests
         var compute = Read(root, "src/StockTrader.MlTrainingCompute/MlTrainingComputeFacade.cs");
         var deployment = Read(root, "k8s/deployment-ml-training.yaml");
         var apiDeployment = Read(root, "k8s/deployment-api.yaml");
+        var backgroundRegistration = Read(root, "Extensions/BackgroundServiceExtensions.cs");
+        var reconciliation = Read(root,
+            "BackgroundServices/MlTrainingPublicationReconciliationService.cs");
         var adr = Read(root, "docs/architecture/adr/0079-extract-ml-training-service.md");
 
         project.Should().Contain("StockTrader.MlTrainingCompute");
@@ -24,15 +27,23 @@ public sealed class MlTrainingArchitectureTests
         store.Should().NotContain("stocktrader.db");
         host.Should().Contain("RequireCertificate");
         host.Should().Contain("X-StockTrader-Worker-Secret");
+        host.Should().Contain("/v1/publications/latest");
         compute.Should().NotContain("HttpClient");
         compute.Should().NotContain("EntityFrameworkCore");
         compute.Should().NotContain("DateTime.UtcNow");
         deployment.Should().Contain("replicas: 1");
         deployment.Should().Contain("containerPort: 8080");
         deployment.Should().Contain("containerPort: 8443");
+        deployment.Should().Contain("mountPath: /tmp");
+        deployment.Should().Contain("emptyDir:");
         deployment.Should().NotContain("stocktrader.db");
         deployment.Should().NotContain("ml_models");
         apiDeployment.Should().Contain("MlTrainingTransport__Mode");
+        backgroundRegistration.Should().Contain(
+            "AddHostedService<MlTrainingPublicationReconciliationService>()");
+        reconciliation.Should().Contain("options.Value.Mode != \"Remote\"");
+        reconciliation.Should().Contain("GetLatestPublicationAsync");
+        reconciliation.Should().NotContain("TrainAsync");
         adr.Should().Contain("immutable artifact");
     }
 

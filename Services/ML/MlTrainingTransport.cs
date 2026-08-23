@@ -53,6 +53,30 @@ internal sealed class MlTrainingTransport : IMlTrainingTransport, IDisposable
         return local;
     }
 
+    public async Task<MlTrainingPublicationSnapshot?> GetLatestPublicationAsync(
+        CancellationToken ct = default)
+    {
+        if (_options.Mode == "Local") return null;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+        var client = _client ?? throw new InvalidOperationException("ml-training-client-not-configured");
+        var snapshot = await client.GetFromJsonAsync<MlTrainingPublicationSnapshot>(
+            "/v1/publications/latest", timeout.Token)
+            ?? throw new InvalidOperationException("empty-ml-training-publication");
+        if (snapshot.ContractVersion != MlTrainingContractVersions.Current
+            || snapshot.PublicationRevision < 0
+            || (snapshot.PublicationRevision == 0
+                && (snapshot.RegimeArtifact is not null || snapshot.SignalArtifact is not null)))
+            throw new InvalidOperationException("invalid-ml-training-publication");
+        foreach (var artifact in new[] { snapshot.RegimeArtifact, snapshot.SignalArtifact })
+        {
+            if (artifact is null) continue;
+            var error = MlTrainingContractPolicy.ArtifactError(artifact);
+            if (error is not null) throw new InvalidOperationException(error);
+        }
+        return snapshot;
+    }
+
     private MlTrainingJobRequest CreateRequest(MarketRegimeTrainingSet regime,
         IReadOnlyList<SignalScoringTrainingSample> signals, MlTrainingOptions settings,
         DateTime requestedAtUtc)

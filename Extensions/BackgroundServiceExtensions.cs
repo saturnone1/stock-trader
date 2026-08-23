@@ -41,6 +41,7 @@ public static class BackgroundServiceExtensions
         services.AddHostedService<EntryExecutionReconciliationService>();
         services.AddHostedService<DailyReportService>();
         services.AddHostedService<MLRetrainingService>();
+        services.AddHostedService<MlTrainingPublicationReconciliationService>();
         services.AddHostedService<ContinuousOptimizationService>();
         services.AddHostedService(sp => sp.GetRequiredService<FinancialSnapshotIngestionService>());
 

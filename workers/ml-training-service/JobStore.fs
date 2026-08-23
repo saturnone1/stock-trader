@@ -175,3 +175,20 @@ UPDATE jobs SET status='Pending', started_at=NULL WHERE status='Running';
             | Some result when result.RegimeArtifact <> null || result.SignalArtifact <> null -> results.Add result
             | _ -> ()
         results.ToArray()
+
+    member this.LatestPublication() =
+        let mutable regime: MlModelArtifactContract option = None
+        let mutable signal: MlModelArtifactContract option = None
+        for result in this.PublishedResults() do
+            match Option.ofObj result.RegimeArtifact with
+            | Some artifact -> regime <- Some artifact
+            | None -> ()
+            match Option.ofObj result.SignalArtifact with
+            | Some artifact -> signal <- Some artifact
+            | None -> ()
+        let status = this.Status()
+        MlTrainingPublicationSnapshot(
+            MlTrainingContractVersions.Current,
+            status.PublicationRevision,
+            Option.toObj regime,
+            Option.toObj signal)
