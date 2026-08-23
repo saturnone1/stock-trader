@@ -47,12 +47,16 @@ public sealed class MarketDataServiceArchitectureTests
     public void Deployment_path_owns_backup_tls_rotation_and_rollback_projection()
     {
         var deploy = File.ReadAllText(Path.Combine(Root, "scripts", "deploy-k3s.sh"));
+        var restore = File.ReadAllText(Path.Combine(
+            Root, "scripts", "restore-market-data-backup.sh"));
 
         deploy.Should().Contain("Dockerfile.market-data");
         deploy.Should().Contain("marketdata-pre-");
         deploy.Should().Contain("--project-market-data-rollback");
         File.Exists(Path.Combine(Root, "scripts", "rotate-market-data-tls.sh")).Should().BeTrue();
         File.Exists(Path.Combine(Root, "scripts", "restore-market-data-backup.sh")).Should().BeTrue();
+        restore.Should().Contain("sudo realpath -e");
+        restore.Should().Contain("sudo sqlite3 \"$resolved_backup\"");
     }
 
     [Fact]

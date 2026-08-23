@@ -11,14 +11,14 @@ if [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; then
   echo "STOCKTRADER_MARKET_DATA_DIR must be a safe absolute path below root." >&2
   exit 1
 fi
-resolved_data="$(realpath -e "$data_dir")"
-resolved_backup="$(realpath -e "$1")"
+resolved_data="$(sudo realpath -e "$data_dir")"
+resolved_backup="$(sudo realpath -e "$1")"
 case "$resolved_backup" in
   "$resolved_data"/backups/*) ;;
   *) echo "Backup must be inside $resolved_data/backups." >&2; exit 1 ;;
 esac
 
-sqlite3 "$resolved_backup" "PRAGMA quick_check;" | grep -qx ok
+sudo sqlite3 "$resolved_backup" "PRAGMA quick_check;" | grep -qx ok
 namespace="${STOCKTRADER_NAMESPACE:-stocktrader}"
 sudo k3s kubectl -n "$namespace" scale deployment stocktrader-api stocktrader-market-data --replicas=0
 sudo k3s kubectl -n "$namespace" wait --for=delete pod \
