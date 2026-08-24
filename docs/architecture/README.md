@@ -111,6 +111,9 @@ boundary after measuring an active `AutoOrder` account and open positions inside
 It moves risk, orders, broker reconciliation, positions, fills, and trades together as one financial
 authority; those modules must never become separate services. Reporting/Notifications remain
 in-process because production has no enabled delivery channel or measured isolation trigger.
+The implementation checkpoint is deployed in read-only `Projection` at `d9f4f30`; production
+financial authority remains Local and further MSA extraction is paused. Resume conditions are in the
+[Trading Core Projection operations note](../operations/trading-core-projection.md).
 
 ## Target modules
 

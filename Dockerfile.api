@@ -5,6 +5,7 @@ COPY ["src/StockTrader.Engine/StockTrader.Engine.csproj", "src/StockTrader.Engin
 COPY ["src/StockTrader.OptimizationProtocol/StockTrader.OptimizationProtocol.csproj", "src/StockTrader.OptimizationProtocol/"]
 COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
 COPY ["src/StockTrader.MlTrainingCompute/StockTrader.MlTrainingCompute.csproj", "src/StockTrader.MlTrainingCompute/"]
+COPY ["src/StockTrader.TradingCore/StockTrader.TradingCore.csproj", "src/StockTrader.TradingCore/"]
 RUN dotnet restore "StockTrader.csproj"
 COPY . .
 RUN dotnet publish "StockTrader.csproj" -c Release -o /app/publish /p:UseAppHost=false

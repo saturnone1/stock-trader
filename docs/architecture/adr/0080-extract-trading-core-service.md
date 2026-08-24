@@ -1,8 +1,9 @@
 # 0080 — Extract Trading Core as the single financial authority
 
-- Status: Accepted for implementation; production cutover pending
+- Status: Projection implementation accepted; production cutover paused
 - Date: 2026-08-24
 - Baseline: `e77fdac`
+- Implementation: `d9f4f30`
 
 ## Context and measured trigger
 
@@ -150,3 +151,20 @@ This ADR becomes fully Accepted only when one service-level batch proves:
 
 Until every gate passes, Trading Core is incomplete and no Strategy Research/Edge extraction may
 begin.
+
+## Paused implementation checkpoint
+
+The implementation batch at `d9f4f30` completed the independent service boundary, immutable
+execution artifacts, entry and position financial lifecycle, durable inbox/outbox/intents, broker
+reconciliation, canonical state/read contracts, authority fencing, encrypted account configuration,
+mTLS deployment, and Projection import. The production API and Trading Core images were deployed in
+`Projection` on 2026-08-24. The candidate received snapshots while financial intents and broker
+evidence remained empty; its egress policy allowed DNS only.
+
+This is an implementation checkpoint, not financial-authority acceptance. `Remote` remains
+prohibited until the open acceptance gates above are completed, including full read-projection UI
+cutover, manual-order immutable evidence, Shadow market-cycle parity, failure/partial-fill/broker
+outage convergence, backup/restore and secret/TLS rollback drills, and a single-authority cutover
+rehearsal. No later MSA extraction may start while this work is paused. Operational evidence and the
+exact resume checklist are in the
+[Trading Core Projection operations note](../../operations/trading-core-projection.md).

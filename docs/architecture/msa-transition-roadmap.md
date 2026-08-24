@@ -245,13 +245,14 @@ Exit gate: failover drills prove there is never more than one order authority, o
 process loss, every broker fill converges to one durable state, and live feature/version mismatches
 fail closed.
 
-Status: **in progress under [ADR 0080](adr/0080-extract-trading-core-service.md)**. The measured
-production baseline is an active Alpaca Paper account in `AutoOrder` mode with five open positions,
-while risk monitoring, position execution, entry reconciliation, research requests, settings, and
-ordinary API releases still share one API Pod. This establishes a concrete release/failure and
-credential-isolation reason for extraction after Stages 2–4 proved the platform. The whole strongly
-consistent boundary is being moved as one unit; separate Risk, Order, Position, or Broker services
-remain prohibited.
+Status: **implementation checkpoint complete in Projection; Remote cutover paused under
+[ADR 0080](adr/0080-extract-trading-core-service.md)**. The independent F# service now owns its
+candidate store and complete entry/position lifecycle contracts, and the production Pod receives
+read-only projections with broker egress physically disabled. The legacy API remains the only
+financial writer. Resume at the Shadow, failure-convergence, read-projection, backup/restore, and
+single-authority cutover gates recorded in the
+[Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
+active, and separate Risk, Order, Position, or Broker services remain prohibited.
 
 ## Stage 6 — Re-evaluate Strategy Research and Edge
 
