@@ -181,8 +181,9 @@ internal sealed class MlTrainingTransport : IMlTrainingTransport, IDisposable
         if (local.RegimeArtifact is not null && remote.RegimeArtifact is not null)
         {
             foreach (var probe in request.RegimeSamples.Take(3).Append(request.RegimeSamples[^1]))
-                if (MlTrainingComputeFacade.PredictRegime(local.RegimeArtifact.ModelBytes, probe)
-                    != MlTrainingComputeFacade.PredictRegime(remote.RegimeArtifact.ModelBytes, probe))
+                if (!string.Equals(PredictRegimeLabel(local.RegimeArtifact, probe),
+                        PredictRegimeLabel(remote.RegimeArtifact, probe),
+                        StringComparison.Ordinal))
                     return "regime-prediction";
         }
         if (local.SignalArtifact is not null && remote.SignalArtifact is not null)
@@ -206,10 +207,19 @@ internal sealed class MlTrainingTransport : IMlTrainingTransport, IDisposable
             && left.TrainingSamples == right.TrainingSamples
             && left.ValidationAccuracy == right.ValidationAccuracy
             && left.ValidationAuc == right.ValidationAuc
-            && (left.ClusterLabels ?? new Dictionary<uint, string>())
-                .OrderBy(x => x.Key).SequenceEqual(
-                    (right.ClusterLabels ?? new Dictionary<uint, string>()).OrderBy(x => x.Key))
+            && (left.ClusterLabels?.Values ?? [])
+                .ToHashSet(StringComparer.Ordinal).SetEquals(
+                    right.ClusterLabels?.Values ?? [])
             && left.FeatureImportances.SequenceEqual(right.FeatureImportances);
+    }
+
+    private static string PredictRegimeLabel(
+        MlModelArtifactContract artifact, MlRegimeFeatureContract probe)
+    {
+        var cluster = MlTrainingComputeFacade.PredictRegime(artifact.ModelBytes, probe);
+        return artifact.ClusterLabels!.TryGetValue(cluster, out var label)
+            ? label
+            : throw new InvalidOperationException("regime-prediction-label-missing");
     }
 
     private static HttpClient CreateClient(MlTrainingTransportOptions options)

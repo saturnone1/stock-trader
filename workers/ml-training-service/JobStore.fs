@@ -7,7 +7,7 @@ open StockTrader.ServiceContracts.MachineLearning
 open StockTrader.MlTrainingCompute
 
 type JobStore(path: string, json: JsonSerializerOptions) =
-    let connectionString = $"Data Source={path};Mode=ReadWriteCreate;Cache=Shared;Pooling=False"
+    let connectionString = $"Data Source={path};Mode=ReadWriteCreate;Cache=Shared;Pooling=False;Default Timeout=10"
     let connect () =
         let connection = new SqliteConnection(connectionString)
         connection.Open()
@@ -37,24 +37,24 @@ UPDATE jobs SET status='Pending', started_at=NULL WHERE status='Running';
         | Some error -> invalidArg "request" error
         | None ->
             use connection = connect ()
-            use existing = connection.CreateCommand()
-            existing.CommandText <- "SELECT input_hash,status FROM jobs WHERE job_id=$id"
-            existing.Parameters.AddWithValue("$id", request.JobId) |> ignore
-            use reader = existing.ExecuteReader()
-            if reader.Read() then
+            use insert = connection.CreateCommand()
+            insert.CommandText <- "INSERT OR IGNORE INTO jobs(job_id,input_hash,status,request_json,accepted_at) VALUES($id,$hash,'Pending',$request,$at)"
+            insert.Parameters.AddWithValue("$id", request.JobId) |> ignore
+            insert.Parameters.AddWithValue("$hash", request.InputHash) |> ignore
+            insert.Parameters.AddWithValue("$request", JsonSerializer.Serialize(request, json)) |> ignore
+            insert.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+            let inserted = insert.ExecuteNonQuery() = 1
+            if inserted then
+                MlTrainingJobAccepted(request.JobId, request.InputHash, MlTrainingJobStatuses.Pending, false)
+            else
+                use existing = connection.CreateCommand()
+                existing.CommandText <- "SELECT input_hash,status FROM jobs WHERE job_id=$id"
+                existing.Parameters.AddWithValue("$id", request.JobId) |> ignore
+                use reader = existing.ExecuteReader()
+                if not (reader.Read()) then invalidOp "job-id-disappeared"
                 if not (String.Equals(reader.GetString(0), request.InputHash, StringComparison.OrdinalIgnoreCase)) then
                     invalidOp "job-id-input-conflict"
                 MlTrainingJobAccepted(request.JobId, request.InputHash, reader.GetString(1), true)
-            else
-                reader.Close()
-                use insert = connection.CreateCommand()
-                insert.CommandText <- "INSERT INTO jobs(job_id,input_hash,status,request_json,accepted_at) VALUES($id,$hash,'Pending',$request,$at)"
-                insert.Parameters.AddWithValue("$id", request.JobId) |> ignore
-                insert.Parameters.AddWithValue("$hash", request.InputHash) |> ignore
-                insert.Parameters.AddWithValue("$request", JsonSerializer.Serialize(request, json)) |> ignore
-                insert.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
-                insert.ExecuteNonQuery() |> ignore
-                MlTrainingJobAccepted(request.JobId, request.InputHash, MlTrainingJobStatuses.Pending, false)
 
     member _.Claim() =
         use connection = connect ()

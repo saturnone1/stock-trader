@@ -18,12 +18,13 @@ public sealed class MlTrainingConformanceTests
         first.Status.Should().Be(MlTrainingJobStatuses.PartiallyCompleted);
         first.SignalArtifact.Should().BeNull();
         first.RegimeArtifact.Should().NotBeNull();
-        first.RegimeArtifact!.ClusterLabels.Should().BeEquivalentTo(second.RegimeArtifact!.ClusterLabels);
-        MlTrainingContractPolicy.ArtifactError(first.RegimeArtifact).Should().BeNull();
-        MlTrainingComputeFacade.PredictRegime(
-            first.RegimeArtifact.ModelBytes, request.RegimeSamples[^1])
-            .Should().Be(MlTrainingComputeFacade.PredictRegime(
-                second.RegimeArtifact.ModelBytes, request.RegimeSamples[^1]));
+        second.RegimeArtifact.Should().NotBeNull();
+        var firstRegime = first.RegimeArtifact!;
+        var secondRegime = second.RegimeArtifact!;
+        request.RegimeSamples.Select(sample => PredictLabel(firstRegime, sample))
+            .Should().Equal(request.RegimeSamples.Select(
+                sample => PredictLabel(secondRegime, sample)));
+        MlTrainingContractPolicy.ArtifactError(firstRegime).Should().BeNull();
     }
 
     [Fact]
@@ -77,6 +78,30 @@ public sealed class MlTrainingConformanceTests
         }
     }
 
+    [Fact]
+    public async Task Durable_store_atomically_converges_concurrent_first_delivery()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"ml-training-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var store = new JobStore(Path.Combine(directory, "jobs.db"),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var request = Request();
+
+            var accepted = await Task.WhenAll(Enumerable.Range(0, 12)
+                .Select(_ => Task.Run(() => store.Accept(request))));
+
+            accepted.Count(result => !result.AlreadyAccepted).Should().Be(1);
+            accepted.Count(result => result.AlreadyAccepted).Should().Be(11);
+            accepted.Should().OnlyContain(result => result.JobId == request.JobId);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static MlTrainingJobRequest Request()
     {
         var cutoff = new DateTime(2026, 8, 20, 20, 0, 0, DateTimeKind.Utc);
@@ -100,5 +125,12 @@ public sealed class MlTrainingConformanceTests
             50, MlTrainingContractVersions.RequiredRegimeClusters,
             evidence, regimes, []);
         return draft with { InputHash = MlTrainingContractHash.Input(draft) };
+    }
+
+    private static string PredictLabel(
+        MlModelArtifactContract artifact, MlRegimeFeatureContract sample)
+    {
+        var cluster = MlTrainingComputeFacade.PredictRegime(artifact.ModelBytes, sample);
+        return artifact.ClusterLabels![cluster];
     }
 }

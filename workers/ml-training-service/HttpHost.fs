@@ -56,7 +56,9 @@ module HttpHost =
             if not (authorized ctx) then Results.Unauthorized()
             else
                 try Results.Accepted($"/v1/training/jobs/{request.JobId}", store.Accept request)
-                with :? ArgumentException as error -> Results.BadRequest {| error=error.Message |})) |> ignore
+                with
+                | :? ArgumentException as error -> Results.BadRequest {| error=error.Message |}
+                | :? InvalidOperationException as error -> Results.Conflict {| error=error.Message |})) |> ignore
         app.MapGet("/v1/training/jobs/{id}", Func<HttpContext,JobStore,string,IResult>(fun ctx store id ->
             if not (authorized ctx) then Results.Unauthorized()
             else match store.Get id with Some value -> Results.Ok value | None -> Results.NotFound())) |> ignore
