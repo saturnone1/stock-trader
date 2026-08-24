@@ -1,4 +1,8 @@
 using StockTrader.Models.Enums;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
+using StockTrader.ServiceContracts.MarketData;
+using StockTrader.ServiceContracts.TradingCore;
 
 namespace StockTrader.Models;
 
@@ -18,6 +22,17 @@ public class TradeRecommendation
     public int ShareQuantity { get; set; }
     public decimal Expectancy { get; set; }
     public bool WasExecuted { get; set; }
+
+    // Financial execution context is transported with a live recommendation but is deliberately
+    // not part of the legacy EF row. Trading Core persists the immutable copy it accepts.
+    [NotMapped, JsonIgnore]
+    public string ExecutionSector { get; set; } = string.Empty;
+
+    [NotMapped, JsonIgnore]
+    public TradingStrategyExecutionArtifact? ExecutionArtifact { get; set; }
+
+    [NotMapped, JsonIgnore]
+    public MarketDataEvidenceContract? MarketDataEvidence { get; set; }
 
     /// <summary>
     /// 멱등 신호 식별자가 도입되기 전에 반복 저장된 동일 추천 중 대체된 행입니다.

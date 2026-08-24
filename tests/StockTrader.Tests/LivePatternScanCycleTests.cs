@@ -11,6 +11,7 @@ using StockTrader.Services.Market;
 using StockTrader.Services.Order;
 using StockTrader.Services.Patterns;
 using StockTrader.Services.Signal;
+using StockTrader.ServiceContracts.MarketData;
 
 namespace StockTrader.Tests;
 
@@ -95,7 +96,7 @@ public sealed class LivePatternScanCycleTests
         _data.Setup(service => service.LoadBarsAsync(
                 It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Bars(StrategyEvaluationPolicy.RegimeTrendBars));
+            .ReturnsAsync(BarSet(Bars(StrategyEvaluationPolicy.RegimeTrendBars)));
         ConfigureNoSignals();
 
         var sut = CreateSut();
@@ -125,7 +126,7 @@ public sealed class LivePatternScanCycleTests
         _data.Setup(service => service.LoadBarsAsync(
                 It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Bars(StrategyEvaluationPolicy.RegimeTrendBars));
+            .ReturnsAsync(BarSet(Bars(StrategyEvaluationPolicy.RegimeTrendBars)));
         ConfigureNoSignals();
 
         var sut = CreateSut();
@@ -160,7 +161,8 @@ public sealed class LivePatternScanCycleTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([signal]);
         _processor.SetupSequence(service => service.ProcessAsync(
-                It.IsAny<IReadOnlyList<PatternSignal>>(), It.IsAny<CancellationToken>()))
+                It.IsAny<IReadOnlyList<PatternSignal>>(), It.IsAny<MarketDataEvidenceContract>(),
+                It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("temporary failure"))
             .Returns(Task.CompletedTask);
 
@@ -172,6 +174,7 @@ public sealed class LivePatternScanCycleTests
 
         _processor.Verify(service => service.ProcessAsync(
             It.Is<IReadOnlyList<PatternSignal>>(signals => signals.Single() == signal),
+            It.IsAny<MarketDataEvidenceContract>(),
             It.IsAny<CancellationToken>()), Times.Exactly(2));
         _detection.Verify(service => service.ScanSymbolAsync(
             "AAPL", It.IsAny<OhlcvBar[]>(), It.IsAny<MarketRegime>(),
@@ -202,7 +205,8 @@ public sealed class LivePatternScanCycleTests
         _data.Setup(service => service.LoadBarsAsync(
                 It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string symbol, DateTime _, DateTime _, CancellationToken _) => bars(symbol));
+            .ReturnsAsync((string symbol, DateTime _, DateTime _, CancellationToken _) =>
+                BarSet(bars(symbol)));
     }
 
     private void ConfigureNoSignals()
@@ -228,6 +232,14 @@ public sealed class LivePatternScanCycleTests
             Volume = 1_000
         })
         .ToArray();
+
+    private static LiveDailyBarSet BarSet(IReadOnlyList<OhlcvBar> bars) =>
+        new(bars, Evidence());
+
+    private static MarketDataEvidenceContract Evidence() => new(
+        1, "evidence", "Yahoo", "TEST", "Daily", "Raw", "US",
+        "calendar-v1", DateTime.UnixEpoch, Observation.UtcDateTime,
+        DateTime.UnixEpoch, Observation.UtcDateTime, 1, true, "content");
 
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {
@@ -318,10 +330,13 @@ public sealed class LiveSignalProcessorTests
                 steps.Add($"order:{item.Symbol}"))
             .ReturnsAsync(true);
 
+        var evidence = Evidence();
         await new LiveSignalProcessor(signals.Object, recommendations.Object, orders.Object)
-            .ProcessAsync(detected);
+            .ProcessAsync(detected, evidence);
 
         steps.Should().Equal("persist", "evaluate", "order:AAPL", "order:MSFT");
+        first.MarketDataEvidence.Should().BeSameAs(evidence);
+        second.MarketDataEvidence.Should().BeSameAs(evidence);
     }
 
     [Fact]
@@ -332,10 +347,15 @@ public sealed class LiveSignalProcessorTests
         var orders = new Mock<IOrderService>();
 
         await new LiveSignalProcessor(signals.Object, recommendations.Object, orders.Object)
-            .ProcessAsync([]);
+            .ProcessAsync([], Evidence());
 
         signals.VerifyNoOtherCalls();
         recommendations.VerifyNoOtherCalls();
         orders.VerifyNoOtherCalls();
     }
+
+    private static MarketDataEvidenceContract Evidence() => new(
+        1, "evidence", "Yahoo", "TEST", "Daily", "Raw", "US",
+        "calendar-v1", DateTime.UnixEpoch, DateTime.UtcNow,
+        DateTime.UnixEpoch, DateTime.UtcNow, 1, true, "content");
 }

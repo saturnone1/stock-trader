@@ -7,6 +7,11 @@ public sealed record BrokerEntryOrderRequest(
     decimal TakeProfitPrice,
     decimal StopLossPrice);
 
+public sealed record BrokerPositionOrderRequest(
+    string ClientOrderId,
+    string Symbol,
+    int Quantity);
+
 public sealed record BrokerOrderEvidence(
     string OrderId,
     string ClientOrderId,
@@ -82,13 +87,11 @@ public interface ITradingBroker
         CancellationToken ct = default);
 
     Task<BrokerOrderEvidence> IncreasePositionAsync(
-        string symbol,
-        int quantity,
+        BrokerPositionOrderRequest request,
         CancellationToken ct = default);
 
     Task<BrokerOrderEvidence> ClosePositionAsync(
-        string symbol,
-        int? quantity = null,
+        BrokerPositionOrderRequest request,
         CancellationToken ct = default);
 
     Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default);

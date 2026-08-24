@@ -34,6 +34,22 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
         return orders |> Seq.tryFind (fun order -> order.ClientOrderId = clientId)
     }
 
+    let preflight (broker: ITradingBroker)
+        (configuration: TradingAccountConfigurationSet)
+        (intent: TradingEntryIntent)
+        (ct: CancellationToken) = task {
+        try
+            let! account = broker.GetAccountAsync(ct)
+            let! positions = broker.GetPositionsAsync(ct)
+            return Ok (TradingRiskGate.Evaluate(TradingRiskGateRequest(
+                configuration.Risk.DailyLossLimitPercent,
+                configuration.Risk.MaxTotalPositions,
+                configuration.Risk.MaxPositionsPerSector,
+                intent.Symbol, intent.Sector, account, positions,
+                store.PositionRiskEvidence())))
+        with error -> return Error error
+    }
+
     override _.ExecuteAsync(stoppingToken: CancellationToken) = task {
         try
             while not stoppingToken.IsCancellationRequested do
@@ -64,20 +80,20 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
                                     intent.Envelope.CommandId)
                                 do! Task.Delay(5000, stoppingToken)
                         else
-                            try
-                                let! account = broker.GetAccountAsync(stoppingToken)
-                                let! positions = broker.GetPositionsAsync(stoppingToken)
-                                let decision = TradingRiskGate.Evaluate(TradingRiskGateRequest(
-                                    configuration.Risk.DailyLossLimitPercent,
-                                    configuration.Risk.MaxTotalPositions,
-                                    configuration.Risk.MaxPositionsPerSector,
-                                    intent.Symbol, intent.Sector, account, positions,
-                                    store.PositionRiskEvidence()))
-                                if not decision.Allowed then
+                            let! readiness = preflight broker configuration intent stoppingToken
+                            match readiness with
+                            | Error error ->
+                                store.ReleaseEntryForRetry(intent.Envelope.CommandId) |> ignore
+                                logger.LogWarning(error,
+                                    "Trading entry {CommandId} pre-submit evidence unavailable; released for retry",
+                                    intent.Envelope.CommandId)
+                                do! Task.Delay(2000, stoppingToken)
+                            | Ok decision when not decision.Allowed ->
                                     store.RejectIntent(intent.Envelope.CommandId, decision.Reason)
                                     logger.LogWarning("Trading entry {CommandId} rejected by final risk gate: {Reason}",
                                         intent.Envelope.CommandId, decision.Reason)
-                                else
+                            | Ok _ ->
+                                try
                                     let request = BrokerEntryOrderRequest(clientId, intent.Symbol,
                                         intent.ShareQuantity, intent.TargetPrice, intent.StopLossPrice)
                                     let! evidence = broker.SubmitEntryAsync(request, stoppingToken)
@@ -87,24 +103,103 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
                                     if evidence.Status <> "Filled" && evidence.Status <> "Rejected"
                                         && evidence.Status <> "Cancelled" && evidence.Status <> "Expired" then
                                         do! Task.Delay(2000, stoppingToken)
-                            with error ->
-                                try
-                                    let! evidence = reconcile broker clientId stoppingToken
-                                    match evidence with
-                                    | Some order -> store.RecordBrokerEvidence(intent.Envelope.CommandId, order) |> ignore
-                                    | None -> store.RequireReconciliation intent.Envelope.CommandId
-                                with reconcileError ->
-                                    store.RequireReconciliation intent.Envelope.CommandId
-                                    logger.LogError(reconcileError,
-                                        "Trading entry {CommandId} reconciliation failed after submission error",
+                                with error ->
+                                    try
+                                        let! evidence = reconcile broker clientId stoppingToken
+                                        match evidence with
+                                        | Some order -> store.RecordBrokerEvidence(intent.Envelope.CommandId, order) |> ignore
+                                        | None -> store.RequireReconciliation intent.Envelope.CommandId
+                                    with reconcileError ->
+                                        store.RequireReconciliation intent.Envelope.CommandId
+                                        logger.LogError(reconcileError,
+                                            "Trading entry {CommandId} reconciliation failed after submission error",
+                                            intent.Envelope.CommandId)
+                                    logger.LogWarning(error,
+                                        "Trading entry {CommandId} submission did not return durable evidence",
                                         intent.Envelope.CommandId)
-                                logger.LogWarning(error,
-                                    "Trading entry {CommandId} submission did not return durable evidence",
-                                    intent.Envelope.CommandId)
                 | Some intent, None ->
                     store.RequireReconciliation intent.Envelope.CommandId
                     logger.LogError("Trading entry {CommandId} blocked: account configuration unavailable",
                         intent.Envelope.CommandId)
-                | None, _ -> do! Task.Delay(500, stoppingToken)
+                | None, _ -> ()
+
+                let unresolvedPosition = store.UnresolvedPosition()
+                let positionCommand, shouldSubmitPosition =
+                    match unresolvedPosition with
+                    | Some value -> Some value, false
+                    | None -> store.ClaimPosition(), true
+                match positionCommand, store.AccountConfiguration() with
+                | Some command, Some configuration ->
+                    match store.LoadPosition command.PositionId with
+                    | None -> store.RejectIntent(command.Envelope.CommandId, "open-position-not-found")
+                    | Some position ->
+                        match brokerFor configuration position.AccountId with
+                        | Error reason ->
+                            store.RequireReconciliation command.Envelope.CommandId
+                            logger.LogError("Trading position command {CommandId} blocked: {Reason}",
+                                command.Envelope.CommandId, reason)
+                        | Ok broker ->
+                            use broker = broker
+                            let clientId = clientOrderId command.Envelope.CommandId
+                            if not shouldSubmitPosition then
+                                try
+                                    let! evidence = reconcile broker clientId stoppingToken
+                                    match evidence with
+                                    | Some order -> store.RecordPositionBrokerEvidence(
+                                        command.Envelope.CommandId, order) |> ignore
+                                    | None -> ()
+                                with error ->
+                                    store.RequireReconciliation command.Envelope.CommandId
+                                    logger.LogError(error,
+                                        "Trading position command {CommandId} reconciliation failed",
+                                        command.Envelope.CommandId)
+                            else
+                                try
+                                    let! brokerPositions = broker.GetPositionsAsync(stoppingToken)
+                                    let brokerPosition = brokerPositions |> Seq.tryFind (fun value ->
+                                        value.Symbol.Equals(position.Symbol, StringComparison.OrdinalIgnoreCase))
+                                    let valid =
+                                        match command.Action, brokerPosition with
+                                        | action, Some current when action = TradingPositionActionKinds.ScaleIn ->
+                                            current.Quantity = position.Quantity
+                                        | _, Some current ->
+                                            (current.Quantity = position.Quantity)
+                                            && (command.Quantity <= current.Quantity)
+                                        | _ -> false
+                                    if not valid then
+                                        store.ReleaseEntryForRetry(command.Envelope.CommandId) |> ignore
+                                        logger.LogError(
+                                            "Trading position command {CommandId} broker quantity mismatch",
+                                            command.Envelope.CommandId)
+                                    else
+                                        let request = BrokerPositionOrderRequest(
+                                            clientId, position.Symbol, command.Quantity)
+                                        let! evidence =
+                                            if command.Action = TradingPositionActionKinds.ScaleIn then
+                                                broker.IncreasePositionAsync(request, stoppingToken)
+                                            else broker.ClosePositionAsync(request, stoppingToken)
+                                        store.RecordPositionBrokerEvidence(
+                                            command.Envelope.CommandId, evidence) |> ignore
+                                with error ->
+                                    try
+                                        let! evidence = reconcile broker clientId stoppingToken
+                                        match evidence with
+                                        | Some order -> store.RecordPositionBrokerEvidence(
+                                            command.Envelope.CommandId, order) |> ignore
+                                        | None -> store.RequireReconciliation command.Envelope.CommandId
+                                    with reconcileError ->
+                                        store.RequireReconciliation command.Envelope.CommandId
+                                        logger.LogError(reconcileError,
+                                            "Trading position command {CommandId} reconciliation failed after submission error",
+                                            command.Envelope.CommandId)
+                                    logger.LogWarning(error,
+                                        "Trading position command {CommandId} submission has ambiguous result",
+                                        command.Envelope.CommandId)
+                | Some command, None ->
+                    store.RequireReconciliation command.Envelope.CommandId
+                    logger.LogError("Trading position command {CommandId} blocked: account configuration unavailable",
+                        command.Envelope.CommandId)
+                | None, _ -> ()
+                do! Task.Delay(500, stoppingToken)
         with :? OperationCanceledException when stoppingToken.IsCancellationRequested -> ()
     }

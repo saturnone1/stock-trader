@@ -10,6 +10,7 @@ public static class BackgroundServiceExtensions
 {
     public static IServiceCollection AddBackgroundServices(
         this IServiceCollection services,
+        IConfiguration configuration,
         bool includeHostedServices = true)
     {
         // Inter-service communication channel
@@ -36,9 +37,14 @@ public static class BackgroundServiceExtensions
         services.AddHostedService<MarketDataIngestionService>();
         services.AddHostedService<PatternScannerService>();
         services.AddHostedService<DailyDataSyncService>();
-        services.AddHostedService<RiskMonitorService>();
-        services.AddHostedService<PositionExecutionManagerService>();
-        services.AddHostedService<EntryExecutionReconciliationService>();
+        var tradingCoreMode = configuration[$"{TradingCoreTransportOptions.SectionName}:Mode"]
+            ?? "Local";
+        if (!string.Equals(tradingCoreMode, "Remote", StringComparison.Ordinal))
+        {
+            services.AddHostedService<RiskMonitorService>();
+            services.AddHostedService<PositionExecutionManagerService>();
+            services.AddHostedService<EntryExecutionReconciliationService>();
+        }
         services.AddHostedService<DailyReportService>();
         services.AddHostedService<MLRetrainingService>();
         services.AddHostedService<MlTrainingPublicationReconciliationService>();

@@ -14,6 +14,7 @@ using StockTrader.Models.Enums;
 using StockTrader.Services.Market;
 using StockTrader.Services.Signal;
 using StockTrader.Services.Statistics;
+using StockTrader.Application.Settings;
 
 namespace StockTrader.Tests;
 
@@ -59,6 +60,9 @@ public class SignalServiceTests : IDisposable
         var strategies = new CompiledStrategyRepository(
             _db,
             NullLogger<CompiledStrategyRepository>.Instance);
+        var liveParameters = new Mock<ILiveParameterService>();
+        liveParameters.Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LiveParameterSnapshot([], null));
         return new SignalService(
             _statsMock.Object,
             _riskMock.Object,
@@ -68,6 +72,8 @@ public class SignalServiceTests : IDisposable
             opts,
             effectiveTimeProvider,
             new MarketCalendar(effectiveTimeProvider, NullLogger<MarketCalendar>.Instance),
+            Options.Create(new PatternSettings()),
+            liveParameters.Object,
             NullLogger<SignalService>.Instance);
     }
 

@@ -49,6 +49,8 @@ module HttpHost =
             $"stocktrader_trading_core_authority_generation {status.AuthorityGeneration}\nstocktrader_trading_core_inbox_total {status.InboxCount}\nstocktrader_trading_core_outbox_pending {status.OutboxPendingCount}\n")) |> ignore
         app.MapGet("/v1/status", Func<HttpContext,TradingCoreStore,IResult>(fun ctx store ->
             if authorized ctx then Results.Ok(store.Status()) else Results.Unauthorized())) |> ignore
+        app.MapGet("/v1/portfolio", Func<HttpContext,TradingCoreStore,IResult>(fun ctx store ->
+            if authorized ctx then Results.Ok(store.Portfolio()) else Results.Unauthorized())) |> ignore
         app.MapPost("/v1/projections", Func<HttpContext,TradingCoreStore,TradingStateSnapshot,IResult>(fun ctx store snapshot ->
             if not (authorized ctx) then Results.Unauthorized()
             else
@@ -77,5 +79,18 @@ module HttpHost =
                 with
                 | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
                 | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        app.MapPost("/v1/commands/positions", Func<HttpContext,TradingCoreStore,TradingPositionCommand,IResult>(fun ctx store command ->
+            if not (authorized ctx) then Results.Unauthorized()
+            else
+                try Results.Accepted($"/v1/commands/{command.Envelope.CommandId}", store.AcceptPosition command)
+                with
+                | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
+                | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        app.MapGet("/v1/commands/{commandId}", Func<HttpContext,TradingCoreStore,string,IResult>(fun ctx store commandId ->
+            if not (authorized ctx) then Results.Unauthorized()
+            else
+                match store.CommandStatus commandId with
+                | Some status -> Results.Ok status
+                | None -> Results.NotFound())) |> ignore
         app.Run()
         0

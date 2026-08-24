@@ -58,6 +58,46 @@ internal sealed class TradingCoreControlPlaneClient : ITradingCoreControlPlane, 
             .GetFromJsonAsync<TradingCoreStatus>("/v1/status", ct)
         ?? throw new InvalidOperationException("empty-trading-core-status");
 
+    public async Task<TradingCorePortfolioView> GetPortfolioAsync(CancellationToken ct = default) =>
+        await (_client ?? throw new InvalidOperationException("trading-core-client-disabled"))
+            .GetFromJsonAsync<TradingCorePortfolioView>("/v1/portfolio", ct)
+        ?? throw new InvalidOperationException("empty-trading-core-portfolio");
+
+    public async Task<TradingCommandReceipt> SubmitEntryAsync(
+        TradingEntryIntent intent,
+        CancellationToken ct = default)
+    {
+        var client = _client ?? throw new InvalidOperationException("trading-core-client-disabled");
+        using var response = await client.PostAsJsonAsync("/v1/commands/entries", intent, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingCommandReceipt>(ct)
+            ?? throw new InvalidOperationException("empty-trading-core-entry-receipt");
+    }
+
+    public async Task<TradingCommandStatusView?> GetCommandAsync(
+        string commandId,
+        CancellationToken ct = default)
+    {
+        var client = _client ?? throw new InvalidOperationException("trading-core-client-disabled");
+        using var response = await client.GetAsync(
+            $"/v1/commands/{Uri.EscapeDataString(commandId)}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingCommandStatusView>(ct)
+            ?? throw new InvalidOperationException("empty-trading-core-command-status");
+    }
+
+    public async Task<TradingCommandReceipt> SubmitPositionAsync(
+        TradingPositionCommand command,
+        CancellationToken ct = default)
+    {
+        var client = _client ?? throw new InvalidOperationException("trading-core-client-disabled");
+        using var response = await client.PostAsJsonAsync("/v1/commands/positions", command, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingCommandReceipt>(ct)
+            ?? throw new InvalidOperationException("empty-trading-core-position-receipt");
+    }
+
     private static HttpClient CreateClient(TradingCoreTransportOptions options)
     {
         var handler = new HttpClientHandler();

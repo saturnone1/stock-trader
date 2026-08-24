@@ -1229,7 +1229,8 @@ public class ArchitectureDependencyTests
             .Select(Path.GetFileName)
             .Should().BeEquivalentTo(
                 "Dockerfile.api", "Dockerfile.desktop", "Dockerfile.market-data",
-                "Dockerfile.ml-training", "Dockerfile.optimization-worker");
+                "Dockerfile.ml-training", "Dockerfile.optimization-worker",
+                "Dockerfile.trading-core");
         Directory.EnumerateFiles(repository, "docker-compose*.yml")
             .Select(Path.GetFileName)
             .Should().Equal("docker-compose.yml");

@@ -27,17 +27,17 @@ public sealed class LivePatternScanCycle(
         if (state.WasScanned(normalized, context.Source, marketDate))
             return;
 
-        var bars = await data.LoadBarsAsync(
+        var barSet = await data.LoadBarsAsync(
             normalized,
             observedAt.AddDays(-StrategyEvaluationPolicy.LiveDailySignalLookbackDays),
             observedAt,
             ct);
-        if (bars.Count < StrategyEvaluationPolicy.LiveScannerMinimumBars)
+        if (barSet.Bars.Count < StrategyEvaluationPolicy.LiveScannerMinimumBars)
         {
             logger.LogDebug(
                 "Skipping {Symbol}: only {Count} daily bars (need >= {Minimum})",
                 normalized,
-                bars.Count,
+                barSet.Bars.Count,
                 StrategyEvaluationPolicy.LiveScannerMinimumBars);
             return;
         }
@@ -51,10 +51,10 @@ public sealed class LivePatternScanCycle(
         logger.LogDebug(
             "Scanning {Symbol}: {Count} daily bars, regime={Regime}",
             normalized,
-            bars.Count,
+            barSet.Bars.Count,
             regime.RegimeLabel);
         var detected = await detection.ScanSymbolAsync(
-            normalized, bars.ToArray(), regime, ct);
+            normalized, barSet.Bars.ToArray(), regime, ct);
         if (detected.Count == 0)
         {
             logger.LogDebug("No signals for {Symbol}", normalized);
@@ -67,7 +67,7 @@ public sealed class LivePatternScanCycle(
             detected.Count,
             normalized,
             string.Join(", ", detected.Select(signal => signal.PatternType)));
-        await signalProcessor.ProcessAsync(detected, ct);
+        await signalProcessor.ProcessAsync(detected, barSet.Evidence, ct);
         state.MarkScanned(normalized, context.Source, marketDate);
     }
 
@@ -84,7 +84,7 @@ public sealed class LivePatternScanCycle(
         logger.LogDebug(
             "ComputeRegime: {Symbol} daily bars count = {Count}",
             benchmarkSymbol,
-            bars.Count);
-        return regimeEvaluator.Evaluate(bars, observedAt);
+            bars.Bars.Count);
+        return regimeEvaluator.Evaluate(bars.Bars, observedAt);
     }
 }

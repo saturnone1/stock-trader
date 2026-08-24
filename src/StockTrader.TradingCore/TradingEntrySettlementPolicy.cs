@@ -20,7 +20,9 @@ public static class TradingEntrySettlementPolicy
             fillPrice, fillPrice, intent.StopLossPrice, intent.TargetPrice, intent.PatternCode,
             intent.CustomPatternName, Utc(evidence.FilledAtUtc.Value), null, null, fillPrice,
             0m, Math.Abs(fillPrice - intent.StopLossPrice), false, false, false,
-            null, null, null, false, null, null, null, []);
+            null, null, null, false, null, null, null, [],
+            new TradingPositionExecutionContext(
+                intent.ExecutionArtifact, intent.MarketDataEvidence));
     }
 
     public static string PositionId(string commandId) => $"position:{commandId}";

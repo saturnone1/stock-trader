@@ -75,6 +75,7 @@ public static class DataServiceExtensions
         services.AddSingleton<IDashboardActivityStore, DashboardActivityStore>();
         services.AddScoped<ITradingCoreProjectionSource, TradingCoreProjectionSource>();
         services.AddScoped<ITradingCoreAccountConfigurationSource, TradingCoreAccountConfigurationSource>();
+        services.AddScoped<ITradingAccountIdentitySource, TradingAccountIdentitySource>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();
 

@@ -9,6 +9,8 @@ using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Services.Statistics;
+using StockTrader.Application.Settings;
+using StockTrader.Services.TradingCore;
 
 namespace StockTrader.Services.Signal;
 
@@ -22,6 +24,8 @@ public class SignalService : ISignalService
     private readonly TradingSettings _tradingSettings;
     private readonly TimeProvider _timeProvider;
     private readonly IMarketCalendar _marketCalendar;
+    private readonly PatternSettings _patternSettings;
+    private readonly ILiveParameterService _liveParameters;
     private readonly ILogger<SignalService> _logger;
 
     public SignalService(
@@ -33,6 +37,8 @@ public class SignalService : ISignalService
         IOptions<TradingSettings> tradingSettings,
         TimeProvider timeProvider,
         IMarketCalendar marketCalendar,
+        IOptions<PatternSettings> patternSettings,
+        ILiveParameterService liveParameters,
         ILogger<SignalService> logger)
     {
         _statsService = statsService;
@@ -43,6 +49,8 @@ public class SignalService : ISignalService
         _tradingSettings = tradingSettings.Value;
         _timeProvider = timeProvider;
         _marketCalendar = marketCalendar;
+        _patternSettings = patternSettings.Value;
+        _liveParameters = liveParameters;
         _logger = logger;
     }
 
@@ -57,6 +65,7 @@ public class SignalService : ISignalService
     {
         var recommendations = new List<TradeRecommendation>();
         var settings = await _settingsRepo.GetAsync(ct);
+        var liveOverrides = (await _liveParameters.GetAsync(ct)).Overrides;
 
         var customNames = signals
             .Select(signal => signal.CustomPatternName)
@@ -242,6 +251,9 @@ public class SignalService : ISignalService
                 PositionSize = positionSize,
                 ShareQuantity = shareQty,
                 Expectancy = stats?.Expectancy ?? 0m,
+                ExecutionSector = sector,
+                ExecutionArtifact = TradingExecutionArtifactFactory.Create(
+                    signal, customStrategy, _patternSettings, liveOverrides),
                 WasExecuted = false,
                 Mode = settings.OrderMode
             };

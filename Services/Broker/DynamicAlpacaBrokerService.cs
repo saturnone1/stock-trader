@@ -48,7 +48,8 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService, IDisposable
         string symbol,
         int quantity,
         CancellationToken ct = default) =>
-        Map(await _broker.IncreasePositionAsync(symbol, quantity, ct));
+        Map(await _broker.IncreasePositionAsync(new BrokerPositionOrderRequest(
+            $"legacy-{Guid.NewGuid():N}", symbol, quantity), ct));
 
     public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default) =>
         _broker.CancelOrderAsync(orderId, ct);
@@ -56,13 +57,26 @@ public sealed class DynamicAlpacaBrokerService : IBrokerService, IDisposable
     public async Task<BrokerOrder?> ClosePositionAsync(
         string symbol,
         CancellationToken ct = default) =>
-        Map(await _broker.ClosePositionAsync(symbol, null, ct));
+        Map(await CloseKnownQuantityAsync(symbol, null, ct));
 
     public async Task<BrokerOrder?> ClosePositionAsync(
         string symbol,
         int quantity,
         CancellationToken ct = default) =>
-        Map(await _broker.ClosePositionAsync(symbol, quantity, ct));
+        Map(await CloseKnownQuantityAsync(symbol, quantity, ct));
+
+    private async Task<BrokerOrderEvidence> CloseKnownQuantityAsync(
+        string symbol, int? quantity, CancellationToken ct)
+    {
+        var resolved = quantity ?? (await _broker.GetPositionsAsync(ct))
+            .FirstOrDefault(position => position.Symbol.Equals(
+                symbol, StringComparison.OrdinalIgnoreCase))?.Quantity
+            ?? 0;
+        if (resolved <= 0)
+            throw new InvalidOperationException($"No open broker position exists for {symbol}.");
+        return await _broker.ClosePositionAsync(new BrokerPositionOrderRequest(
+            $"legacy-{Guid.NewGuid():N}", symbol, resolved), ct);
+    }
 
     public async Task<IReadOnlyList<BrokerPositionSnapshot>> GetPositionsAsync(
         CancellationToken ct = default) =>

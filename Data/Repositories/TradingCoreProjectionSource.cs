@@ -48,7 +48,7 @@ internal sealed class TradingCoreProjectionSource(
                 item.ExecutionRequestRuleIndex, item.ExecutionOrderId,
                 item.ScalingExecutions.OrderBy(scale => scale.RuleIndex)
                     .Select(scale => new TradingScalingProjection(scale.RuleIndex, scale.ExecutionCount))
-                    .ToArray())).ToArray(),
+                    .ToArray(), null)).ToArray(),
             trades.Select(item => new TradingTradeProjection(
                 item.Id.ToString(), item.SourceSignalId?.ToString(), item.Symbol,
                 item.PatternType.ToString(), item.CustomPatternName, item.EntryPrice, item.ExitPrice,

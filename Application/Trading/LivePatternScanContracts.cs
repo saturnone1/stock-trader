@@ -1,5 +1,6 @@
 using StockTrader.Models;
 using StockTrader.Domain.MarketData;
+using StockTrader.ServiceContracts.MarketData;
 
 namespace StockTrader.Application.Trading;
 
@@ -8,12 +9,16 @@ public sealed record LiveDailyScanContext(
     MarketRegion MarketRegion,
     string RegimeBenchmarkSymbol);
 
+public sealed record LiveDailyBarSet(
+    IReadOnlyList<OhlcvBar> Bars,
+    MarketDataEvidenceContract Evidence);
+
 /// <summary>현재 공급자 선택과 저장된 일봉 조회를 실시간 스캔 유스케이스에 제공합니다.</summary>
 public interface ILiveDailyScanData
 {
     Task<LiveDailyScanContext> ResolveContextAsync(CancellationToken ct = default);
 
-    Task<IReadOnlyList<OhlcvBar>> LoadBarsAsync(
+    Task<LiveDailyBarSet> LoadBarsAsync(
         string symbol,
         DateTime from,
         DateTime to,
@@ -41,6 +46,7 @@ public interface ILiveSignalProcessor
 {
     Task ProcessAsync(
         IReadOnlyList<PatternSignal> signals,
+        MarketDataEvidenceContract evidence,
         CancellationToken ct = default);
 }
 

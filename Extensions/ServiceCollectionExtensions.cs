@@ -241,7 +241,7 @@ public static class ServiceCollectionExtensions
         services.AddBrokerServices();
         services.AddPatternServices();
         services.AddNotificationServices();
-        services.AddBackgroundServices(includeHostedServices);
+        services.AddBackgroundServices(configuration, includeHostedServices);
 
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(serviceProvider =>
@@ -316,7 +316,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ManualSignalEntryPolicy>();
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<ILiveEntryReconciliationCycle, LiveEntryReconciliationCycle>();
-        services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<OrderService>();
+        services.AddScoped<TradingCoreOrderService>();
+        services.AddScoped<IOrderService>(serviceProvider =>
+            string.Equals(serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
+                    .Value.Mode, "Remote", StringComparison.Ordinal)
+                ? serviceProvider.GetRequiredService<TradingCoreOrderService>()
+                : serviceProvider.GetRequiredService<OrderService>());
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
         services.AddScoped<ILiveOrderManagement, LiveOrderManagement>();
         services.AddScoped<LivePositionExecutionEvaluator>();

@@ -39,28 +39,31 @@ public sealed class AlpacaTradingBroker : ITradingBroker, IDisposable
     }
 
     public async Task<BrokerOrderEvidence> IncreasePositionAsync(
-        string symbol,
-        int quantity,
+        BrokerPositionOrderRequest request,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(symbol) || quantity <= 0)
+        if (string.IsNullOrWhiteSpace(request.ClientOrderId)
+            || string.IsNullOrWhiteSpace(request.Symbol) || request.Quantity <= 0)
             throw new ArgumentException("Invalid scale-in request.");
         var order = await _client.PostOrderAsync(
-            MarketOrder.Buy(symbol, quantity).WithDuration(TimeInForce.Day), ct);
+            MarketOrder.Buy(request.Symbol, request.Quantity)
+                .WithDuration(TimeInForce.Day)
+                .WithClientOrderId(request.ClientOrderId), ct);
         return Map(order, UtcNow);
     }
 
     public async Task<BrokerOrderEvidence> ClosePositionAsync(
-        string symbol,
-        int? quantity = null,
+        BrokerPositionOrderRequest request,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(symbol) || quantity is <= 0)
+        if (string.IsNullOrWhiteSpace(request.ClientOrderId)
+            || string.IsNullOrWhiteSpace(request.Symbol) || request.Quantity <= 0)
             throw new ArgumentException("Invalid close request.");
-        var request = new DeletePositionRequest(symbol);
-        if (quantity.HasValue)
-            request.PositionQuantity = PositionQuantity.InShares(quantity.Value);
-        return Map(await _client.DeletePositionAsync(request, ct), UtcNow);
+        var order = await _client.PostOrderAsync(
+            MarketOrder.Sell(request.Symbol, request.Quantity)
+                .WithDuration(TimeInForce.Day)
+                .WithClientOrderId(request.ClientOrderId), ct);
+        return Map(order, UtcNow);
     }
 
     public Task<bool> CancelOrderAsync(string orderId, CancellationToken ct = default) =>

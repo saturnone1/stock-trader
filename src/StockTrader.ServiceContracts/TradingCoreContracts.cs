@@ -40,6 +40,39 @@ public static class TradingCommandStatuses
     public const string ReconciliationRequired = "ReconciliationRequired";
 }
 
+public static class TradingPositionActionKinds
+{
+    public const string FullExit = "FullExit";
+    public const string PartialExit = "PartialExit";
+    public const string ScaleIn = "ScaleIn";
+    public const string ScaleOut = "ScaleOut";
+
+    public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        FullExit, PartialExit, ScaleIn, ScaleOut
+    };
+}
+
+public static class TradingExecutionArtifactKinds
+{
+    public const string StrategyDocument = "StrategyDocument";
+    public const string BuiltInPattern = "BuiltInPattern";
+}
+
+public sealed record TradingStrategyExecutionArtifact(
+    int ContractVersion,
+    string ArtifactId,
+    string Kind,
+    string PatternCode,
+    StrategyExecutionArtifact? StrategyDocument,
+    string BuiltInSettingsJson,
+    string DefinitionHash,
+    string EngineSemanticsVersion,
+    string PatternCatalogVersion,
+    string CalendarVersion,
+    bool CanOpenPosition,
+    bool CanManagePosition);
+
 public sealed record TradingAuthorityContract(
     int ContractVersion,
     TradingAuthorityMode Mode,
@@ -76,13 +109,19 @@ public sealed record TradingEntryIntent(
     decimal TargetPrice,
     int ShareQuantity,
     decimal Expectancy,
-    StrategyExecutionArtifact Strategy,
+    TradingStrategyExecutionArtifact ExecutionArtifact,
     MarketDataEvidenceContract MarketDataEvidence);
 
 public sealed record TradingPositionCommand(
     TradingCommandEnvelope Envelope,
     string PositionId,
-    string Reason);
+    string Action,
+    int Quantity,
+    string Reason,
+    string ExpectedExecutionArtifactId,
+    MarketDataEvidenceContract MarketDataEvidence,
+    int? ScalingRuleIndex = null,
+    bool MarksPartialProfit = false);
 
 public sealed record TradingCommandReceipt(
     int ContractVersion,
@@ -93,6 +132,16 @@ public sealed record TradingCommandReceipt(
     string Message,
     DateTime AcceptedAtUtc,
     bool AlreadyAccepted);
+
+public sealed record TradingCommandStatusView(
+    int ContractVersion,
+    string CommandId,
+    string CommandKind,
+    string PayloadHash,
+    string Status,
+    string? BrokerOrderId,
+    DateTime AcceptedAtUtc,
+    DateTime UpdatedAtUtc);
 
 public sealed record TradingAccountProjection(
     string AccountId,
@@ -156,6 +205,10 @@ public sealed record TradingRecommendationProjection(
 
 public sealed record TradingScalingProjection(int RuleIndex, int ExecutionCount);
 
+public sealed record TradingPositionExecutionContext(
+    TradingStrategyExecutionArtifact ExecutionArtifact,
+    MarketDataEvidenceContract EntryMarketDataEvidence);
+
 public sealed record TradingPositionProjection(
     string PositionId,
     string? SourceSignalId,
@@ -186,7 +239,8 @@ public sealed record TradingPositionProjection(
     string? ExecutionRequestKind,
     int? ExecutionRequestRuleIndex,
     string? ExecutionOrderId,
-    IReadOnlyList<TradingScalingProjection> ScalingExecutions);
+    IReadOnlyList<TradingScalingProjection> ScalingExecutions,
+    TradingPositionExecutionContext? ExecutionContext);
 
 public sealed record TradingTradeProjection(
     string TradeId,
@@ -247,6 +301,13 @@ public sealed record TradingCoreStatus(
     DateTime? LastBrokerReconciliationAtUtc,
     string? LastError);
 
+public sealed record TradingCorePortfolioView(
+    int ContractVersion,
+    long AuthorityGeneration,
+    IReadOnlyList<TradingRecommendationProjection> Recommendations,
+    IReadOnlyList<TradingPositionProjection> Positions,
+    IReadOnlyList<TradingTradeProjection> Trades);
+
 public static class TradingCoreIdentity
 {
     public static string Snapshot(TradingStateSnapshot snapshot) => CanonicalJsonHash.Compute(
@@ -265,12 +326,22 @@ public static class TradingCoreIdentity
         intent.TargetPrice,
         intent.ShareQuantity,
         intent.Expectancy,
-        intent.Strategy,
+        intent.ExecutionArtifact,
         intent.MarketDataEvidence
     });
 
     public static string PositionPayload(TradingPositionCommand command) =>
-        CanonicalJsonHash.Compute(new { command.PositionId, command.Reason });
+        CanonicalJsonHash.Compute(new
+        {
+            command.PositionId,
+            command.Action,
+            command.Quantity,
+            command.Reason,
+            command.ExpectedExecutionArtifactId,
+            command.MarketDataEvidence,
+            command.ScalingRuleIndex,
+            command.MarksPartialProfit,
+        });
 
     public static string AccountConfiguration(TradingAccountConfigurationSet configuration) =>
         CanonicalJsonHash.Compute(new
@@ -321,9 +392,15 @@ public static class TradingCoreCompatibilityPolicy
             || string.IsNullOrWhiteSpace(intent.AccountId)
             || string.IsNullOrWhiteSpace(intent.Symbol)
             || string.IsNullOrWhiteSpace(intent.PatternCode)
-            || intent.Strategy is null
+            || intent.ExecutionArtifact is null
             || intent.MarketDataEvidence is null
-            || string.IsNullOrWhiteSpace(intent.Strategy?.ContentHash)
+            || MarketDataEvidenceError(intent.MarketDataEvidence) is not null
+            || TradingExecutionArtifactPolicy.Error(intent.ExecutionArtifact) is not null
+            || !intent.ExecutionArtifact.CanOpenPosition
+            || !string.Equals(intent.ExecutionArtifact.PatternCode, intent.PatternCode,
+                StringComparison.Ordinal)
+            || !string.Equals(intent.ExecutionArtifact.CalendarVersion,
+                intent.MarketDataEvidence.CalendarVersion, StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(intent.MarketDataEvidence?.EvidenceId)
             || !intent.MarketDataEvidence.IsComplete
             || intent.MarketDataEvidence.LastBarUtc is null
@@ -344,7 +421,15 @@ public static class TradingCoreCompatibilityPolicy
         if (command.Envelope.CommandKind is not (TradingCommandKinds.ClosePosition
             or TradingCommandKinds.ReconcilePosition)
             || string.IsNullOrWhiteSpace(command.PositionId)
-            || string.IsNullOrWhiteSpace(command.Reason))
+            || !TradingPositionActionKinds.All.Contains(command.Action)
+            || command.Quantity <= 0
+            || string.IsNullOrWhiteSpace(command.Reason)
+            || string.IsNullOrWhiteSpace(command.ExpectedExecutionArtifactId)
+            || command.MarketDataEvidence is null
+            || MarketDataEvidenceError(command.MarketDataEvidence) is not null
+            || !command.MarketDataEvidence.IsComplete
+            || command.MarketDataEvidence.LastBarUtc is null
+            || command.MarketDataEvidence.LastBarUtc > command.Envelope.OccurredAtUtc)
             return "invalid-position-command";
         return string.Equals(command.Envelope.PayloadHash,
             TradingCoreIdentity.PositionPayload(command), StringComparison.Ordinal)
@@ -362,6 +447,14 @@ public static class TradingCoreCompatibilityPolicy
             || HasDuplicate(snapshot.Positions.Select(item => item.PositionId))
             || HasDuplicate(snapshot.Trades.Select(item => item.TradeId)))
             return "duplicate-financial-identity";
+        if (snapshot.Positions.Any(position => position.ExecutionContext is { } context
+            && (TradingExecutionArtifactPolicy.Error(context.ExecutionArtifact) is not null
+                || MarketDataEvidenceError(context.EntryMarketDataEvidence) is not null
+                || !string.Equals(context.ExecutionArtifact.PatternCode,
+                    position.PatternCode, StringComparison.Ordinal)
+                || !string.Equals(context.EntryMarketDataEvidence.Symbol,
+                    position.Symbol, StringComparison.OrdinalIgnoreCase))))
+            return "invalid-position-execution-context";
         return string.Equals(snapshot.SnapshotId, TradingCoreIdentity.Snapshot(snapshot),
             StringComparison.Ordinal) ? null : "snapshot-hash-mismatch";
     }
@@ -415,4 +508,85 @@ public static class TradingCoreCompatibilityPolicy
     private static bool HasDuplicate(IEnumerable<string> values) => values
         .Any(string.IsNullOrWhiteSpace)
         || values.GroupBy(item => item, StringComparer.Ordinal).Any(group => group.Count() > 1);
+
+    private static string? MarketDataEvidenceError(MarketDataEvidenceContract evidence)
+    {
+        if (evidence.ContractVersion != MarketDataContractVersions.Current
+            || string.IsNullOrWhiteSpace(evidence.Provider)
+            || string.IsNullOrWhiteSpace(evidence.Symbol)
+            || string.IsNullOrWhiteSpace(evidence.ContentHash)
+            || evidence.RequestedFromUtc > evidence.RequestedToUtc
+            || evidence.FirstBarUtc > evidence.LastBarUtc)
+            return "invalid-market-data-evidence";
+        var expected = MarketDataContractHash.Evidence(
+            evidence.Provider, evidence.Symbol, evidence.TimeFrame, evidence.AdjustmentMode,
+            evidence.CalendarVersion, evidence.Revision, evidence.ContentHash);
+        return string.Equals(expected, evidence.EvidenceId, StringComparison.Ordinal)
+            ? null
+            : "market-data-evidence-hash-mismatch";
+    }
+}
+
+public static class TradingExecutionArtifactPolicy
+{
+    public static string ComputeDefinitionHash(
+        string kind,
+        string patternCode,
+        StrategyExecutionArtifact? strategy,
+        string builtInSettingsJson,
+        string calendarVersion) => CanonicalJsonHash.Compute(new
+        {
+            Kind = kind,
+            PatternCode = patternCode,
+            StrategyContentHash = strategy?.ContentHash,
+            BuiltInSettingsJson = builtInSettingsJson,
+            CalendarVersion = calendarVersion,
+            OptimizationWorkerContractCatalog.EngineSemanticsVersion,
+            OptimizationWorkerContractCatalog.PatternCatalogVersion,
+        });
+
+    public static string? Error(TradingStrategyExecutionArtifact artifact)
+    {
+        if (artifact.ContractVersion != TradingCoreContractVersions.Current)
+            return "unsupported-execution-artifact-contract";
+        if (string.IsNullOrWhiteSpace(artifact.PatternCode)
+            || string.IsNullOrWhiteSpace(artifact.ArtifactId)
+            || !artifact.CanManagePosition
+            || artifact.EngineSemanticsVersion != OptimizationWorkerContractCatalog.EngineSemanticsVersion
+            || artifact.PatternCatalogVersion != OptimizationWorkerContractCatalog.PatternCatalogVersion)
+            return "incompatible-execution-artifact";
+        if (artifact.Kind == TradingExecutionArtifactKinds.StrategyDocument)
+        {
+            if (artifact.StrategyDocument is null || artifact.BuiltInSettingsJson != "{}"
+                || artifact.StrategyDocument.ContractVersion
+                    != OptimizationWorkerContractCatalog.EvaluationInputVersion
+                || artifact.StrategyDocument.EngineSemanticsVersion
+                    != artifact.EngineSemanticsVersion
+                || artifact.StrategyDocument.PatternCatalogVersion
+                    != artifact.PatternCatalogVersion
+                || artifact.StrategyDocument.CalendarVersion != artifact.CalendarVersion
+                || string.IsNullOrWhiteSpace(artifact.StrategyDocument.ContentHash)
+                || string.IsNullOrWhiteSpace(artifact.StrategyDocument.StrategyDocumentJson))
+                return "invalid-strategy-document-artifact";
+        }
+        else if (artifact.Kind == TradingExecutionArtifactKinds.BuiltInPattern)
+        {
+            if (artifact.StrategyDocument is not null
+                || string.IsNullOrWhiteSpace(artifact.BuiltInSettingsJson))
+                return "invalid-built-in-pattern-artifact";
+            try
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(artifact.BuiltInSettingsJson);
+                if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                    return "invalid-built-in-settings";
+            }
+            catch (System.Text.Json.JsonException) { return "invalid-built-in-settings"; }
+        }
+        else return "unsupported-execution-artifact-kind";
+
+        var expected = ComputeDefinitionHash(artifact.Kind, artifact.PatternCode,
+            artifact.StrategyDocument, artifact.BuiltInSettingsJson, artifact.CalendarVersion);
+        return artifact.DefinitionHash == expected && artifact.ArtifactId == expected
+            ? null : "execution-artifact-hash-mismatch";
+    }
 }

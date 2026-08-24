@@ -1,0 +1,22 @@
+namespace StockTrader.TradingCoreService
+
+open StockTrader.ServiceContracts.TradingCore
+open StockTrader.TradingCore.Broker
+
+/// C#-visible facade over the small F# persistence modules. HTTP and broker adapters use the same
+/// operations directly; this facade keeps cross-language integration tests strongly typed.
+type TradingCoreOperations(store: TradingCoreStore) =
+    member _.Import(snapshot) = store.Import snapshot
+    member _.ApplyAccountConfiguration(configuration) = store.ApplyAccountConfiguration configuration
+    member _.Activate(authority) = store.Activate authority
+    member _.Status() = store.Status()
+    member _.Portfolio() = store.Portfolio()
+    member _.AcceptEntry(intent) = store.AcceptEntry intent
+    member _.ClaimEntry() = store.ClaimEntry()
+    member _.RecordBrokerEvidence(commandId, evidence: BrokerOrderEvidence) =
+        store.RecordBrokerEvidence(commandId, evidence)
+    member _.AcceptPosition(command) = store.AcceptPosition command
+    member _.ClaimPosition() = store.ClaimPosition()
+    member _.RecordPositionBrokerEvidence(commandId, evidence: BrokerOrderEvidence) =
+        store.RecordPositionBrokerEvidence(commandId, evidence)
+    member _.CommandStatus(commandId) = store.CommandStatus commandId
