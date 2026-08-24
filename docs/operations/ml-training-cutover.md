@@ -46,25 +46,33 @@ non-ML fallback remains available when the training service is unavailable.
 
 ## Verification record
 
-Local service-unit batch on 2026-08-24:
+Completed service-unit and production batch on 2026-08-24 (`bb23084`):
 
 - API build and independent F# service build: passed.
 - Contract mutation/future sample/incomplete label rejection: passed.
 - Same compute facade, deterministic prediction parity, explicit insufficient-signal result: passed.
 - SQLite job identity idempotency/conflict/cancellation: passed.
-- Existing application suite: pending final rerun after integration fixes.
+- Existing application suite: 1,007 passed; independent ML service: 4 passed repeatedly.
+- Desktop API check, 75 tests, and production build: passed.
+- Production authority: `Remote`, publication revision 6, TLS generation `ml240019`.
 
 Cluster evidence to record before ADR acceptance:
 
-- [ ] image build/import and independent Pod, ServiceAccount, NetworkPolicy, two-port probes
-- [ ] mTLS CA validation, client identity rejection, shared-secret rejection and TLS rotation
-- [ ] production Shadow parity for regime and explicit insufficient signal
-- [ ] Remote-only training, verified API cache promotion, API restart reload
-- [ ] duplicate/concurrent/replay, cancellation, timeout and corrupt/stale artifact rejection
-- [ ] Pod loss while pending/running/publishing and API loss during completion
-- [ ] bounded CPU/memory load and queue behavior
-- [ ] SQLite backup, restore, immutable artifact rehydration and rollback to Local
-- [ ] `/api/health`, `/api/ml`, desktop URL, Pod status and startup logs
+- [x] image build/import and independent Pod, ServiceAccount, NetworkPolicy, two-port probes
+- [x] mTLS CA validation, client identity rejection, shared-secret rejection and TLS rotation
+- [x] production Shadow parity for regime and explicit insufficient signal
+- [x] Remote-only training, verified API cache promotion, API restart reload
+- [x] duplicate/concurrent/replay, cancellation, unavailable/no-fallback and corrupt/stale rejection
+- [x] Pod loss while pending/running and API loss during completion
+- [x] bounded CPU/memory load and queue behavior
+- [x] SQLite backup, restore, immutable artifact rehydration and rollback to Local
+- [x] `/api/health`, `/api/ml`, desktop URL, Pod status and startup logs
+
+Operational observations: 12 simultaneous duplicate submissions all returned 202 without creating
+another job; the service remained at 11m CPU and 49 MiB after the batch (2 CPU/1 GiB limits).
+Removing the latest immutable ZIP/manifest and restarting reproduced byte-identical SHA-256 files
+from `jobs.db`. The restore script preserved revision 5, and the final Remote publication advanced
+to revision 6. API and desktop health both returned HTTP 200 with every StockTrader Pod Ready.
 
 ## Backup and restore
 

@@ -95,8 +95,16 @@ service is the exclusive provider and normalized-bar authority in Remote mode, w
 volume, correction revisions, evidence hashes, mTLS identity, provider credentials, probes,
 metrics, backup/restore, and rollback projection. The production batch passed at `6587b65`; its
 evidence is recorded in the
-[Market Data cutover operations note](../operations/market-data-cutover.md). MSA Stage 3 is complete
-and ML Training is the next extraction candidate.
+[Market Data cutover operations note](../operations/market-data-cutover.md). MSA Stage 3 completed
+with ML Training selected as the next extraction candidate.
+
+[ADR 0079](adr/0079-extract-ml-training-service.md) completes the ML Training boundary. The F#
+service owns its durable queue, publication revision, immutable artifacts, mTLS identity, and
+resource-bounded Kubernetes Pod; the API supplies causal evidence and keeps only a verified
+inference cache. The production Shadow/Remote, loss recovery, backup/restore, TLS rotation, load,
+and rollback batch passed at `bb23084`, with evidence in the
+[ML Training cutover operations note](../operations/ml-training-cutover.md). MSA Stage 4 is complete;
+no later extraction was started in this acceptance batch.
 
 ## Target modules
 

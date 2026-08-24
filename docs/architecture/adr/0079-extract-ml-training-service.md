@@ -1,6 +1,6 @@
 # 0079 — Extract ML Training and immutable model publication
 
-- Status: Proposed, pending complete service cutover verification
+- Status: Accepted
 - Date: 2026-08-24
 - Baseline: `e419b5d`
 
@@ -107,3 +107,17 @@ This ADR becomes Accepted only when one service-level batch proves:
 
 Until these gates pass, ML Training is incomplete and Reporting/Notifications or Trading Core
 extraction must not begin.
+
+## Acceptance record
+
+The complete production service batch passed on 2026-08-24 at `bb23084`. The accepted deployment
+uses `Remote` authority, publication revision 6, and TLS generation `ml240019`. Evidence includes
+production Shadow semantic parity, Remote-only publication and restart reconciliation, mutual TLS
+and shared-secret rejection, atomic duplicate/concurrent delivery, cancellation, Pod/API loss,
+no-local-fallback behavior, immutable artifact rehydration, SQLite backup/restore, bounded resource
+load, TLS rotation with preserved-generation rollback, and `Remote`/`Local` rollback. The backend
+suite passed 1,007 tests, the independent ML service suite passed all four conformance tests across
+repeated runs, and the desktop passed API generation checks, 75 tests, and its production build.
+
+This acceptance completes MSA Stage 4. It does not authorize beginning another extraction inside
+the same service batch; the next module boundary requires its own ADR and acceptance run.
