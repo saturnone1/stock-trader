@@ -22,6 +22,9 @@
     <Compile Remove="Domain\MarketData\PriceAdjustmentCatalog.cs" />
     <Compile Remove="Domain\MarketData\MarketSymbolPolicy.cs" />
     <Compile Remove="Domain\Backtesting\BacktestExecutionCatalog.cs" />
+    <Compile Remove="Domain\Trading\BrokerCatalog.cs" />
+    <Compile Remove="Domain\Trading\OrderMode.cs" />
+    <Compile Remove="Domain\Trading\OrderModeCatalog.cs" />
     <Compile Remove="Domain\Strategies\IndicatorCatalog.cs" />
     <Compile Remove="Domain\Strategies\RuleOperatorCatalog.cs" />
     <Compile Remove="Domain\Strategies\StrategyCatalog.cs" />
@@ -77,6 +80,7 @@
     <ProjectReference Include="src\StockTrader.OptimizationProtocol\StockTrader.OptimizationProtocol.csproj" />
     <ProjectReference Include="src\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
     <ProjectReference Include="src\StockTrader.MlTrainingCompute\StockTrader.MlTrainingCompute.csproj" />
+    <ProjectReference Include="src\StockTrader.TradingCore\StockTrader.TradingCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>

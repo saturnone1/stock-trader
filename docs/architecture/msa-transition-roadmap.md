@@ -5,9 +5,11 @@ Implementation is authorized only by extraction-specific ADRs. Stage 2 was compl
 under [ADR 0077](adr/0077-cut-over-remote-optimization-authority.md) at `b636cb7`; the production
 topology is now the modular application plus an independently deployed Optimization Worker service.
 Stage 3 Market Data was completed and accepted under
-[ADR 0078](adr/0078-extract-market-data-service.md) at `6587b65`. Stage 4 ML Training is in progress
-under [ADR 0079](adr/0079-extract-ml-training-service.md); no later service boundary may begin until
-its Remote cutover and resilience evidence is accepted.
+[ADR 0078](adr/0078-extract-market-data-service.md) at `6587b65`. Stage 4 ML Training was completed
+and accepted under [ADR 0079](adr/0079-extract-ml-training-service.md) at `bb23084`. Production has
+no enabled notification channel and no measured delivery-isolation trigger, so the optional
+Reporting/Notifications extraction is deferred. Stage 5 Trading Core is the only active extraction
+under [ADR 0080](adr/0080-extract-trading-core-service.md).
 
 ## Baseline and feasibility finding
 
@@ -212,9 +214,11 @@ authoritative inputs to trading.
 Exit gate: a worker or consumer outage cannot change live trading state, and replay cannot duplicate
 financial or external-notification effects beyond the documented delivery policy.
 
-Status: **in progress under [ADR 0079](adr/0079-extract-ml-training-service.md)**. ML Training is the
-only active extraction. Reporting/Notifications remain deferred until the complete ML service batch
-passes.
+Status: **complete (2026-08-24 KST)**. ML Training owns its queue, immutable model publications,
+artifacts, and recovery path under ADR 0079. Production acceptance covered Remote-only authority,
+concurrent delivery, process loss, backup/restore, TLS rotation/rollback, and consumer-cache
+reconciliation. Reporting/Notifications remain deferred because every production delivery channel
+is disabled and no failure/load evidence currently justifies another network boundary.
 
 ## Stage 5 — Isolate Trading Core
 
@@ -240,6 +244,14 @@ Migration uses one financial writer at a time:
 Exit gate: failover drills prove there is never more than one order authority, open orders survive
 process loss, every broker fill converges to one durable state, and live feature/version mismatches
 fail closed.
+
+Status: **in progress under [ADR 0080](adr/0080-extract-trading-core-service.md)**. The measured
+production baseline is an active Alpaca Paper account in `AutoOrder` mode with five open positions,
+while risk monitoring, position execution, entry reconciliation, research requests, settings, and
+ordinary API releases still share one API Pod. This establishes a concrete release/failure and
+credential-isolation reason for extraction after Stages 2–4 proved the platform. The whole strongly
+consistent boundary is being moved as one unit; separate Risk, Order, Position, or Broker services
+remain prohibited.
 
 ## Stage 6 — Re-evaluate Strategy Research and Edge
 

@@ -10,6 +10,7 @@ using StockTrader.Application.Reporting;
 using StockTrader.Application.Dashboard;
 using StockTrader.Application.Trading;
 using StockTrader.Application.MarketData;
+using StockTrader.Application.TradingCore;
 using StockTrader.Data.Repositories;
 using StockTrader.Data.Migrations;
 using StockTrader.Models.Enums;
@@ -72,6 +73,8 @@ public static class DataServiceExtensions
         services.AddSingleton<ILivePositionExecutionStore, LivePositionExecutionStore>();
         services.AddSingleton<IDailyReportActivityStore, DailyReportActivityStore>();
         services.AddSingleton<IDashboardActivityStore, DashboardActivityStore>();
+        services.AddScoped<ITradingCoreProjectionSource, TradingCoreProjectionSource>();
+        services.AddScoped<ITradingCoreAccountConfigurationSource, TradingCoreAccountConfigurationSource>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();
 

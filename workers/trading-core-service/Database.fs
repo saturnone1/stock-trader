@@ -1,0 +1,73 @@
+namespace StockTrader.TradingCoreService
+
+open System
+open Microsoft.Data.Sqlite
+open StockTrader.ServiceContracts.TradingCore
+
+module Database =
+    let connect path =
+        let cs = $"Data Source={path};Mode=ReadWriteCreate;Cache=Shared;Pooling=False;Default Timeout=10"
+        let connection = new SqliteConnection(cs)
+        connection.Open()
+        connection
+
+    let initialize path initialMode =
+        match IO.Path.GetDirectoryName(IO.Path.GetFullPath path) with
+        | null | "" -> ()
+        | parent -> IO.Directory.CreateDirectory parent |> ignore
+        use connection = connect path
+        use command = connection.CreateCommand()
+        command.CommandText <- """
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS authority (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), mode TEXT NOT NULL, generation INTEGER NOT NULL,
+ authority_id TEXT NOT NULL, activated_at TEXT NOT NULL, previous_state_hash TEXT NOT NULL,
+ broker_reconciliation_hash TEXT NOT NULL, broker_reconciled_at TEXT NULL,
+ unresolved_broker_orders INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS snapshots (
+ snapshot_id TEXT PRIMARY KEY, source_generation INTEGER NOT NULL, captured_at TEXT NOT NULL,
+ payload_json TEXT NOT NULL, accepted_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS projections (
+ kind TEXT NOT NULL, identity TEXT NOT NULL, payload_json TEXT NOT NULL,
+ snapshot_id TEXT NOT NULL, PRIMARY KEY(kind,identity));
+CREATE TABLE IF NOT EXISTS inbox (
+ command_id TEXT PRIMARY KEY, command_kind TEXT NOT NULL, payload_hash TEXT NOT NULL,
+ receipt_json TEXT NOT NULL, accepted_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS outbox (
+ event_id TEXT PRIMARY KEY, aggregate_id TEXT NOT NULL, aggregate_version INTEGER NOT NULL,
+ payload_json TEXT NOT NULL, occurred_at TEXT NOT NULL, delivered_at TEXT NULL,
+ UNIQUE(aggregate_id,aggregate_version));
+CREATE TABLE IF NOT EXISTS financial_intents (
+ command_id TEXT PRIMARY KEY, command_kind TEXT NOT NULL, payload_hash TEXT NOT NULL,
+ payload_json TEXT NOT NULL, status TEXT NOT NULL, broker_order_id TEXT NULL,
+ accepted_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_recommendations (
+ identity TEXT PRIMARY KEY, source_signal_id TEXT NOT NULL UNIQUE, payload_json TEXT NOT NULL,
+ status TEXT NOT NULL, broker_order_id TEXT NULL, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_positions (
+ identity TEXT PRIMARY KEY, source_signal_id TEXT NULL UNIQUE, payload_json TEXT NOT NULL,
+ execution_context_json TEXT NOT NULL, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_trades (
+ identity TEXT PRIMARY KEY, payload_json TEXT NOT NULL, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS broker_evidence (
+ order_id TEXT PRIMARY KEY, client_order_id TEXT NOT NULL UNIQUE, command_id TEXT NOT NULL,
+ payload_json TEXT NOT NULL, observed_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS account_configuration (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), generation INTEGER NOT NULL,
+ configuration_hash TEXT NOT NULL, ciphertext BLOB NOT NULL, nonce BLOB NOT NULL,
+ tag BLOB NOT NULL, accepted_at TEXT NOT NULL);
+INSERT OR IGNORE INTO state(key,value) VALUES('account_generation','0');
+INSERT OR IGNORE INTO state(key,value) VALUES('last_snapshot_id','');
+"""
+        command.ExecuteNonQuery() |> ignore
+        use seed = connection.CreateCommand()
+        seed.CommandText <- """INSERT OR IGNORE INTO authority
+(singleton,mode,generation,authority_id,activated_at,previous_state_hash,
+ broker_reconciliation_hash,broker_reconciled_at,unresolved_broker_orders)
+VALUES(1,$mode,1,$id,$at,'','',NULL,0)"""
+        seed.Parameters.AddWithValue("$mode", initialMode.ToString()) |> ignore
+        seed.Parameters.AddWithValue("$id", TradingCoreContractVersions.Service) |> ignore
+        seed.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+        seed.ExecuteNonQuery() |> ignore

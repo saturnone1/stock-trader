@@ -9,6 +9,7 @@ using StockTrader.Services.Backtest;
 using StockTrader.Services.Indicators;
 using StockTrader.Services.Market;
 using StockTrader.Services.ML;
+using StockTrader.Services.TradingCore;
 using StockTrader.Services.Order;
 using StockTrader.Services.Risk;
 using StockTrader.Application.Settings;
@@ -28,6 +29,7 @@ using StockTrader.Services.Portfolio;
 using StockTrader.Application.Statistics;
 using StockTrader.Application.Signals;
 using StockTrader.Application.Reporting;
+using StockTrader.Application.TradingCore;
 using StockTrader.Application.Dashboard;
 using StockTrader.Application.Accounts;
 using StockTrader.Application.Trading;
@@ -178,6 +180,11 @@ public static class ServiceCollectionExtensions
             .Validate(settings => settings.IsValid(),
                 "ML Training transport requires HTTPS, mTLS files, a shared secret, and bounded timeouts outside Local mode")
             .ValidateOnStart();
+        services.AddOptions<TradingCoreTransportOptions>()
+            .Bind(configuration.GetSection(TradingCoreTransportOptions.SectionName))
+            .Validate(settings => settings.IsValid(),
+                "Trading Core transport requires HTTPS, mTLS files, a shared secret, and bounded intervals outside Local mode")
+            .ValidateOnStart();
         services.AddOptions<PatternStatisticsSettings>()
             .Bind(configuration.GetSection("PatternStatistics"))
             .Validate(settings => settings.CacheMinutes > 0,
@@ -260,6 +267,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISignalScorer, SignalScorer>();
         services.AddScoped<IMarketRegimeTrainingDataSource, MarketRegimeTrainingDataSource>();
         services.AddSingleton<IMlTrainingTransport, MlTrainingTransport>();
+        services.AddSingleton<ITradingCoreControlPlane, TradingCoreControlPlaneClient>();
+        services.AddSingleton<TradingAccountConfigurationGenerationState>();
         services.AddSingleton(serviceProvider =>
         {
             var settings = serviceProvider

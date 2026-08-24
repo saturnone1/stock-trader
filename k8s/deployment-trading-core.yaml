@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stocktrader-trading-core
+  namespace: stocktrader
+automountServiceAccountToken: false
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocktrader-trading-core
+  namespace: stocktrader
+  labels:
+    app: stocktrader-trading-core
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: stocktrader-trading-core
+  template:
+    metadata:
+      labels:
+        app: stocktrader-trading-core
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: stocktrader-trading-core
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: trading-core
+        image: localhost/stock-trader/trading-core:latest
+        imagePullPolicy: Never
+        ports:
+        - name: health
+          containerPort: 8080
+        - name: mtls
+          containerPort: 9443
+        env:
+        - name: STOCKTRADER_TRADING_CORE_DATA
+          value: "/data"
+        - name: STOCKTRADER_TRADING_CORE_MODE
+          value: "__TRADING_CORE_MODE__"
+        - name: STOCKTRADER_TRADING_CORE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-trading-core-auth
+              key: shared-secret
+        - name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stocktrader-trading-core-encryption
+              key: encryption-key
+        - name: STOCKTRADER_TRADING_CORE_SERVER_CERT_PATH
+          value: "/tls/server/tls.crt"
+        - name: STOCKTRADER_TRADING_CORE_SERVER_KEY_PATH
+          value: "/tls/server/tls.key"
+        - name: STOCKTRADER_TRADING_CORE_CLIENT_CA_PATH
+          value: "/tls/client-ca/ca.crt"
+        resources:
+          requests:
+            memory: "96Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: server-tls
+          mountPath: /tls/server
+          readOnly: true
+        - name: client-ca
+          mountPath: /tls/client-ca
+          readOnly: true
+        - name: runtime-tmp
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: health
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      - name: data
+        hostPath:
+          path: __TRADING_CORE_DATA_DIR__
+          type: DirectoryOrCreate
+      - name: server-tls
+        secret:
+          secretName: __TRADING_CORE_SERVER_TLS_SECRET__
+      - name: client-ca
+        secret:
+          secretName: __TRADING_CORE_CLIENT_TLS_SECRET__
+          items:
+          - key: ca.crt
+            path: ca.crt
+      - name: runtime-tmp
+        emptyDir:
+          sizeLimit: 64Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stocktrader-trading-core
+  namespace: stocktrader
+spec:
+  selector:
+    app: stocktrader-trading-core
+  ports:
+  - name: health
+    port: 8080
+    targetPort: health
+  - name: mtls
+    port: 9443
+    targetPort: mtls
+  type: ClusterIP

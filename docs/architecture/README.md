@@ -106,6 +106,12 @@ and rollback batch passed at `bb23084`, with evidence in the
 [ML Training cutover operations note](../operations/ml-training-cutover.md). MSA Stage 4 is complete;
 no later extraction was started in this acceptance batch.
 
+[ADR 0080](adr/0080-extract-trading-core-service.md) selects Trading Core as the only active Stage 5
+boundary after measuring an active `AutoOrder` account and open positions inside the shared API Pod.
+It moves risk, orders, broker reconciliation, positions, fills, and trades together as one financial
+authority; those modules must never become separate services. Reporting/Notifications remain
+in-process because production has no enabled delivery channel or measured isolation trigger.
+
 ## Target modules
 
 | Module | Owns | Must not own |
