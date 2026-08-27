@@ -13,6 +13,7 @@ public sealed class TradingCoreTransportOptions
     public string ServerCertificateCommonName { get; set; } = "stocktrader-trading-core";
     public int TimeoutSeconds { get; set; } = 30;
     public int ProjectionIntervalSeconds { get; set; } = 30;
+    public int ShadowComparisonIntervalSeconds { get; set; } = 30;
 
     public bool IsValid()
     {
@@ -25,6 +26,7 @@ public sealed class TradingCoreTransportOptions
             && File.Exists(ClientCertificateKeyPath)
             && File.Exists(ServerCertificateAuthorityPath)
             && TimeoutSeconds is >= 5 and <= 120
-            && ProjectionIntervalSeconds is >= 5 and <= 3600;
+            && ProjectionIntervalSeconds is >= 5 and <= 3600
+            && ShadowComparisonIntervalSeconds is >= 5 and <= 3600;
     }
 }

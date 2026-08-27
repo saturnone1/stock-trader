@@ -80,6 +80,17 @@ internal sealed class TradingCoreControlPlaneClient : ITradingCoreControlPlane, 
             .GetFromJsonAsync<TradingShadowSummary>("/v1/shadow/summary", ct)
         ?? throw new InvalidOperationException("empty-trading-core-shadow-summary");
 
+    public async Task<TradingShadowPositionDecisionReceipt> CompareShadowPositionAsync(
+        TradingShadowPositionObservation observation,
+        CancellationToken ct = default)
+    {
+        var client = _client ?? throw new InvalidOperationException("trading-core-client-disabled");
+        using var response = await client.PostAsJsonAsync("/v1/shadow/positions", observation, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingShadowPositionDecisionReceipt>(ct)
+            ?? throw new InvalidOperationException("empty-trading-core-shadow-position-receipt");
+    }
+
     public async Task<TradingCommandReceipt> SubmitEntryAsync(
         TradingEntryIntent intent,
         CancellationToken ct = default)

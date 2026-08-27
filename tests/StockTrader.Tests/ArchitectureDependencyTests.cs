@@ -1287,6 +1287,8 @@ public class ArchitectureDependencyTests
             repository, "Services/Order/TradingCoreShadowOrderService.cs"));
         var shadowStore = File.ReadAllText(Path.Combine(
             repository, "workers/trading-core-service/TradingCoreShadowStore.fs"));
+        var positionShadow = File.ReadAllText(Path.Combine(
+            repository, "Services/TradingCore/TradingCorePositionShadowCycle.cs"));
         var services = File.ReadAllText(Path.Combine(
             repository, "Extensions/ServiceCollectionExtensions.cs"));
 
@@ -1298,6 +1300,10 @@ public class ArchitectureDependencyTests
         shadowStore.Should().NotContain("financial_intents");
         shadowStore.Should().NotContain("canonical_");
         shadowStore.Should().NotContain("broker_evidence");
+        positionShadow.Should().Contain("CompareShadowPositionAsync");
+        positionShadow.Should().NotContain("AppDbContext");
+        positionShadow.Should().NotContain("IBrokerService");
+        positionShadow.Should().NotContain("SubmitPositionAsync");
     }
 
     [Fact]

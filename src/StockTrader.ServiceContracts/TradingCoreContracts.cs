@@ -48,10 +48,12 @@ public static class TradingShadowDispositions
     public const string BrokerSubmission = "BrokerSubmission";
     public const string RecommendationOnly = "RecommendationOnly";
     public const string Blocked = "Blocked";
+    public const string NoAction = "NoAction";
+    public const string PositionCommand = "PositionCommand";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        BrokerSubmission, RecommendationOnly, Blocked
+        BrokerSubmission, RecommendationOnly, Blocked, NoAction, PositionCommand
     };
 }
 
@@ -154,6 +156,48 @@ public sealed record TradingShadowSummary(
     long Matches,
     long Mismatches,
     DateTime? LastComparedAtUtc);
+
+public sealed record TradingShadowPositionPolicyState(
+    decimal HighSinceEntry,
+    decimal StopLossPrice,
+    decimal InitialRiskDistance,
+    bool BreakevenApplied,
+    bool TrailingStopActivated);
+
+public sealed record TradingShadowPositionObservation(
+    int ContractVersion,
+    string DecisionId,
+    string PayloadHash,
+    DateTime ObservedAtUtc,
+    string PositionId,
+    string PositionStateHash,
+    string ExpectedExecutionArtifactId,
+    MarketDataEvidenceContract MarketDataEvidence,
+    string AuthoritativeDisposition,
+    string? AuthoritativeAction,
+    int? AuthoritativeQuantity,
+    string? AuthoritativeReason,
+    TradingShadowPositionPolicyState AuthoritativePolicyState,
+    string CandidateDisposition,
+    string? CandidateAction,
+    int? CandidateQuantity,
+    string? CandidateReason,
+    TradingShadowPositionPolicyState CandidatePolicyState);
+
+public sealed record TradingShadowPositionDecisionReceipt(
+    int ContractVersion,
+    string DecisionId,
+    string PayloadHash,
+    string AuthoritativeDisposition,
+    string CandidateDisposition,
+    string? AuthoritativeAction,
+    string? CandidateAction,
+    int? AuthoritativeQuantity,
+    int? CandidateQuantity,
+    bool IsPolicyStateMatch,
+    bool IsMatch,
+    bool AlreadyApplied,
+    DateTime ComparedAtUtc);
 
 public sealed record TradingRecommendationObservation(
     TradingCommandEnvelope Envelope,
@@ -420,6 +464,26 @@ public static class TradingCoreIdentity
             observation.Intent,
         });
 
+    public static string ShadowPositionPayload(TradingShadowPositionObservation observation) =>
+        CanonicalJsonHash.Compute(new
+        {
+            observation.ObservedAtUtc,
+            observation.PositionId,
+            observation.PositionStateHash,
+            observation.ExpectedExecutionArtifactId,
+            observation.MarketDataEvidence,
+            observation.AuthoritativeDisposition,
+            observation.AuthoritativeAction,
+            observation.AuthoritativeQuantity,
+            observation.AuthoritativeReason,
+            observation.AuthoritativePolicyState,
+            observation.CandidateDisposition,
+            observation.CandidateAction,
+            observation.CandidateQuantity,
+            observation.CandidateReason,
+            observation.CandidatePolicyState,
+        });
+
     public static string RecommendationPayload(TradingRecommendationObservation observation) =>
         CanonicalJsonHash.Compute(new
         {
@@ -496,7 +560,10 @@ public static class TradingCoreCompatibilityPolicy
         if (string.IsNullOrWhiteSpace(observation.DecisionId)
             || !string.Equals(observation.DecisionId, $"shadow:{observation.PayloadHash}",
                 StringComparison.Ordinal)
-            || !TradingShadowDispositions.All.Contains(observation.AuthoritativeDisposition)
+            || observation.AuthoritativeDisposition is not (
+                TradingShadowDispositions.BrokerSubmission
+                or TradingShadowDispositions.RecommendationOnly
+                or TradingShadowDispositions.Blocked)
             || observation.ObservedAtUtc > receivedAtUtc
             || observation.Intent is null)
             return "invalid-shadow-observation";
@@ -507,6 +574,34 @@ public static class TradingCoreCompatibilityPolicy
         return string.Equals(observation.PayloadHash,
             TradingCoreIdentity.ShadowEntryPayload(observation), StringComparison.Ordinal)
             ? null : "shadow-payload-hash-mismatch";
+    }
+
+    public static string? Error(TradingShadowPositionObservation observation,
+        TradingAuthorityContract authority, DateTime receivedAtUtc)
+    {
+        if (observation.ContractVersion != TradingCoreContractVersions.Current)
+            return "unsupported-contract";
+        if (authority.Mode != TradingAuthorityMode.Shadow)
+            return "shadow-authority-not-active";
+        if (string.IsNullOrWhiteSpace(observation.DecisionId)
+            || !string.Equals(observation.DecisionId, $"shadow-position:{observation.PayloadHash}",
+                StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(observation.PositionId)
+            || string.IsNullOrWhiteSpace(observation.PositionStateHash)
+            || string.IsNullOrWhiteSpace(observation.ExpectedExecutionArtifactId)
+            || observation.ObservedAtUtc > receivedAtUtc
+            || observation.MarketDataEvidence is null
+            || MarketDataEvidenceError(observation.MarketDataEvidence) is not null
+            || !ValidPositionShadowPolicyState(observation.AuthoritativePolicyState)
+            || !ValidPositionShadowPolicyState(observation.CandidatePolicyState)
+            || !ValidPositionShadowDecision(observation.AuthoritativeDisposition,
+                observation.AuthoritativeAction, observation.AuthoritativeQuantity)
+            || !ValidPositionShadowDecision(observation.CandidateDisposition,
+                observation.CandidateAction, observation.CandidateQuantity))
+            return "invalid-shadow-position-observation";
+        return string.Equals(observation.PayloadHash,
+            TradingCoreIdentity.ShadowPositionPayload(observation), StringComparison.Ordinal)
+            ? null : "shadow-position-payload-hash-mismatch";
     }
 
     public static string? Error(TradingAuthorityContract authority)
@@ -704,6 +799,24 @@ public static class TradingCoreCompatibilityPolicy
     private static bool HasDuplicate(IEnumerable<string> values) => values
         .Any(string.IsNullOrWhiteSpace)
         || values.GroupBy(item => item, StringComparer.Ordinal).Any(group => group.Count() > 1);
+
+    private static bool ValidPositionShadowDecision(
+        string disposition, string? action, int? quantity) => disposition switch
+        {
+            TradingShadowDispositions.NoAction => action is null && quantity is null,
+            TradingShadowDispositions.PositionCommand =>
+                action is not null && TradingPositionActionKinds.All.Contains(action)
+                    && quantity is > 0,
+            _ => false,
+        };
+
+    private static bool ValidPositionShadowPolicyState(
+        TradingShadowPositionPolicyState? state) => state is
+        {
+            HighSinceEntry: >= 0,
+            StopLossPrice: >= 0,
+            InitialRiskDistance: >= 0,
+        };
 
     private static string? MarketDataEvidenceError(MarketDataEvidenceContract evidence)
     {

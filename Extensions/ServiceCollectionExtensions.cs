@@ -353,6 +353,7 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<LivePositionExecutionEvaluator>());
         services.AddScoped<LivePositionMonitoringCycle>();
         services.AddScoped<TradingCorePositionMonitoringCycle>();
+        services.AddScoped<TradingCorePositionShadowCycle>();
         services.AddScoped<ILivePositionMonitoringCycle>(serviceProvider =>
             string.Equals(serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
                     .Value.Mode, "Remote", StringComparison.Ordinal)

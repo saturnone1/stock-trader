@@ -14,6 +14,7 @@ type TradingCoreOperations(store: TradingCoreStore) =
     member _.AcceptEntry(intent) = store.AcceptEntry intent
     member _.RecordRecommendation(observation) = store.RecordRecommendation observation
     member _.CompareShadowEntry(observation) = store.CompareShadowEntry observation
+    member _.CompareShadowPosition(observation) = store.CompareShadowPosition observation
     member _.ShadowSummary() = store.ShadowSummary()
     member _.ClaimEntry() = store.ClaimEntry()
     member _.RejectExpiredPendingIntents(observedAtUtc) =

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using StockTrader.ServiceContracts;
 using StockTrader.ServiceContracts.MarketData;
 using StockTrader.ServiceContracts.Optimization;
 using StockTrader.ServiceContracts.TradingCore;
@@ -348,6 +349,43 @@ public sealed class TradingCoreServiceTests : IDisposable
             .Should().Be(open.Intent.ExecutionArtifact.ArtifactId);
         enriched.ExecutionContext.EntryMarketDataEvidence.EvidenceId
             .Should().Be(open.Intent.MarketDataEvidence.EvidenceId);
+
+        var noAction = ShadowPositionObservation(
+            enriched, open.Intent.MarketDataEvidence, openAt.AddMinutes(3),
+            TradingShadowDispositions.NoAction, null, null,
+            TradingShadowDispositions.NoAction, null, null);
+        operations.CompareShadowPosition(noAction).IsMatch.Should().BeTrue();
+        operations.CompareShadowPosition(noAction).AlreadyApplied.Should().BeTrue();
+        var positionMismatch = ShadowPositionObservation(
+            enriched, open.Intent.MarketDataEvidence, openAt.AddMinutes(4),
+            TradingShadowDispositions.PositionCommand,
+            TradingPositionActionKinds.FullExit, 2,
+            TradingShadowDispositions.NoAction, null, null);
+        operations.CompareShadowPosition(positionMismatch).IsMatch.Should().BeFalse();
+        var policyMismatch = noAction with
+        {
+            DecisionId = string.Empty,
+            PayloadHash = string.Empty,
+            ObservedAtUtc = openAt.AddMinutes(5),
+            CandidatePolicyState = noAction.CandidatePolicyState with
+            {
+                TrailingStopActivated = !noAction.CandidatePolicyState.TrailingStopActivated,
+            },
+        };
+        var policyHash = TradingCoreIdentity.ShadowPositionPayload(policyMismatch);
+        policyMismatch = policyMismatch with
+        {
+            DecisionId = $"shadow-position:{policyHash}",
+            PayloadHash = policyHash,
+        };
+        var policyReceipt = operations.CompareShadowPosition(policyMismatch);
+        policyReceipt.IsPolicyStateMatch.Should().BeFalse();
+        policyReceipt.IsMatch.Should().BeFalse();
+        summary = operations.ShadowSummary();
+        summary.Total.Should().Be(6);
+        summary.Matches.Should().Be(3);
+        summary.Mismatches.Should().Be(3);
+        operations.CommandStatus(open.Intent.Envelope.CommandId).Should().BeNull();
     }
 
     private static TradingStateSnapshot EmptySnapshot(DateTime now)
@@ -405,6 +443,41 @@ public sealed class TradingCoreServiceTests : IDisposable
             PayloadHash = payloadHash
         };
     }
+
+    private static TradingShadowPositionObservation ShadowPositionObservation(
+        TradingPositionProjection position,
+        MarketDataEvidenceContract evidence,
+        DateTime observedAt,
+        string authoritativeDisposition,
+        string? authoritativeAction,
+        int? authoritativeQuantity,
+        string candidateDisposition,
+        string? candidateAction,
+        int? candidateQuantity)
+    {
+        var observation = new TradingShadowPositionObservation(
+            TradingCoreContractVersions.Current, string.Empty, string.Empty, observedAt,
+            position.PositionId, CanonicalJsonHash.Compute(position),
+            position.ExecutionContext!.ExecutionArtifact.ArtifactId, evidence,
+            authoritativeDisposition, authoritativeAction, authoritativeQuantity, null,
+            PositionPolicyState(position),
+            candidateDisposition, candidateAction, candidateQuantity, null,
+            PositionPolicyState(position));
+        var hash = TradingCoreIdentity.ShadowPositionPayload(observation);
+        return observation with
+        {
+            DecisionId = $"shadow-position:{hash}",
+            PayloadHash = hash
+        };
+    }
+
+    private static TradingShadowPositionPolicyState PositionPolicyState(
+        TradingPositionProjection position) => new(
+        position.HighSinceEntry,
+        position.StopLossPrice,
+        position.InitialRiskDistance,
+        position.BreakevenApplied,
+        position.TrailingStopActivated);
 
     private static TradingRecommendationObservation RecommendationObservation(
         DateTime now, TradingCoreStatus status)

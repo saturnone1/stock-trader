@@ -37,6 +37,10 @@ public interface ITradingCoreControlPlane
 
     Task<TradingShadowSummary> GetShadowSummaryAsync(CancellationToken ct = default);
 
+    Task<TradingShadowPositionDecisionReceipt> CompareShadowPositionAsync(
+        TradingShadowPositionObservation observation,
+        CancellationToken ct = default);
+
     Task<TradingCommandReceipt> SubmitEntryAsync(
         TradingEntryIntent intent,
         CancellationToken ct = default);

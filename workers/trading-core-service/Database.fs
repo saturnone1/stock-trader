@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS shadow_entry_decisions (
 CREATE TABLE IF NOT EXISTS shadow_execution_contexts (
  source_signal_id TEXT PRIMARY KEY, artifact_id TEXT NOT NULL, context_json TEXT NOT NULL,
  decision_id TEXT NOT NULL UNIQUE, recorded_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS shadow_position_decisions (
+ decision_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, observation_json TEXT NOT NULL,
+ receipt_json TEXT NOT NULL, is_match INTEGER NOT NULL, compared_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS account_configuration (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), generation INTEGER NOT NULL,
