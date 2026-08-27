@@ -48,6 +48,56 @@ public sealed record MarketDataRangeResponse(
     MarketDataEvidenceContract Evidence,
     IReadOnlyList<MarketDataBar> Bars);
 
+public static class MarketDataExecutionEvidenceLimits
+{
+    // Bounds one financial evaluation request and prevents the execution identity from becoming a
+    // general historical-data reader. Strategy warmup above this limit is not live-compatible.
+    public const int MaximumBars = 2048;
+    public static int RequiredDailyLookbackCalendarDays(int requiredBars)
+    {
+        if (requiredBars < 1 || requiredBars > MaximumBars)
+            throw new ArgumentOutOfRangeException(nameof(requiredBars));
+        const int calendarDaysPerTradingWeek = 7;
+        const int tradingDaysPerWeek = 5;
+        const int holidayAndFeedBufferDays = 30;
+        return checked((int)Math.Ceiling(
+            requiredBars * (decimal)calendarDaysPerTradingWeek / tradingDaysPerWeek)
+            + holidayAndFeedBufferDays);
+    }
+}
+
+public sealed record MarketDataEvidenceVerificationRequest(
+    int ContractVersion,
+    MarketDataEvidenceContract Evidence);
+
+public sealed record MarketDataEvidenceVerificationResponse(
+    int ContractVersion,
+    string EvidenceId,
+    bool Matches,
+    long CurrentRevision,
+    string CurrentContentHash,
+    string? RejectionReason);
+
+public sealed record MarketDataExecutionWindowRequest(
+    int ContractVersion,
+    string Provider,
+    string Symbol,
+    string TimeFrame,
+    string AdjustmentMode,
+    string Market,
+    string CalendarVersion,
+    DateTime NotBeforeUtc,
+    DateTime CompletedThroughUtc,
+    int RequiredBars,
+    DateOnly ExpectedLastSessionDate,
+    long AfterRevision = 0,
+    DateTime? EvaluatedThroughUtc = null);
+
+public sealed record MarketDataExecutionWindowResponse(
+    MarketDataEvidenceContract Evidence,
+    IReadOnlyList<MarketDataBar> Bars,
+    bool PriorEvaluatedRangeCorrected);
+
 public sealed record MarketDataUpsertRequest(
     int ContractVersion,
     string RequestId,

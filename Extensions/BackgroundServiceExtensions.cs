@@ -43,8 +43,8 @@ public static class BackgroundServiceExtensions
         {
             services.AddHostedService<RiskMonitorService>();
             services.AddHostedService<EntryExecutionReconciliationService>();
+            services.AddHostedService<PositionExecutionManagerService>();
         }
-        services.AddHostedService<PositionExecutionManagerService>();
         services.AddHostedService<DailyReportService>();
         services.AddHostedService<MLRetrainingService>();
         services.AddHostedService<MlTrainingPublicationReconciliationService>();

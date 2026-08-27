@@ -5,6 +5,7 @@ using StockTrader.Domain.Strategies;
 using StockTrader.Domain.MarketData;
 using StockTrader.Application.MarketData;
 using StockTrader.Engine.Rules;
+using StockTrader.Engine.Strategies;
 using EvalContext = StockTrader.Engine.Rules.RuleIndicatorEvaluationContext;
 
 namespace StockTrader.Services.Patterns;
@@ -24,12 +25,9 @@ public class RuleBasedDetector : ICustomStrategyDetector
     private readonly List<ConditionGroup> _entryGroups;
     private readonly string _entryGroupsLogic;
     private readonly List<WeightTier> _weightTiers;
-    private readonly List<EntryRule> _exitRules;
-    private readonly List<ConditionGroup> _exitGroups;
-    private readonly string _exitGroupsLogic;
-    private readonly List<ScalingRule> _scalingRules;
     private readonly TimeFilter _timeFilter;
     private readonly DynamicExitConfig? _dynamicExit;
+    private readonly CompiledPositionRuleRuntime _positionRules;
 
     // 참조 종목 데이터 (BacktestService에서 주입)
     private Dictionary<string, StockTrader.Engine.MarketData.PriceBar[]>? _referenceData;
@@ -58,12 +56,9 @@ public class RuleBasedDetector : ICustomStrategyDetector
         _entryGroups = strategy.EntryGroups.ToList();
         _entryGroupsLogic = strategy.Source.EntryGroupsLogic;
         _weightTiers = strategy.WeightTiers.ToList();
-        _exitRules = strategy.ExitRules.ToList();
-        _exitGroups = strategy.ExitGroups.ToList();
-        _exitGroupsLogic = strategy.Source.ExitGroupsLogic;
-        _scalingRules = strategy.ScalingRules.ToList();
         _timeFilter = strategy.TimeFilter;
         _dynamicExit = strategy.DynamicExit;
+        _positionRules = new CompiledPositionRuleRuntime(strategy);
     }
 
     private static CompiledStrategy Compile(StrategyDocument definition)
@@ -219,22 +214,8 @@ public class RuleBasedDetector : ICustomStrategyDetector
     /// </summary>
     public bool ShouldExit(OhlcvBar[] bars)
     {
-        if (_exitGroups.Count == 0 && _exitRules.Count == 0) return false;
-        var ctx = _indicatorEvaluator.CreateContext(EnginePriceBarMapper.Map(bars));
-
-        if (_exitGroups.Count > 0)
-            return _groupEvaluator.Evaluate(
-                _exitGroups, _exitGroupsLogic, ctx, _referenceData, _referenceAsOf).IsMatch;
-
-        var isOr = string.Equals(_definition.ExitRulesLogic, "OR", StringComparison.OrdinalIgnoreCase);
-
-        foreach (var rule in _exitRules)
-        {
-            var result = _conditionEvaluator.Evaluate(rule, ctx, _referenceData, _referenceAsOf);
-            if (isOr && result.IsMatch) return true;
-            if (!isOr && !result.IsMatch) return false;
-        }
-        return !isOr; // AND: all passed
+        return _positionRules.ShouldExit(
+            EnginePriceBarMapper.Map(bars), _referenceData, _referenceAsOf);
     }
 
     /// <summary>
@@ -245,35 +226,13 @@ public class RuleBasedDetector : ICustomStrategyDetector
         decimal currentProfitPct,
         IReadOnlyDictionary<int, int> scaleCounts)
     {
-        for (int i = 0; i < _scalingRules.Count; i++)
-        {
-            var sr = _scalingRules[i];
-            // 최대 횟수 체크
-            scaleCounts.TryGetValue(i, out var count);
-            if (count >= sr.MaxCount) continue;
-            // 최소 수익률 체크
-            if (currentProfitPct < sr.MinProfitPercent) continue;
-            if (sr.Conditions.Count == 0) continue;
-
-            var ctx = _indicatorEvaluator.CreateContext(EnginePriceBarMapper.Map(bars));
-            var isAnd = string.Equals(sr.Logic, "AND", StringComparison.OrdinalIgnoreCase);
-            var allMatch = true;
-            var anyMatch = false;
-            foreach (var cond in sr.Conditions)
-            {
-                var result = _conditionEvaluator.Evaluate(cond, ctx, _referenceData, _referenceAsOf);
-                if (result.IsMatch) anyMatch = true;
-                else allMatch = false;
-                if (isAnd && !result.IsMatch) break;
-                if (!isAnd && result.IsMatch) break;
-            }
-            if ((isAnd && allMatch) || (!isAnd && anyMatch))
-                return new ScalingRuleMatch(i, sr);
-        }
-        return null;
+        var match = _positionRules.EvaluateScaling(
+            EnginePriceBarMapper.Map(bars), currentProfitPct, scaleCounts,
+            _referenceData, _referenceAsOf);
+        return match is { } value ? new ScalingRuleMatch(value.RuleIndex, value.Rule) : null;
     }
 
-    public bool HasExitRules => _exitGroups.Count > 0 || _exitRules.Count > 0;
-    public bool HasScalingRules => _scalingRules.Count > 0;
+    public bool HasExitRules => _positionRules.HasExitRules;
+    public bool HasScalingRules => _positionRules.HasScalingRules;
 
 }

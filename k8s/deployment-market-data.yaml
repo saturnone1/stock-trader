@@ -59,15 +59,12 @@ spec:
           value: "/tls/server/tls.key"
         - name: MARKET_DATA_DATABASE_PATH
           value: "/data/marketdata.db"
-        - name: MARKET_DATA_SHARED_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: stocktrader-market-data-auth
-              key: shared-secret
         - name: MARKET_DATA_CLIENT_CA_PATH
           value: "/tls/client-ca/ca.crt"
-        - name: MARKET_DATA_CLIENT_COMMON_NAME
-          value: "stocktrader-api"
+        - name: MARKET_DATA_EDGE_ROLE_DNS
+          value: "edge-market-data.stocktrader.internal"
+        - name: MARKET_DATA_TRADING_CORE_ROLE_DNS
+          value: "trading-core-evidence.stocktrader.internal"
         - name: ALPACA_API_KEY
           valueFrom:
             secretKeyRef:

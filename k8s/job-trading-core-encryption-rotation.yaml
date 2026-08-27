@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stocktrader-trading-core-key-__NEW_ENCRYPTION_GENERATION__
+  namespace: stocktrader
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: stocktrader-trading-core-key-rotation
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: rotate
+        image: __TRADING_CORE_IMAGE__
+        imagePullPolicy: Never
+        args: ["--rotate-encryption-key"]
+        env:
+        - name: STOCKTRADER_TRADING_CORE_DATA
+          value: "/data"
+        - name: STOCKTRADER_TRADING_CORE_OLD_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: __OLD_ENCRYPTION_SECRET__
+              key: encryption-key
+        - name: STOCKTRADER_TRADING_CORE_OLD_ENCRYPTION_GENERATION
+          value: "__OLD_ENCRYPTION_GENERATION__"
+        - name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: __NEW_ENCRYPTION_SECRET__
+              key: encryption-key
+        - name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION
+          value: "__NEW_ENCRYPTION_GENERATION__"
+        resources:
+          requests:
+            cpu: "25m"
+            memory: "64Mi"
+          limits:
+            cpu: "250m"
+            memory: "192Mi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: runtime-tmp
+          mountPath: /tmp
+      volumes:
+      - name: data
+        hostPath:
+          path: __TRADING_CORE_DATA_DIR__
+          type: Directory
+      - name: runtime-tmp
+        emptyDir:
+          sizeLimit: 32Mi

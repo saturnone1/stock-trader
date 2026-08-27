@@ -125,16 +125,18 @@ module TradingCoreAuthorityStore =
                     use upsert = connection.CreateCommand()
                     upsert.Transaction <- transaction
                     upsert.CommandText <- """INSERT INTO account_configuration
-    (singleton,generation,configuration_hash,ciphertext,nonce,tag,accepted_at)
-    VALUES(1,$generation,$hash,$ciphertext,$nonce,$tag,$at)
+    (singleton,generation,configuration_hash,ciphertext,nonce,tag,encryption_key_generation,accepted_at)
+    VALUES(1,$generation,$hash,$ciphertext,$nonce,$tag,$keyGeneration,$at)
     ON CONFLICT(singleton) DO UPDATE SET generation=excluded.generation,
     configuration_hash=excluded.configuration_hash,ciphertext=excluded.ciphertext,
-    nonce=excluded.nonce,tag=excluded.tag,accepted_at=excluded.accepted_at"""
+    nonce=excluded.nonce,tag=excluded.tag,encryption_key_generation=excluded.encryption_key_generation,
+    accepted_at=excluded.accepted_at"""
                     upsert.Parameters.AddWithValue("$generation", configuration.Generation) |> ignore
                     upsert.Parameters.AddWithValue("$hash", configuration.ConfigurationHash) |> ignore
                     upsert.Parameters.AddWithValue("$ciphertext", protectedPayload.Ciphertext) |> ignore
                     upsert.Parameters.AddWithValue("$nonce", protectedPayload.Nonce) |> ignore
                     upsert.Parameters.AddWithValue("$tag", protectedPayload.Tag) |> ignore
+                    upsert.Parameters.AddWithValue("$keyGeneration", this.Secrets.KeyGeneration) |> ignore
                     upsert.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
                     upsert.ExecuteNonQuery() |> ignore
                     use state = connection.CreateCommand()
@@ -168,16 +170,19 @@ module TradingCoreAuthorityStore =
                     projectedPositions.Transaction <- transaction
                     projectedPositions.CommandText <- "SELECT payload_json FROM projections WHERE kind='position'"
                     use positionReader = projectedPositions.ExecuteReader()
-                    let mutable missingExecutionContext = false
+                    let mutable incompatibleExecutionContext = false
                     while positionReader.Read() do
                         let position = JsonSerializer.Deserialize<TradingPositionProjection>(
                             positionReader.GetString 0, this.Json)
                         if isNull position || (not position.ClosedAtUtc.HasValue
-                            && isNull position.ExecutionContext) then
-                            missingExecutionContext <- true
+                            && (isNull position.ExecutionContext
+                                || isNull position.ExecutionContext.ExecutionArtifact.PositionManagement
+                                || position.ExecutionContext.EntryMarketDataEvidence.TimeFrame <> "Daily"
+                                || not position.LastEvaluatedBarUtc.HasValue)) then
+                            incompatibleExecutionContext <- true
                     positionReader.Close()
-                    if missingExecutionContext then
-                        invalidOp "open-position-execution-context-missing"
+                    if incompatibleExecutionContext then
+                        invalidOp "open-position-autonomous-protection-incompatible"
                     materialize.CommandText <- """
     DELETE FROM canonical_recommendations;
     DELETE FROM canonical_positions;

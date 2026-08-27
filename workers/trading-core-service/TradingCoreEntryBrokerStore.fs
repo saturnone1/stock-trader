@@ -14,7 +14,7 @@ module TradingCoreEntryBrokerStore =
         member this.AccountConfiguration() =
             use connection = this.Connect()
             use command = connection.CreateCommand()
-            command.CommandText <- "SELECT ciphertext,nonce,tag FROM account_configuration WHERE singleton=1"
+            command.CommandText <- "SELECT ciphertext,nonce,tag,encryption_key_generation FROM account_configuration WHERE singleton=1"
             use reader = command.ExecuteReader()
             if not (reader.Read()) then None
             else
@@ -23,7 +23,7 @@ module TradingCoreEntryBrokerStore =
                       Nonce = reader.GetFieldValue<byte array>(1)
                       Tag = reader.GetFieldValue<byte array>(2) }
                 match Option.ofObj (JsonSerializer.Deserialize<TradingAccountConfigurationSet>(
-                    this.Secrets.Unprotect payload, this.Json)) with
+                    this.Secrets.Unprotect(payload, reader.GetString(3)), this.Json)) with
                 | Some configuration -> Some configuration
                 | None -> invalidOp "empty-stored-account-configuration"
     

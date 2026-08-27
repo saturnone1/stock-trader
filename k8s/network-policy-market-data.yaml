@@ -13,6 +13,9 @@ spec:
     - podSelector:
         matchLabels:
           app: stocktrader-api
+    - podSelector:
+        matchLabels:
+          app: stocktrader-trading-core
     ports:
     - protocol: TCP
       port: 7443

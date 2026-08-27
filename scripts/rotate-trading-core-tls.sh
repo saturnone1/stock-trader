@@ -15,6 +15,12 @@ fi
 server_secret="stocktrader-trading-core-server-tls-$generation"
 client_secret="stocktrader-trading-core-client-tls-$generation"
 sudo k3s kubectl apply -f k8s/namespace.yaml
+for secret in "$server_secret" "$client_secret"; do
+  if sudo k3s kubectl -n "$namespace" get secret "$secret" >/dev/null 2>&1; then
+    echo "Refusing to replace preserved TLS generation $generation ($secret exists)." >&2
+    exit 1
+  fi
+done
 tls_dir="$(mktemp -d /tmp/stocktrader-trading-core-tls.XXXXXX)"
 cleanup() {
   rm -f -- "$tls_dir/ca.key" "$tls_dir/ca.crt" "$tls_dir/ca.srl" \
@@ -42,7 +48,8 @@ openssl genrsa -out "$tls_dir/client.key" 2048 >/dev/null 2>&1
 openssl req -new -sha256 -key "$tls_dir/client.key" -out "$tls_dir/client.csr" \
   -subj "/CN=stocktrader-api" >/dev/null 2>&1
 printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature' \
-  'extendedKeyUsage=clientAuth' > "$tls_dir/client.ext"
+  'extendedKeyUsage=clientAuth' \
+  'subjectAltName=DNS:edge-trading-control.stocktrader.internal' > "$tls_dir/client.ext"
 openssl x509 -req -sha256 -days "$valid_days" -in "$tls_dir/client.csr" \
   -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAserial "$tls_dir/ca.srl" \
   -out "$tls_dir/client.crt" -extfile "$tls_dir/client.ext" >/dev/null 2>&1

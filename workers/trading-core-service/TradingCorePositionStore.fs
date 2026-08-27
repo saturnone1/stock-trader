@@ -74,7 +74,24 @@ module TradingCorePositionStore =
                     insertInbox.Parameters.AddWithValue("$receipt", JsonSerializer.Serialize(receipt, this.Json)) |> ignore
                     insertInbox.Parameters.AddWithValue("$at", acceptedAt.ToString("O")) |> ignore
                     insertInbox.ExecuteNonQuery() |> ignore
-                    let requested = TradingPositionCommandStatePolicy.MarkRequested(position, command)
+                    let evaluated =
+                        if isNull command.EvaluatedPolicyState then position
+                        else
+                            TradingPositionPolicyStateUpdatePolicy.Apply(
+                                position,
+                                TradingPositionPolicyStateUpdate(
+                                    command.Envelope, command.PositionId,
+                                    command.ExpectedExecutionArtifactId,
+                                    command.EvaluatedPolicyState.HighSinceEntry,
+                                    command.EvaluatedPolicyState.StopLossPrice,
+                                    command.EvaluatedPolicyState.InitialRiskDistance,
+                                    command.EvaluatedPolicyState.BreakevenApplied,
+                                    command.EvaluatedPolicyState.TrailingStopActivated,
+                                    command.MarketDataEvidence,
+                                    command.EvaluatedEntryAtr,
+                                    command.EvaluatedThroughBarUtc,
+                                    command.EvaluatedMarketDataRevision))
+                    let requested = TradingPositionCommandStatePolicy.MarkRequested(evaluated, command)
                     use updatePosition = connection.CreateCommand()
                     updatePosition.Transaction <- transaction
                     updatePosition.CommandText <- "UPDATE canonical_positions SET payload_json=$payload,version=version+1 WHERE identity=$id"

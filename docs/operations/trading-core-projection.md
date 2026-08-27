@@ -233,9 +233,33 @@ This completes private-CA/client/server certificate rotation and preserved-gener
 
 ## Current state and rollback
 
-MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or
-Reporting/Notifications extraction is active. To roll back this non-authoritative candidate, keep
-the API in Local financial authority,
+The Trading Core completion batch is implemented but has not yet been promoted beyond the existing
+Shadow deployment. It removes shared HTTP secrets in favor of exact client-certificate SAN roles,
+adds a preserved-generation transactional account-encryption rotation, and gives Trading Core a
+dedicated read-only Market Data identity. Entry evidence is revalidated immediately before broker
+preflight. Open-position protection now runs inside Trading Core: it consumes only persisted,
+calendar-complete daily bars, replays every bar after the durable position watermark, applies the
+same deterministic exit/scaling engine used by preview and backtest, and atomically stores policy
+state with any resulting financial command. Market Data reports corrections scoped to the already
+evaluated symbol/range after that watermark; Trading Core fails closed for reconciliation instead of
+silently replaying a changed financial past. Edge position evaluation is not registered in Remote.
+
+Remote activation now rejects every open position that lacks a normalized position-management
+artifact, daily evidence, or an existing evaluated-bar watermark with
+`open-position-autonomous-protection-incompatible`. This is intentionally stricter than the former
+`open-position-execution-context-missing` guard; do not invent a watermark for a legacy position.
+Wait for it to close or run a separately reviewed evidence-backed migration.
+
+No Strategy Research/Edge or Reporting/Notifications extraction is active. Until the integrated
+Shadow/Remote rehearsal below is recorded, keep the API in Local financial authority. To roll back
+this non-authoritative candidate,
 back up the candidate database, and scale down only `stocktrader-trading-core`. Because Projection
 and Shadow never submitted a candidate broker command or owned canonical financial state, no
 financial state transfer is required.
+
+The completion rehearsal must rotate both Trading Core and Market Data TLS generations first, so
+the Edge and Trading Core role SANs exist. Deploy Market Data, Trading Core, and API as one batch;
+confirm the Trading Core evidence identity cannot call provider/upsert routes; exercise completed-bar
+watermark replay and a broker-rejected paper command; then rehearse rollback to the preserved TLS and
+encryption generations. Use only `scripts/deploy-k3s.sh` for the rollout. Do not activate Remote while
+an incompatible open position exists.

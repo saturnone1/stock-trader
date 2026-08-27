@@ -177,9 +177,7 @@ internal sealed class TradingCoreControlPlaneClient : ITradingCoreControlPlane, 
                 && certificate.GetNameInfo(X509NameType.DnsName, false)
                     .Equals(options.ServerCertificateCommonName, StringComparison.Ordinal);
         };
-        var client = new HttpClient(handler) { BaseAddress = new Uri(options.Endpoint) };
-        client.DefaultRequestHeaders.Add("X-StockTrader-Trading-Core-Secret", options.SharedSecret);
-        return client;
+        return new HttpClient(handler) { BaseAddress = new Uri(options.Endpoint) };
     }
 
     public void Dispose() => _client?.Dispose();

@@ -18,12 +18,10 @@ public sealed class MarketDataServiceClient
     };
 
     private readonly HttpClient _http;
-    private readonly MarketDataTransportOptions _options;
-
     public MarketDataServiceClient(HttpClient http, IOptions<MarketDataTransportOptions> options)
     {
         _http = http;
-        _options = options.Value;
+        _ = options.Value;
     }
 
     public static HttpClientHandler CreateHandler(MarketDataTransportOptions options)
@@ -94,7 +92,7 @@ public sealed class MarketDataServiceClient
         string path, bool authenticated, CancellationToken ct)
     {
         using var message = new HttpRequestMessage(HttpMethod.Get, path);
-        if (authenticated) message.Headers.Add("X-Market-Data-Key", _options.SharedSecret);
+        _ = authenticated;
         using var response = await _http.SendAsync(message, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<TResponse>(Json, ct)
@@ -111,7 +109,6 @@ public sealed class MarketDataServiceClient
         {
             Content = JsonContent.Create(request, options: Json)
         };
-        message.Headers.Add("X-Market-Data-Key", _options.SharedSecret);
         using var response = await _http.SendAsync(message, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<TResponse>(Json, ct)

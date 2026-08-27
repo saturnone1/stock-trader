@@ -352,13 +352,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILivePositionExecutionEvaluator>(sp =>
             sp.GetRequiredService<LivePositionExecutionEvaluator>());
         services.AddScoped<LivePositionMonitoringCycle>();
-        services.AddScoped<TradingCorePositionMonitoringCycle>();
         services.AddScoped<TradingCorePositionShadowCycle>();
         services.AddScoped<ILivePositionMonitoringCycle>(serviceProvider =>
-            string.Equals(serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
-                    .Value.Mode, "Remote", StringComparison.Ordinal)
-                ? serviceProvider.GetRequiredService<TradingCorePositionMonitoringCycle>()
-                : serviceProvider.GetRequiredService<LivePositionMonitoringCycle>());
+            serviceProvider.GetRequiredService<LivePositionMonitoringCycle>());
         services.AddScoped<TradingPositionExecutionContextResolver>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<ISymbolProfileStore, SymbolProfileStore>();

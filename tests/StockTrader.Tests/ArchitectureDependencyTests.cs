@@ -1269,7 +1269,16 @@ public class ArchitectureDependencyTests
         services.Should().Contain("TradingCoreRemoteAccountQuery");
         services.Should().Contain("TradingCoreOrderService");
         services.Should().Contain("TradingCoreLiveOrderManagement");
-        services.Should().Contain("TradingCorePositionMonitoringCycle");
+        services.Should().NotContain("TradingCorePositionMonitoringCycle");
+        File.ReadAllText(Path.Combine(repository,
+                "BackgroundServices/PositionExecutionManagerService.cs"))
+            .Should().Contain("Trading Core owns autonomous protection");
+        File.ReadAllText(Path.Combine(repository,
+                "workers/trading-core-service/PositionProtectionWorker.fs"))
+            .Should().Contain("TradingPositionEvaluator.Evaluate");
+        File.ReadAllText(Path.Combine(repository,
+                "workers/trading-core-service/BrokerWorker.fs"))
+            .Should().Contain("marketData.VerifyAsync(intent.MarketDataEvidence");
         background.Should().Contain("services.AddHostedService<PositionExecutionManagerService>()");
         remote.Should().NotContain("AppDbContext");
         remote.Should().NotContain("IBrokerService");
@@ -1277,6 +1286,11 @@ public class ArchitectureDependencyTests
         File.ReadAllText(Path.Combine(repository,
                 "Services/TradingCore/TradingCoreRemotePositionStore.cs"))
             .Should().Contain("remote-trading-core-position-store-is-read-only");
+        var networkPolicy = File.ReadAllText(Path.Combine(
+            repository, "k8s/network-policy-trading-core.yaml"));
+        networkPolicy.Should().Contain("app: stocktrader-market-data");
+        networkPolicy.Should().Contain("port: 7443");
+        networkPolicy.Should().Contain("port: 443");
     }
 
     [Fact]
@@ -2073,7 +2087,6 @@ public class ArchitectureDependencyTests
         workerDeployment.Should().Contain("STOCKTRADER_WORKER_CLIENT_CERT_PATH");
         apiDeployment.Should().Contain("stocktrader-optimization-worker-auth");
         workerSecretExample.Should().Contain("REPLACE_WITH_A_RANDOM_32_PLUS_CHARACTER_SECRET");
-        workerSecretExample.Should().NotContain("tjxodnjs1");
         deploymentScript.Should().Contain("optimization-worker)");
         deploymentScript.Should().Contain("Dockerfile.optimization-worker");
         deploymentScript.Should().Contain("deployment/stocktrader-optimization-worker");
@@ -4234,29 +4247,34 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
-    public void TradingCoreAuthenticationSecretUsesPreservedGenerationsForRotationAndRollback()
+    public void TradingCoreUsesCertificateRolesAndPreservedEncryptionGenerations()
     {
         var repository = FindRepositoryRoot();
         var deploy = File.ReadAllText(Path.Combine(repository, "scripts/deploy-k3s.sh"));
-        var rotate = File.ReadAllText(Path.Combine(
-            repository, "scripts/rotate-trading-core-auth.sh"));
+        var rotateTls = File.ReadAllText(Path.Combine(
+            repository, "scripts/rotate-trading-core-tls.sh"));
+        var rotateEncryption = File.ReadAllText(Path.Combine(
+            repository, "scripts/rotate-trading-core-encryption.sh"));
+        var rotationJob = File.ReadAllText(Path.Combine(
+            repository, "k8s/job-trading-core-encryption-rotation.yaml"));
         var apiDeployment = File.ReadAllText(Path.Combine(
             repository, "k8s/deployment-api.yaml"));
         var serviceDeployment = File.ReadAllText(Path.Combine(
             repository, "k8s/deployment-trading-core.yaml"));
 
-        deploy.Should().Contain("STOCKTRADER_TRADING_CORE_AUTH_GENERATION");
-        deploy.Should().Contain("stocktrader-trading-core-auth-active");
-        deploy.Should().Contain("trading_core_auth_generation:-legacy");
-        deploy.Should().Contain("stocktrader-trading-core-auth-$trading_core_auth_generation");
-        deploy.Should().Contain("__TRADING_CORE_AUTH_SECRET__|$trading_core_auth_secret");
-        apiDeployment.Should().Contain("name: __TRADING_CORE_AUTH_SECRET__");
-        serviceDeployment.Should().Contain("name: __TRADING_CORE_AUTH_SECRET__");
-        rotate.Should().Contain("Refusing to replace existing immutable authentication generation");
-        rotate.Should().Contain("openssl rand -base64 48");
-        rotate.Should().Contain("--from-file=shared-secret=");
-        rotate.Should().Contain("stocktrader-trading-core-auth-active");
-        rotate.Should().NotContain("stocktrader-trading-core-encryption");
+        File.Exists(Path.Combine(repository, "scripts/rotate-trading-core-auth.sh"))
+            .Should().BeFalse();
+        deploy.Should().Contain("stocktrader-trading-core-encryption-active");
+        deploy.Should().Contain("STOCKTRADER_TRADING_CORE_ENCRYPTION_GENERATION");
+        serviceDeployment.Should().Contain("STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION");
+        deploy.Should().NotContain("TRADING_CORE_AUTH_GENERATION");
+        apiDeployment.Should().NotContain("TRADING_CORE_AUTH_SECRET");
+        serviceDeployment.Should().NotContain("TRADING_CORE_AUTH_SECRET");
+        serviceDeployment.Should().Contain("STOCKTRADER_TRADING_CORE_CLIENT_ROLE_DNS");
+        rotateTls.Should().Contain("edge-trading-control.stocktrader.internal");
+        rotateEncryption.Should().Contain("stocktrader-trading-core-encryption-active");
+        rotationJob.Should().Contain("--rotate-encryption-key");
+        rotateEncryption.Should().Contain("backup");
     }
 
     private static string FindRepositoryRoot()

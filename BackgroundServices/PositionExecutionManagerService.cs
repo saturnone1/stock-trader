@@ -11,11 +11,18 @@ public sealed class PositionExecutionManagerService(
     IServiceScopeFactory scopeFactory,
     IMarketCalendar marketCalendar,
     IOptions<TradingSettings> settings,
+    IOptions<TradingCoreTransportOptions> tradingCore,
     TimeProvider timeProvider,
     ILogger<PositionExecutionManagerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (string.Equals(tradingCore.Value.Mode, "Remote", StringComparison.Ordinal))
+        {
+            logger.LogInformation(
+                "Edge position evaluation is disabled; Trading Core owns autonomous protection");
+            return;
+        }
         logger.LogInformation("PositionExecutionManagerService started");
         var interval = TimeSpan.FromSeconds(
             settings.Value.PositionMonitoringIntervalSeconds);

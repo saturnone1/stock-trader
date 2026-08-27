@@ -283,6 +283,129 @@ SELECT COUNT(*) FROM EvidenceRanges WHERE Provider=@provider AND Symbol=@symbol 
         return if range.Bars.Count = 0 then None else Some range.Bars[range.Bars.Count - 1]
     }
 
+    member this.VerifyEvidenceAsync(request: MarketDataEvidenceVerificationRequest, ct: CancellationToken) = task {
+        ContractPolicy.validateVersion request.ContractVersion
+        let expected = request.Evidence
+        ContractPolicy.validateVersion expected.ContractVersion
+        let expectedIdentity =
+            ContractPolicy.evidenceId expected.Provider expected.Symbol expected.TimeFrame
+                expected.AdjustmentMode expected.CalendarVersion expected.Revision expected.ContentHash
+        if not (String.Equals(expectedIdentity, expected.EvidenceId, StringComparison.Ordinal)) then
+            invalidArg "evidence" "Market data evidence identity is invalid"
+        let rangeRequest = MarketDataRangeRequest(
+            expected.ContractVersion, expected.Provider, expected.Symbol, expected.TimeFrame,
+            expected.AdjustmentMode, expected.Market, expected.CalendarVersion,
+            expected.RequestedFromUtc, expected.RequestedToUtc)
+        let! current = this.ReadRangeAsync(rangeRequest, ct)
+        let matches =
+            current.Evidence.IsComplete = expected.IsComplete
+            && String.Equals(current.Evidence.ContentHash, expected.ContentHash, StringComparison.Ordinal)
+        return MarketDataEvidenceVerificationResponse(
+            MarketDataContractVersions.Current, expected.EvidenceId, matches,
+            current.Evidence.Revision, current.Evidence.ContentHash,
+            (if matches then null else "market-data-evidence-content-or-completeness-mismatch"))
+    }
+
+    member _.ReadExecutionWindowAsync(request: MarketDataExecutionWindowRequest, ct: CancellationToken) = task {
+        ContractPolicy.validateVersion request.ContractVersion
+        if request.RequiredBars < 1 || request.RequiredBars > MarketDataExecutionEvidenceLimits.MaximumBars then
+            invalidArg "requiredBars" $"RequiredBars must be between 1 and {MarketDataExecutionEvidenceLimits.MaximumBars}"
+        if request.AfterRevision < 0L
+            || (request.AfterRevision > 0L && not request.EvaluatedThroughUtc.HasValue) then
+            invalidArg "evaluationWatermark" "A positive revision requires an evaluated-through timestamp"
+        let provider = ContractPolicy.normalizeProvider request.Provider
+        let frame = ContractPolicy.normalizeTimeFrame request.TimeFrame
+        if frame <> TimeFrame.Daily then
+            invalidArg "timeFrame" "Autonomous execution evidence currently supports completed daily bars only"
+        let descriptor = DataProviderCatalog.Get(provider)
+        if request.Market <> descriptor.Market then
+            invalidArg "market" "Execution evidence market does not match the provider catalog"
+        if request.CalendarVersion <> ExchangeCalendarCatalog.Version then
+            invalidArg "calendarVersion" "Execution evidence requires the active market calendar version"
+        ContractPolicy.normalizeAdjustment provider frame request.AdjustmentMode |> ignore
+        let symbol = ContractPolicy.normalizeSymbol request.Symbol
+        let fromUtc, toUtc = ContractPolicy.ensureRange request.NotBeforeUtc request.CompletedThroughUtc
+        use connection = new SqliteConnection(connectionString)
+        do! connection.OpenAsync(ct)
+        use cmd = command connection None """
+SELECT Symbol,TimeFrame,TimestampUtc,Open,High,Low,Close,Volume,Vwap FROM (
+ SELECT Symbol,TimeFrame,TimestampUtc,Open,High,Low,Close,Volume,Vwap FROM Bars
+ WHERE Provider=@provider AND Symbol=@symbol AND TimeFrame=@frame AND AdjustmentMode=@adjustment
+  AND TimestampUtc>=@from AND TimestampUtc<=@to
+ ORDER BY TimestampUtc DESC LIMIT @required)
+ORDER BY TimestampUtc"""
+        parameter cmd "@provider" (provider.ToString())
+        parameter cmd "@symbol" symbol
+        parameter cmd "@frame" (frame.ToString())
+        parameter cmd "@adjustment" request.AdjustmentMode
+        parameter cmd "@from" (fromUtc.ToString("O", invariant))
+        parameter cmd "@to" (toUtc.ToString("O", invariant))
+        parameter cmd "@required" (box request.RequiredBars)
+        use! reader = cmd.ExecuteReaderAsync(ct)
+        let bars = ResizeArray<MarketDataBar>()
+        while reader.Read() do bars.Add(readBar reader)
+        reader.Close()
+        use revisionCmd = command connection None "SELECT CAST(Value AS INTEGER) FROM Metadata WHERE Key='LatestRevision'"
+        let! revision = scalarInt64 revisionCmd ct
+        use completeCmd = command connection None """
+SELECT COUNT(*) FROM EvidenceRanges WHERE Provider=@provider AND Symbol=@symbol AND TimeFrame=@frame
+ AND AdjustmentMode=@adjustment AND ToUtc>=@expected AND IsComplete=1"""
+        parameter completeCmd "@provider" (provider.ToString())
+        parameter completeCmd "@symbol" symbol
+        parameter completeCmd "@frame" (frame.ToString())
+        parameter completeCmd "@adjustment" request.AdjustmentMode
+        parameter completeCmd "@expected" (
+            request.ExpectedLastSessionDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).ToString("O", invariant))
+        let! completeRanges = scalarInt64 completeCmd ct
+        let hash = ContractPolicy.contentHash bars
+        let zone = TimeZoneInfo.FindSystemTimeZoneById(
+            MarketRegionCatalog.Get(descriptor.MarketRegion).TimeZoneId)
+        let sessionDates = HashSet<DateOnly>(
+            bars
+            |> Seq.map (fun bar ->
+                DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+                    ContractPolicy.utc bar.TimestampUtc, zone))))
+        let expectedSessionPresent = sessionDates.Contains request.ExpectedLastSessionDate
+        let contiguousCompletedSessions =
+            if bars.Count = 0 then false
+            else
+                let mutable date = sessionDates |> Seq.min
+                let mutable complete = true
+                while complete && date <= request.ExpectedLastSessionDate do
+                    let tradingDay = ExchangeCalendarCatalog.GetTradingDay(
+                        descriptor.MarketRegion, date)
+                    if tradingDay.IsTradingDay && not (sessionDates.Contains date) then
+                        complete <- false
+                    date <- date.AddDays 1
+                complete
+        let evidence = MarketDataEvidenceContract(
+            MarketDataContractVersions.Current,
+            ContractPolicy.evidenceId (provider.ToString()) symbol (frame.ToString()) request.AdjustmentMode request.CalendarVersion revision hash,
+            provider.ToString(), symbol, frame.ToString(), request.AdjustmentMode, request.Market,
+            request.CalendarVersion, fromUtc, toUtc,
+            (if bars.Count = 0 then Nullable() else Nullable(bars[0].TimestampUtc)),
+            (if bars.Count = 0 then Nullable() else Nullable(bars[bars.Count - 1].TimestampUtc)),
+            revision, completeRanges > 0L && bars.Count = request.RequiredBars
+                && expectedSessionPresent && contiguousCompletedSessions, hash)
+        let mutable priorCorrected = false
+        if request.AfterRevision > 0L then
+            use correction = command connection None """
+SELECT COUNT(*) FROM Corrections WHERE Revision>@revision AND Provider=@provider
+ AND Symbol=@symbol AND TimeFrame=@frame AND AdjustmentMode=@adjustment
+ AND TimestampUtc<=@evaluated"""
+            parameter correction "@revision" (box request.AfterRevision)
+            parameter correction "@provider" (provider.ToString())
+            parameter correction "@symbol" symbol
+            parameter correction "@frame" (frame.ToString())
+            parameter correction "@adjustment" request.AdjustmentMode
+            parameter correction "@evaluated" (
+                ContractPolicy.utc(request.EvaluatedThroughUtc.Value).ToString("O", invariant))
+            let! correctionCount = scalarInt64 correction ct
+            priorCorrected <- correctionCount > 0L
+        return MarketDataExecutionWindowResponse(
+            evidence, bars.ToArray(), priorCorrected)
+    }
+
     member _.CorrectionsAsync(afterRevision: int64, limit: int, ct: CancellationToken) = task {
         let bounded = Math.Clamp(limit, 1, 1000)
         use connection = new SqliteConnection(connectionString)

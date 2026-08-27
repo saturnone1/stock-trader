@@ -4,9 +4,9 @@ open System
 
 type ServiceSettings = {
     DatabasePath: string
-    SharedSecret: string
     ClientCaPath: string
-    ClientCommonName: string
+    EdgeRoleDnsName: string
+    TradingCoreRoleDnsName: string
     YahooBaseUrl: string
     YahooUserAgent: string
     YahooDelayMs: int
@@ -33,9 +33,9 @@ module ServiceSettings =
 
     let load () = {
         DatabasePath = value "MARKET_DATA_DATABASE_PATH" "/data/marketdata.db"
-        SharedSecret = value "MARKET_DATA_SHARED_SECRET" ""
         ClientCaPath = value "MARKET_DATA_CLIENT_CA_PATH" ""
-        ClientCommonName = value "MARKET_DATA_CLIENT_COMMON_NAME" "stocktrader-api"
+        EdgeRoleDnsName = value "MARKET_DATA_EDGE_ROLE_DNS" "edge-market-data.stocktrader.internal"
+        TradingCoreRoleDnsName = value "MARKET_DATA_TRADING_CORE_ROLE_DNS" "trading-core-evidence.stocktrader.internal"
         YahooBaseUrl = value "YAHOO_BASE_URL" "https://query1.finance.yahoo.com"
         YahooUserAgent = value "YAHOO_USER_AGENT" "StockTrader-MarketData/1.0"
         YahooDelayMs = positiveInt "YAHOO_RATE_LIMIT_DELAY_MS" 200
@@ -55,11 +55,7 @@ module ServiceSettings =
         | _ -> false
 
     let validate settings =
-        [ if settings.SharedSecret.Length < 32 then
-              "MARKET_DATA_SHARED_SECRET must contain at least 32 characters"
-          if settings.SharedSecret |> Seq.exists Char.IsControl then
-              "MARKET_DATA_SHARED_SECRET must not contain control characters"
-          if String.IsNullOrWhiteSpace(settings.ClientCaPath) then
+        [ if String.IsNullOrWhiteSpace(settings.ClientCaPath) then
               "MARKET_DATA_CLIENT_CA_PATH is required"
           if String.IsNullOrWhiteSpace(settings.DatabasePath) then
               "MARKET_DATA_DATABASE_PATH is required"

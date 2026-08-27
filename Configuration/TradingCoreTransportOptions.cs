@@ -6,7 +6,6 @@ public sealed class TradingCoreTransportOptions
 
     public string Mode { get; set; } = "Local";
     public string Endpoint { get; set; } = "https://stocktrader-trading-core:9443";
-    public string SharedSecret { get; set; } = string.Empty;
     public string ClientCertificatePath { get; set; } = string.Empty;
     public string ClientCertificateKeyPath { get; set; } = string.Empty;
     public string ServerCertificateAuthorityPath { get; set; } = string.Empty;
@@ -21,7 +20,6 @@ public sealed class TradingCoreTransportOptions
         return Mode is "Projection" or "Shadow" or "Remote"
             && Uri.TryCreate(Endpoint, UriKind.Absolute, out var uri)
             && uri.Scheme == Uri.UriSchemeHttps
-            && !string.IsNullOrWhiteSpace(SharedSecret)
             && File.Exists(ClientCertificatePath)
             && File.Exists(ClientCertificateKeyPath)
             && File.Exists(ServerCertificateAuthorityPath)

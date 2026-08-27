@@ -83,12 +83,22 @@ CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS account_configuration (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), generation INTEGER NOT NULL,
  configuration_hash TEXT NOT NULL, ciphertext BLOB NOT NULL, nonce BLOB NOT NULL,
- tag BLOB NOT NULL, accepted_at TEXT NOT NULL);
+ tag BLOB NOT NULL, encryption_key_generation TEXT NOT NULL DEFAULT 'legacy',
+ accepted_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS encryption_key_rotation_audit (
+ rotation_id TEXT PRIMARY KEY, old_generation TEXT NOT NULL, new_generation TEXT NOT NULL,
+ configuration_hash TEXT NOT NULL, rotated_at TEXT NOT NULL);
 INSERT OR IGNORE INTO state(key,value) VALUES('account_generation','0');
 INSERT OR IGNORE INTO state(key,value) VALUES('last_snapshot_id','');
 INSERT OR IGNORE INTO state(key,value) VALUES('last_broker_reconciliation_at','');
 """
         command.ExecuteNonQuery() |> ignore
+        use columns = connection.CreateCommand()
+        columns.CommandText <- "SELECT COUNT(*) FROM pragma_table_info('account_configuration') WHERE name='encryption_key_generation'"
+        if Convert.ToInt32(columns.ExecuteScalar()) = 0 then
+            use migrate = connection.CreateCommand()
+            migrate.CommandText <- "ALTER TABLE account_configuration ADD COLUMN encryption_key_generation TEXT NOT NULL DEFAULT 'legacy'"
+            migrate.ExecuteNonQuery() |> ignore
         use seed = connection.CreateCommand()
         seed.CommandText <- """INSERT OR IGNORE INTO authority
 (singleton,mode,generation,authority_id,activated_at,previous_state_hash,

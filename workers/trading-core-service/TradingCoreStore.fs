@@ -10,6 +10,17 @@ open StockTrader.TradingCore.Execution
 
 type TradingCoreStore(config: ServiceConfig, json: JsonSerializerOptions, secrets: SecretStore) =
     do Database.initialize config.DatabasePath config.InitialMode
+    do
+        use connection = Database.connect config.DatabasePath
+        use command = connection.CreateCommand()
+        command.CommandText <- "SELECT ciphertext,nonce,tag,encryption_key_generation FROM account_configuration WHERE singleton=1"
+        use reader = command.ExecuteReader()
+        if reader.Read() then
+            let payload =
+                { Ciphertext = reader.GetFieldValue<byte array>(0)
+                  Nonce = reader.GetFieldValue<byte array>(1)
+                  Tag = reader.GetFieldValue<byte array>(2) }
+            secrets.Unprotect(payload, reader.GetString(3)) |> ignore
 
     member internal _.Connect() = Database.connect config.DatabasePath
     member internal _.Json = json

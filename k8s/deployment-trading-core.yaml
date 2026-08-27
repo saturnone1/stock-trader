@@ -55,22 +55,33 @@ spec:
           value: "/data"
         - name: STOCKTRADER_TRADING_CORE_MODE
           value: "__TRADING_CORE_MODE__"
-        - name: STOCKTRADER_TRADING_CORE_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: __TRADING_CORE_AUTH_SECRET__
-              key: shared-secret
+        - name: STOCKTRADER_TRADING_CORE_CLIENT_ROLE_DNS
+          value: "edge-trading-control.stocktrader.internal"
         - name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
-              name: stocktrader-trading-core-encryption
+              name: __TRADING_CORE_ENCRYPTION_SECRET__
               key: encryption-key
+        - name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION
+          value: "__TRADING_CORE_ENCRYPTION_GENERATION__"
         - name: STOCKTRADER_TRADING_CORE_SERVER_CERT_PATH
           value: "/tls/server/tls.crt"
         - name: STOCKTRADER_TRADING_CORE_SERVER_KEY_PATH
           value: "/tls/server/tls.key"
         - name: STOCKTRADER_TRADING_CORE_CLIENT_CA_PATH
           value: "/tls/client-ca/ca.crt"
+        - name: STOCKTRADER_MARKET_DATA_ENDPOINT
+          value: "https://stocktrader-market-data:7443"
+        - name: STOCKTRADER_MARKET_DATA_CLIENT_CERT_PATH
+          value: "/tls/market-data-client/tls.crt"
+        - name: STOCKTRADER_MARKET_DATA_CLIENT_KEY_PATH
+          value: "/tls/market-data-client/tls.key"
+        - name: STOCKTRADER_MARKET_DATA_SERVER_CA_PATH
+          value: "/tls/market-data-client/ca.crt"
+        - name: STOCKTRADER_MARKET_DATA_SERVER_COMMON_NAME
+          value: "stocktrader-market-data"
+        - name: STOCKTRADER_POSITION_EVALUATION_INTERVAL_SECONDS
+          value: "30"
         resources:
           requests:
             memory: "96Mi"
@@ -91,6 +102,9 @@ spec:
           readOnly: true
         - name: client-ca
           mountPath: /tls/client-ca
+          readOnly: true
+        - name: market-data-client
+          mountPath: /tls/market-data-client
           readOnly: true
         - name: runtime-tmp
           mountPath: /tmp
@@ -125,6 +139,9 @@ spec:
       - name: runtime-tmp
         emptyDir:
           sizeLimit: 64Mi
+      - name: market-data-client
+        secret:
+          secretName: __MARKET_DATA_TRADING_CORE_CLIENT_TLS_SECRET__
 
 ---
 apiVersion: v1

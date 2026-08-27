@@ -11,7 +11,10 @@ open StockTrader.Domain.MarketData
 open StockTrader.ServiceContracts.TradingCore
 open StockTrader.TradingCore.Broker
 
-type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
+type BrokerWorker(
+    store: TradingCoreStore,
+    marketData: MarketDataExecutionClient,
+    logger: ILogger<BrokerWorker>) =
     inherit BackgroundService()
 
     let mutable nextPortfolioSync = DateTime.MinValue
@@ -44,15 +47,20 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
         try
             if not (store.FinancialStateReady()) then
                 invalidOp "trading-core-financial-state-not-reconciled"
-            let! account = broker.GetAccountAsync(ct)
-            let! positions = broker.GetPositionsAsync(ct)
-            return Ok (TradingRiskGate.Evaluate(TradingRiskGateRequest(
-                configuration.Risk.DailyLossLimitPercent,
-                configuration.Risk.MaxTotalPositions,
-                configuration.Risk.MaxPositionsPerSector,
-                intent.Symbol, intent.Sector, account, positions,
-                store.PositionRiskEvidence())))
-        with error -> return Error error
+            let! verification = marketData.VerifyAsync(intent.MarketDataEvidence, ct)
+            if not verification.Matches then
+                return Error(
+                    $"entry-market-data-evidence-rejected:{verification.RejectionReason}", None)
+            else
+                let! account = broker.GetAccountAsync(ct)
+                let! positions = broker.GetPositionsAsync(ct)
+                return Ok (TradingRiskGate.Evaluate(TradingRiskGateRequest(
+                    configuration.Risk.DailyLossLimitPercent,
+                    configuration.Risk.MaxTotalPositions,
+                    configuration.Risk.MaxPositionsPerSector,
+                    intent.Symbol, intent.Sector, account, positions,
+                    store.PositionRiskEvidence())))
+        with error -> return Error("entry-pre-submit-evidence-unavailable", Some error)
     }
 
     let syncPortfolio (configuration: TradingAccountConfigurationSet) ct = task {
@@ -121,7 +129,12 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
                             else
                                 let! readiness = preflight broker configuration intent stoppingToken
                                 match readiness with
-                                | Error error ->
+                                | Error (reason, None) ->
+                                    store.RejectIntent(intent.Envelope.CommandId, reason)
+                                    logger.LogError(
+                                        "Trading entry {CommandId} rejected before submission: {Reason}",
+                                        intent.Envelope.CommandId, reason)
+                                | Error (_, Some error) ->
                                     store.ReleaseEntryForRetry(intent.Envelope.CommandId) |> ignore
                                     logger.LogWarning(error,
                                         "Trading entry {CommandId} pre-submit evidence unavailable; released for retry",

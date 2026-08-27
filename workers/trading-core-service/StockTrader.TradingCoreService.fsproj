@@ -16,6 +16,8 @@
     <Compile Include="Configuration.fs" />
     <Compile Include="Database.fs" />
     <Compile Include="SecretStore.fs" />
+    <Compile Include="EncryptionKeyMigration.fs" />
+    <Compile Include="MarketDataExecutionClient.fs" />
     <Compile Include="TradingCoreStore.fs" />
     <Compile Include="TradingCoreAuthorityStore.fs" />
     <Compile Include="TradingCoreRecommendationStore.fs" />
@@ -30,6 +32,7 @@
     <Compile Include="TradingCoreMarketStore.fs" />
     <Compile Include="TradingCoreOperations.fs" />
     <Compile Include="BrokerWorker.fs" />
+    <Compile Include="PositionProtectionWorker.fs" />
     <Compile Include="HttpHost.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

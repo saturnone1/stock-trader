@@ -698,6 +698,15 @@ Before a schema-changing API rollout, the canonical K3s path now stops the sole 
 creates an integrity-checked backup, executes the API's migration-only mode, and starts the new image
 only after the schema reports synchronized.
 
+The Trading Core MSA boundary is now implementation-complete for the next integrated rehearsal.
+Its Pod owns entry evidence verification, final risk/broker submission, reconciliation, canonical
+financial state, and autonomous completed-daily-bar position protection. The Edge Remote scheduler
+cannot evaluate positions. Market Data exposes a certificate-role-restricted, bounded persisted-bar
+evidence API; shared transport secrets have been removed from these two service edges. Account
+credentials remain encrypted with an explicit generation and an offline, backup-first transactional
+rotation path. Production promotion and rollback evidence remain the exit gate; no further service
+is extracted before that batch finishes.
+
 Exit gate: one documented local path and one documented K3s production path remain.
 
 ## Measurable completion criteria

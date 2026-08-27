@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\StockTrader.csproj" />
     <ProjectReference Include="..\..\workers\trading-core-service\StockTrader.TradingCoreService.fsproj" />
+    <ProjectReference Include="..\..\workers\market-data-service\StockTrader.MarketDataService.fsproj" />
     <ProjectReference Include="..\..\src\StockTrader.TradingCore\StockTrader.TradingCore.csproj" />
   </ItemGroup>
 

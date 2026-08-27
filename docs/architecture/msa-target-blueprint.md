@@ -64,7 +64,7 @@ service.
 | Optimization Worker | Current F# Deployment, two Pods | stateless deterministic evaluation from immutable leases | horizontal, bounded | complete |
 | Market Data | Current F# Deployment, Remote authority | providers, normalized bars, corrections, evidence | 1 while SQLite | complete |
 | ML Training | Current F# Deployment, Remote authority | durable training queue and immutable publications | 1 on current server | complete |
-| Trading Core | Candidate F# Deployment, Shadow generation 2 | sole Remote financial authority | 1; fenced single-active | active completion batch |
+| Trading Core | Candidate F# Deployment, Shadow generation 2 | sole Remote financial authority | 1; fenced single-active | completion implementation ready; integrated rehearsal pending |
 | Strategy Research | Current module inside Edge | authoring, preview, backtest, scan, signal and optimization ownership | conditional Pod | do not extract yet |
 | Reporting/Notifications | Disabled module behavior | cursor-based non-authoritative projection/delivery | conditional Pod | do not extract yet |
 
@@ -159,7 +159,7 @@ Edge financial scheduler may remain active after Trading Core becomes Remote aut
 | Edge -> Market Data | private command/query | `MarketDataContracts.cs` | request/evidence ID, revision, content hash |
 | Edge -> ML Training | private command/query | `MlTrainingContracts.cs` | job ID, input hash, trainer/schema versions, publication hash |
 | Edge/Research -> Trading Core | private command/query | `TradingCoreContracts.cs` | command, correlation/causation, authority/account generation, artifact/evidence hashes |
-| Trading Core -> Market Data | dedicated execution-evidence query | Market Data execution subset | verify named evidence and fetch bounded latest completed bars; no provider/upsert authority |
+| Trading Core -> Market Data | dedicated execution-evidence query | Market Data execution subset | verify named evidence, fetch bounded completed bars, and detect scoped corrections after the durable evaluation revision; no provider/upsert authority |
 | Trading Core -> broker | adapter-specific protocol behind one port | Trading Core broker adapter | durable client order ID and account generation |
 | Consumer -> Trading Core | conditional cursor pull | future activity-event contract | event ID, monotonic cursor, consumer inbox ID |
 
@@ -193,9 +193,10 @@ relies on two independently upgraded Pods interpreting the same version differen
 
 The role is encoded in a certificate SAN and matched exactly after private-CA and client-auth-EKU
 validation. A caller is authorized by role and operation, never merely because any certificate from
-the CA was presented. Existing shared-secret headers remain accepted only during a staged migration:
-servers first accept valid role certificates, clients stop sending the header, usage telemetry proves
-the legacy path is unused, and then header handling and Secrets are removed.
+the CA was presented. Trading Core and Market Data have completed this migration and no longer
+accept or mount a shared transport secret. Optimization and ML retain their existing compatibility
+authentication until their own complete service batches; that compatibility is not copied to a new
+edge.
 
 ### 7.2 Contract evolution and retry classes
 

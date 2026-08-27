@@ -85,11 +85,6 @@ spec:
           value: "__MARKET_DATA_MODE__"
         - name: MarketDataTransport__Endpoint
           value: "https://stocktrader-market-data:7443"
-        - name: MarketDataTransport__SharedSecret
-          valueFrom:
-            secretKeyRef:
-              name: stocktrader-market-data-auth
-              key: shared-secret
         - name: MarketDataTransport__ClientCertificatePath
           value: "/tls/market-data-client/tls.crt"
         - name: MarketDataTransport__ClientCertificateKeyPath
@@ -121,11 +116,6 @@ spec:
           value: "__TRADING_CORE_MODE__"
         - name: TradingCoreTransport__Endpoint
           value: "https://stocktrader-trading-core:9443"
-        - name: TradingCoreTransport__SharedSecret
-          valueFrom:
-            secretKeyRef:
-              name: __TRADING_CORE_AUTH_SECRET__
-              key: shared-secret
         - name: TradingCoreTransport__ClientCertificatePath
           value: "/tls/trading-core-client/tls.crt"
         - name: TradingCoreTransport__ClientCertificateKeyPath

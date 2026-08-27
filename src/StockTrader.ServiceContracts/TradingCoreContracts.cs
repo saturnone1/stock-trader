@@ -76,6 +76,37 @@ public static class TradingExecutionArtifactKinds
     public const string BuiltInPattern = "BuiltInPattern";
 }
 
+public sealed record TradingLongPositionPolicy(
+    int MaxHoldingBars,
+    bool EnableTrailingStop,
+    decimal TrailingStopAtrMultiplier,
+    decimal TrailingActivationR,
+    bool EnablePartialProfit,
+    decimal PartialProfitRMultiple,
+    bool EnableTargetExit,
+    bool EnableTimeExit,
+    decimal BreakevenAtrMultiplier,
+    string StopReason,
+    string ProtectedStopReason);
+
+public sealed record TradingCumulativeRsiExitPolicy(
+    int RsiPeriod,
+    int CumulativePeriod,
+    decimal ExitThreshold,
+    int LongTrendMovingAveragePeriod);
+
+public sealed record TradingTrendStopPolicy(int MovingAveragePeriod, decimal StopMultiplier);
+
+/// <summary>
+/// Normalized, immutable position-management semantics. Trading Core consumes this snapshot and
+/// never resolves mutable Edge settings while capital is exposed.
+/// </summary>
+public sealed record TradingPositionManagementArtifact(
+    TradingLongPositionPolicy ExitPolicy,
+    int RequiredBars,
+    TradingCumulativeRsiExitPolicy? CumulativeRsiExit,
+    TradingTrendStopPolicy? TrendStop);
+
 public sealed record TradingStrategyExecutionArtifact(
     int ContractVersion,
     string ArtifactId,
@@ -88,7 +119,8 @@ public sealed record TradingStrategyExecutionArtifact(
     string PatternCatalogVersion,
     string CalendarVersion,
     bool CanOpenPosition,
-    bool CanManagePosition);
+    bool CanManagePosition,
+    TradingPositionManagementArtifact? PositionManagement = null);
 
 public sealed record TradingAuthorityContract(
     int ContractVersion,
@@ -222,7 +254,11 @@ public sealed record TradingPositionCommand(
     string ExpectedExecutionArtifactId,
     MarketDataEvidenceContract MarketDataEvidence,
     int? ScalingRuleIndex = null,
-    bool MarksPartialProfit = false);
+    bool MarksPartialProfit = false,
+    TradingShadowPositionPolicyState? EvaluatedPolicyState = null,
+    decimal EvaluatedEntryAtr = 0m,
+    DateTime EvaluatedThroughBarUtc = default,
+    long EvaluatedMarketDataRevision = 0);
 
 public sealed record TradingPositionPolicyStateUpdate(
     TradingCommandEnvelope Envelope,
@@ -233,7 +269,10 @@ public sealed record TradingPositionPolicyStateUpdate(
     decimal InitialRiskDistance,
     bool BreakevenApplied,
     bool TrailingStopActivated,
-    MarketDataEvidenceContract MarketDataEvidence);
+    MarketDataEvidenceContract MarketDataEvidence,
+    decimal EntryAtr = 0m,
+    DateTime EvaluatedThroughBarUtc = default,
+    long EvaluatedMarketDataRevision = 0);
 
 public sealed record TradingCommandReceipt(
     int ContractVersion,
@@ -352,7 +391,10 @@ public sealed record TradingPositionProjection(
     int? ExecutionRequestRuleIndex,
     string? ExecutionOrderId,
     IReadOnlyList<TradingScalingProjection> ScalingExecutions,
-    TradingPositionExecutionContext? ExecutionContext);
+    TradingPositionExecutionContext? ExecutionContext,
+    string? LastEvaluatedEvidenceId = null,
+    DateTime? LastEvaluatedBarUtc = null,
+    long LastEvaluatedMarketDataRevision = 0);
 
 public sealed record TradingTradeProjection(
     string TradeId,
@@ -511,6 +553,10 @@ public static class TradingCoreIdentity
             command.MarketDataEvidence,
             command.ScalingRuleIndex,
             command.MarksPartialProfit,
+            command.EvaluatedPolicyState,
+            command.EvaluatedEntryAtr,
+            command.EvaluatedThroughBarUtc,
+            command.EvaluatedMarketDataRevision,
         });
 
     public static string PositionStatePayload(TradingPositionPolicyStateUpdate update) =>
@@ -524,6 +570,9 @@ public static class TradingCoreIdentity
             update.BreakevenApplied,
             update.TrailingStopActivated,
             update.MarketDataEvidence,
+            update.EntryAtr,
+            update.EvaluatedThroughBarUtc,
+            update.EvaluatedMarketDataRevision,
         });
 
     public static string AccountConfiguration(TradingAccountConfigurationSet configuration) =>
@@ -633,12 +682,15 @@ public static class TradingCoreCompatibilityPolicy
             || intent.MarketDataEvidence is null
             || MarketDataEvidenceError(intent.MarketDataEvidence) is not null
             || TradingExecutionArtifactPolicy.Error(intent.ExecutionArtifact) is not null
+            || intent.ExecutionArtifact.PositionManagement is null
             || !intent.ExecutionArtifact.CanOpenPosition
             || !string.Equals(intent.ExecutionArtifact.PatternCode, intent.PatternCode,
                 StringComparison.Ordinal)
             || !string.Equals(intent.ExecutionArtifact.CalendarVersion,
                 intent.MarketDataEvidence.CalendarVersion, StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(intent.MarketDataEvidence?.EvidenceId)
+            || !string.Equals(intent.MarketDataEvidence.TimeFrame, "Daily",
+                StringComparison.Ordinal)
             || !intent.MarketDataEvidence.IsComplete
             || intent.MarketDataEvidence.LastBarUtc is null
             || intent.MarketDataEvidence.LastBarUtc > intent.Envelope.OccurredAtUtc
@@ -666,7 +718,14 @@ public static class TradingCoreCompatibilityPolicy
             || MarketDataEvidenceError(command.MarketDataEvidence) is not null
             || !command.MarketDataEvidence.IsComplete
             || command.MarketDataEvidence.LastBarUtc is null
-            || command.MarketDataEvidence.LastBarUtc > command.Envelope.OccurredAtUtc)
+            || command.MarketDataEvidence.LastBarUtc > command.Envelope.OccurredAtUtc
+            || command.EvaluatedEntryAtr < 0
+            || (command.EvaluatedPolicyState is { } state
+                && (!ValidPositionShadowPolicyState(state)
+                    || command.EvaluatedThroughBarUtc == default
+                    || command.EvaluatedThroughBarUtc > command.MarketDataEvidence.LastBarUtc
+                    || command.EvaluatedMarketDataRevision <= 0
+                    || command.EvaluatedMarketDataRevision > command.MarketDataEvidence.Revision)))
             return "invalid-position-command";
         return string.Equals(command.Envelope.PayloadHash,
             TradingCoreIdentity.PositionPayload(command), StringComparison.Ordinal)
@@ -720,7 +779,12 @@ public static class TradingCoreCompatibilityPolicy
             || MarketDataEvidenceError(update.MarketDataEvidence) is not null
             || !update.MarketDataEvidence.IsComplete
             || update.MarketDataEvidence.LastBarUtc is null
-            || update.MarketDataEvidence.LastBarUtc > update.Envelope.OccurredAtUtc)
+            || update.MarketDataEvidence.LastBarUtc > update.Envelope.OccurredAtUtc
+            || update.EntryAtr < 0
+            || update.EvaluatedThroughBarUtc == default
+            || update.EvaluatedThroughBarUtc > update.MarketDataEvidence.LastBarUtc
+            || update.EvaluatedMarketDataRevision <= 0
+            || update.EvaluatedMarketDataRevision > update.MarketDataEvidence.Revision)
             return "invalid-position-state-update";
         return string.Equals(update.Envelope.PayloadHash,
             TradingCoreIdentity.PositionStatePayload(update), StringComparison.Ordinal)
@@ -854,6 +918,24 @@ public static class TradingExecutionArtifactPolicy
             OptimizationWorkerContractCatalog.PatternCatalogVersion,
         });
 
+    public static string ComputeDefinitionHash(
+        string kind,
+        string patternCode,
+        StrategyExecutionArtifact? strategy,
+        string builtInSettingsJson,
+        string calendarVersion,
+        TradingPositionManagementArtifact positionManagement) => CanonicalJsonHash.Compute(new
+        {
+            Kind = kind,
+            PatternCode = patternCode,
+            StrategyContentHash = strategy?.ContentHash,
+            BuiltInSettingsJson = builtInSettingsJson,
+            CalendarVersion = calendarVersion,
+            PositionManagement = positionManagement,
+            OptimizationWorkerContractCatalog.EngineSemanticsVersion,
+            OptimizationWorkerContractCatalog.PatternCatalogVersion,
+        });
+
     public static string? Error(TradingStrategyExecutionArtifact artifact)
     {
         if (artifact.ContractVersion != TradingCoreContractVersions.Current)
@@ -864,6 +946,15 @@ public static class TradingExecutionArtifactPolicy
             || artifact.EngineSemanticsVersion != OptimizationWorkerContractCatalog.EngineSemanticsVersion
             || artifact.PatternCatalogVersion != OptimizationWorkerContractCatalog.PatternCatalogVersion)
             return "incompatible-execution-artifact";
+        if (artifact.PositionManagement is { } management
+            && (management.RequiredBars < 1
+                || management.RequiredBars > MarketDataExecutionEvidenceLimits.MaximumBars
+                || management.ExitPolicy is null
+                || management.ExitPolicy.MaxHoldingBars < 0
+                || management.ExitPolicy.TrailingStopAtrMultiplier < 0
+                || management.ExitPolicy.PartialProfitRMultiple < 0
+                || management.ExitPolicy.BreakevenAtrMultiplier < 0))
+            return "invalid-position-management-artifact";
         if (artifact.Kind == TradingExecutionArtifactKinds.StrategyDocument)
         {
             if (artifact.StrategyDocument is null || artifact.BuiltInSettingsJson != "{}"
@@ -893,8 +984,12 @@ public static class TradingExecutionArtifactPolicy
         }
         else return "unsupported-execution-artifact-kind";
 
-        var expected = ComputeDefinitionHash(artifact.Kind, artifact.PatternCode,
-            artifact.StrategyDocument, artifact.BuiltInSettingsJson, artifact.CalendarVersion);
+        var expected = artifact.PositionManagement is null
+            ? ComputeDefinitionHash(artifact.Kind, artifact.PatternCode,
+                artifact.StrategyDocument, artifact.BuiltInSettingsJson, artifact.CalendarVersion)
+            : ComputeDefinitionHash(artifact.Kind, artifact.PatternCode,
+                artifact.StrategyDocument, artifact.BuiltInSettingsJson, artifact.CalendarVersion,
+                artifact.PositionManagement);
         return artifact.DefinitionHash == expected && artifact.ArtifactId == expected
             ? null : "execution-artifact-hash-mismatch";
     }

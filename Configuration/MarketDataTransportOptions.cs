@@ -13,7 +13,6 @@ public sealed class MarketDataTransportOptions
 
     public MarketDataTransportMode Mode { get; init; } = MarketDataTransportMode.Local;
     public Uri Endpoint { get; init; } = new("https://stocktrader-market-data:7443");
-    public string SharedSecret { get; init; } = string.Empty;
     public string ClientCertificatePath { get; init; } = string.Empty;
     public string ClientCertificateKeyPath { get; init; } = string.Empty;
     public string ServerCertificateAuthorityPath { get; init; } = string.Empty;
@@ -25,8 +24,6 @@ public sealed class MarketDataTransportOptions
 
     public bool IsValid() => Mode == MarketDataTransportMode.Local ||
         (Endpoint.Scheme == Uri.UriSchemeHttps &&
-         SharedSecret is { Length: >= 32 } &&
-         !SharedSecret.Any(char.IsControl) &&
          File.Exists(ClientCertificatePath) &&
          File.Exists(ClientCertificateKeyPath) &&
          File.Exists(ServerCertificateAuthorityPath) &&

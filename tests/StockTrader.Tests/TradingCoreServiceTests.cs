@@ -19,10 +19,7 @@ public sealed class TradingCoreServiceTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var path = Path.Combine(_root, "corrupt.db");
-        var config = new ServiceConfig(
-            path, new string('x', 32), "unused", "unused", "unused",
-            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
-            TradingAuthorityMode.Projection);
+        var config = CreateConfig(path);
         _ = new TradingCoreStore(
             config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
         using (var file = File.Open(path, FileMode.Open, FileAccess.Write, FileShare.None))
@@ -39,10 +36,7 @@ public sealed class TradingCoreServiceTests : IDisposable
     public void ProjectionPortfolioReadsImportedFinancialRowsInsteadOfEmptyCanonicalTables()
     {
         Directory.CreateDirectory(_root);
-        var config = new ServiceConfig(
-            Path.Combine(_root, "projection.db"), new string('x', 32), "unused", "unused", "unused",
-            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
-            TradingAuthorityMode.Projection);
+        var config = CreateConfig(Path.Combine(_root, "projection.db"));
         var store = new TradingCoreStore(
             config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
         var operations = new TradingCoreOperations(store);
@@ -70,10 +64,7 @@ public sealed class TradingCoreServiceTests : IDisposable
     public void DurableEntryAndExitLifecycleIsIdempotentAndAuditable()
     {
         Directory.CreateDirectory(_root);
-        var config = new ServiceConfig(
-            Path.Combine(_root, "core.db"), new string('x', 32), "unused", "unused", "unused",
-            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
-            TradingAuthorityMode.Projection);
+        var config = CreateConfig(Path.Combine(_root, "core.db"));
         var store = new TradingCoreStore(
             config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
         var operations = new TradingCoreOperations(store);
@@ -170,10 +161,7 @@ public sealed class TradingCoreServiceTests : IDisposable
     public void RejectedBrokerEvidenceReleasesEntryAndPositionClaims()
     {
         Directory.CreateDirectory(_root);
-        var config = new ServiceConfig(
-            Path.Combine(_root, "core.db"), new string('x', 32), "unused", "unused", "unused",
-            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
-            TradingAuthorityMode.Projection);
+        var config = CreateConfig(Path.Combine(_root, "core.db"));
         var store = new TradingCoreStore(
             config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
         var operations = new TradingCoreOperations(store);
@@ -207,10 +195,7 @@ public sealed class TradingCoreServiceTests : IDisposable
     {
         Directory.CreateDirectory(_root);
         var database = Path.Combine(_root, "convergence.db");
-        var config = new ServiceConfig(
-            database, new string('x', 32), "unused", "unused", "unused",
-            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
-            TradingAuthorityMode.Projection);
+        var config = CreateConfig(database);
         var now = DateTime.UtcNow;
         var store = new TradingCoreStore(
             config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
@@ -307,10 +292,7 @@ public sealed class TradingCoreServiceTests : IDisposable
     public void ShadowEntryComparisonIsIdempotentAndNeverCreatesFinancialState()
     {
         Directory.CreateDirectory(_root);
-        var config = new ServiceConfig(
-            Path.Combine(_root, "shadow.db"), new string('x', 32), "unused", "unused", "unused",
-            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
-            TradingAuthorityMode.Projection);
+        var config = CreateConfig(Path.Combine(_root, "shadow.db"));
         var store = new TradingCoreStore(
             config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
         var operations = new TradingCoreOperations(store);
@@ -428,14 +410,19 @@ public sealed class TradingCoreServiceTests : IDisposable
     {
         var evidence = Evidence(now);
         const string settings = "{\"patternConfiguration\":{},\"exitPolicy\":{}}";
+        var management = new TradingPositionManagementArtifact(
+            new TradingLongPositionPolicy(
+                20, true, 2.5m, 1m, true, 2m, true, true,
+                1.5m, "stop", "protected-stop"),
+            50, null, null);
         var artifactHash = TradingExecutionArtifactPolicy.ComputeDefinitionHash(
             TradingExecutionArtifactKinds.BuiltInPattern, "Breakout", null, settings,
-            evidence.CalendarVersion);
+            evidence.CalendarVersion, management);
         var artifact = new TradingStrategyExecutionArtifact(1, artifactHash,
             TradingExecutionArtifactKinds.BuiltInPattern, "Breakout", null, settings,
             artifactHash, OptimizationWorkerContractCatalog.EngineSemanticsVersion,
             OptimizationWorkerContractCatalog.PatternCatalogVersion, evidence.CalendarVersion,
-            true, true);
+            true, true, management);
         var envelope = new TradingCommandEnvelope(1, "entry-command", TradingCommandKinds.AcceptEntry,
             string.Empty, "correlation", null, status.AuthorityGeneration,
             status.AccountGeneration, now, now.AddMinutes(5));
@@ -546,7 +533,8 @@ public sealed class TradingCoreServiceTests : IDisposable
             status.AccountGeneration, now, now.AddMinutes(5));
         var update = new TradingPositionPolicyStateUpdate(
             envelope, position.PositionId, position.ExecutionContext!.ExecutionArtifact.ArtifactId,
-            105m, 96m, position.InitialRiskDistance, true, false, Evidence(now));
+            105m, 96m, position.InitialRiskDistance, true, false, Evidence(now),
+            position.EntryAtr, now, 1);
         return update with
         {
             Envelope = envelope with
@@ -565,6 +553,22 @@ public sealed class TradingCoreServiceTests : IDisposable
             "US", "market-calendar-v1", now.AddDays(-30), now, now.AddDays(-30), now,
             1, true, contentHash);
     }
+
+    private static ServiceConfig CreateConfig(string databasePath) => new(
+        databasePath,
+        "unused-server-cert",
+        "unused-server-key",
+        "unused-client-ca",
+        "edge-trading-control.stocktrader.internal",
+        new Uri("https://market-data.test"),
+        "unused-market-data-client-cert",
+        "unused-market-data-client-key",
+        "unused-market-data-server-ca",
+        "market-data.stocktrader.internal",
+        TimeSpan.FromSeconds(30),
+        Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
+        "test-generation",
+        TradingAuthorityMode.Projection);
 
     private static T Some<T>(FSharpOption<T>? value)
     {

@@ -4,7 +4,6 @@ open System
 open System.Net
 open System.Security.Cryptography
 open System.Security.Cryptography.X509Certificates
-open System.Text
 open System.Threading
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Builder
@@ -35,21 +34,11 @@ type ServiceTelemetry() =
     |])
 
 module HttpHost =
-    let private fixedEquals (expected: string) (actual: string | null) =
-        if isNull actual then false
-        else
-            let safeActual = actual |> Option.ofObj |> Option.defaultValue ""
-            let left, right = Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(safeActual)
-            left.Length = right.Length && CryptographicOperations.FixedTimeEquals(left, right)
-
-    let private trustedClient (settings: ServiceSettings) (certificate: X509Certificate2 | null) =
+    let private clientRole (settings: ServiceSettings) (certificate: X509Certificate2 | null) =
         match certificate |> Option.ofObj with
-        | None -> false
+        | None -> None
         | Some trustedCertificate ->
             try
-                let nameMatches = String.Equals(
-                    trustedCertificate.GetNameInfo(X509NameType.SimpleName, false),
-                    settings.ClientCommonName, StringComparison.Ordinal)
                 let roots = new X509Certificate2Collection()
                 roots.ImportFromPemFile(settings.ClientCaPath)
                 use chain = new X509Chain()
@@ -61,8 +50,19 @@ module HttpHost =
                                 |> Seq.cast<X509Extension>
                                 |> Seq.tryPick (function :? X509EnhancedKeyUsageExtension as eku -> Some eku | _ -> None)
                                 |> Option.exists (fun eku -> eku.EnhancedKeyUsages |> Seq.cast<Oid> |> Seq.exists (fun oid -> oid.Value = "1.3.6.1.5.5.7.3.2"))
-                nameMatches && clientEku && chain.Build(trustedCertificate)
-            with _ -> false
+                let names =
+                    trustedCertificate.Extensions
+                    |> Seq.cast<X509Extension>
+                    |> Seq.tryPick (function
+                        | :? X509SubjectAlternativeNameExtension as san -> Some(san.EnumerateDnsNames())
+                        | _ -> None)
+                    |> Option.map Seq.toArray
+                    |> Option.defaultValue Array.empty
+                if not clientEku || not (chain.Build(trustedCertificate)) then None
+                elif names |> Array.exists (fun name -> String.Equals(name, settings.EdgeRoleDnsName, StringComparison.Ordinal)) then Some "edge"
+                elif names |> Array.exists (fun name -> String.Equals(name, settings.TradingCoreRoleDnsName, StringComparison.Ordinal)) then Some "trading-core-evidence"
+                else None
+            with _ -> None
 
     let private result (telemetry: ServiceTelemetry) (operation: unit -> Task<'a>) = task {
         telemetry.Request()
@@ -92,10 +92,12 @@ module HttpHost =
             if not (context.Request.Path.StartsWithSegments("/v1")) then do! next.Invoke(context)
             else
                 let! certificate = context.Connection.GetClientCertificateAsync(context.RequestAborted)
-                let supplied = context.Request.Headers["X-Market-Data-Key"].ToString()
-                if isNull certificate || not (trustedClient settings certificate) || not (fixedEquals settings.SharedSecret supplied) then
-                    context.Response.StatusCode <- int HttpStatusCode.Unauthorized
-                else do! next.Invoke(context)
+                match clientRole settings certificate with
+                | Some "edge" -> do! next.Invoke(context)
+                | Some "trading-core-evidence" when context.Request.Path.StartsWithSegments("/v1/execution-evidence") ->
+                    do! next.Invoke(context)
+                | Some _ -> context.Response.StatusCode <- int HttpStatusCode.Forbidden
+                | None -> context.Response.StatusCode <- int HttpStatusCode.Unauthorized
         })) |> ignore
 
         app.MapGet("/health/live", Func<IResult>(fun () -> Results.Ok({| status = "live" |}))) |> ignore
@@ -123,6 +125,10 @@ module HttpHost =
                 telemetry.Read()
                 return! store.ReadRangeAsync(request, ct)
             }))) |> ignore
+        app.MapPost("/v1/execution-evidence/verify", Func<MarketDataEvidenceVerificationRequest, CancellationToken, Task<IResult>>(fun request ct ->
+            result telemetry (fun () -> task { telemetry.Read(); return! store.VerifyEvidenceAsync(request, ct) }))) |> ignore
+        app.MapPost("/v1/execution-evidence/latest-completed", Func<MarketDataExecutionWindowRequest, CancellationToken, Task<IResult>>(fun request ct ->
+            result telemetry (fun () -> task { telemetry.Read(); return! store.ReadExecutionWindowAsync(request, ct) }))) |> ignore
         app.MapGet("/v1/corrections", Func<int64, int, CancellationToken, Task<IResult>>(fun afterRevision limit ct ->
             result telemetry (fun () -> store.CorrectionsAsync(afterRevision, limit, ct)))) |> ignore
         app.MapGet("/v1/series", Func<CancellationToken, Task<IResult>>(fun ct ->
