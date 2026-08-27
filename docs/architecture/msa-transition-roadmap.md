@@ -266,13 +266,11 @@ because production had no position or order attempt; zero observations are not p
 API and Trading Core Pod-loss recovery passed in Shadow with durable generation/state preserved.
 The non-Remote online backup/restore rehearsal also passed with fail-closed mode/generation fencing,
 and startup now rejects a corrupt existing database before schema mutation.
-Resume at the live market-cycle evidence and controlled broker-evidence failure drills. The
-versioned shared-authentication checkpoint was committed but never deployed; ADR 0081 supersedes it
-with exact mTLS workload-role authorization and retirement of transport header secrets. Account
-encryption-key rotation remains separate because it requires a transactional credential
-re-encryption migration rather than a Pod-only secret swap. Continue with identity migration,
-encryption migration, load, and
-single-authority cutover gates recorded in the
+Exact mTLS workload-role authorization, transport-header-secret retirement, transactional account
+encryption rotation, preserved-generation rollback, and an explicit Paper broker rejection have
+now passed in production Shadow. Genuine completed-bar replay remains unobserved because there is no
+open position; production state must not be fabricated to manufacture that evidence. Continue with
+that replay gate, load, and single-authority cutover/rollback gates recorded in the
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.
 

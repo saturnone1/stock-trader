@@ -111,18 +111,20 @@ boundary after measuring an active `AutoOrder` account and open positions inside
 It moves risk, orders, broker reconciliation, positions, fills, and trades together as one financial
 authority; those modules must never become separate services. Reporting/Notifications remain
 in-process because production has no enabled delivery channel or measured isolation trigger.
-The current implementation checkpoint runs comparison-only `Shadow` generation 2: API and Trading
-Core use `architecture-0c7dc49` with Trading Core TLS generation `tc0827b`, while production
-financial and broker authority remains Local.
+The current implementation checkpoint runs comparison-only `Shadow` generation 2: API and Market
+Data use `architecture-5f6a411`, Trading Core uses `architecture-2298d92`, the active role-aware TLS
+generations are `tc0827c` and `md0827c`, and account encryption uses generation `enc0827a` while
+production financial and broker authority remains Local.
 The resumed
 2026-08-27 batches complete Remote financial read routing, immutable manual and position command
 evidence, restart-safe position policy state, broker/canonical divergence fencing, pre-broker command
 expiry, deterministic terminal partial-fill convergence, and durable entry/position Shadow comparison.
 Shadow was activated on 2026-08-27 with DNS-only candidate egress. It has no positions or order
-attempts yet, so live parity evidence is still zero rather than implicitly accepted. Market-cycle
-evidence, controlled broker-evidence failure drills, certificate-role authorization and
-account-encryption-key migration,
-load, cutover, and rollback gates remain. Resume conditions are in the
+attempts yet, so live parity evidence is still zero rather than implicitly accepted.
+Certificate-role authorization, account-encryption migration/rollback, and a Paper rejection probe
+have passed. Genuine completed-bar replay is still unavailable because production has no open
+position; load, single-writer cutover, and reconciled financial rollback gates remain. Resume
+conditions are in the
 [Trading Core Projection operations note](../operations/trading-core-projection.md).
 
 [ADR 0081](adr/0081-define-service-communication-topology.md) fixes the complete Pod call graph

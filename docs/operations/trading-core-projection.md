@@ -287,3 +287,37 @@ This completes the production Shadow deployment of the autonomous Pod boundary, 
 single-writer cutover. Completed-bar downtime replay with real evidence, a broker-rejected paper
 command, the Trading Core evidence-role negative provider/upsert check, account-encryption rotation,
 and preserved-generation rollback remain explicit gates before Remote activation.
+
+### 2026-08-27 encryption, role, and Paper rejection rehearsal
+
+The first `legacy` to `enc0827a` migration attempt failed closed before changing the database. The
+Job exposed a camel-case deserialization mismatch in the plaintext integrity check and reported
+`trading-core-account-configuration-hash-mismatch`. The rotation script restored the original
+database and `legacy` Secret generation automatically; API health returned 200 with Shadow
+generation 2 and no Trading Core error. Commit `2298d92` made migration deserialization use the same
+Web JSON options and central contract validation as the writer.
+
+The corrected image then completed `legacy -> enc0827a`. The supported script was extended with a
+backup-scoped restore mode that checks database integrity, authority mode/generation, encrypted-row
+generation, and preserved Secret existence before stopping either Pod. Production successfully
+rehearsed `enc0827a -> legacy -> enc0827a`. The preserved artifacts are:
+
+- `trading-core-before-key-enc0827a-20260827T130008Z.db` (`legacy`);
+- `trading-core-before-key-restore-legacy-20260827T130238Z.db` (`enc0827a`);
+- `trading-core-before-key-restore-enc0827a-20260827T130312Z.db` (`legacy`).
+
+After the round trip, the active ConfigMap, Deployment environment, and encrypted account row all
+reported `enc0827a`; the rotation audit contained one completed migration. API health returned 200,
+Trading Core remained Shadow generation 2, and all affected Pods were Ready.
+
+The Trading Core Market Data identity was also exercised from the running Pod. A POST to the
+execution-evidence verify route passed role authorization and reached request validation (`400` for
+the deliberately empty body), while the same certificate received `403` from the provider route.
+An authenticated Paper-only broker probe submitted one share of the nonexistent symbol
+`INVALIDMSA0827`; Alpaca returned explicit `422 asset not found`, and lookup by its unique client
+order ID returned `404`, proving that no order was created. No live endpoint was contacted.
+
+The real completed-bar downtime replay gate remains open because production has no open position.
+Do not fabricate a canonical position or watermark to satisfy it. Remote single-writer activation
+and its reconciled rollback remain prohibited until a genuine compatible position can exercise the
+autonomous replay cycle, or a separately reviewed isolated acceptance fixture is approved.

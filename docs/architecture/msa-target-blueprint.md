@@ -64,7 +64,7 @@ service.
 | Optimization Worker | Current F# Deployment, two Pods | stateless deterministic evaluation from immutable leases | horizontal, bounded | complete |
 | Market Data | Current F# Deployment, Remote authority | providers, normalized bars, corrections, evidence | 1 while SQLite | complete |
 | ML Training | Current F# Deployment, Remote authority | durable training queue and immutable publications | 1 on current server | complete |
-| Trading Core | Candidate F# Deployment, Shadow generation 2 | sole Remote financial authority | 1; fenced single-active | completion implementation ready; integrated rehearsal pending |
+| Trading Core | Candidate F# Deployment, Shadow generation 2 | sole Remote financial authority | 1; fenced single-active | role/TLS/encryption/Paper rejection rehearsed; genuine position replay and Remote acceptance pending |
 | Strategy Research | Current module inside Edge | authoring, preview, backtest, scan, signal and optimization ownership | conditional Pod | do not extract yet |
 | Reporting/Notifications | Disabled module behavior | cursor-based non-authoritative projection/delivery | conditional Pod | do not extract yet |
 
