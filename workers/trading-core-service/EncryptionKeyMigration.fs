@@ -8,18 +8,23 @@ open Microsoft.Data.Sqlite
 open StockTrader.ServiceContracts.TradingCore
 
 module EncryptionKeyMigration =
+    let private json = JsonSerializerOptions(JsonSerializerDefaults.Web)
+
     let private payload (reader: SqliteDataReader) =
         { Ciphertext = reader.GetFieldValue<byte array>(2)
           Nonce = reader.GetFieldValue<byte array>(3)
           Tag = reader.GetFieldValue<byte array>(4) }
 
     let private validatePlaintext expectedHash (plaintext: byte array) =
-        match JsonSerializer.Deserialize<TradingAccountConfigurationSet>(plaintext) |> Option.ofObj with
+        match JsonSerializer.Deserialize<TradingAccountConfigurationSet>(plaintext, json) |> Option.ofObj with
         | None -> invalidOp "empty-trading-core-account-configuration"
         | Some configuration when not (String.Equals(
                 configuration.ConfigurationHash, expectedHash, StringComparison.Ordinal)) ->
             invalidOp "trading-core-account-configuration-hash-mismatch"
-        | Some _ -> ()
+        | Some configuration ->
+            match TradingCoreCompatibilityPolicy.Error configuration |> Option.ofObj with
+            | Some _ -> invalidOp "trading-core-account-configuration-invalid"
+            | None -> ()
 
     let run () =
         let config = Configuration.loadEncryptionMigration ()
