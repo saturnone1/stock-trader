@@ -51,9 +51,9 @@ if [[ "$operation" == "--restore-backup" ]]; then
     echo "Usage: $0 --restore-backup <backup.db> <generation>" >&2
     exit 1
   fi
-  restore_source="$(realpath -e -- "$2")"
+  restore_source="$(sudo realpath -e -- "$2")"
   target_generation="$3"
-  backup_root="$(realpath -e -- "$backup_dir")"
+  backup_root="$(sudo realpath -e -- "$backup_dir")"
   if [[ "$restore_source" != "$backup_root/"* ]]; then
     echo "Encryption rollback backup must be below $backup_root." >&2
     exit 1
