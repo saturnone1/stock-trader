@@ -111,12 +111,15 @@ boundary after measuring an active `AutoOrder` account and open positions inside
 It moves risk, orders, broker reconciliation, positions, fills, and trades together as one financial
 authority; those modules must never become separate services. Reporting/Notifications remain
 in-process because production has no enabled delivery channel or measured isolation trigger.
-The current implementation checkpoint is deployed in read-only `Projection`: API and Trading Core
-both run `architecture-3866ca8`; production financial authority remains Local. The resumed
+The current implementation checkpoint runs comparison-only `Shadow` generation 2: API and Trading
+Core both use `architecture-3866ca8`, while production financial and broker authority remains Local.
+The resumed
 2026-08-27 batches complete Remote financial read routing, immutable manual and position command
 evidence, restart-safe position policy state, broker/canonical divergence fencing, pre-broker command
 expiry, deterministic terminal partial-fill convergence, and durable entry/position Shadow comparison.
-Shadow authority has not been activated; live market-cycle evidence, failure drills, backup/rotation,
+Shadow was activated on 2026-08-27 with DNS-only candidate egress. It has no positions or order
+attempts yet, so live parity evidence is still zero rather than implicitly accepted. Market-cycle
+evidence, failure drills, backup/rotation,
 load, cutover, and rollback gates remain. Resume conditions are in the
 [Trading Core Projection operations note](../operations/trading-core-projection.md).
 

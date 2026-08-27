@@ -1,6 +1,6 @@
 # 0080 — Extract Trading Core as the single financial authority
 
-- Status: Projection implementation active; Remote cutover not authorized
+- Status: Shadow comparison active; Remote cutover not authorized
 - Date: 2026-08-24
 - Baseline: `e77fdac`
 - Implementation: `d9f4f30`, `e96f5a2`, `c10c404`
@@ -224,3 +224,11 @@ Both Pods were Ready with zero restarts, API health returned 200, and Trading Co
 Projection generation 1 with zero Shadow rows, financial intents, broker evidence, and canonical
 positions. This proves deployability and schema compatibility only. Shadow authority and its
 market-open/market-closed acceptance evidence remain mandatory before any Remote cutover.
+
+After that Projection checkpoint, Trading Core was redeployed with a Shadow declaration, its
+authority advanced monotonically from generation 1 Projection to generation 2 Shadow over the
+authenticated mTLS control plane, and the API was redeployed in Shadow. Local remains the only
+financial writer and broker caller. Trading Core egress remains DNS-only. Health reports Shadow
+generation 2 with no error and no intents or broker evidence, but the comparison total remains zero
+because there was no open position or order attempt. This is a safe activation checkpoint, not a
+parity acceptance result.

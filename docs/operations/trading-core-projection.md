@@ -124,6 +124,28 @@ An initial operator invocation supplied the script-owned `architecture-` prefix 
 the temporary tag `architecture-architecture-3866ca8`. It was immediately superseded by the same
 image content under `architecture-3866ca8`; never use the doubled tag for rollout or rollback.
 
+### 2026-08-27 Shadow activation
+
+Trading Core was first redeployed with `STOCKTRADER_TRADING_CORE_MODE=Shadow` while the durable
+authority remained Projection generation 1. The authenticated mTLS authority endpoint then advanced
+it to generation 2 with authority ID `shadow-3866ca8-g2`; the API was subsequently redeployed with
+`STOCKTRADER_TRADING_CORE_MODE=Shadow`. This ordering kept Local authoritative throughout the
+transition. The additional pre-activation Trading Core backup is
+`/var/lib/stocktrader/trading-core/backups/trading-core-pre-3866ca8-20260827T103320Z.db`, and the
+API Shadow rollout backup is
+`/home/saturnone1/stock-trader-data/backups/stocktrader-pre-3866ca8-20260827T103434Z.db`.
+
+After activation, API health returned 200 and reported Shadow generation 2, zero comparison rows,
+zero intents, zero broker evidence, and no Trading Core error. Every Pod was Ready with zero
+restarts. The Trading Core NetworkPolicy still permits only UDP/TCP DNS egress, so candidate broker
+submission is physically unavailable. Projection publication continued successfully. The new API
+Pod's first full health request was cancelled while opening the application database and returned
+one 500; subsequent health requests returned 200 with no recurring error or restart.
+
+There were no open positions or order attempts during the initial closed-market observation, so the
+zero comparison count is not accepted as parity. Keep Shadow active to collect genuine closed/open
+market decisions before beginning failure drills or any Remote cutover preparation.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or

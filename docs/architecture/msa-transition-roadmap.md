@@ -245,8 +245,8 @@ Exit gate: failover drills prove there is never more than one order authority, o
 process loss, every broker fill converges to one durable state, and live feature/version mismatches
 fail closed.
 
-Status: **Remote read/command, failure-convergence, and comparison-only Shadow boundary implemented; production
-still in Projection under
+Status: **Remote read/command and failure-convergence boundary implemented; comparison-only Shadow
+generation 2 active in production under
 [ADR 0080](adr/0080-extract-trading-core-service.md)**. The independent F# service now owns its
 candidate store and complete entry/position lifecycle contracts. Remote compatibility reads,
 manual immutable evidence, broker/canonical divergence fencing, and restart-safe position policy
@@ -256,8 +256,10 @@ parity. Commands expire only before broker submission;
 post-submission evidence survives restart, and terminal partial fills commit only the broker-proven
 quantity. The production Pod still receives read-only
 projections with broker egress physically disabled, and the legacy API remains the only financial
-writer. The `architecture-3866ca8` Projection rollout verified the new schema without activating
-Shadow authority. Resume at the live Shadow evidence, Pod/broker failure drills, backup/restore, and
+writer. The `architecture-3866ca8` Projection rollout verified the new schema, after which both
+deployments entered Shadow with DNS-only Trading Core egress. The comparison corpus is still empty
+because production had no position or order attempt; zero observations are not parity evidence.
+Resume at the live market-cycle evidence, Pod/broker failure drills, backup/restore, and
 single-authority cutover gates recorded in the
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.
