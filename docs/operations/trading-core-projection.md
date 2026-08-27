@@ -199,11 +199,16 @@ characterization truncates a valid candidate database and verifies the named
 create a fresh financial store. Production rollout evidence for this startup guard is recorded with
 its image checkpoint; TLS/secret rotation and Remote recovery remain separate gates.
 
+Trading Core image `architecture-0c7dc49` rolled out the guard in Shadow and created backup
+`/var/lib/stocktrader/trading-core/backups/trading-core-pre-0c7dc49-20260827T104932Z.db`. The API
+remained on contract-compatible `architecture-3866ca8`. The Trading Core Pod was Ready with zero
+restarts, API health returned 200, and Shadow generation 2 remained error-free after startup.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or
 Reporting/Notifications extraction is active. To roll back this non-authoritative candidate, keep
 the API in Local financial authority,
 back up the candidate database, and scale down only `stocktrader-trading-core`. Because Projection
-never submitted a broker command or owned canonical financial state, no financial state transfer is
-required.
+and Shadow never submitted a candidate broker command or owned canonical financial state, no
+financial state transfer is required.

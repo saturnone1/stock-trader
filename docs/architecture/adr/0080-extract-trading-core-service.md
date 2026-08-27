@@ -253,3 +253,8 @@ Trading Core also performs `PRAGMA quick_check` before any startup schema work. 
 database raises the named `trading-core-database-integrity-check-failed` startup error instead of
 being silently treated as a new financial store. A characterization test truncates a previously
 valid service database and proves fail-closed startup.
+
+Trading Core `architecture-0c7dc49` deployed this guard in Shadow while the API remained on the
+contract-compatible `architecture-3866ca8`. The rollout backup was
+`trading-core-pre-0c7dc49-20260827T104932Z.db`; the new Pod was Ready with zero restarts, API health
+returned 200, and Shadow generation 2 reported no error.

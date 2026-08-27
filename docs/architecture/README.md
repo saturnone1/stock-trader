@@ -111,8 +111,9 @@ boundary after measuring an active `AutoOrder` account and open positions inside
 It moves risk, orders, broker reconciliation, positions, fills, and trades together as one financial
 authority; those modules must never become separate services. Reporting/Notifications remain
 in-process because production has no enabled delivery channel or measured isolation trigger.
-The current implementation checkpoint runs comparison-only `Shadow` generation 2: API and Trading
-Core both use `architecture-3866ca8`, while production financial and broker authority remains Local.
+The current implementation checkpoint runs comparison-only `Shadow` generation 2: API uses
+`architecture-3866ca8` and Trading Core uses the corruption-guard image `architecture-0c7dc49`, while
+production financial and broker authority remains Local.
 The resumed
 2026-08-27 batches complete Remote financial read routing, immutable manual and position command
 evidence, restart-safe position policy state, broker/canonical divergence fencing, pre-broker command
