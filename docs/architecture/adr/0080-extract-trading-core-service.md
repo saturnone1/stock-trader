@@ -232,3 +232,11 @@ financial writer and broker caller. Trading Core egress remains DNS-only. Health
 generation 2 with no error and no intents or broker evidence, but the comparison total remains zero
 because there was no open position or order attempt. This is a safe activation checkpoint, not a
 parity acceptance result.
+
+The first Shadow failure drill deleted the exact Trading Core Pod and then the exact API Pod during
+the closed-market window. K3s recreated both from their deployments. Trading Core returned Ready in
+about 12 seconds with generation 2 and its database preserved; the API returned Ready in about one
+minute, resumed Projection publication, and returned health 200. No intent, broker evidence, restart,
+or new API error was introduced. This satisfies basic Pod-loss recovery in non-authoritative Shadow,
+not the still-required ambiguous submission, delayed fill, broker outage, load, or Remote failover
+gates.

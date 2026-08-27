@@ -146,6 +146,21 @@ There were no open positions or order attempts during the initial closed-market 
 zero comparison count is not accepted as parity. Keep Shadow active to collect genuine closed/open
 market decisions before beginning failure drills or any Remote cutover preparation.
 
+### 2026-08-27 Shadow Pod-loss drill
+
+During the closed-market Shadow window, operator checks first resolved the exact running Pod names.
+Deleting `stocktrader-trading-core-57f9f6c79b-2gdvj` caused K3s to create
+`stocktrader-trading-core-57f9f6c79b-8pvkm`, which was Ready after approximately 12 seconds. Shadow
+generation 2 and the persistent database survived; financial intents and broker evidence remained
+zero, API health returned 200, and Projection publication continued without a logged error.
+
+Deleting `stocktrader-api-5c756c47bd-zzmm5` then caused K3s to create
+`stocktrader-api-5c756c47bd-c579p`. The API deployment was Ready within approximately one minute,
+returned health 200, reported the same Shadow generation 2, and resumed Projection publication. All
+StockTrader Pods were Ready with zero restarts and the new API Pod had no ERR, FTL, or 500 log after
+startup. The exercise proves non-authoritative Pod recreation and durable-state continuity only; it
+does not replace controlled broker-evidence or Remote single-writer failure drills.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or

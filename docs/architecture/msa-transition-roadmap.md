@@ -259,7 +259,8 @@ projections with broker egress physically disabled, and the legacy API remains t
 writer. The `architecture-3866ca8` Projection rollout verified the new schema, after which both
 deployments entered Shadow with DNS-only Trading Core egress. The comparison corpus is still empty
 because production had no position or order attempt; zero observations are not parity evidence.
-Resume at the live market-cycle evidence, Pod/broker failure drills, backup/restore, and
+API and Trading Core Pod-loss recovery passed in Shadow with durable generation/state preserved.
+Resume at the live market-cycle evidence, controlled broker-evidence failure drills, backup/restore, and
 single-authority cutover gates recorded in the
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.
