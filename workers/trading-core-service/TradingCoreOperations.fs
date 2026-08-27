@@ -14,6 +14,8 @@ type TradingCoreOperations(store: TradingCoreStore) =
     member _.AcceptEntry(intent) = store.AcceptEntry intent
     member _.RecordRecommendation(observation) = store.RecordRecommendation observation
     member _.ClaimEntry() = store.ClaimEntry()
+    member _.RejectExpiredPendingIntents(observedAtUtc) =
+        store.RejectExpiredPendingIntents observedAtUtc
     member _.RecordBrokerEvidence(commandId, evidence: BrokerOrderEvidence) =
         store.RecordBrokerEvidence(commandId, evidence)
     member _.AcceptPosition(command) = store.AcceptPosition command

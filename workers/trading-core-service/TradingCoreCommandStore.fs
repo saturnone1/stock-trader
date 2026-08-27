@@ -11,6 +11,22 @@ open StockTrader.TradingCore.Execution
 [<AutoOpen>]
 module TradingCoreCommandStore =
     type TradingCoreStore with
+        /// Commands that have not crossed the broker boundary are safe to expire. Commands already
+        /// awaiting broker evidence must instead be reconciled because submission may have happened.
+        member this.RejectExpiredPendingIntents(observedAtUtc: DateTime) =
+            use connection = this.Connect()
+            use command = connection.CreateCommand()
+            command.CommandText <- "SELECT command_id FROM financial_intents WHERE status=$pending AND julianday(json_extract(payload_json,'$.envelope.expiresAtUtc')) <= julianday($observed) ORDER BY accepted_at"
+            command.Parameters.AddWithValue("$pending", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
+            command.Parameters.AddWithValue("$observed", observedAtUtc.ToUniversalTime().ToString("O")) |> ignore
+            use reader = command.ExecuteReader()
+            let expired = ResizeArray<string>()
+            while reader.Read() do expired.Add(reader.GetString 0)
+            reader.Close()
+            for commandId in expired do
+                this.RejectIntent(commandId, "command-expired-before-broker-submission")
+            expired.Count
+
         member this.RequireReconciliation(commandId: string) =
             use connection = this.Connect()
             use command = connection.CreateCommand()

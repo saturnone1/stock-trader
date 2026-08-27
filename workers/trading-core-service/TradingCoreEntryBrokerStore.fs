@@ -35,9 +35,10 @@ module TradingCoreEntryBrokerStore =
                 use transaction = connection.BeginTransaction()
                 use select = connection.CreateCommand()
                 select.Transaction <- transaction
-                select.CommandText <- "SELECT command_id,payload_json FROM financial_intents WHERE command_kind=$kind AND status=$status ORDER BY accepted_at LIMIT 1"
+                select.CommandText <- "SELECT command_id,payload_json FROM financial_intents WHERE command_kind=$kind AND status=$status AND julianday(json_extract(payload_json,'$.envelope.expiresAtUtc')) > julianday($observed) ORDER BY accepted_at LIMIT 1"
                 select.Parameters.AddWithValue("$kind", TradingCommandKinds.AcceptEntry) |> ignore
                 select.Parameters.AddWithValue("$status", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
+                select.Parameters.AddWithValue("$observed", DateTime.UtcNow.ToString("O")) |> ignore
                 use reader = select.ExecuteReader()
                 if not (reader.Read()) then None
                 else
@@ -103,9 +104,11 @@ module TradingCoreEntryBrokerStore =
                     match evidence.Status with
                     | "Rejected" | "Cancelled" | "Expired" -> TradingCommandStatuses.Rejected
                     | _ -> TradingCommandStatuses.AwaitingBrokerEvidence
-                if evidence.Status = "Filled" then
+                if evidence.Status = "Filled"
+                    || (status = TradingCommandStatuses.Rejected && evidence.FilledQuantity > 0) then
                     try
-                        let position = TradingEntrySettlementPolicy.CreateFilledPosition(intent, evidence)
+                        let position = TradingEntrySettlementPolicy.CreateTerminalPosition(
+                            intent, evidence, observedAt)
                         let context = JsonSerializer.Serialize(position.ExecutionContext, this.Json)
                         use insertPosition = connection.CreateCommand()
                         insertPosition.Transaction <- transaction

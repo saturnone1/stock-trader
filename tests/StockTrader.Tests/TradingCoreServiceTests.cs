@@ -180,6 +180,107 @@ public sealed class TradingCoreServiceTests : IDisposable
             .Should().Be(TradingCommandStatuses.Rejected);
     }
 
+    [Fact]
+    public void BrokerEvidenceConvergesAcrossPartialFillRestartMismatchAndExpiry()
+    {
+        Directory.CreateDirectory(_root);
+        var database = Path.Combine(_root, "convergence.db");
+        var config = new ServiceConfig(
+            database, new string('x', 32), "unused", "unused", "unused",
+            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
+            TradingAuthorityMode.Projection);
+        var now = DateTime.UtcNow;
+        var store = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        var operations = new TradingCoreOperations(store);
+        var snapshot = EmptySnapshot(now);
+        operations.Import(snapshot);
+        operations.ApplyAccountConfiguration(AccountConfiguration(now));
+        operations.Activate(new TradingAuthorityContract(
+            1, TradingAuthorityMode.Shadow, 2, "shadow", now,
+            snapshot.SnapshotId, string.Empty, null, 0));
+        operations.Activate(new TradingAuthorityContract(
+            1, TradingAuthorityMode.Remote, 3, "remote", now,
+            snapshot.SnapshotId, "broker-state", now, 0));
+
+        var entry = EntryIntent(now, operations.Status());
+        operations.AcceptEntry(entry);
+        operations.ClaimEntry().Should().NotBeNull();
+        operations.RecordBrokerEvidence(entry.Envelope.CommandId, new BrokerOrderEvidence(
+            "entry-converge", "client-entry-converge", "AAPL", "Buy", 10, 4, null, 101m,
+            "PartiallyFilled", "Market", now, null)).Should().BeTrue();
+        Some(operations.CommandStatus(entry.Envelope.CommandId)).Status
+            .Should().Be(TradingCommandStatuses.AwaitingBrokerEvidence);
+        operations.Portfolio().Positions.Should().BeEmpty();
+
+        // A new process instance must continue evidence reconciliation, never submit the order again.
+        var restartedStore = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        operations = new TradingCoreOperations(restartedStore);
+        operations.ClaimEntry().Should().BeNull();
+        operations.RecordBrokerEvidence(entry.Envelope.CommandId, new BrokerOrderEvidence(
+            "entry-converge", "client-entry-converge", "AAPL", "Buy", 10, 4, null, 101m,
+            "Cancelled", "Market", now, null)).Should().BeTrue();
+
+        var position = operations.Portfolio().Positions.Single();
+        position.Quantity.Should().Be(4);
+        position.OpenedAtUtc.Should().BeAfter(now);
+        operations.Portfolio().Recommendations.Single().EntryExecutionNote
+            .Should().Be("broker-cancelled-after-partial-fill");
+        var exitAt = DateTime.UtcNow;
+        var exit = PositionCommand(exitAt, operations.Status(), position);
+        operations.AcceptPosition(exit);
+        operations.ClaimPosition().Should().NotBeNull();
+        operations.RecordPositionBrokerEvidence(exit.Envelope.CommandId, new BrokerOrderEvidence(
+            "exit-converge", "client-exit-converge", "AAPL", "Sell", 4, 2, null, 109m,
+            "PartiallyFilled", "Market", exitAt, null)).Should().BeTrue();
+        Some(operations.CommandStatus(exit.Envelope.CommandId)).Status
+            .Should().Be(TradingCommandStatuses.AwaitingBrokerEvidence);
+        operations.Portfolio().Positions.Single().Quantity.Should().Be(4);
+
+        // A terminal response with incompatible quantity is evidence to reconcile, not a fill.
+        operations.RecordPositionBrokerEvidence(exit.Envelope.CommandId, new BrokerOrderEvidence(
+            "exit-converge", "client-exit-converge", "AAPL", "Sell", 4, 3, null, 109m,
+            "Filled", "Market", exitAt, exitAt.AddSeconds(2)))
+            .Should().BeTrue();
+        Some(operations.CommandStatus(exit.Envelope.CommandId)).Status
+            .Should().Be(TradingCommandStatuses.ReconciliationRequired);
+        operations.Portfolio().Positions.Single().Quantity.Should().Be(4);
+        operations.Portfolio().Trades.Should().BeEmpty();
+
+        operations.RecordPositionBrokerEvidence(exit.Envelope.CommandId, new BrokerOrderEvidence(
+            "exit-converge", "client-exit-converge", "AAPL", "Sell", 4, 2, null, 110m,
+            "Cancelled", "Market", exitAt, null))
+            .Should().BeTrue();
+        Some(operations.CommandStatus(exit.Envelope.CommandId)).Status
+            .Should().Be(TradingCommandStatuses.Completed);
+        operations.Portfolio().Positions.Single().Quantity.Should().Be(2);
+        operations.Portfolio().Positions.Single().ClosedAtUtc.Should().BeNull();
+        operations.Portfolio().Trades.Should().ContainSingle().Which.Quantity.Should().Be(2);
+
+        var expiring = EntryIntent(DateTime.UtcNow, operations.Status());
+        expiring = expiring with
+        {
+            Envelope = expiring.Envelope with { CommandId = "entry-expiring" },
+            SourceSignalId = "signal-expiring"
+        };
+        expiring = expiring with
+        {
+            Envelope = expiring.Envelope with
+            {
+                PayloadHash = TradingCoreIdentity.EntryPayload(expiring)
+            }
+        };
+        operations.AcceptEntry(expiring);
+        operations.RejectExpiredPendingIntents(expiring.Envelope.ExpiresAtUtc.AddTicks(1))
+            .Should().Be(1);
+        operations.ClaimEntry().Should().BeNull();
+        Some(operations.CommandStatus(expiring.Envelope.CommandId)).Status
+            .Should().Be(TradingCommandStatuses.Rejected);
+        operations.Portfolio().Recommendations.Single(value =>
+            value.SourceSignalId == expiring.SourceSignalId).EntryRequestedAtUtc.Should().BeNull();
+    }
+
     private static TradingStateSnapshot EmptySnapshot(DateTime now)
     {
         var value = new TradingStateSnapshot(1, string.Empty, 1, now,

@@ -4,21 +4,22 @@ namespace StockTrader.TradingCore.Execution;
 
 public static class TradingEntrySettlementPolicy
 {
-    public static TradingPositionProjection CreateFilledPosition(
+    public static TradingPositionProjection CreateTerminalPosition(
         TradingEntryIntent intent,
-        Broker.BrokerOrderEvidence evidence)
+        Broker.BrokerOrderEvidence evidence,
+        DateTime observedAtUtc)
     {
-        if (!string.Equals(evidence.Status, "Filled", StringComparison.Ordinal)
-            || evidence.FilledQuantity != intent.ShareQuantity
+        if (!IsCompatibleTerminalFill(evidence.Status, evidence.FilledQuantity, intent.ShareQuantity)
             || evidence.AverageFillPrice is not > 0m
-            || evidence.FilledAtUtc is null)
-            throw new ArgumentException("Broker evidence is not a complete entry fill.", nameof(evidence));
+            || observedAtUtc == default)
+            throw new ArgumentException("Broker evidence is not a compatible terminal entry fill.", nameof(evidence));
         var fillPrice = evidence.AverageFillPrice.Value;
+        var filledAt = evidence.FilledAtUtc ?? observedAtUtc;
         return new TradingPositionProjection(
             PositionId(intent.Envelope.CommandId), intent.SourceSignalId, intent.AccountId,
             intent.Symbol, intent.Sector, evidence.FilledQuantity, evidence.FilledQuantity,
             fillPrice, fillPrice, intent.StopLossPrice, intent.TargetPrice, intent.PatternCode,
-            intent.CustomPatternName, Utc(evidence.FilledAtUtc.Value), null, null, fillPrice,
+            intent.CustomPatternName, Utc(filledAt), null, null, fillPrice,
             0m, Math.Abs(fillPrice - intent.StopLossPrice), false, false, false,
             null, null, null, false, null, null, null, [],
             new TradingPositionExecutionContext(
@@ -33,7 +34,9 @@ public static class TradingEntrySettlementPolicy
         {
             WasExecuted = true,
             EntryOrderId = evidence.OrderId,
-            EntryExecutionNote = null,
+            EntryExecutionNote = string.Equals(evidence.Status, "Filled", StringComparison.Ordinal)
+                ? null
+                : $"broker-{evidence.Status.ToLowerInvariant()}-after-partial-fill",
         };
 
     public static TradingRecommendationProjection MarkRejected(
@@ -59,4 +62,10 @@ public static class TradingEntrySettlementPolicy
         DateTimeKind.Local => value.ToUniversalTime(),
         _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
     };
+
+    private static bool IsCompatibleTerminalFill(string status, int filled, int requested) =>
+        string.Equals(status, "Filled", StringComparison.Ordinal)
+            ? filled == requested
+            : status is "Rejected" or "Cancelled" or "Expired"
+                && filled > 0 && filled <= requested;
 }

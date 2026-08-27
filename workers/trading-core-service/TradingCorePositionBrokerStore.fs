@@ -18,9 +18,10 @@ module TradingCorePositionBrokerStore =
                 use transaction = connection.BeginTransaction()
                 use select = connection.CreateCommand()
                 select.Transaction <- transaction
-                select.CommandText <- "SELECT command_id,payload_json FROM financial_intents WHERE command_kind=$kind AND status=$status ORDER BY accepted_at LIMIT 1"
+                select.CommandText <- "SELECT command_id,payload_json FROM financial_intents WHERE command_kind=$kind AND status=$status AND julianday(json_extract(payload_json,'$.envelope.expiresAtUtc')) > julianday($observed) ORDER BY accepted_at LIMIT 1"
                 select.Parameters.AddWithValue("$kind", TradingCommandKinds.ClosePosition) |> ignore
                 select.Parameters.AddWithValue("$status", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
+                select.Parameters.AddWithValue("$observed", DateTime.UtcNow.ToString("O")) |> ignore
                 use reader = select.ExecuteReader()
                 if not (reader.Read()) then None
                 else
@@ -92,30 +93,33 @@ module TradingCorePositionBrokerStore =
                     match evidence.Status with
                     | "Rejected" | "Cancelled" | "Expired" -> TradingCommandStatuses.Rejected
                     | _ -> TradingCommandStatuses.AwaitingBrokerEvidence
-                if evidence.Status = "Filled" then
-                    use loadPosition = connection.CreateCommand()
-                    loadPosition.Transaction <- transaction
-                    loadPosition.CommandText <- "SELECT payload_json FROM canonical_positions WHERE identity=$id"
-                    loadPosition.Parameters.AddWithValue("$id", command.PositionId) |> ignore
-                    let position = JsonSerializer.Deserialize<TradingPositionProjection>(
-                        Convert.ToString(loadPosition.ExecuteScalar()), this.Json)
-                    if isNull position then invalidOp "position-not-found-for-settlement"
-                    let settlement = TradingPositionSettlementPolicy.ApplyFilledOrder(
-                        position, command, evidence)
-                    use updatePosition = connection.CreateCommand()
-                    updatePosition.Transaction <- transaction
-                    updatePosition.CommandText <- "UPDATE canonical_positions SET payload_json=$payload,version=version+1 WHERE identity=$id"
-                    updatePosition.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(settlement.Position, this.Json)) |> ignore
-                    updatePosition.Parameters.AddWithValue("$id", command.PositionId) |> ignore
-                    if updatePosition.ExecuteNonQuery() <> 1 then invalidOp "position-settlement-conflict"
-                    if not (isNull settlement.Trade) then
-                        use trade = connection.CreateCommand()
-                        trade.Transaction <- transaction
-                        trade.CommandText <- "INSERT OR IGNORE INTO canonical_trades VALUES($id,$payload,1)"
-                        trade.Parameters.AddWithValue("$id", settlement.Trade.TradeId) |> ignore
-                        trade.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(settlement.Trade, this.Json)) |> ignore
-                        trade.ExecuteNonQuery() |> ignore
-                    status <- TradingCommandStatuses.Completed
+                if evidence.Status = "Filled"
+                    || (status = TradingCommandStatuses.Rejected && evidence.FilledQuantity > 0) then
+                    try
+                        use loadPosition = connection.CreateCommand()
+                        loadPosition.Transaction <- transaction
+                        loadPosition.CommandText <- "SELECT payload_json FROM canonical_positions WHERE identity=$id"
+                        loadPosition.Parameters.AddWithValue("$id", command.PositionId) |> ignore
+                        let position = JsonSerializer.Deserialize<TradingPositionProjection>(
+                            Convert.ToString(loadPosition.ExecuteScalar()), this.Json)
+                        if isNull position then invalidOp "position-not-found-for-settlement"
+                        let settlement = TradingPositionSettlementPolicy.ApplyTerminalOrder(
+                            position, command, evidence, observedAt)
+                        use updatePosition = connection.CreateCommand()
+                        updatePosition.Transaction <- transaction
+                        updatePosition.CommandText <- "UPDATE canonical_positions SET payload_json=$payload,version=version+1 WHERE identity=$id"
+                        updatePosition.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(settlement.Position, this.Json)) |> ignore
+                        updatePosition.Parameters.AddWithValue("$id", command.PositionId) |> ignore
+                        if updatePosition.ExecuteNonQuery() <> 1 then invalidOp "position-settlement-conflict"
+                        if not (isNull settlement.Trade) then
+                            use trade = connection.CreateCommand()
+                            trade.Transaction <- transaction
+                            trade.CommandText <- "INSERT OR IGNORE INTO canonical_trades VALUES($id,$payload,1)"
+                            trade.Parameters.AddWithValue("$id", settlement.Trade.TradeId) |> ignore
+                            trade.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(settlement.Trade, this.Json)) |> ignore
+                            trade.ExecuteNonQuery() |> ignore
+                        status <- TradingCommandStatuses.Completed
+                    with :? ArgumentException -> status <- TradingCommandStatuses.ReconciliationRequired
                 elif status = TradingCommandStatuses.Rejected then
                     use loadPosition = connection.CreateCommand()
                     loadPosition.Transaction <- transaction

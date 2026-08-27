@@ -79,6 +79,10 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
     override _.ExecuteAsync(stoppingToken: CancellationToken) = task {
         try
             while not stoppingToken.IsCancellationRequested do
+                let expired = store.RejectExpiredPendingIntents(DateTime.UtcNow)
+                if expired > 0 then
+                    logger.LogWarning(
+                        "Rejected {Count} trading commands that expired before broker submission", expired)
                 let unresolved = store.UnresolvedEntry()
                 let intent, shouldSubmit =
                     match unresolved with
