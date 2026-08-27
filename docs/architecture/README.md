@@ -111,11 +111,12 @@ boundary after measuring an active `AutoOrder` account and open positions inside
 It moves risk, orders, broker reconciliation, positions, fills, and trades together as one financial
 authority; those modules must never become separate services. Reporting/Notifications remain
 in-process because production has no enabled delivery channel or measured isolation trigger.
-The implementation checkpoint is deployed in read-only `Projection` at `d9f4f30`; production
-financial authority remains Local. The resumed 2026-08-27 code batch completes Remote financial
-read routing, immutable manual and position command evidence, restart-safe position policy state,
-and broker/canonical divergence fencing, but has not changed production authority. Shadow,
-failure-recovery, backup/rotation, load, cutover, and rollback gates remain. Resume conditions are in the
+The implementation checkpoint is deployed in read-only `Projection`: API `e96f5a2` and Trading Core
+`c10c404` (`architecture-c10c404-r1`); production financial authority remains Local. The resumed
+2026-08-27 batches complete Remote financial read routing, immutable manual and position command
+evidence, restart-safe position policy state, broker/canonical divergence fencing, pre-broker command
+expiry, and deterministic terminal partial-fill convergence. Shadow, live failure drills,
+backup/rotation, load, cutover, and rollback gates remain. Resume conditions are in the
 [Trading Core Projection operations note](../operations/trading-core-projection.md).
 
 ## Target modules

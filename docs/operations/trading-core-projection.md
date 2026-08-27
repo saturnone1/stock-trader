@@ -1,6 +1,6 @@
 # Trading Core Projection checkpoint
 
-This runbook records the paused Stage 5 checkpoint for ADR 0080. It does not authorize `Remote`
+This runbook records the active Stage 5 Projection checkpoint for ADR 0080. It does not authorize `Remote`
 financial authority.
 
 ## Ownership delivered
@@ -42,18 +42,23 @@ The deployment script created an application-database backup before the API roll
 Trading Core database and its deployment secrets; neither is a substitute for the still-required
 restore rehearsal.
 
-## Resume checklist before Remote
+## Acceptance checklist before Remote
 
-All items below remain required as one meaningful acceptance batch:
+Completed code-side prerequisites:
 
 - Route API and desktop portfolio, recommendation, position, trade, and risk reads to canonical
   Trading Core projections when Remote; prove legacy financial writes are disabled.
 - Give manual orders the same immutable strategy/market/calendar/account evidence path as automatic
   orders. Never invent artifacts for historical or manually created positions.
+- Reject expired commands before broker submission, retain ambiguous post-submission commands, and
+  converge restart, partial-fill, terminal-partial, and contradictory-fill evidence safely.
+
+Remaining production acceptance gates:
+
 - Run Shadow across market-open and market-closed cycles and compare stable decisions/rejections
   while both configuration and NetworkPolicy make candidate broker submission impossible.
-- Exercise duplicate and ambiguous submission, timeout, delayed/out-of-order and partial fills,
-  cancellation, API/Pod loss, broker outage, and restart reconciliation to one durable outcome.
+- Exercise duplicate and ambiguous submission, timeout, delayed/out-of-order fills, cancellation,
+  API/Pod loss, and broker outage against controlled broker evidence in K3s.
 - Prove bounded load, online backup/restore, database corruption handling, mTLS and encryption/auth
   secret rotation/rollback, and artifact recovery.
 - Quiesce new intents, reconcile every open broker order/fill, record a monotonic cutover generation,
@@ -61,7 +66,7 @@ All items below remain required as one meaningful acceptance batch:
 - Only for the Remote deployment, replace DNS-only egress with the smallest broker endpoint policy;
   never broaden Projection or Shadow broker access.
 
-### 2026-08-27 resume audit
+### 2026-08-27 resume and failure-convergence audit
 
 The first resumed service unit completed the Remote read routers, read-only compatibility stores,
 manual completed-bar evidence path, AlertOnly recommendation path, immutable position-context
@@ -70,20 +75,37 @@ latest-command reconciliation queries, and broker/canonical divergence fencing. 
 local batch passed 1,010 backend tests, 75 desktop tests, API contract checking, independent API and
 Trading Core builds, and the desktop production build.
 
-The production audit still found both deployments on `architecture-d9f4f30` in `Projection`, Ready
-with zero restarts. `/api/health` and the desktop proxy returned HTTP 200. The authoritative
-application database had zero open positions and zero pending entries. The candidate had no
-financial intent and remained unable to reach a broker. These facts allow Shadow preparation but
-do not satisfy Shadow, failure, backup, rotation, load, cutover, or rollback acceptance.
+API `e96f5a2` and Trading Core `c10c404` were then deployed in Projection. The authoritative Trading
+Core image is `architecture-c10c404-r1`; an earlier `architecture-c10c404` tag was built before the
+server fast-forward and was immediately superseded, so it must not be reused. The supported deploy
+script created backups
+`trading-core-pre-e96f5a2-20260827T094919Z.db`,
+`stocktrader-pre-e96f5a2-20260827T095149Z.db`, and
+`trading-core-pre-c10c404-r1-20260827T100141Z.db`.
+
+The second service unit made pre-broker expiry fail closed and retained post-submission commands for
+reconciliation. Partial evidence survives a process reopen. A terminal cancelled/rejected/expired
+order with a proven non-zero fill commits only that quantity; a contradictory `Filled` quantity
+remains `ReconciliationRequired`. The characterization test covers partial entry, process restart,
+terminal partial entry, partial exit, contradictory terminal evidence, corrected terminal partial
+exit, and deterministic queue expiry. The complete batch passed 1,012 backend tests, 75 desktop
+tests, API contract checking, both service/application builds, and the desktop production build.
+
+After rollout all StockTrader Pods were Ready with zero restarts. `/api/health` returned HTTP 200;
+Trading Core reported `ready=true`, `mode=Projection`, and `lastError=null`. Its database had zero
+financial intents, broker evidence, and open positions. The candidate remains unable to reach a
+broker. These facts allow Shadow preparation but do not satisfy Shadow, live failure, restore,
+rotation, load, cutover, or rollback acceptance.
 
 If an imported open position lacks immutable execution context, Remote activation must fail with
 `open-position-execution-context-missing`. Wait for it to close or perform a separately reviewed,
 truth-preserving migration; do not fabricate historical evidence.
 
-## Pause state and rollback
+## Current state and rollback
 
-MSA work stops at this checkpoint. No Strategy Research/Edge or Reporting/Notifications extraction
-is active. To roll back this non-authoritative candidate, keep the API in Local financial authority,
+MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or
+Reporting/Notifications extraction is active. To roll back this non-authoritative candidate, keep
+the API in Local financial authority,
 back up the candidate database, and scale down only `stocktrader-trading-core`. Because Projection
 never submitted a broker command or owned canonical financial state, no financial state transfer is
 required.

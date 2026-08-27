@@ -1,9 +1,9 @@
 # 0080 — Extract Trading Core as the single financial authority
 
-- Status: Projection implementation accepted; production cutover paused
+- Status: Projection implementation active; Remote cutover not authorized
 - Date: 2026-08-24
 - Baseline: `e77fdac`
-- Implementation: `d9f4f30`
+- Implementation: `d9f4f30`, `e96f5a2`, `c10c404`
 
 ## Context and measured trigger
 
@@ -186,9 +186,19 @@ unresolved financial intent or divergence exists. Accepted position commands dur
 canonical position pending; fills and terminal broker rejection clear that state, while ambiguous
 or quantity-mismatched evidence remains reconciliation-required.
 
-The complete local verification batch passed 1,010 backend tests, 75 desktop tests, API contract
-generation, both independent builds, and the desktop production build. Production remains at the
-`d9f4f30` Projection image pending a new deployment batch. The production application store had no
-open position and no pending entry at the read-only 2026-08-27 audit; this observation is not a
-cutover authorization. Shadow comparison, failure convergence, backup/restore, rotations, load,
-and cutover/rollback gates remain mandatory.
+The complete first local verification batch passed 1,010 backend tests, 75 desktop tests, API
+contract generation, both independent builds, and the desktop production build. API `e96f5a2` was
+then deployed in Projection. The production application store had no open position and no pending
+entry at the read-only 2026-08-27 audit; this observation is not a cutover authorization.
+
+The subsequent `c10c404` failure-convergence batch prevents a queued command from crossing the
+broker boundary after expiry while retaining all commands already awaiting broker evidence for
+reconciliation. It persists cancelled, rejected, or expired terminal orders with a non-zero fill as
+the broker-proven partial quantity, uses the explicit evidence-observation time only when the broker
+omits a partial-fill timestamp, and fences contradictory `Filled` quantities as
+`ReconciliationRequired`. Its restart characterization covers partial evidence, process reopen,
+contradictory terminal evidence, corrected terminal evidence, and pre-submit expiry. The full batch
+passed 1,012 backend and 75 desktop tests and both production builds. Trading Core
+`architecture-c10c404-r1` is deployed in Projection, Ready with zero restarts and no intents, broker
+evidence, open position, or health error. Shadow comparison, live Pod/broker failure drills,
+backup/restore, rotations, load, and cutover/rollback gates remain mandatory.

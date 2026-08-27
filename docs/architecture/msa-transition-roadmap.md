@@ -245,13 +245,16 @@ Exit gate: failover drills prove there is never more than one order authority, o
 process loss, every broker fill converges to one durable state, and live feature/version mismatches
 fail closed.
 
-Status: **Remote read/command boundary implemented; production still in Projection under
+Status: **Remote read/command and code-side failure-convergence boundary implemented; production
+still in Projection under
 [ADR 0080](adr/0080-extract-trading-core-service.md)**. The independent F# service now owns its
 candidate store and complete entry/position lifecycle contracts. Remote compatibility reads,
 manual immutable evidence, broker/canonical divergence fencing, and restart-safe position policy
-state are implemented and locally verified. The production Pod still receives read-only
+state are implemented and locally verified. Commands expire only before broker submission;
+post-submission evidence survives restart, and terminal partial fills commit only the broker-proven
+quantity. The production Pod still receives read-only
 projections with broker egress physically disabled, and the legacy API remains the only financial
-writer. Resume at the Shadow, failure-convergence, backup/restore, and
+writer. Resume at the Shadow, live Pod/broker failure drills, backup/restore, and
 single-authority cutover gates recorded in the
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.
