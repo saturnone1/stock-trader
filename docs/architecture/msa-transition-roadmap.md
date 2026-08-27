@@ -29,6 +29,10 @@ scalable and has no authority to create financial effects.
 
 ## Target dependency and communication model
 
+The normative ports, allowed call graph, identity, retry, and failure rules are fixed by
+[ADR 0081](adr/0081-define-service-communication-topology.md). This roadmap describes extraction
+order; ADR 0081 prevents each extraction from inventing another transport topology.
+
 ```text
 Desktop
    |
@@ -263,10 +267,11 @@ API and Trading Core Pod-loss recovery passed in Shadow with durable generation/
 The non-Remote online backup/restore rehearsal also passed with fail-closed mode/generation fencing,
 and startup now rejects a corrupt existing database before schema mutation.
 Resume at the live market-cycle evidence and controlled broker-evidence failure drills. The
-shared authentication secret now has versioned, preserved generations and a `legacy` rollback
-generation; its production rotation rehearsal is recorded in the operations note. Account
+versioned shared-authentication checkpoint was committed but never deployed; ADR 0081 supersedes it
+with exact mTLS workload-role authorization and retirement of transport header secrets. Account
 encryption-key rotation remains separate because it requires a transactional credential
-re-encryption migration rather than a Pod-only secret swap. Continue with that migration, load, and
+re-encryption migration rather than a Pod-only secret swap. Continue with identity migration,
+encryption migration, load, and
 single-authority cutover gates recorded in the
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.
@@ -309,14 +314,11 @@ Pause an extraction and return to the last single-owner state if any of these oc
 - the single-node K3s environment is presented as high availability without independent compute and
   storage failure domains.
 
-## Decisions still required before implementation
+## Decisions still required before later infrastructure changes
 
 The following are intentionally unresolved and require evidence-led ADRs:
 
-- transport and schema technology;
-- database engine and per-service backup topology;
-- workload identity and internal TLS mechanism;
+- whether a measured scale/recovery trigger justifies replacing any service-owned SQLite store;
 - trace/metric/log stack and retention;
 - whether K3s remains single-node or gains independent failure domains;
-- exact SLOs, RPO/RTO, capacity thresholds, and cost ceiling;
-- the first candidate whose measurements actually justify extraction.
+- production evidence required to tighten the blueprint's initial SLO/RPO/RTO and cost ceilings.

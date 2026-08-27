@@ -265,9 +265,9 @@ During each deliberate one-sided generation interval, the API remained healthy u
 authority while only the candidate boundary reported `HttpRequestException`. Each matched generation
 restored Shadow health without database or authority changes. The final Pods use
 `architecture-0c7dc49`, are Ready with zero restarts, and report Shadow generation 2 with no error.
-This completes TLS rotation/rollback. The shared authentication boundary subsequently adopted
-preserved, versioned Secret names selected by one active-generation ConfigMap. The original Secret
-is the explicit `legacy` rollback generation, and a named generation is never overwritten. API and
-Trading Core must select the same generation. Account-encryption-key rotation remains separate:
-changing that Secret without transactionally re-encrypting stored account credentials would make
-the broker configuration unreadable and is prohibited.
+This completes TLS rotation/rollback. A later checkpoint implemented preserved, versioned shared
+authentication Secret names, but it was never deployed. ADR 0081 supersedes that checkpoint: exact
+mTLS workload-role and operation authorization becomes the transport identity, and header secrets
+are removed after compatibility telemetry reaches zero. Account-encryption-key rotation remains
+separate: changing that Secret without transactionally re-encrypting stored account credentials
+would make the broker configuration unreadable and is prohibited.

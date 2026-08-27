@@ -225,30 +225,11 @@ This completes private-CA/client/server certificate rotation and preserved-gener
 
 ## Shared authentication secret rotation
 
-The API-to-Trading-Core shared authentication secret has its own generation boundary, separate from
-mTLS and the account encryption key. Create a new preserved generation without putting the value on
-the command line:
-
-```bash
-STOCKTRADER_TRADING_CORE_AUTH_GENERATION=<generation> \
-  scripts/rotate-trading-core-auth.sh
-```
-
-The script generates a random secret unless `STOCKTRADER_TRADING_CORE_AUTH_SECRET` is supplied,
-refuses to replace an existing named generation, and updates
-`stocktrader-trading-core-auth-active`. `scripts/deploy-k3s.sh` resolves that ConfigMap by default;
-`STOCKTRADER_TRADING_CORE_AUTH_GENERATION=<generation>` selects a preserved generation explicitly.
-Use `legacy` to select the original unversioned `stocktrader-trading-core-auth` Secret.
-
-Redeploy Trading Core and API with the same generation. In Projection or Shadow, a deliberate
-one-sided mismatch must affect only the candidate boundary: API health and Local financial authority
-remain available, while the Trading Core transport reports authentication failure. Complete the
-second rollout promptly, verify Shadow health, then rehearse both components on `legacy` before
-reapplying the new generation. Never delete the previous generation during the acceptance window.
-
-This mechanism does not rotate `stocktrader-trading-core-encryption`. That key protects persisted
-account credentials and requires a separately reviewed transactional re-encryption migration before
-its Secret can change.
+> **Superseded — do not run in production.** Commit `ccf3906` implemented this mechanism but it was
+> not deployed or rehearsed. ADR 0081 replaces shared transport secrets with exact mTLS workload-role
+> authorization. Do not run `scripts/rotate-trading-core-auth.sh`; remove that undeployed
+> compatibility mechanism in the Trading Core completion batch. Account encryption remains a
+> separate transactional key-generation migration described in the MSA target blueprint.
 
 ## Current state and rollback
 

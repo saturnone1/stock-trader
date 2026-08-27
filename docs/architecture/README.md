@@ -120,9 +120,20 @@ evidence, restart-safe position policy state, broker/canonical divergence fencin
 expiry, deterministic terminal partial-fill convergence, and durable entry/position Shadow comparison.
 Shadow was activated on 2026-08-27 with DNS-only candidate egress. It has no positions or order
 attempts yet, so live parity evidence is still zero rather than implicitly accepted. Market-cycle
-evidence, controlled broker-evidence failure drills, shared-auth/encryption-key rotation,
+evidence, controlled broker-evidence failure drills, certificate-role authorization and
+account-encryption-key migration,
 load, cutover, and rollback gates remain. Resume conditions are in the
 [Trading Core Projection operations note](../operations/trading-core-projection.md).
+
+[ADR 0081](adr/0081-define-service-communication-topology.md) fixes the complete Pod call graph
+before any further extraction. The low-power K3s target uses private mTLS JSON/HTTPS for commands and
+queries, durable lease pull for compute, and cursor pull for future events; it does not add a message
+broker or service mesh. Only documented NetworkPolicy edges are allowed, and risk/order/position/
+fill/reconciliation remain one Trading Core boundary. Work now completes and verifies one deployable
+Pod boundary at a time.
+The structured [MSA target blueprint](msa-target-blueprint.md) maps the decision to current and
+target workloads, table ownership, contract registry, live-trading sequences, failure behavior,
+security policy, deployment waves, and the single Trading Core completion batch.
 
 ## Target modules
 
