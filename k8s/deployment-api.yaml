@@ -124,7 +124,7 @@ spec:
         - name: TradingCoreTransport__SharedSecret
           valueFrom:
             secretKeyRef:
-              name: stocktrader-trading-core-auth
+              name: __TRADING_CORE_AUTH_SECRET__
               key: shared-secret
         - name: TradingCoreTransport__ClientCertificatePath
           value: "/tls/trading-core-client/tls.crt"

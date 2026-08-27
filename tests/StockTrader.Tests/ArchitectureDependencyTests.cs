@@ -4233,6 +4233,32 @@ public class ArchitectureDependencyTests
         settings.Should().NotContain("SharedSecret");
     }
 
+    [Fact]
+    public void TradingCoreAuthenticationSecretUsesPreservedGenerationsForRotationAndRollback()
+    {
+        var repository = FindRepositoryRoot();
+        var deploy = File.ReadAllText(Path.Combine(repository, "scripts/deploy-k3s.sh"));
+        var rotate = File.ReadAllText(Path.Combine(
+            repository, "scripts/rotate-trading-core-auth.sh"));
+        var apiDeployment = File.ReadAllText(Path.Combine(
+            repository, "k8s/deployment-api.yaml"));
+        var serviceDeployment = File.ReadAllText(Path.Combine(
+            repository, "k8s/deployment-trading-core.yaml"));
+
+        deploy.Should().Contain("STOCKTRADER_TRADING_CORE_AUTH_GENERATION");
+        deploy.Should().Contain("stocktrader-trading-core-auth-active");
+        deploy.Should().Contain("trading_core_auth_generation:-legacy");
+        deploy.Should().Contain("stocktrader-trading-core-auth-$trading_core_auth_generation");
+        deploy.Should().Contain("__TRADING_CORE_AUTH_SECRET__|$trading_core_auth_secret");
+        apiDeployment.Should().Contain("name: __TRADING_CORE_AUTH_SECRET__");
+        serviceDeployment.Should().Contain("name: __TRADING_CORE_AUTH_SECRET__");
+        rotate.Should().Contain("Refusing to replace existing immutable authentication generation");
+        rotate.Should().Contain("openssl rand -base64 48");
+        rotate.Should().Contain("--from-file=shared-secret=");
+        rotate.Should().Contain("stocktrader-trading-core-auth-active");
+        rotate.Should().NotContain("stocktrader-trading-core-encryption");
+    }
+
     private static string FindRepositoryRoot()
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })

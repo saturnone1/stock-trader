@@ -262,8 +262,11 @@ because production had no position or order attempt; zero observations are not p
 API and Trading Core Pod-loss recovery passed in Shadow with durable generation/state preserved.
 The non-Remote online backup/restore rehearsal also passed with fail-closed mode/generation fencing,
 and startup now rejects a corrupt existing database before schema mutation.
-Resume at the live market-cycle evidence, controlled broker-evidence failure drills,
-shared-secret/encryption-key rotation, and
+Resume at the live market-cycle evidence and controlled broker-evidence failure drills. The
+shared authentication secret now has versioned, preserved generations and a `legacy` rollback
+generation; its production rotation rehearsal is recorded in the operations note. Account
+encryption-key rotation remains separate because it requires a transactional credential
+re-encryption migration rather than a Pod-only secret swap. Continue with that migration, load, and
 single-authority cutover gates recorded in the
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.

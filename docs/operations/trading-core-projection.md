@@ -221,9 +221,34 @@ error. Deployment backups were created throughout the rehearsal, including
 `trading-core-pre-0c7dc49-20260827T105459Z.db`, and
 `trading-core-pre-0c7dc49-20260827T105657Z.db`.
 
-This completes private-CA/client/server certificate rotation and preserved-generation rollback. It
-does not cover the unversioned shared authentication secret or the encryption key protecting stored
-account credentials.
+This completes private-CA/client/server certificate rotation and preserved-generation rollback.
+
+## Shared authentication secret rotation
+
+The API-to-Trading-Core shared authentication secret has its own generation boundary, separate from
+mTLS and the account encryption key. Create a new preserved generation without putting the value on
+the command line:
+
+```bash
+STOCKTRADER_TRADING_CORE_AUTH_GENERATION=<generation> \
+  scripts/rotate-trading-core-auth.sh
+```
+
+The script generates a random secret unless `STOCKTRADER_TRADING_CORE_AUTH_SECRET` is supplied,
+refuses to replace an existing named generation, and updates
+`stocktrader-trading-core-auth-active`. `scripts/deploy-k3s.sh` resolves that ConfigMap by default;
+`STOCKTRADER_TRADING_CORE_AUTH_GENERATION=<generation>` selects a preserved generation explicitly.
+Use `legacy` to select the original unversioned `stocktrader-trading-core-auth` Secret.
+
+Redeploy Trading Core and API with the same generation. In Projection or Shadow, a deliberate
+one-sided mismatch must affect only the candidate boundary: API health and Local financial authority
+remain available, while the Trading Core transport reports authentication failure. Complete the
+second rollout promptly, verify Shadow health, then rehearse both components on `legacy` before
+reapplying the new generation. Never delete the previous generation during the acceptance window.
+
+This mechanism does not rotate `stocktrader-trading-core-encryption`. That key protects persisted
+account credentials and requires a separately reviewed transactional re-encryption migration before
+its Secret can change.
 
 ## Current state and rollback
 

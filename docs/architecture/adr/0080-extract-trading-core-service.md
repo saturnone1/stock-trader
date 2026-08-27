@@ -265,5 +265,9 @@ During each deliberate one-sided generation interval, the API remained healthy u
 authority while only the candidate boundary reported `HttpRequestException`. Each matched generation
 restored Shadow health without database or authority changes. The final Pods use
 `architecture-0c7dc49`, are Ready with zero restarts, and report Shadow generation 2 with no error.
-This completes TLS rotation/rollback; shared-secret and account-encryption-key rotation remain
-separate because their current Secret is not generation-versioned.
+This completes TLS rotation/rollback. The shared authentication boundary subsequently adopted
+preserved, versioned Secret names selected by one active-generation ConfigMap. The original Secret
+is the explicit `legacy` rollback generation, and a named generation is never overwritten. API and
+Trading Core must select the same generation. Account-encryption-key rotation remains separate:
+changing that Secret without transactionally re-encrypting stored account credentials would make
+the broker configuration unreadable and is prohibited.

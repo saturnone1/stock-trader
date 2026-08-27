@@ -39,6 +39,8 @@ trading_core_dir="${STOCKTRADER_TRADING_CORE_DIR:-}"
 trading_core_tls_generation="${STOCKTRADER_TRADING_CORE_TLS_GENERATION:-}"
 trading_core_server_tls_secret=""
 trading_core_client_tls_secret=""
+trading_core_auth_generation="${STOCKTRADER_TRADING_CORE_AUTH_GENERATION:-}"
+trading_core_auth_secret=""
 trading_core_mode="${STOCKTRADER_TRADING_CORE_MODE:-Projection}"
 
 deploy_api=false
@@ -128,6 +130,24 @@ if $deploy_api || $deploy_trading_core; then
   fi
   trading_core_server_tls_secret="stocktrader-trading-core-server-tls-$trading_core_tls_generation"
   trading_core_client_tls_secret="stocktrader-trading-core-client-tls-$trading_core_tls_generation"
+
+  if [[ -z "$trading_core_auth_generation" ]]; then
+    trading_core_auth_generation="$(sudo k3s kubectl -n stocktrader get configmap \
+      stocktrader-trading-core-auth-active -o jsonpath='{.data.generation}' 2>/dev/null || true)"
+  fi
+  # The original unversioned Secret remains an explicit rollback generation for
+  # clusters upgraded before workload-secret generations were introduced.
+  trading_core_auth_generation="${trading_core_auth_generation:-legacy}"
+  if [[ "$trading_core_auth_generation" != "legacy" \
+    && ! "$trading_core_auth_generation" =~ ^[a-z0-9][a-z0-9-]{0,13}$ ]]; then
+    echo "STOCKTRADER_TRADING_CORE_AUTH_GENERATION must be legacy or 1-14 lowercase letters, digits, or hyphens." >&2
+    exit 1
+  fi
+  if [[ "$trading_core_auth_generation" == "legacy" ]]; then
+    trading_core_auth_secret="stocktrader-trading-core-auth"
+  else
+    trading_core_auth_secret="stocktrader-trading-core-auth-$trading_core_auth_generation"
+  fi
 fi
 
 if $deploy_api && { [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; }; then
@@ -273,9 +293,9 @@ for tls_secret in "$market_data_server_tls_secret" "$market_data_client_tls_secr
   fi
 done
 if { $deploy_api || $deploy_trading_core; } \
-  && ! sudo k3s kubectl -n stocktrader get secret stocktrader-trading-core-auth >/dev/null 2>&1; then
-  echo "Missing Kubernetes secret stocktrader/stocktrader-trading-core-auth." >&2
-  echo "Create it from k8s/secret-trading-core.example.yaml before deploying." >&2
+  && ! sudo k3s kubectl -n stocktrader get secret "$trading_core_auth_secret" >/dev/null 2>&1; then
+  echo "Missing Kubernetes secret stocktrader/$trading_core_auth_secret." >&2
+  echo "Create it with scripts/rotate-trading-core-auth.sh or select the preserved legacy generation." >&2
   exit 1
 fi
 if $deploy_trading_core \
@@ -448,6 +468,7 @@ if $deploy_trading_core; then
     -e "s|__TRADING_CORE_DATA_DIR__|$trading_core_dir|" \
     -e "s|__TRADING_CORE_SERVER_TLS_SECRET__|$trading_core_server_tls_secret|" \
     -e "s|__TRADING_CORE_CLIENT_TLS_SECRET__|$trading_core_client_tls_secret|" \
+    -e "s|__TRADING_CORE_AUTH_SECRET__|$trading_core_auth_secret|" \
     -e "s|__TRADING_CORE_MODE__|$trading_core_mode|" \
     k8s/deployment-trading-core.yaml | sudo k3s kubectl apply -f -
   sudo k3s kubectl -n stocktrader rollout status deployment/stocktrader-trading-core --timeout=300s
@@ -468,6 +489,7 @@ if $deploy_api; then
       -e "s|__ML_TRAINING_CLIENT_TLS_SECRET__|$ml_training_client_tls_secret|" \
       -e "s|__TRADING_CORE_MODE__|$trading_core_mode|" \
       -e "s|__TRADING_CORE_CLIENT_TLS_SECRET__|$trading_core_client_tls_secret|" \
+      -e "s|__TRADING_CORE_AUTH_SECRET__|$trading_core_auth_secret|" \
     | sudo k3s kubectl apply -f -
 fi
 if $deploy_desktop; then

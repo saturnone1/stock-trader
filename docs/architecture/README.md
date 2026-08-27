@@ -120,7 +120,7 @@ evidence, restart-safe position policy state, broker/canonical divergence fencin
 expiry, deterministic terminal partial-fill convergence, and durable entry/position Shadow comparison.
 Shadow was activated on 2026-08-27 with DNS-only candidate egress. It has no positions or order
 attempts yet, so live parity evidence is still zero rather than implicitly accepted. Market-cycle
-evidence, failure drills, backup/rotation,
+evidence, controlled broker-evidence failure drills, shared-auth/encryption-key rotation,
 load, cutover, and rollback gates remain. Resume conditions are in the
 [Trading Core Projection operations note](../operations/trading-core-projection.md).
 
