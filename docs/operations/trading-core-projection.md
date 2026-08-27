@@ -204,6 +204,27 @@ Trading Core image `architecture-0c7dc49` rolled out the guard in Shadow and cre
 remained on contract-compatible `architecture-3866ca8`. The Trading Core Pod was Ready with zero
 restarts, API health returned 200, and Shadow generation 2 remained error-free after startup.
 
+### 2026-08-27 mTLS rotation and rollback
+
+The previous active Trading Core TLS generation was `tc0824a`. The supported rotation script created
+new server/client secrets and selected generation `tc0827b`. Trading Core was redeployed first; while
+the API still held the old client identity, `/api/health` remained 200 and Local financial authority
+continued, while only `tradingCoreError=HttpRequestException` identified the expected isolated mTLS
+failure. Redeploying the API with `tc0827b` restored Shadow health.
+
+Both deployments were then explicitly rolled back to preserved generation `tc0824a`; health returned
+200 with Shadow generation 2 and no error. Finally Trading Core and API were redeployed again with
+`tc0827b`. The active ConfigMap reports `tc0827b`, both deployments use
+`architecture-0c7dc49`, all Pods are Ready with zero restarts, and API health reports no Trading Core
+error. Deployment backups were created throughout the rehearsal, including
+`trading-core-pre-0c7dc49-20260827T105213Z.db`,
+`trading-core-pre-0c7dc49-20260827T105459Z.db`, and
+`trading-core-pre-0c7dc49-20260827T105657Z.db`.
+
+This completes private-CA/client/server certificate rotation and preserved-generation rollback. It
+does not cover the unversioned shared authentication secret or the encryption key protecting stored
+account credentials.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or

@@ -262,8 +262,8 @@ because production had no position or order attempt; zero observations are not p
 API and Trading Core Pod-loss recovery passed in Shadow with durable generation/state preserved.
 The non-Remote online backup/restore rehearsal also passed with fail-closed mode/generation fencing,
 and startup now rejects a corrupt existing database before schema mutation.
-Resume at the live market-cycle evidence, controlled broker-evidence failure drills, corruption and
-secret/TLS rotation, and
+Resume at the live market-cycle evidence, controlled broker-evidence failure drills,
+shared-secret/encryption-key rotation, and
 single-authority cutover gates recorded in the
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.

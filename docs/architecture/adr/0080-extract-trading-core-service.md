@@ -258,3 +258,12 @@ Trading Core `architecture-0c7dc49` deployed this guard in Shadow while the API 
 contract-compatible `architecture-3866ca8`. The rollout backup was
 `trading-core-pre-0c7dc49-20260827T104932Z.db`; the new Pod was Ready with zero restarts, API health
 returned 200, and Shadow generation 2 reported no error.
+
+The production mTLS rehearsal created generation `tc0827b`, applied it to Trading Core and then API,
+rolled both deployments back to preserved generation `tc0824a`, and finally reapplied `tc0827b`.
+During each deliberate one-sided generation interval, the API remained healthy under Local financial
+authority while only the candidate boundary reported `HttpRequestException`. Each matched generation
+restored Shadow health without database or authority changes. The final Pods use
+`architecture-0c7dc49`, are Ready with zero restarts, and report Shadow generation 2 with no error.
+This completes TLS rotation/rollback; shared-secret and account-encryption-key rotation remain
+separate because their current Secret is not generation-versioned.
