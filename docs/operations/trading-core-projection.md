@@ -178,6 +178,21 @@ STOCKTRADER_TRADING_CORE_DIR=/var/lib/stocktrader/trading-core \
 Remote disaster recovery remains prohibited through this script because it requires separately
 reconciling every in-flight broker order and preserving the single-writer cutover generation.
 
+### 2026-08-27 Shadow restore rehearsal
+
+An online generation 2 Shadow backup was created at
+`/var/lib/stocktrader/trading-core/backups/trading-core-shadow-g2-restore-drill-20260827T104300Z.db`.
+The supported restore script accepted its matching Shadow/generation metadata, stopped API and
+Trading Core, created the rollback copy
+`/var/lib/stocktrader/trading-core/backups/trading-core-before-restore-20260827T104502Z.db`, restored
+through staging, and started Trading Core before API.
+
+After the rehearsal all Pods were Ready with zero restarts, `/api/health` returned 200, database
+integrity was `ok`, authority remained `Shadow|2|shadow-3866ca8-g2`, and financial intents and broker
+evidence remained zero. Projection publication resumed and the new API logs had no ERR, FTL, or 500.
+This completes the non-Remote online restore rehearsal. Isolated corruption detection, TLS/secret
+rotation, and Remote reconciled disaster recovery remain separate gates.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or

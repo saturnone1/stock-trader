@@ -240,3 +240,11 @@ minute, resumed Projection publication, and returned health 200. No intent, brok
 or new API error was introduced. This satisfies basic Pod-loss recovery in non-authoritative Shadow,
 not the still-required ambiguous submission, delayed fill, broker outage, load, or Remote failover
 gates.
+
+The non-Remote restore boundary now accepts only a verified backup under the configured Trading Core
+backup directory whose authority mode and generation exactly match the live database. It refuses
+Remote, stops API and Trading Core together, creates a pre-restore backup, verifies a staging restore,
+atomically replaces the database, and starts Trading Core before API. The production Shadow
+generation 2 rehearsal restored a fresh online backup successfully: every Pod returned Ready with
+zero restarts, database integrity was `ok`, authority generation and ID were preserved, Projection
+publication resumed, and no financial intent, broker evidence, API 500, or error log appeared.
