@@ -15,6 +15,27 @@ public sealed class TradingCoreServiceTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"trading-core-{Guid.NewGuid():N}");
 
     [Fact]
+    public void CorruptDatabaseFailsClosedInsteadOfBeingReinitialized()
+    {
+        Directory.CreateDirectory(_root);
+        var path = Path.Combine(_root, "corrupt.db");
+        var config = new ServiceConfig(
+            path, new string('x', 32), "unused", "unused", "unused",
+            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
+            TradingAuthorityMode.Projection);
+        _ = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        using (var file = File.Open(path, FileMode.Open, FileAccess.Write, FileShare.None))
+            file.SetLength(128);
+
+        var construct = () => new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+
+        construct.Should().Throw<InvalidOperationException>()
+            .WithMessage("trading-core-database-integrity-check-failed");
+    }
+
+    [Fact]
     public void ProjectionPortfolioReadsImportedFinancialRowsInsteadOfEmptyCanonicalTables()
     {
         Directory.CreateDirectory(_root);

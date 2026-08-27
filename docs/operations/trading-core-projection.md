@@ -193,6 +193,12 @@ evidence remained zero. Projection publication resumed and the new API logs had 
 This completes the non-Remote online restore rehearsal. Isolated corruption detection, TLS/secret
 rotation, and Remote reconciled disaster recovery remain separate gates.
 
+The service subsequently added a startup `PRAGMA quick_check` before schema initialization. A local
+characterization truncates a valid candidate database and verifies the named
+`trading-core-database-integrity-check-failed` exception, proving that corruption cannot silently
+create a fresh financial store. Production rollout evidence for this startup guard is recorded with
+its image checkpoint; TLS/secret rotation and Remote recovery remain separate gates.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or

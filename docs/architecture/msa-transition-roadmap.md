@@ -260,7 +260,8 @@ writer. The `architecture-3866ca8` Projection rollout verified the new schema, a
 deployments entered Shadow with DNS-only Trading Core egress. The comparison corpus is still empty
 because production had no position or order attempt; zero observations are not parity evidence.
 API and Trading Core Pod-loss recovery passed in Shadow with durable generation/state preserved.
-The non-Remote online backup/restore rehearsal also passed with fail-closed mode/generation fencing.
+The non-Remote online backup/restore rehearsal also passed with fail-closed mode/generation fencing,
+and startup now rejects a corrupt existing database before schema mutation.
 Resume at the live market-cycle evidence, controlled broker-evidence failure drills, corruption and
 secret/TLS rotation, and
 single-authority cutover gates recorded in the

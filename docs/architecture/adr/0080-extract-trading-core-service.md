@@ -248,3 +248,8 @@ atomically replaces the database, and starts Trading Core before API. The produc
 generation 2 rehearsal restored a fresh online backup successfully: every Pod returned Ready with
 zero restarts, database integrity was `ok`, authority generation and ID were preserved, Projection
 publication resumed, and no financial intent, broker evidence, API 500, or error log appeared.
+
+Trading Core also performs `PRAGMA quick_check` before any startup schema work. A corrupted existing
+database raises the named `trading-core-database-integrity-check-failed` startup error instead of
+being silently treated as a new financial store. A characterization test truncates a previously
+valid service database and proves fail-closed startup.

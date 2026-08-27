@@ -16,6 +16,18 @@ module Database =
         | null | "" -> ()
         | parent -> IO.Directory.CreateDirectory parent |> ignore
         use connection = connect path
+        try
+            use integrity = connection.CreateCommand()
+            integrity.CommandText <- "PRAGMA quick_check;"
+            use reader = integrity.ExecuteReader()
+            if not (reader.Read()) || reader.GetString(0) <> "ok" then
+                invalidOp "trading-core-database-integrity-check-failed"
+        with
+        | :? InvalidOperationException as error
+            when error.Message = "trading-core-database-integrity-check-failed" -> raise error
+        | error ->
+            raise (InvalidOperationException(
+                "trading-core-database-integrity-check-failed", error))
         use command = connection.CreateCommand()
         command.CommandText <- """
 PRAGMA journal_mode=WAL;
