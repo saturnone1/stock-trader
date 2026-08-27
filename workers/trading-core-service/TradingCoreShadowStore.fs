@@ -74,7 +74,28 @@ module TradingCoreShadowStore =
                     insert.Parameters.AddWithValue("$receipt", JsonSerializer.Serialize(receipt, this.Json)) |> ignore
                     insert.Parameters.AddWithValue("$match", if matched then 1 else 0) |> ignore
                     insert.Parameters.AddWithValue("$at", comparedAt.ToString("O")) |> ignore
-                    if insert.ExecuteNonQuery() = 1 then receipt
+                    let inserted = insert.ExecuteNonQuery() = 1
+                    if inserted
+                        && observation.AuthoritativeDisposition
+                            = TradingShadowDispositions.BrokerSubmission then
+                        let context = TradingPositionExecutionContext(
+                            observation.Intent.ExecutionArtifact,
+                            observation.Intent.MarketDataEvidence)
+                        use saveContext = connection.CreateCommand()
+                        saveContext.CommandText <- "INSERT OR IGNORE INTO shadow_execution_contexts VALUES($signal,$artifact,$context,$decision,$at)"
+                        saveContext.Parameters.AddWithValue("$signal", observation.Intent.SourceSignalId) |> ignore
+                        saveContext.Parameters.AddWithValue("$artifact", observation.Intent.ExecutionArtifact.ArtifactId) |> ignore
+                        saveContext.Parameters.AddWithValue("$context", JsonSerializer.Serialize(context, this.Json)) |> ignore
+                        saveContext.Parameters.AddWithValue("$decision", observation.DecisionId) |> ignore
+                        saveContext.Parameters.AddWithValue("$at", comparedAt.ToString("O")) |> ignore
+                        if saveContext.ExecuteNonQuery() = 0 then
+                            use existingContext = connection.CreateCommand()
+                            existingContext.CommandText <- "SELECT artifact_id FROM shadow_execution_contexts WHERE source_signal_id=$signal"
+                            existingContext.Parameters.AddWithValue("$signal", observation.Intent.SourceSignalId) |> ignore
+                            if Convert.ToString(existingContext.ExecuteScalar())
+                                <> observation.Intent.ExecutionArtifact.ArtifactId then
+                                invalidOp "shadow-source-signal-execution-context-conflict"
+                    if inserted then receipt
                     else
                         use raced = connection.CreateCommand()
                         raced.CommandText <- "SELECT payload_hash,receipt_json FROM shadow_entry_decisions WHERE decision_id=$id"

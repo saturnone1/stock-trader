@@ -325,6 +325,29 @@ public sealed class TradingCoreServiceTests : IDisposable
         operations.Portfolio().Recommendations.Should().BeEmpty();
         operations.Portfolio().Positions.Should().BeEmpty();
         operations.Portfolio().Trades.Should().BeEmpty();
+
+        var projectedPosition = new TradingPositionProjection(
+            "local-position-1", open.Intent.SourceSignalId, open.Intent.AccountId,
+            open.Intent.Symbol, open.Intent.Sector, 4, 4, 101m, 102m,
+            open.Intent.StopLossPrice, open.Intent.TargetPrice, open.Intent.PatternCode,
+            open.Intent.CustomPatternName, openAt.AddMinutes(2), null, null, 102m,
+            1m, 6m, false, false, false, null, null, null, false,
+            null, null, null, [], null);
+        var projectedValue = new TradingStateSnapshot(
+            TradingCoreContractVersions.Current, string.Empty, 2, openAt.AddMinutes(2),
+            [], [], [projectedPosition], [],
+            new TradingRiskProjection(0m, 0m, 1, false, openAt.AddMinutes(2)));
+        var projected = projectedValue with
+        {
+            SnapshotId = TradingCoreIdentity.Snapshot(projectedValue)
+        };
+        operations.Import(projected).Should().BeFalse();
+        var enriched = operations.Portfolio().Positions.Single();
+        enriched.ExecutionContext.Should().NotBeNull();
+        enriched.ExecutionContext!.ExecutionArtifact.ArtifactId
+            .Should().Be(open.Intent.ExecutionArtifact.ArtifactId);
+        enriched.ExecutionContext.EntryMarketDataEvidence.EvidenceId
+            .Should().Be(open.Intent.MarketDataEvidence.EvidenceId);
     }
 
     private static TradingStateSnapshot EmptySnapshot(DateTime now)

@@ -68,7 +68,24 @@ module TradingCoreAuthorityStore =
                             projection.CommandText <- "INSERT INTO projections VALUES($kind,$id,$payload,$snapshot)"
                             projection.Parameters.AddWithValue("$kind", kind) |> ignore
                             projection.Parameters.AddWithValue("$id", identity) |> ignore
-                            projection.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(item, this.Json)) |> ignore
+                            let enriched =
+                                match item with
+                                | :? TradingPositionProjection as position
+                                    when isNull position.ExecutionContext
+                                        && not (String.IsNullOrWhiteSpace position.SourceSignalId) ->
+                                    use contextCommand = connection.CreateCommand()
+                                    contextCommand.Transaction <- transaction
+                                    contextCommand.CommandText <- "SELECT context_json FROM shadow_execution_contexts WHERE source_signal_id=$signal"
+                                    contextCommand.Parameters.AddWithValue("$signal", position.SourceSignalId) |> ignore
+                                    match contextCommand.ExecuteScalar() with
+                                    | null -> item
+                                    | contextPayload ->
+                                        let context = JsonSerializer.Deserialize<TradingPositionExecutionContext>(
+                                            Convert.ToString contextPayload, this.Json)
+                                        if isNull context then invalidOp "empty-shadow-execution-context"
+                                        box (TradingProjectionExecutionContextPolicy.Apply(position, context))
+                                | _ -> item
+                            projection.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(enriched, this.Json)) |> ignore
                             projection.Parameters.AddWithValue("$snapshot", snapshot.SnapshotId) |> ignore
                             projection.ExecuteNonQuery() |> ignore
                     use state = connection.CreateCommand()
