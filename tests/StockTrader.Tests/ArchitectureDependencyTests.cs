@@ -4275,6 +4275,9 @@ public class ArchitectureDependencyTests
         rotateEncryption.Should().Contain("stocktrader-trading-core-encryption-active");
         rotationJob.Should().Contain("--rotate-encryption-key");
         rotateEncryption.Should().Contain("backup");
+        rotateEncryption.Should().Contain("--restore-backup");
+        rotateEncryption.Should().Contain("current_authority");
+        rotateEncryption.Should().Contain("restore_database_generation");
     }
 
     private static string FindRepositoryRoot()
