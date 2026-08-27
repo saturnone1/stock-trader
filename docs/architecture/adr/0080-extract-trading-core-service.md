@@ -202,3 +202,25 @@ passed 1,012 backend and 75 desktop tests and both production builds. Trading Co
 `architecture-c10c404-r1` is deployed in Projection, Ready with zero restarts and no intents, broker
 evidence, open position, or health error. Shadow comparison, live Pod/broker failure drills,
 backup/restore, rotations, load, and cutover/rollback gates remain mandatory.
+
+## Entry and position Shadow preparation checkpoint
+
+The `517c80e`, `2cd90f5`, and `3866ca8` batches establish a comparison-only Shadow boundary without
+changing financial authority. Entry comparisons replay account, risk, position, regular-session,
+and immutable strategy/market evidence against the candidate. An entry accepted by Local during
+Shadow preserves its immutable execution context so that a later projected position remains
+cutover-compatible rather than requiring fabricated historical evidence.
+
+Position comparisons replay the projected position with its entry artifact and complete market-data
+evidence. They compare command disposition, action, quantity, and the full mutable policy state:
+highest price, stop, initial risk, breakeven, and trailing activation. Candidate observations are
+stored idempotently in dedicated audit tables. Architecture guards prohibit the Shadow adapter and
+store from submitting position commands, referencing a broker, or mutating canonical financial
+tables.
+
+The meaningful local batch passed 1,014 backend tests, 75 desktop tests, API contract checking, and
+both production builds. API and Trading Core `architecture-3866ca8` then rolled out in Projection.
+Both Pods were Ready with zero restarts, API health returned 200, and Trading Core remained
+Projection generation 1 with zero Shadow rows, financial intents, broker evidence, and canonical
+positions. This proves deployability and schema compatibility only. Shadow authority and its
+market-open/market-closed acceptance evidence remain mandatory before any Remote cutover.

@@ -101,6 +101,29 @@ If an imported open position lacks immutable execution context, Remote activatio
 `open-position-execution-context-missing`. Wait for it to close or perform a separately reviewed,
 truth-preserving migration; do not fabricate historical evidence.
 
+### 2026-08-27 Shadow-boundary deployment audit
+
+Entry Shadow (`517c80e`), entry-context preservation (`2cd90f5`), and position Shadow (`3866ca8`)
+are implemented. The position comparison includes order disposition/action/quantity and highest
+price, stop, initial-risk, breakeven, and trailing policy state; otherwise a no-order cycle could
+incorrectly report parity while changing future execution behavior. Comparison storage is
+idempotent and has no canonical financial or broker mutation path.
+
+The complete local batch passed 1,014 backend tests, 75 desktop tests, API contract checking, and
+both production builds. API and Trading Core image `architecture-3866ca8` rolled out through
+`scripts/deploy-k3s.sh` in Projection. Backups were created at
+`/var/lib/stocktrader/trading-core/backups/trading-core-pre-3866ca8-20260827T102751Z.db` and
+`/home/saturnone1/stock-trader-data/backups/stocktrader-pre-3866ca8-20260827T102916Z.db`.
+
+Post-rollout evidence: every Pod was Ready with zero restarts, `/api/health` returned 200, Trading
+Core reported Projection generation 1 and no error, and the database contained the entry,
+execution-context, and position Shadow tables with zero rows. Financial intents, broker evidence,
+and canonical positions also remained zero. No Shadow authority or broker egress was enabled.
+
+An initial operator invocation supplied the script-owned `architecture-` prefix twice and produced
+the temporary tag `architecture-architecture-3866ca8`. It was immediately superseded by the same
+image content under `architecture-3866ca8`; never use the doubled tag for rollout or rollback.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or
