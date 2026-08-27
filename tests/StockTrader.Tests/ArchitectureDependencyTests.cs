@@ -1307,6 +1307,23 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void TradingCoreRestoreIsFailClosedAndNeverRewindsRemoteAuthority()
+    {
+        var repository = FindRepositoryRoot();
+        var restore = File.ReadAllText(Path.Combine(
+            repository, "scripts/restore-trading-core-backup.sh"));
+
+        restore.Should().Contain("sudo realpath -e");
+        restore.Should().Contain("Backup must be inside $resolved_data/backups");
+        restore.Should().Contain("PRAGMA quick_check;");
+        restore.Should().Contain("Remote authority restore requires");
+        restore.Should().Contain("backup_generation");
+        restore.Should().Contain("trading-core-before-restore-");
+        restore.Should().Contain("stocktrader-api stocktrader-trading-core --replicas=0");
+        restore.Should().Contain("rollout status deployment/stocktrader-trading-core");
+    }
+
+    [Fact]
     public void BacktestServiceDelegatesOptimizationShapeAndVariantLogic()
     {
         var repository = FindRepositoryRoot();

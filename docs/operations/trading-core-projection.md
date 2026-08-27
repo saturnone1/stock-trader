@@ -161,6 +161,23 @@ StockTrader Pods were Ready with zero restarts and the new API Pod had no ERR, F
 startup. The exercise proves non-authoritative Pod recreation and durable-state continuity only; it
 does not replace controlled broker-evidence or Remote single-writer failure drills.
 
+## Supported non-Remote restore
+
+Use `scripts/restore-trading-core-backup.sh` only with a verified backup inside the configured
+Trading Core `backups/` directory. The script refuses Remote authority and any mode/generation
+mismatch, scales API and Trading Core down together, creates and verifies a pre-restore rollback
+copy, restores through a checked staging database, removes only the stopped database's exact WAL/SHM
+companions, and starts Trading Core before API. Example:
+
+```bash
+STOCKTRADER_TRADING_CORE_DIR=/var/lib/stocktrader/trading-core \
+  scripts/restore-trading-core-backup.sh \
+  /var/lib/stocktrader/trading-core/backups/<shadow-generation-2-backup>.db
+```
+
+Remote disaster recovery remains prohibited through this script because it requires separately
+reconciling every in-flight broker order and preserving the single-writer cutover generation.
+
 ## Current state and rollback
 
 MSA work continues only on Trading Core Stage 5. No Strategy Research/Edge or
