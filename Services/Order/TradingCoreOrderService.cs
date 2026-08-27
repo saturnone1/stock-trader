@@ -6,6 +6,7 @@ using StockTrader.Models.Enums;
 using StockTrader.ServiceContracts;
 using StockTrader.ServiceContracts.TradingCore;
 using StockTrader.Services.Notification;
+using StockTrader.Services.TradingCore;
 
 namespace StockTrader.Services.Order;
 
@@ -75,35 +76,8 @@ internal sealed class TradingCoreOrderService(
         var resolvedAccount = accountId?.ToString(System.Globalization.CultureInfo.InvariantCulture)
             ?? await accounts.GetActiveAccountIdAsync(ct)
             ?? throw new InvalidOperationException("active-trading-account-missing");
-        var commandId = "entry:" + CanonicalJsonHash.Compute(new
-        {
-            SourceSignalId = recommendation.SourceSignalId.Value,
-            AccountId = resolvedAccount,
-            recommendation.ExecutionArtifact.ArtifactId,
-            recommendation.MarketDataEvidence.EvidenceId,
-        });
-        var envelope = Envelope(
-            commandId, TradingCommandKinds.AcceptEntry,
-            recommendation.SourceSignalId.Value, status, now);
-        var intent = new TradingEntryIntent(
-            envelope,
-            recommendation.SourceSignalId.Value.ToString(),
-            resolvedAccount,
-            recommendation.Symbol,
-            recommendation.ExecutionSector,
-            recommendation.PatternType.ToString(),
-            recommendation.CustomPatternName,
-            recommendation.EntryPrice,
-            recommendation.StopLossPrice,
-            recommendation.TargetPrice,
-            recommendation.ShareQuantity,
-            recommendation.Expectancy,
-            recommendation.ExecutionArtifact,
-            recommendation.MarketDataEvidence);
-        intent = intent with
-        {
-            Envelope = envelope with { PayloadHash = TradingCoreIdentity.EntryPayload(intent) }
-        };
+        var intent = TradingCoreEntryIntentFactory.Create(
+            recommendation, resolvedAccount, status, now);
         var receipt = await core.SubmitEntryAsync(intent, ct);
         logger.LogInformation(
             "Trading Core accepted entry {CommandId} for {Symbol}: {Status}",

@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
+    <ProjectReference Include="..\StockTrader.Engine\StockTrader.Engine.csproj" />
   </ItemGroup>
 </Project>

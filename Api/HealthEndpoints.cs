@@ -2,6 +2,8 @@ using Microsoft.Extensions.Options;
 using StockTrader.Configuration;
 using StockTrader.Data.Migrations;
 using StockTrader.Application.Optimization;
+using StockTrader.Application.TradingCore;
+using StockTrader.ServiceContracts.TradingCore;
 using StockTrader.Services.DataFeed;
 
 namespace StockTrader.Api;
@@ -26,6 +28,8 @@ public static class HealthEndpoints
             IOptimizationWorkerLeaseMonitor workerLeases,
             IOptions<MarketDataTransportOptions> marketDataTransport,
             MarketDataServiceClient marketDataClient,
+            IOptions<TradingCoreTransportOptions> tradingCoreTransport,
+            ITradingCoreControlPlane tradingCoreClient,
             CancellationToken ct) =>
         {
             var databaseMigration = await migrations.GetAsync(ct);
@@ -39,8 +43,23 @@ public static class HealthEndpoints
                 try { marketData = await marketDataClient.StatusAsync(ct); }
                 catch (Exception error) { marketDataError = error; }
             }
+            object? tradingCore = null;
+            TradingShadowSummary? tradingCoreShadow = null;
+            Exception? tradingCoreError = null;
+            if (tradingCoreTransport.Value.Mode != "Local")
+            {
+                try
+                {
+                    tradingCore = await tradingCoreClient.GetStatusAsync(ct);
+                    if (tradingCoreTransport.Value.Mode == "Shadow")
+                        tradingCoreShadow = await tradingCoreClient.GetShadowSummaryAsync(ct);
+                }
+                catch (Exception error) { tradingCoreError = error; }
+            }
             var healthy = marketDataTransport.Value.Mode != MarketDataTransportMode.Remote
                           || marketDataError is null;
+            healthy = healthy && (tradingCoreTransport.Value.Mode != "Remote"
+                                   || tradingCoreError is null);
             return Results.Json(new
             {
                 status = healthy ? "ok" : "degraded",
@@ -52,6 +71,10 @@ public static class HealthEndpoints
                 marketDataMode = marketDataTransport.Value.Mode.ToString(),
                 marketData,
                 marketDataError = marketDataError?.GetType().Name,
+                tradingCoreMode = tradingCoreTransport.Value.Mode,
+                tradingCore,
+                tradingCoreShadow,
+                tradingCoreError = tradingCoreError?.GetType().Name,
                 timestamp = clock.GetUtcNow(),
             }, statusCode: healthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
         });

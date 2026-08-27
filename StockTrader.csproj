@@ -19,6 +19,7 @@
     <Compile Remove="Domain\MarketData\DataSource.cs" />
     <Compile Remove="Domain\MarketData\DataProviderCatalog.cs" />
     <Compile Remove="Domain\MarketData\MarketRegionCatalog.cs" />
+    <Compile Remove="Domain\MarketData\ExchangeCalendarCatalog.cs" />
     <Compile Remove="Domain\MarketData\PriceAdjustmentCatalog.cs" />
     <Compile Remove="Domain\MarketData\MarketSymbolPolicy.cs" />
     <Compile Remove="Domain\Backtesting\BacktestExecutionCatalog.cs" />

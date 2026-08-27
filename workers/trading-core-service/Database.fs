@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS broker_accounts (
 CREATE TABLE IF NOT EXISTS broker_evidence (
  order_id TEXT PRIMARY KEY, client_order_id TEXT NOT NULL UNIQUE, command_id TEXT NOT NULL,
  payload_json TEXT NOT NULL, observed_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS shadow_entry_decisions (
+ decision_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, observation_json TEXT NOT NULL,
+ receipt_json TEXT NOT NULL, is_match INTEGER NOT NULL, compared_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS account_configuration (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), generation INTEGER NOT NULL,

@@ -31,6 +31,12 @@ public interface ITradingCoreControlPlane
 
     Task<TradingCorePortfolioView> GetPortfolioAsync(CancellationToken ct = default);
 
+    Task<TradingShadowDecisionReceipt> CompareShadowEntryAsync(
+        TradingShadowEntryObservation observation,
+        CancellationToken ct = default);
+
+    Task<TradingShadowSummary> GetShadowSummaryAsync(CancellationToken ct = default);
+
     Task<TradingCommandReceipt> SubmitEntryAsync(
         TradingEntryIntent intent,
         CancellationToken ct = default);

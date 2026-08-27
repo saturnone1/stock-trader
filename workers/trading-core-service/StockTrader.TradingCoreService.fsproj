@@ -21,6 +21,7 @@
     <Compile Include="TradingCoreRecommendationStore.fs" />
     <Compile Include="TradingCoreEntryStore.fs" />
     <Compile Include="TradingCoreEntryBrokerStore.fs" />
+    <Compile Include="TradingCoreShadowStore.fs" />
     <Compile Include="TradingCoreCommandStore.fs" />
     <Compile Include="TradingCorePositionStore.fs" />
     <Compile Include="TradingCorePositionStateStore.fs" />

@@ -43,6 +43,18 @@ public static class TradingCommandStatuses
     public const string ReconciliationRequired = "ReconciliationRequired";
 }
 
+public static class TradingShadowDispositions
+{
+    public const string BrokerSubmission = "BrokerSubmission";
+    public const string RecommendationOnly = "RecommendationOnly";
+    public const string Blocked = "Blocked";
+
+    public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        BrokerSubmission, RecommendationOnly, Blocked
+    };
+}
+
 public static class TradingPositionActionKinds
 {
     public const string FullExit = "FullExit";
@@ -114,6 +126,34 @@ public sealed record TradingEntryIntent(
     decimal Expectancy,
     TradingStrategyExecutionArtifact ExecutionArtifact,
     MarketDataEvidenceContract MarketDataEvidence);
+
+public sealed record TradingShadowEntryObservation(
+    int ContractVersion,
+    string DecisionId,
+    string PayloadHash,
+    DateTime ObservedAtUtc,
+    string OrderMode,
+    string AuthoritativeDisposition,
+    string? AuthoritativeReason,
+    TradingEntryIntent Intent);
+
+public sealed record TradingShadowDecisionReceipt(
+    int ContractVersion,
+    string DecisionId,
+    string PayloadHash,
+    string AuthoritativeDisposition,
+    string CandidateDisposition,
+    string? CandidateReason,
+    bool IsMatch,
+    bool AlreadyApplied,
+    DateTime ComparedAtUtc);
+
+public sealed record TradingShadowSummary(
+    int ContractVersion,
+    long Total,
+    long Matches,
+    long Mismatches,
+    DateTime? LastComparedAtUtc);
 
 public sealed record TradingRecommendationObservation(
     TradingCommandEnvelope Envelope,
@@ -370,6 +410,16 @@ public static class TradingCoreIdentity
         intent.MarketDataEvidence
     });
 
+    public static string ShadowEntryPayload(TradingShadowEntryObservation observation) =>
+        CanonicalJsonHash.Compute(new
+        {
+            observation.ObservedAtUtc,
+            observation.OrderMode,
+            observation.AuthoritativeDisposition,
+            observation.AuthoritativeReason,
+            observation.Intent,
+        });
+
     public static string RecommendationPayload(TradingRecommendationObservation observation) =>
         CanonicalJsonHash.Compute(new
         {
@@ -436,6 +486,29 @@ public static class TradingCoreIdentity
 
 public static class TradingCoreCompatibilityPolicy
 {
+    public static string? Error(TradingShadowEntryObservation observation,
+        TradingAuthorityContract authority, long currentAccountGeneration, DateTime receivedAtUtc)
+    {
+        if (observation.ContractVersion != TradingCoreContractVersions.Current)
+            return "unsupported-contract";
+        if (authority.Mode != TradingAuthorityMode.Shadow)
+            return "shadow-authority-not-active";
+        if (string.IsNullOrWhiteSpace(observation.DecisionId)
+            || !string.Equals(observation.DecisionId, $"shadow:{observation.PayloadHash}",
+                StringComparison.Ordinal)
+            || !TradingShadowDispositions.All.Contains(observation.AuthoritativeDisposition)
+            || observation.ObservedAtUtc > receivedAtUtc
+            || observation.Intent is null)
+            return "invalid-shadow-observation";
+        var intentError = Error(observation.Intent,
+            authority with { Mode = TradingAuthorityMode.Remote },
+            currentAccountGeneration, observation.ObservedAtUtc);
+        if (intentError is not null) return intentError;
+        return string.Equals(observation.PayloadHash,
+            TradingCoreIdentity.ShadowEntryPayload(observation), StringComparison.Ordinal)
+            ? null : "shadow-payload-hash-mismatch";
+    }
+
     public static string? Error(TradingAuthorityContract authority)
     {
         if (authority.ContractVersion != TradingCoreContractVersions.Current)

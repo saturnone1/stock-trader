@@ -1280,6 +1280,27 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void TradingCoreShadowCannotMutateFinancialOrBrokerState()
+    {
+        var repository = FindRepositoryRoot();
+        var shadowAdapter = File.ReadAllText(Path.Combine(
+            repository, "Services/Order/TradingCoreShadowOrderService.cs"));
+        var shadowStore = File.ReadAllText(Path.Combine(
+            repository, "workers/trading-core-service/TradingCoreShadowStore.fs"));
+        var services = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+
+        services.Should().Contain("\"Shadow\" => serviceProvider.GetRequiredService<TradingCoreShadowOrderService>()");
+        shadowAdapter.Should().Contain("OrderService local");
+        shadowAdapter.Should().Contain("Local financial result remains authoritative");
+        shadowAdapter.Should().NotContain("IBrokerService");
+        shadowAdapter.Should().NotContain("AppDbContext");
+        shadowStore.Should().NotContain("financial_intents");
+        shadowStore.Should().NotContain("canonical_");
+        shadowStore.Should().NotContain("broker_evidence");
+    }
+
+    [Fact]
     public void BacktestServiceDelegatesOptimizationShapeAndVariantLogic()
     {
         var repository = FindRepositoryRoot();

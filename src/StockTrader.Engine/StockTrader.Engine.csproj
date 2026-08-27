@@ -13,6 +13,7 @@
     <Compile Include="..\..\Domain\MarketData\DataSource.cs" Link="Domain\MarketData\DataSource.cs" />
     <Compile Include="..\..\Domain\MarketData\DataProviderCatalog.cs" Link="Domain\MarketData\DataProviderCatalog.cs" />
     <Compile Include="..\..\Domain\MarketData\MarketRegionCatalog.cs" Link="Domain\MarketData\MarketRegionCatalog.cs" />
+    <Compile Include="..\..\Domain\MarketData\ExchangeCalendarCatalog.cs" Link="Domain\MarketData\ExchangeCalendarCatalog.cs" />
     <Compile Include="..\..\Domain\MarketData\PriceAdjustmentCatalog.cs" Link="Domain\MarketData\PriceAdjustmentCatalog.cs" />
     <Compile Include="..\..\Domain\MarketData\MarketSymbolPolicy.cs" Link="Domain\MarketData\MarketSymbolPolicy.cs" />
     <Compile Include="..\..\Domain\Backtesting\BacktestExecutionCatalog.cs" Link="Domain\Backtesting\BacktestExecutionCatalog.cs" />

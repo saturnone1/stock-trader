@@ -329,13 +329,17 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
         services.AddScoped<ILiveEntryReconciliationCycle, LiveEntryReconciliationCycle>();
         services.AddScoped<OrderService>();
+        services.AddScoped<TradingCoreShadowOrderService>();
         services.AddScoped<TradingCoreManualEntryPreparation>();
         services.AddScoped<TradingCoreOrderService>();
         services.AddScoped<IOrderService>(serviceProvider =>
-            string.Equals(serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
-                    .Value.Mode, "Remote", StringComparison.Ordinal)
-                ? serviceProvider.GetRequiredService<TradingCoreOrderService>()
-                : serviceProvider.GetRequiredService<OrderService>());
+            serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
+                .Value.Mode switch
+            {
+                "Remote" => serviceProvider.GetRequiredService<TradingCoreOrderService>(),
+                "Shadow" => serviceProvider.GetRequiredService<TradingCoreShadowOrderService>(),
+                _ => serviceProvider.GetRequiredService<OrderService>(),
+            });
         services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
         services.AddScoped<LiveOrderManagement>();
         services.AddScoped<TradingCoreLiveOrderManagement>();

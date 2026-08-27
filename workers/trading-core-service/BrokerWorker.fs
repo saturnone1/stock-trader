@@ -7,6 +7,7 @@ open System.Threading
 open System.Threading.Tasks
 open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
+open StockTrader.Domain.MarketData
 open StockTrader.ServiceContracts.TradingCore
 open StockTrader.TradingCore.Broker
 
@@ -110,43 +111,51 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
                                     intent.Envelope.CommandId)
                                 do! Task.Delay(5000, stoppingToken)
                         else
-                            let! readiness = preflight broker configuration intent stoppingToken
-                            match readiness with
-                            | Error error ->
-                                store.ReleaseEntryForRetry(intent.Envelope.CommandId) |> ignore
-                                logger.LogWarning(error,
-                                    "Trading entry {CommandId} pre-submit evidence unavailable; released for retry",
-                                    intent.Envelope.CommandId)
-                                do! Task.Delay(2000, stoppingToken)
-                            | Ok decision when not decision.Allowed ->
-                                    store.RejectIntent(intent.Envelope.CommandId, decision.Reason)
-                                    logger.LogWarning("Trading entry {CommandId} rejected by final risk gate: {Reason}",
-                                        intent.Envelope.CommandId, decision.Reason)
-                            | Ok _ ->
-                                try
-                                    let request = BrokerEntryOrderRequest(clientId, intent.Symbol,
-                                        intent.ShareQuantity, intent.TargetPrice, intent.StopLossPrice)
-                                    let! evidence = broker.SubmitEntryAsync(request, stoppingToken)
-                                    store.RecordBrokerEvidence(intent.Envelope.CommandId, evidence) |> ignore
-                                    logger.LogInformation("Trading entry {CommandId} has broker evidence {OrderId}/{Status}",
-                                        intent.Envelope.CommandId, evidence.OrderId, evidence.Status)
-                                    if evidence.Status <> "Filled" && evidence.Status <> "Rejected"
-                                        && evidence.Status <> "Cancelled" && evidence.Status <> "Expired" then
-                                        do! Task.Delay(2000, stoppingToken)
-                                with error ->
-                                    try
-                                        let! evidence = reconcile broker clientId stoppingToken
-                                        match evidence with
-                                        | Some order -> store.RecordBrokerEvidence(intent.Envelope.CommandId, order) |> ignore
-                                        | None -> store.RequireReconciliation intent.Envelope.CommandId
-                                    with reconcileError ->
-                                        store.RequireReconciliation intent.Envelope.CommandId
-                                        logger.LogError(reconcileError,
-                                            "Trading entry {CommandId} reconciliation failed after submission error",
-                                            intent.Envelope.CommandId)
+                            let session = ExchangeSessionPolicy.Evaluate(
+                                MarketRegion.UnitedStates, DateTime.UtcNow)
+                            if not session.IsOpen then
+                                store.RejectIntent(intent.Envelope.CommandId, session.Reason)
+                                logger.LogWarning(
+                                    "Trading entry {CommandId} rejected outside regular session: {Reason}",
+                                    intent.Envelope.CommandId, session.Reason)
+                            else
+                                let! readiness = preflight broker configuration intent stoppingToken
+                                match readiness with
+                                | Error error ->
+                                    store.ReleaseEntryForRetry(intent.Envelope.CommandId) |> ignore
                                     logger.LogWarning(error,
-                                        "Trading entry {CommandId} submission did not return durable evidence",
+                                        "Trading entry {CommandId} pre-submit evidence unavailable; released for retry",
                                         intent.Envelope.CommandId)
+                                    do! Task.Delay(2000, stoppingToken)
+                                | Ok decision when not decision.Allowed ->
+                                        store.RejectIntent(intent.Envelope.CommandId, decision.Reason)
+                                        logger.LogWarning("Trading entry {CommandId} rejected by final risk gate: {Reason}",
+                                            intent.Envelope.CommandId, decision.Reason)
+                                | Ok _ ->
+                                    try
+                                        let request = BrokerEntryOrderRequest(clientId, intent.Symbol,
+                                            intent.ShareQuantity, intent.TargetPrice, intent.StopLossPrice)
+                                        let! evidence = broker.SubmitEntryAsync(request, stoppingToken)
+                                        store.RecordBrokerEvidence(intent.Envelope.CommandId, evidence) |> ignore
+                                        logger.LogInformation("Trading entry {CommandId} has broker evidence {OrderId}/{Status}",
+                                            intent.Envelope.CommandId, evidence.OrderId, evidence.Status)
+                                        if evidence.Status <> "Filled" && evidence.Status <> "Rejected"
+                                            && evidence.Status <> "Cancelled" && evidence.Status <> "Expired" then
+                                            do! Task.Delay(2000, stoppingToken)
+                                    with error ->
+                                        try
+                                            let! evidence = reconcile broker clientId stoppingToken
+                                            match evidence with
+                                            | Some order -> store.RecordBrokerEvidence(intent.Envelope.CommandId, order) |> ignore
+                                            | None -> store.RequireReconciliation intent.Envelope.CommandId
+                                        with reconcileError ->
+                                            store.RequireReconciliation intent.Envelope.CommandId
+                                            logger.LogError(reconcileError,
+                                                "Trading entry {CommandId} reconciliation failed after submission error",
+                                                intent.Envelope.CommandId)
+                                        logger.LogWarning(error,
+                                            "Trading entry {CommandId} submission did not return durable evidence",
+                                            intent.Envelope.CommandId)
                 | Some intent, None ->
                     store.RequireReconciliation intent.Envelope.CommandId
                     logger.LogError("Trading entry {CommandId} blocked: account configuration unavailable",

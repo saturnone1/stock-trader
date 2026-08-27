@@ -28,29 +28,13 @@ public class MarketCalendar : IMarketCalendar
 
     public bool IsMarketOpen(MarketRegion market)
     {
-        var now = GetLocalNow(market);
-
-        TradingDayEvidence evidence;
-        try
-        {
-            evidence = GetTradingDay(market, DateOnly.FromDateTime(now));
-        }
-        catch (MarketCalendarCoverageException ex)
-        {
-            // 실거래 게이트는 근거가 없을 때 닫힌 상태로 실패한다. 휴장일 수도 있는 날에
-            // 주문을 허용하는 것보다, 캘린더를 갱신할 때까지 거래를 멈추는 편이 안전하다.
-            _logger.LogError(ex,
-                "[MarketCalendar] {Market} 캘린더 근거 없음 → 장 닫힘으로 처리. 캘린더 갱신 필요", market);
-            return false;
-        }
-
-        if (!evidence.IsTradingDay)
-            return false;
-
-        var open = GetMarketOpen(market);
-        // 조기마감일은 정규 종료시각이 아니라 그날의 실제 마감시각을 경계로 삼는다.
-        var close = evidence.EarlyCloseTime ?? GetMarketClose(market);
-        return now.TimeOfDay >= open && now.TimeOfDay <= close;
+        var decision = ExchangeSessionPolicy.Evaluate(
+            market, _timeProvider.GetUtcNow().UtcDateTime);
+        if (decision.Reason == "market-calendar-coverage-missing")
+            _logger.LogError(
+                "[MarketCalendar] {Market} 캘린더 근거 없음 → 장 닫힘으로 처리. 캘린더 갱신 필요",
+                market);
+        return decision.IsOpen;
     }
 
     public TradingDayEvidence GetTradingDay(MarketRegion market, DateOnly marketDate) =>

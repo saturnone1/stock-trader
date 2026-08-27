@@ -281,6 +281,52 @@ public sealed class TradingCoreServiceTests : IDisposable
             value.SourceSignalId == expiring.SourceSignalId).EntryRequestedAtUtc.Should().BeNull();
     }
 
+    [Fact]
+    public void ShadowEntryComparisonIsIdempotentAndNeverCreatesFinancialState()
+    {
+        Directory.CreateDirectory(_root);
+        var config = new ServiceConfig(
+            Path.Combine(_root, "shadow.db"), new string('x', 32), "unused", "unused", "unused",
+            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
+            TradingAuthorityMode.Projection);
+        var store = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        var operations = new TradingCoreOperations(store);
+        var openAt = new DateTime(2026, 8, 26, 15, 0, 0, DateTimeKind.Utc);
+        var snapshot = EmptySnapshot(openAt);
+        operations.Import(snapshot);
+        operations.ApplyAccountConfiguration(AccountConfiguration(openAt));
+        operations.Activate(new TradingAuthorityContract(
+            1, TradingAuthorityMode.Shadow, 2, "shadow-entry-comparison", openAt,
+            snapshot.SnapshotId, string.Empty, null, 0));
+
+        var open = ShadowObservation(openAt, operations.Status(),
+            TradingShadowDispositions.BrokerSubmission, null);
+        var receipt = operations.CompareShadowEntry(open);
+        receipt.IsMatch.Should().BeTrue();
+        receipt.CandidateDisposition.Should().Be(TradingShadowDispositions.BrokerSubmission);
+        operations.CompareShadowEntry(open).AlreadyApplied.Should().BeTrue();
+
+        var closedAt = openAt.AddHours(-5);
+        var closed = ShadowObservation(closedAt, operations.Status(),
+            TradingShadowDispositions.Blocked, "market-closed");
+        receipt = operations.CompareShadowEntry(closed);
+        receipt.IsMatch.Should().BeTrue();
+        receipt.CandidateReason.Should().Be("market-closed");
+
+        var mismatch = ShadowObservation(openAt.AddMinutes(1), operations.Status(),
+            TradingShadowDispositions.Blocked, "forced-authoritative-mismatch");
+        operations.CompareShadowEntry(mismatch).IsMatch.Should().BeFalse();
+        var summary = operations.ShadowSummary();
+        summary.Total.Should().Be(3);
+        summary.Matches.Should().Be(2);
+        summary.Mismatches.Should().Be(1);
+        operations.CommandStatus(open.Intent.Envelope.CommandId).Should().BeNull();
+        operations.Portfolio().Recommendations.Should().BeEmpty();
+        operations.Portfolio().Positions.Should().BeEmpty();
+        operations.Portfolio().Trades.Should().BeEmpty();
+    }
+
     private static TradingStateSnapshot EmptySnapshot(DateTime now)
     {
         var value = new TradingStateSnapshot(1, string.Empty, 1, now,
@@ -316,6 +362,24 @@ public sealed class TradingCoreServiceTests : IDisposable
         return intent with
         {
             Envelope = envelope with { PayloadHash = TradingCoreIdentity.EntryPayload(intent) }
+        };
+    }
+
+    private static TradingShadowEntryObservation ShadowObservation(
+        DateTime observedAt,
+        TradingCoreStatus status,
+        string disposition,
+        string? reason)
+    {
+        var intent = EntryIntent(observedAt, status);
+        var observation = new TradingShadowEntryObservation(
+            TradingCoreContractVersions.Current, string.Empty, string.Empty, observedAt,
+            "AutoOrder", disposition, reason, intent);
+        var payloadHash = TradingCoreIdentity.ShadowEntryPayload(observation);
+        return observation with
+        {
+            DecisionId = $"shadow:{payloadHash}",
+            PayloadHash = payloadHash
         };
     }
 

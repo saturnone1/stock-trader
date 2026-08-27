@@ -86,6 +86,15 @@ module HttpHost =
                 with
                 | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
                 | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        app.MapPost("/v1/shadow/entries", Func<HttpContext,TradingCoreStore,TradingShadowEntryObservation,IResult>(fun ctx store observation ->
+            if not (authorized ctx) then Results.Unauthorized()
+            else
+                try Results.Ok(store.CompareShadowEntry observation)
+                with
+                | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
+                | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        app.MapGet("/v1/shadow/summary", Func<HttpContext,TradingCoreStore,IResult>(fun ctx store ->
+            if authorized ctx then Results.Ok(store.ShadowSummary()) else Results.Unauthorized())) |> ignore
         app.MapPost("/v1/commands/positions", Func<HttpContext,TradingCoreStore,TradingPositionCommand,IResult>(fun ctx store command ->
             if not (authorized ctx) then Results.Unauthorized()
             else
