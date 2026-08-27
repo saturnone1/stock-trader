@@ -233,8 +233,8 @@ This completes private-CA/client/server certificate rotation and preserved-gener
 
 ## Current state and rollback
 
-The Trading Core completion batch is implemented but has not yet been promoted beyond the existing
-Shadow deployment. It removes shared HTTP secrets in favor of exact client-certificate SAN roles,
+The Trading Core completion batch is implemented and deployed in Shadow, but has not been promoted
+to Remote financial authority. It removes shared HTTP secrets in favor of exact client-certificate SAN roles,
 adds a preserved-generation transactional account-encryption rotation, and gives Trading Core a
 dedicated read-only Market Data identity. Entry evidence is revalidated immediately before broker
 preflight. Open-position protection now runs inside Trading Core: it consumes only persisted,
@@ -250,8 +250,9 @@ artifact, daily evidence, or an existing evaluated-bar watermark with
 `open-position-execution-context-missing` guard; do not invent a watermark for a legacy position.
 Wait for it to close or run a separately reviewed evidence-backed migration.
 
-No Strategy Research/Edge or Reporting/Notifications extraction is active. Until the integrated
-Shadow/Remote rehearsal below is recorded, keep the API in Local financial authority. To roll back
+No Strategy Research/Edge or Reporting/Notifications extraction is active. Until the remaining
+evidence replay, broker rejection, and rollback gates below are recorded, keep the API in Local
+financial authority. To roll back
 this non-authoritative candidate,
 back up the candidate database, and scale down only `stocktrader-trading-core`. Because Projection
 and Shadow never submitted a candidate broker command or owned canonical financial state, no
@@ -263,3 +264,26 @@ confirm the Trading Core evidence identity cannot call provider/upsert routes; e
 watermark replay and a broker-rejected paper command; then rehearse rollback to the preserved TLS and
 encryption generations. Use only `scripts/deploy-k3s.sh` for the rollout. Do not activate Remote while
 an incompatible open position exists.
+
+### 2026-08-27 autonomous boundary Shadow rollout
+
+Commit `5f6a411` was deployed as one completed service-boundary batch. Market Data TLS generation
+`md0827c` added the dedicated Trading Core evidence identity, and Trading Core TLS generation
+`tc0827c` preserved the exact Edge control identity. Market Data, Trading Core, and API were then
+rolled out in that order through `scripts/deploy-k3s.sh`. Consistent pre-rollout backups were created
+at `marketdata-pre-5f6a411-20260827T123114Z.db`,
+`trading-core-pre-5f6a411-20260827T123225Z.db`, and
+`stocktrader-pre-5f6a411-20260827T123356Z.db` under their respective backup directories.
+
+After rollout, `/api/health` and the desktop endpoint returned 200. The health contract reported
+Market Data Remote and ready, Trading Core Shadow generation 2 and ready, no Trading Core error,
+no pending outbox event, and no pending database migration. All three affected Pods were Ready with
+zero restarts. An API call using the current Trading Core client certificate returned 200, while the
+same request without a client certificate failed during the TLS handshake. The authority database
+contained no unresolved broker order and no open position before rollout, and financial authority
+remained Local/Shadow throughout.
+
+This completes the production Shadow deployment of the autonomous Pod boundary, not the Remote
+single-writer cutover. Completed-bar downtime replay with real evidence, a broker-rejected paper
+command, the Trading Core evidence-role negative provider/upsert check, account-encryption rotation,
+and preserved-generation rollback remain explicit gates before Remote activation.
