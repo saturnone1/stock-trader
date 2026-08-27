@@ -13,6 +13,8 @@ open StockTrader.TradingCore.Broker
 type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
     inherit BackgroundService()
 
+    let mutable nextPortfolioSync = DateTime.MinValue
+
     let clientOrderId (commandId: string) =
         let input: byte array = Encoding.UTF8.GetBytes(commandId)
         let hash: byte array = SHA256.HashData(input)
@@ -39,6 +41,8 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
         (intent: TradingEntryIntent)
         (ct: CancellationToken) = task {
         try
+            if not (store.FinancialStateReady()) then
+                invalidOp "trading-core-financial-state-not-reconciled"
             let! account = broker.GetAccountAsync(ct)
             let! positions = broker.GetPositionsAsync(ct)
             return Ok (TradingRiskGate.Evaluate(TradingRiskGateRequest(
@@ -48,6 +52,28 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
                 intent.Symbol, intent.Sector, account, positions,
                 store.PositionRiskEvidence())))
         with error -> return Error error
+    }
+
+    let syncPortfolio (configuration: TradingAccountConfigurationSet) ct = task {
+        if DateTime.UtcNow >= nextPortfolioSync then
+            nextPortfolioSync <- DateTime.UtcNow.AddSeconds(5)
+            for account in configuration.Accounts do
+                if account.IsEnabled && account.IsActive then
+                    match brokerFor configuration account.AccountId with
+                    | Error reason ->
+                        logger.LogError("Trading portfolio sync for account {AccountId} blocked: {Reason}",
+                            account.AccountId, reason)
+                    | Ok broker ->
+                        use broker = broker
+                        try
+                            let! accountEvidence = broker.GetAccountAsync(ct)
+                            let! positions = broker.GetPositionsAsync(ct)
+                            store.SyncBrokerPortfolio(account.AccountId, accountEvidence, positions,
+                                configuration.Risk.DailyLossLimitPercent)
+                        with error ->
+                            logger.LogWarning(error,
+                                "Trading portfolio sync for account {AccountId} failed",
+                                account.AccountId)
     }
 
     override _.ExecuteAsync(stoppingToken: CancellationToken) = task {
@@ -167,7 +193,7 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
                                             && (command.Quantity <= current.Quantity)
                                         | _ -> false
                                     if not valid then
-                                        store.ReleaseEntryForRetry(command.Envelope.CommandId) |> ignore
+                                        store.RequireReconciliation(command.Envelope.CommandId)
                                         logger.LogError(
                                             "Trading position command {CommandId} broker quantity mismatch",
                                             command.Envelope.CommandId)
@@ -200,6 +226,10 @@ type BrokerWorker(store: TradingCoreStore, logger: ILogger<BrokerWorker>) =
                     logger.LogError("Trading position command {CommandId} blocked: account configuration unavailable",
                         command.Envelope.CommandId)
                 | None, _ -> ()
+                match store.AccountConfiguration() with
+                | Some configuration when store.Authority().Mode = TradingAuthorityMode.Remote ->
+                    do! syncPortfolio configuration stoppingToken
+                | _ -> ()
                 do! Task.Delay(500, stoppingToken)
         with :? OperationCanceledException when stoppingToken.IsCancellationRequested -> ()
     }

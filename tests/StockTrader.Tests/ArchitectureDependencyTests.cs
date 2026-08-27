@@ -1245,6 +1245,41 @@ public class ArchitectureDependencyTests
     }
 
     [Fact]
+    public void RemoteTradingCoreRoutesFinancialPortsWithoutLocalDatabaseOrBrokerWrites()
+    {
+        var repository = FindRepositoryRoot();
+        var data = File.ReadAllText(Path.Combine(
+            repository, "Extensions/DataServiceExtensions.cs"));
+        var services = File.ReadAllText(Path.Combine(
+            repository, "Extensions/ServiceCollectionExtensions.cs"));
+        var background = File.ReadAllText(Path.Combine(
+            repository, "Extensions/BackgroundServiceExtensions.cs"));
+        var remoteFiles = Directory.EnumerateFiles(
+                Path.Combine(repository, "Services/TradingCore"), "*.cs")
+            .Select(File.ReadAllText)
+            .ToArray();
+        var remote = string.Join(Environment.NewLine, remoteFiles);
+
+        data.Should().Contain("IsTradingCoreRemote(serviceProvider)");
+        data.Should().Contain("TradingCoreRemoteTradeHistoryStore");
+        data.Should().Contain("TradingCoreRemotePositionStore");
+        data.Should().Contain("TradingCoreRemoteRecommendationStore");
+        data.Should().Contain("TradingCoreRemoteDashboardActivityStore");
+        services.Should().Contain("TradingCoreRemoteRiskService");
+        services.Should().Contain("TradingCoreRemoteAccountQuery");
+        services.Should().Contain("TradingCoreOrderService");
+        services.Should().Contain("TradingCoreLiveOrderManagement");
+        services.Should().Contain("TradingCorePositionMonitoringCycle");
+        background.Should().Contain("services.AddHostedService<PositionExecutionManagerService>()");
+        remote.Should().NotContain("AppDbContext");
+        remote.Should().NotContain("IBrokerService");
+        remote.Should().NotContain("Alpaca.Markets");
+        File.ReadAllText(Path.Combine(repository,
+                "Services/TradingCore/TradingCoreRemotePositionStore.cs"))
+            .Should().Contain("remote-trading-core-position-store-is-read-only");
+    }
+
+    [Fact]
     public void BacktestServiceDelegatesOptimizationShapeAndVariantLogic()
     {
         var repository = FindRepositoryRoot();
@@ -3374,8 +3409,14 @@ public class ArchitectureDependencyTests
         registrations.Should().Contain("AddScoped<IRiskOverviewQuery, RiskOverviewQuery>");
         registrations.Should().Contain(
             "AddScoped<IRiskManagementDataSource, RiskManagementDataSource>");
+        registrations.Should().Contain("AddScoped<MultiAccountRiskService>");
+        registrations.Should().Contain("AddScoped<TradingCoreRemoteRiskService>");
         registrations.Should().Contain(
-            "AddScoped<IRiskManagementService, MultiAccountRiskService>");
+            "AddScoped<IRiskManagementService>(serviceProvider =>");
+        registrations.Should().Contain(
+            "GetRequiredService<TradingCoreRemoteRiskService>()");
+        registrations.Should().Contain(
+            "GetRequiredService<MultiAccountRiskService>()");
         registrations.Should().Contain("AddSingleton<RiskStateStore>");
         registrations.Should().NotContain(
             "AddSingleton<IRiskManagementService, MultiAccountRiskService>");

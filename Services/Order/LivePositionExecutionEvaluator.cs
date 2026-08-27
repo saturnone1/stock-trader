@@ -17,6 +17,11 @@ public sealed record LivePositionExecutionDecision(LiveLongPositionExecutionInte
     public string Reason => Intent?.Reason ?? string.Empty;
 }
 
+public sealed record ImmutableLivePositionSettings(
+    LongPositionExitPolicy ExitPolicy,
+    CumulativeRsi2Config? CumulativeRsi2 = null,
+    Tqqq200SmaConfig? Tqqq200Sma = null);
+
 /// <summary>
 /// 실시간 포지션의 지표 스냅샷을 준비하고 공통 롱 포지션 정책으로 주문 여부를 평가합니다.
 /// 백그라운드 워커는 조회 주기와 주문 조정만 담당합니다.
@@ -43,31 +48,57 @@ public sealed class LivePositionExecutionEvaluator : ILivePositionExecutionEvalu
         _logger = logger;
     }
 
-    public async Task<LivePositionExecutionDecision> EvaluateAsync(
+    public Task<LivePositionExecutionDecision> EvaluateAsync(
         Position position,
         CompiledStrategy? customStrategy,
         IOhlcvRepository repository,
         PatternParameterOverrides? liveOverrides,
         CancellationToken ct = default,
         decimal currentEquity = 0m,
-        int maxTotalPositions = 0)
+        int maxTotalPositions = 0) => EvaluateCoreAsync(
+            position, customStrategy, repository, liveOverrides, null, null,
+            ct, currentEquity, maxTotalPositions);
+
+    public Task<LivePositionExecutionDecision> EvaluateImmutableAsync(
+        Position position,
+        CompiledStrategy? customStrategy,
+        IOhlcvRepository repository,
+        ImmutableLivePositionSettings immutableSettings,
+        IReadOnlyList<OhlcvBar> decisionBars,
+        CancellationToken ct = default,
+        decimal currentEquity = 0m,
+        int maxTotalPositions = 0) => EvaluateCoreAsync(
+            position, customStrategy, repository, null, immutableSettings, decisionBars,
+            ct, currentEquity, maxTotalPositions);
+
+    private async Task<LivePositionExecutionDecision> EvaluateCoreAsync(
+        Position position,
+        CompiledStrategy? customStrategy,
+        IOhlcvRepository repository,
+        PatternParameterOverrides? liveOverrides,
+        ImmutableLivePositionSettings? immutableSettings,
+        IReadOnlyList<OhlcvBar>? immutableDecisionBars,
+        CancellationToken ct,
+        decimal currentEquity,
+        int maxTotalPositions)
     {
         var customPattern = customStrategy?.Source;
-        var exitPolicy = customPattern == null
+        var exitPolicy = immutableSettings?.ExitPolicy ?? (customPattern == null
             ? LongPositionExitPolicyCatalog.ForPattern(position.PatternType, liveOverrides)
-            : LongPositionExitPolicyCatalog.ForCustom(customPattern);
+            : LongPositionExitPolicyCatalog.ForCustom(customPattern));
         var settings = liveOverrides == null
             ? _patternSettings.CurrentValue
             : PatternOverrideMerger.Merge(_patternSettings.CurrentValue, liveOverrides);
-        var cumulativeRsi2 = settings.CumulativeRsi2;
-        var tqqq = settings.Tqqq200Sma;
+        var cumulativeRsi2 = immutableSettings?.CumulativeRsi2 ?? settings.CumulativeRsi2;
+        var tqqq = immutableSettings?.Tqqq200Sma ?? settings.Tqqq200Sma;
         List<OhlcvBar>? recentBars = null;
         decimal currentCumulativeRsi2 = 0;
         decimal currentCumulativeRsi2TrendMa = 0;
         decimal? dynamicStopFloor = null;
         var atr = position.EntryAtr;
 
-        var needsBars = customPattern != null
+        var needsBars = immutableSettings is not null
+            || customPattern != null
             || position.PatternType == PatternType.CumulativeRsi2
             || position.PatternType == PatternType.Tqqq200Sma
             || atr <= 0
@@ -80,17 +111,23 @@ public sealed class LivePositionExecutionEvaluator : ILivePositionExecutionEvalu
                     Tqqq200SmaExecutionPolicy.RequiredCalendarLookbackDays(tqqq.SmaPeriod))
                 : StrategyEvaluationPolicy.LivePositionIndicatorLookbackDays;
             var now = UtcNow;
-            recentBars = (await repository.GetBarsAsync(
-                    position.Symbol,
-                    TimeFrame.Daily,
-                    now.AddDays(-lookbackDays),
-                    now,
-                    ct))
+            recentBars = (immutableDecisionBars ?? await repository.GetBarsAsync(
+                        position.Symbol,
+                        TimeFrame.Daily,
+                        now.AddDays(-lookbackDays),
+                        now,
+                        ct))
                 .OrderBy(bar => bar.Timestamp)
                 .ToList();
+            var observedHigh = recentBars
+                .Where(bar => bar.Timestamp >= position.OpenedAt)
+                .Select(bar => bar.High)
+                .DefaultIfEmpty(position.HighSinceEntry)
+                .Max();
+            position.HighSinceEntry = Math.Max(position.HighSinceEntry, observedHigh);
             if (atr <= 0 && recentBars.Count >= StrategyEvaluationPolicy.EntryAtrPeriod + 1)
             {
-                atr = CalculateSimpleAtr(
+                atr = LivePositionAtrPolicy.Calculate(
                     recentBars, StrategyEvaluationPolicy.EntryAtrPeriod);
             }
         }
@@ -248,23 +285,6 @@ public sealed class LivePositionExecutionEvaluator : ILivePositionExecutionEvalu
                 .ToArray();
         }
         return result;
-    }
-
-    private static decimal CalculateSimpleAtr(List<OhlcvBar> bars, int period)
-    {
-        if (bars.Count < period + 1) return 0;
-        return Enumerable.Range(bars.Count - period, period)
-            .Select(index =>
-            {
-                var bar = bars[index];
-                var previousClose = bars[index - 1].Close;
-                return Math.Max(
-                    bar.High - bar.Low,
-                    Math.Max(
-                        Math.Abs(bar.High - previousClose),
-                        Math.Abs(bar.Low - previousClose)));
-            })
-            .Average();
     }
 
     private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;

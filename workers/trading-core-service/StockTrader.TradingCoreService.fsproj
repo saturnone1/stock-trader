@@ -18,12 +18,15 @@
     <Compile Include="SecretStore.fs" />
     <Compile Include="TradingCoreStore.fs" />
     <Compile Include="TradingCoreAuthorityStore.fs" />
+    <Compile Include="TradingCoreRecommendationStore.fs" />
     <Compile Include="TradingCoreEntryStore.fs" />
     <Compile Include="TradingCoreEntryBrokerStore.fs" />
     <Compile Include="TradingCoreCommandStore.fs" />
     <Compile Include="TradingCorePositionStore.fs" />
+    <Compile Include="TradingCorePositionStateStore.fs" />
     <Compile Include="TradingCorePositionBrokerStore.fs" />
     <Compile Include="TradingCoreQueryStore.fs" />
+    <Compile Include="TradingCoreMarketStore.fs" />
     <Compile Include="TradingCoreOperations.fs" />
     <Compile Include="BrokerWorker.fs" />
     <Compile Include="HttpHost.fs" />

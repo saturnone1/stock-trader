@@ -36,6 +36,23 @@ public static class TradingEntrySettlementPolicy
             EntryExecutionNote = null,
         };
 
+    public static TradingRecommendationProjection MarkRejected(
+        TradingRecommendationProjection recommendation,
+        Broker.BrokerOrderEvidence evidence) => recommendation with
+        {
+            EntryRequestedAtUtc = null,
+            EntryOrderId = evidence.OrderId,
+            EntryExecutionNote = $"broker-{evidence.Status.ToLowerInvariant()}",
+        };
+
+    public static TradingRecommendationProjection MarkRejected(
+        TradingRecommendationProjection recommendation,
+        string reason) => recommendation with
+        {
+            EntryRequestedAtUtc = null,
+            EntryExecutionNote = reason,
+        };
+
     private static DateTime Utc(DateTime value) => value.Kind switch
     {
         DateTimeKind.Utc => value,

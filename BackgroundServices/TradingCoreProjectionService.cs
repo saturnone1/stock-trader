@@ -13,7 +13,7 @@ public sealed class TradingCoreProjectionService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (options.Value.Mode is "Local" or "Remote") return;
+        if (options.Value.Mode == "Local") return;
         using var timer = new PeriodicTimer(
             TimeSpan.FromSeconds(options.Value.ProjectionIntervalSeconds), clock);
         do
@@ -27,6 +27,13 @@ public sealed class TradingCoreProjectionService(
                 var accountConfiguration = await accountSource.CaptureAsync(stoppingToken);
                 await controlPlane.PublishAccountConfigurationAsync(
                     accountConfiguration, stoppingToken);
+                if (options.Value.Mode == "Remote")
+                {
+                    logger.LogDebug(
+                        "Trading Core account configuration generation {Generation} published",
+                        accountConfiguration.Generation);
+                    continue;
+                }
                 var snapshot = await source.CaptureAsync(stoppingToken);
                 var duplicate = await controlPlane.PublishProjectionAsync(snapshot, stoppingToken);
                 logger.LogInformation(

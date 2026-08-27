@@ -14,6 +14,37 @@ public sealed class TradingCoreServiceTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"trading-core-{Guid.NewGuid():N}");
 
     [Fact]
+    public void ProjectionPortfolioReadsImportedFinancialRowsInsteadOfEmptyCanonicalTables()
+    {
+        Directory.CreateDirectory(_root);
+        var config = new ServiceConfig(
+            Path.Combine(_root, "projection.db"), new string('x', 32), "unused", "unused", "unused",
+            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
+            TradingAuthorityMode.Projection);
+        var store = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        var operations = new TradingCoreOperations(store);
+        var now = DateTime.UtcNow;
+        var recommendation = new TradingRecommendationProjection(
+            "recommendation-1", "signal-projection", "TQQQ", "Breakout", null, now,
+            100m, 95m, 115m, 5, 0.3m, "AutoOrder", false, null, null, null, null);
+        var trade = new TradingTradeProjection(
+            "trade-1", "signal-closed", "AAPL", "Breakout", null,
+            100m, 110m, 2, now.AddDays(-2), now.AddDays(-1), 20m, 10m, "target");
+        var value = new TradingStateSnapshot(1, string.Empty, 1, now,
+            [], [recommendation], [], [trade],
+            new TradingRiskProjection(-12m, -0.12m, 0, false, now));
+        var snapshot = value with { SnapshotId = TradingCoreIdentity.Snapshot(value) };
+
+        operations.Import(snapshot).Should().BeFalse();
+        var portfolio = operations.Portfolio();
+        portfolio.Recommendations.Should().ContainSingle().Which.Symbol.Should().Be("TQQQ");
+        portfolio.Trades.Should().ContainSingle().Which.PnL.Should().Be(20m);
+        portfolio.Risk.DailyPnL.Should().Be(-12m);
+        portfolio.Accounts.Should().BeEmpty();
+    }
+
+    [Fact]
     public void DurableEntryAndExitLifecycleIsIdempotentAndAuditable()
     {
         Directory.CreateDirectory(_root);
@@ -28,6 +59,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         var snapshot = EmptySnapshot(now);
         operations.Import(snapshot).Should().BeFalse();
         operations.Import(snapshot).Should().BeTrue();
+        operations.Portfolio().Risk.DailyPnL.Should().Be(-12m);
 
         var accountConfiguration = AccountConfiguration(now);
         operations.ApplyAccountConfiguration(accountConfiguration)
@@ -40,6 +72,12 @@ public sealed class TradingCoreServiceTests : IDisposable
         operations.Activate(new TradingAuthorityContract(
             1, TradingAuthorityMode.Remote, 3, "remote", now,
             snapshot.SnapshotId, "broker-state", now, 0));
+
+        var observation = RecommendationObservation(now, operations.Status());
+        operations.RecordRecommendation(observation).AlreadyAccepted.Should().BeFalse();
+        operations.RecordRecommendation(observation).AlreadyAccepted.Should().BeTrue();
+        operations.Portfolio().Recommendations.Should().ContainSingle(value =>
+            value.SourceSignalId == "signal-alert" && value.Mode == "AlertOnly");
 
         var entry = EntryIntent(now, operations.Status());
         var accepted = operations.AcceptEntry(entry);
@@ -58,10 +96,21 @@ public sealed class TradingCoreServiceTests : IDisposable
         Some(operations.CommandStatus(entry.Envelope.CommandId)).Status
             .Should().Be(TradingCommandStatuses.Completed);
 
+        var stateUpdate = PositionStateUpdate(now, operations.Status(), position);
+        operations.ApplyPositionState(stateUpdate).AlreadyAccepted.Should().BeFalse();
+        operations.ApplyPositionState(stateUpdate).AlreadyAccepted.Should().BeTrue();
+        var updatedPolicyPosition = operations.Portfolio().Positions.Single();
+        updatedPolicyPosition.HighSinceEntry.Should().Be(105m);
+        updatedPolicyPosition.StopLossPrice.Should().Be(96m);
+        updatedPolicyPosition.BreakevenApplied.Should().BeTrue();
+
         var exitAt = DateTime.UtcNow;
         var exit = PositionCommand(exitAt, operations.Status(), position);
         operations.AcceptPosition(exit).Status
             .Should().Be(TradingCommandStatuses.PendingBrokerSubmission);
+        operations.Portfolio().Positions.Single().ExecutionRequestedAtUtc.Should().Be(exitAt);
+        Some(operations.LatestPositionCommand(position.PositionId)).CommandId
+            .Should().Be(exit.Envelope.CommandId);
         Some(operations.ClaimPosition()).PositionId
             .Should().Be(position.PositionId);
         operations.RecordPositionBrokerEvidence(exit.Envelope.CommandId, new BrokerOrderEvidence(
@@ -71,16 +120,70 @@ public sealed class TradingCoreServiceTests : IDisposable
         portfolio = operations.Portfolio();
         portfolio.Positions.Single().Quantity.Should().Be(0);
         portfolio.Positions.Single().ClosedAtUtc.Should().NotBeNull();
+        portfolio.Positions.Single().ExecutionRequestedAtUtc.Should().BeNull();
         portfolio.Trades.Should().ContainSingle()
             .Which.PnL.Should().Be(90m);
         Some(operations.CommandStatus(exit.Envelope.CommandId)).Status
             .Should().Be(TradingCommandStatuses.Completed);
+
+        operations.SyncBrokerPortfolio("1", new BrokerAccountEvidence(
+            "1", 10_100m, 10_000m, 5_000m, 10_000m, false, exitAt),
+            Array.Empty<BrokerPositionEvidence>(), 0.03m);
+        portfolio = operations.Portfolio();
+        portfolio.Accounts.Should().ContainSingle().Which.DailyPnL.Should().Be(100m);
+        portfolio.Risk.DailyPnL.Should().Be(100m);
+
+        operations.SyncBrokerPortfolio("1", new BrokerAccountEvidence(
+            "1", 10_100m, 10_000m, 5_000m, 10_000m, false, exitAt),
+            new[] { new BrokerPositionEvidence("MSFT", 1, 100m, 101m) }, 0.03m);
+        operations.Status().LastError.Should().Be("broker-canonical-portfolio-divergence");
+        operations.Portfolio().Risk.IsTradingHalted.Should().BeTrue();
+        operations.SyncBrokerPortfolio("1", new BrokerAccountEvidence(
+            "1", 10_100m, 10_000m, 5_000m, 10_000m, false, exitAt),
+            Array.Empty<BrokerPositionEvidence>(), 0.03m);
+        operations.Status().LastError.Should().BeNull();
+    }
+
+    [Fact]
+    public void RejectedBrokerEvidenceReleasesEntryAndPositionClaims()
+    {
+        Directory.CreateDirectory(_root);
+        var config = new ServiceConfig(
+            Path.Combine(_root, "core.db"), new string('x', 32), "unused", "unused", "unused",
+            Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
+            TradingAuthorityMode.Projection);
+        var store = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        var operations = new TradingCoreOperations(store);
+        var now = DateTime.UtcNow;
+        var snapshot = EmptySnapshot(now);
+        operations.Import(snapshot);
+        operations.ApplyAccountConfiguration(AccountConfiguration(now));
+        operations.Activate(new TradingAuthorityContract(
+            1, TradingAuthorityMode.Shadow, 2, "shadow", now,
+            snapshot.SnapshotId, string.Empty, null, 0));
+        operations.Activate(new TradingAuthorityContract(
+            1, TradingAuthorityMode.Remote, 3, "remote", now,
+            snapshot.SnapshotId, "broker-state", now, 0));
+
+        var entry = EntryIntent(now, operations.Status());
+        operations.AcceptEntry(entry);
+        operations.ClaimEntry().Should().NotBeNull();
+        operations.RecordBrokerEvidence(entry.Envelope.CommandId, new BrokerOrderEvidence(
+            "rejected-entry", "client-rejected-entry", "AAPL", "Buy", 10, 0, null, null,
+            "Rejected", "Market", now, null)).Should().BeTrue();
+        var recommendation = operations.Portfolio().Recommendations.Single(value =>
+            value.SourceSignalId == entry.SourceSignalId);
+        recommendation.EntryRequestedAtUtc.Should().BeNull();
+        recommendation.EntryExecutionNote.Should().Be("broker-rejected");
+        Some(operations.LatestEntryCommand(entry.SourceSignalId)).Status
+            .Should().Be(TradingCommandStatuses.Rejected);
     }
 
     private static TradingStateSnapshot EmptySnapshot(DateTime now)
     {
         var value = new TradingStateSnapshot(1, string.Empty, 1, now,
-            [], [], [], [], new TradingRiskProjection(0, 0, 0, false, now));
+            [], [], [], [], new TradingRiskProjection(-12m, -0.12m, 0, false, now));
         return value with { SnapshotId = TradingCoreIdentity.Snapshot(value) };
     }
 
@@ -115,6 +218,28 @@ public sealed class TradingCoreServiceTests : IDisposable
         };
     }
 
+    private static TradingRecommendationObservation RecommendationObservation(
+        DateTime now, TradingCoreStatus status)
+    {
+        var intent = EntryIntent(now, status);
+        var envelope = new TradingCommandEnvelope(
+            1, "recommendation-command", TradingCommandKinds.RecordRecommendation,
+            string.Empty, "correlation", null, status.AuthorityGeneration,
+            status.AccountGeneration, now, now.AddMinutes(5));
+        var observation = new TradingRecommendationObservation(
+            envelope, "signal-alert", intent.Symbol, intent.PatternCode,
+            intent.CustomPatternName, intent.EntryPrice, intent.StopLossPrice,
+            intent.TargetPrice, intent.ShareQuantity, intent.Expectancy,
+            intent.ExecutionArtifact, intent.MarketDataEvidence);
+        return observation with
+        {
+            Envelope = envelope with
+            {
+                PayloadHash = TradingCoreIdentity.RecommendationPayload(observation)
+            }
+        };
+    }
+
     private static TradingPositionCommand PositionCommand(
         DateTime now, TradingCoreStatus status, TradingPositionProjection position)
     {
@@ -127,6 +252,25 @@ public sealed class TradingCoreServiceTests : IDisposable
         return command with
         {
             Envelope = envelope with { PayloadHash = TradingCoreIdentity.PositionPayload(command) }
+        };
+    }
+
+    private static TradingPositionPolicyStateUpdate PositionStateUpdate(
+        DateTime now, TradingCoreStatus status, TradingPositionProjection position)
+    {
+        var envelope = new TradingCommandEnvelope(
+            1, "position-state-command", TradingCommandKinds.UpdatePositionState,
+            string.Empty, "correlation", null, status.AuthorityGeneration,
+            status.AccountGeneration, now, now.AddMinutes(5));
+        var update = new TradingPositionPolicyStateUpdate(
+            envelope, position.PositionId, position.ExecutionContext!.ExecutionArtifact.ArtifactId,
+            105m, 96m, position.InitialRiskDistance, true, false, Evidence(now));
+        return update with
+        {
+            Envelope = envelope with
+            {
+                PayloadHash = TradingCoreIdentity.PositionStatePayload(update)
+            }
         };
     }
 

@@ -42,9 +42,9 @@ public static class BackgroundServiceExtensions
         if (!string.Equals(tradingCoreMode, "Remote", StringComparison.Ordinal))
         {
             services.AddHostedService<RiskMonitorService>();
-            services.AddHostedService<PositionExecutionManagerService>();
             services.AddHostedService<EntryExecutionReconciliationService>();
         }
+        services.AddHostedService<PositionExecutionManagerService>();
         services.AddHostedService<DailyReportService>();
         services.AddHostedService<MLRetrainingService>();
         services.AddHostedService<MlTrainingPublicationReconciliationService>();

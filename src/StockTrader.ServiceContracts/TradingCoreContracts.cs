@@ -24,10 +24,13 @@ public static class TradingCommandKinds
     public const string ClosePosition = "ClosePosition";
     public const string ReconcileEntry = "ReconcileEntry";
     public const string ReconcilePosition = "ReconcilePosition";
+    public const string UpdatePositionState = "UpdatePositionState";
+    public const string RecordRecommendation = "RecordRecommendation";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        AcceptEntry, ClosePosition, ReconcileEntry, ReconcilePosition
+        AcceptEntry, ClosePosition, ReconcileEntry, ReconcilePosition, UpdatePositionState,
+        RecordRecommendation
     };
 }
 
@@ -112,6 +115,20 @@ public sealed record TradingEntryIntent(
     TradingStrategyExecutionArtifact ExecutionArtifact,
     MarketDataEvidenceContract MarketDataEvidence);
 
+public sealed record TradingRecommendationObservation(
+    TradingCommandEnvelope Envelope,
+    string SourceSignalId,
+    string Symbol,
+    string PatternCode,
+    string? CustomPatternName,
+    decimal EntryPrice,
+    decimal StopLossPrice,
+    decimal TargetPrice,
+    int ShareQuantity,
+    decimal Expectancy,
+    TradingStrategyExecutionArtifact ExecutionArtifact,
+    MarketDataEvidenceContract MarketDataEvidence);
+
 public sealed record TradingPositionCommand(
     TradingCommandEnvelope Envelope,
     string PositionId,
@@ -122,6 +139,17 @@ public sealed record TradingPositionCommand(
     MarketDataEvidenceContract MarketDataEvidence,
     int? ScalingRuleIndex = null,
     bool MarksPartialProfit = false);
+
+public sealed record TradingPositionPolicyStateUpdate(
+    TradingCommandEnvelope Envelope,
+    string PositionId,
+    string ExpectedExecutionArtifactId,
+    decimal HighSinceEntry,
+    decimal StopLossPrice,
+    decimal InitialRiskDistance,
+    bool BreakevenApplied,
+    bool TrailingStopActivated,
+    MarketDataEvidenceContract MarketDataEvidence);
 
 public sealed record TradingCommandReceipt(
     int ContractVersion,
@@ -264,6 +292,16 @@ public sealed record TradingRiskProjection(
     bool IsTradingHalted,
     DateTime ObservedAtUtc);
 
+public sealed record TradingBrokerAccountProjection(
+    string AccountId,
+    decimal TotalEquity,
+    decimal Cash,
+    decimal BuyingPower,
+    decimal UnrealizedPnL,
+    decimal DailyPnL,
+    bool IsTradingBlocked,
+    DateTime ObservedAtUtc);
+
 public sealed record TradingStateSnapshot(
     int ContractVersion,
     string SnapshotId,
@@ -306,7 +344,9 @@ public sealed record TradingCorePortfolioView(
     long AuthorityGeneration,
     IReadOnlyList<TradingRecommendationProjection> Recommendations,
     IReadOnlyList<TradingPositionProjection> Positions,
-    IReadOnlyList<TradingTradeProjection> Trades);
+    IReadOnlyList<TradingTradeProjection> Trades,
+    TradingRiskProjection Risk,
+    IReadOnlyList<TradingBrokerAccountProjection> Accounts);
 
 public static class TradingCoreIdentity
 {
@@ -330,6 +370,22 @@ public static class TradingCoreIdentity
         intent.MarketDataEvidence
     });
 
+    public static string RecommendationPayload(TradingRecommendationObservation observation) =>
+        CanonicalJsonHash.Compute(new
+        {
+            observation.SourceSignalId,
+            observation.Symbol,
+            observation.PatternCode,
+            observation.CustomPatternName,
+            observation.EntryPrice,
+            observation.StopLossPrice,
+            observation.TargetPrice,
+            observation.ShareQuantity,
+            observation.Expectancy,
+            observation.ExecutionArtifact,
+            observation.MarketDataEvidence,
+        });
+
     public static string PositionPayload(TradingPositionCommand command) =>
         CanonicalJsonHash.Compute(new
         {
@@ -341,6 +397,19 @@ public static class TradingCoreIdentity
             command.MarketDataEvidence,
             command.ScalingRuleIndex,
             command.MarksPartialProfit,
+        });
+
+    public static string PositionStatePayload(TradingPositionPolicyStateUpdate update) =>
+        CanonicalJsonHash.Compute(new
+        {
+            update.PositionId,
+            update.ExpectedExecutionArtifactId,
+            update.HighSinceEntry,
+            update.StopLossPrice,
+            update.InitialRiskDistance,
+            update.BreakevenApplied,
+            update.TrailingStopActivated,
+            update.MarketDataEvidence,
         });
 
     public static string AccountConfiguration(TradingAccountConfigurationSet configuration) =>
@@ -433,6 +502,60 @@ public static class TradingCoreCompatibilityPolicy
             return "invalid-position-command";
         return string.Equals(command.Envelope.PayloadHash,
             TradingCoreIdentity.PositionPayload(command), StringComparison.Ordinal)
+            ? null : "payload-hash-mismatch";
+    }
+
+    public static string? Error(TradingRecommendationObservation observation,
+        TradingAuthorityContract authority,
+        long currentAccountGeneration,
+        DateTime observedAtUtc)
+    {
+        var envelopeError = EnvelopeError(observation.Envelope,
+            TradingCommandKinds.RecordRecommendation, authority, currentAccountGeneration,
+            observedAtUtc);
+        if (envelopeError is not null) return envelopeError;
+        if (string.IsNullOrWhiteSpace(observation.SourceSignalId)
+            || string.IsNullOrWhiteSpace(observation.Symbol)
+            || string.IsNullOrWhiteSpace(observation.PatternCode)
+            || observation.EntryPrice <= 0
+            || observation.StopLossPrice <= 0
+            || observation.TargetPrice <= 0
+            || observation.ShareQuantity <= 0
+            || observation.ExecutionArtifact is null
+            || TradingExecutionArtifactPolicy.Error(observation.ExecutionArtifact) is not null
+            || observation.MarketDataEvidence is null
+            || MarketDataEvidenceError(observation.MarketDataEvidence) is not null
+            || !observation.MarketDataEvidence.IsComplete
+            || observation.MarketDataEvidence.LastBarUtc is null
+            || observation.MarketDataEvidence.LastBarUtc > observation.Envelope.OccurredAtUtc)
+            return "invalid-recommendation-observation";
+        return string.Equals(observation.Envelope.PayloadHash,
+            TradingCoreIdentity.RecommendationPayload(observation), StringComparison.Ordinal)
+            ? null : "payload-hash-mismatch";
+    }
+
+    public static string? Error(TradingPositionPolicyStateUpdate update,
+        TradingAuthorityContract authority,
+        long currentAccountGeneration,
+        DateTime observedAtUtc)
+    {
+        var envelopeError = EnvelopeError(update.Envelope,
+            TradingCommandKinds.UpdatePositionState, authority, currentAccountGeneration,
+            observedAtUtc);
+        if (envelopeError is not null) return envelopeError;
+        if (string.IsNullOrWhiteSpace(update.PositionId)
+            || string.IsNullOrWhiteSpace(update.ExpectedExecutionArtifactId)
+            || update.HighSinceEntry <= 0
+            || update.StopLossPrice <= 0
+            || update.InitialRiskDistance <= 0
+            || update.MarketDataEvidence is null
+            || MarketDataEvidenceError(update.MarketDataEvidence) is not null
+            || !update.MarketDataEvidence.IsComplete
+            || update.MarketDataEvidence.LastBarUtc is null
+            || update.MarketDataEvidence.LastBarUtc > update.Envelope.OccurredAtUtc)
+            return "invalid-position-state-update";
+        return string.Equals(update.Envelope.PayloadHash,
+            TradingCoreIdentity.PositionStatePayload(update), StringComparison.Ordinal)
             ? null : "payload-hash-mismatch";
     }
 

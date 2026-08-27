@@ -139,6 +139,23 @@ module TradingCoreEntryBrokerStore =
                         if updateRecommendation.ExecuteNonQuery() <> 1 then invalidOp "entry-recommendation-update-conflict"
                         status <- TradingCommandStatuses.Completed
                     with :? ArgumentException -> status <- TradingCommandStatuses.ReconciliationRequired
+                if status = TradingCommandStatuses.Rejected then
+                    use loadRecommendation = connection.CreateCommand()
+                    loadRecommendation.Transaction <- transaction
+                    loadRecommendation.CommandText <- "SELECT payload_json FROM canonical_recommendations WHERE identity=$id"
+                    loadRecommendation.Parameters.AddWithValue("$id", commandId) |> ignore
+                    let recommendation = JsonSerializer.Deserialize<TradingRecommendationProjection>(
+                        Convert.ToString(loadRecommendation.ExecuteScalar()), this.Json)
+                    if isNull recommendation then invalidOp "entry-recommendation-missing"
+                    let rejected = TradingEntrySettlementPolicy.MarkRejected(recommendation, evidence)
+                    use updateRecommendation = connection.CreateCommand()
+                    updateRecommendation.Transaction <- transaction
+                    updateRecommendation.CommandText <- "UPDATE canonical_recommendations SET payload_json=$payload,status=$status,broker_order_id=$order,version=version+1 WHERE identity=$id"
+                    updateRecommendation.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(rejected, this.Json)) |> ignore
+                    updateRecommendation.Parameters.AddWithValue("$status", status) |> ignore
+                    updateRecommendation.Parameters.AddWithValue("$order", evidence.OrderId) |> ignore
+                    updateRecommendation.Parameters.AddWithValue("$id", commandId) |> ignore
+                    if updateRecommendation.ExecuteNonQuery() <> 1 then invalidOp "entry-recommendation-rejection-conflict"
                 use update = connection.CreateCommand()
                 update.Transaction <- transaction
                 update.CommandText <- "UPDATE financial_intents SET status=$status,broker_order_id=$order,updated_at=$at WHERE command_id=$id"

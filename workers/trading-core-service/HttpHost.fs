@@ -79,6 +79,13 @@ module HttpHost =
                 with
                 | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
                 | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        app.MapPost("/v1/recommendations", Func<HttpContext,TradingCoreStore,TradingRecommendationObservation,IResult>(fun ctx store observation ->
+            if not (authorized ctx) then Results.Unauthorized()
+            else
+                try Results.Ok(store.RecordRecommendation observation)
+                with
+                | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
+                | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
         app.MapPost("/v1/commands/positions", Func<HttpContext,TradingCoreStore,TradingPositionCommand,IResult>(fun ctx store command ->
             if not (authorized ctx) then Results.Unauthorized()
             else
@@ -86,10 +93,29 @@ module HttpHost =
                 with
                 | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
                 | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        app.MapPost("/v1/positions/state", Func<HttpContext,TradingCoreStore,TradingPositionPolicyStateUpdate,IResult>(fun ctx store update ->
+            if not (authorized ctx) then Results.Unauthorized()
+            else
+                try Results.Ok(store.ApplyPositionState update)
+                with
+                | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
+                | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
         app.MapGet("/v1/commands/{commandId}", Func<HttpContext,TradingCoreStore,string,IResult>(fun ctx store commandId ->
             if not (authorized ctx) then Results.Unauthorized()
             else
                 match store.CommandStatus commandId with
+                | Some status -> Results.Ok status
+                | None -> Results.NotFound())) |> ignore
+        app.MapGet("/v1/commands/positions/{positionId}/latest", Func<HttpContext,TradingCoreStore,string,IResult>(fun ctx store positionId ->
+            if not (authorized ctx) then Results.Unauthorized()
+            else
+                match store.LatestPositionCommand positionId with
+                | Some status -> Results.Ok status
+                | None -> Results.NotFound())) |> ignore
+        app.MapGet("/v1/commands/entries/by-signal/{sourceSignalId}/latest", Func<HttpContext,TradingCoreStore,string,IResult>(fun ctx store sourceSignalId ->
+            if not (authorized ctx) then Results.Unauthorized()
+            else
+                match store.LatestEntryCommand sourceSignalId with
                 | Some status -> Results.Ok status
                 | None -> Results.NotFound())) |> ignore
         app.Run()

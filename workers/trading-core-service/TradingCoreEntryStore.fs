@@ -67,7 +67,8 @@ module TradingCoreEntryStore =
                         intent.PatternCode, intent.CustomPatternName, intent.Envelope.OccurredAtUtc,
                         intent.EntryPrice, intent.StopLossPrice, intent.TargetPrice,
                         intent.ShareQuantity, intent.Expectancy, "AutoOrder", false,
-                        Nullable(), intent.AccountId, null, null)
+                        Nullable(intent.Envelope.OccurredAtUtc), intent.AccountId, null,
+                        "accepted-for-durable-processing")
                     use insertRecommendation = connection.CreateCommand()
                     insertRecommendation.Transaction <- transaction
                     insertRecommendation.CommandText <- "INSERT INTO canonical_recommendations VALUES($id,$signal,$payload,$status,NULL,1)"

@@ -35,11 +35,27 @@ public interface ITradingCoreControlPlane
         TradingEntryIntent intent,
         CancellationToken ct = default);
 
+    Task<TradingCommandReceipt> SubmitRecommendationAsync(
+        TradingRecommendationObservation observation,
+        CancellationToken ct = default);
+
     Task<TradingCommandReceipt> SubmitPositionAsync(
         TradingPositionCommand command,
         CancellationToken ct = default);
 
+    Task<TradingCommandReceipt> UpdatePositionStateAsync(
+        TradingPositionPolicyStateUpdate update,
+        CancellationToken ct = default);
+
     Task<TradingCommandStatusView?> GetCommandAsync(
         string commandId,
+        CancellationToken ct = default);
+
+    Task<TradingCommandStatusView?> GetLatestPositionCommandAsync(
+        string positionId,
+        CancellationToken ct = default);
+
+    Task<TradingCommandStatusView?> GetLatestEntryCommandAsync(
+        string sourceSignalId,
         CancellationToken ct = default);
 }

@@ -12,11 +12,18 @@ type TradingCoreOperations(store: TradingCoreStore) =
     member _.Status() = store.Status()
     member _.Portfolio() = store.Portfolio()
     member _.AcceptEntry(intent) = store.AcceptEntry intent
+    member _.RecordRecommendation(observation) = store.RecordRecommendation observation
     member _.ClaimEntry() = store.ClaimEntry()
     member _.RecordBrokerEvidence(commandId, evidence: BrokerOrderEvidence) =
         store.RecordBrokerEvidence(commandId, evidence)
     member _.AcceptPosition(command) = store.AcceptPosition command
+    member _.ApplyPositionState(update) = store.ApplyPositionState update
     member _.ClaimPosition() = store.ClaimPosition()
     member _.RecordPositionBrokerEvidence(commandId, evidence: BrokerOrderEvidence) =
         store.RecordPositionBrokerEvidence(commandId, evidence)
     member _.CommandStatus(commandId) = store.CommandStatus commandId
+    member _.LatestPositionCommand(positionId) = store.LatestPositionCommand positionId
+    member _.LatestEntryCommand(sourceSignalId) = store.LatestEntryCommand sourceSignalId
+    member _.SyncBrokerPortfolio(accountId, account, positions, dailyLossLimitPercent) =
+        store.SyncBrokerPortfolio(accountId, account, positions, dailyLossLimitPercent)
+    member _.RejectIntent(commandId, reason) = store.RejectIntent(commandId, reason)

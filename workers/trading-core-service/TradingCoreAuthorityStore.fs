@@ -59,7 +59,8 @@ module TradingCoreAuthorityStore =
                         [ "account", snapshot.Accounts |> Seq.map (fun x -> x.AccountId, box x)
                           "recommendation", snapshot.Recommendations |> Seq.map (fun x -> x.RecommendationId, box x)
                           "position", snapshot.Positions |> Seq.map (fun x -> x.PositionId, box x)
-                          "trade", snapshot.Trades |> Seq.map (fun x -> x.TradeId, box x) ]
+                          "trade", snapshot.Trades |> Seq.map (fun x -> x.TradeId, box x)
+                          "risk", Seq.singleton ("portfolio", box snapshot.Risk) ]
                     for kind, items in rows do
                         for identity, item in items do
                             use projection = connection.CreateCommand()
@@ -164,6 +165,7 @@ module TradingCoreAuthorityStore =
     DELETE FROM canonical_recommendations;
     DELETE FROM canonical_positions;
     DELETE FROM canonical_trades;
+    DELETE FROM canonical_risk;
     INSERT INTO canonical_recommendations(identity,source_signal_id,payload_json,status,broker_order_id,version)
      SELECT identity,json_extract(payload_json,'$.sourceSignalId'),payload_json,'Imported',json_extract(payload_json,'$.entryOrderId'),1
      FROM projections WHERE kind='recommendation';
@@ -173,6 +175,8 @@ module TradingCoreAuthorityStore =
      FROM projections WHERE kind='position';
     INSERT INTO canonical_trades(identity,payload_json,version)
      SELECT identity,payload_json,1 FROM projections WHERE kind='trade';
+    INSERT INTO canonical_risk(singleton,payload_json,version)
+     SELECT 1,payload_json,1 FROM projections WHERE kind='risk' AND identity='portfolio';
     """
                     materialize.ExecuteNonQuery() |> ignore
                 use command = connection.CreateCommand()

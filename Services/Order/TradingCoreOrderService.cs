@@ -5,7 +5,7 @@ using StockTrader.Models;
 using StockTrader.Models.Enums;
 using StockTrader.ServiceContracts;
 using StockTrader.ServiceContracts.TradingCore;
-using StockTrader.Data.Repositories;
+using StockTrader.Services.Notification;
 
 namespace StockTrader.Services.Order;
 
@@ -13,7 +13,8 @@ namespace StockTrader.Services.Order;
 internal sealed class TradingCoreOrderService(
     ITradingCoreControlPlane core,
     ITradingAccountIdentitySource accounts,
-    ISettingsRepository settings,
+    TradingCoreManualEntryPreparation manualEntries,
+    INotificationService notifications,
     TimeProvider clock,
     ILogger<TradingCoreOrderService> logger) : IOrderService
 {
@@ -26,10 +27,6 @@ internal sealed class TradingCoreOrderService(
         int? accountId,
         CancellationToken ct = default)
     {
-        var userSettings = await settings.GetAsync(ct);
-        if (userSettings.OrderMode == OrderMode.AlertOnly)
-            throw new InvalidOperationException(
-                "remote-alert-only-routing-must-use-non-financial-recommendation-path");
         if (recommendation.ExecutionArtifact is null || recommendation.MarketDataEvidence is null)
             throw new InvalidOperationException("missing-immutable-trading-execution-context");
         if (recommendation.SourceSignalId is null)
@@ -38,10 +35,46 @@ internal sealed class TradingCoreOrderService(
         var status = await core.GetStatusAsync(ct);
         if (status.Mode != TradingAuthorityMode.Remote)
             throw new InvalidOperationException("trading-core-remote-authority-not-active");
+        var now = clock.GetUtcNow().UtcDateTime;
+        if (recommendation.Mode == OrderMode.AlertOnly)
+        {
+            var recommendationCommandId = "recommendation:" + CanonicalJsonHash.Compute(new
+            {
+                SourceSignalId = recommendation.SourceSignalId.Value,
+                recommendation.ExecutionArtifact.ArtifactId,
+                recommendation.MarketDataEvidence.EvidenceId,
+            });
+            var recommendationEnvelope = Envelope(
+                recommendationCommandId, TradingCommandKinds.RecordRecommendation,
+                recommendation.SourceSignalId.Value, status, now);
+            var observation = new TradingRecommendationObservation(
+                recommendationEnvelope,
+                recommendation.SourceSignalId.Value.ToString(),
+                recommendation.Symbol,
+                recommendation.PatternType.ToString(),
+                recommendation.CustomPatternName,
+                recommendation.EntryPrice,
+                recommendation.StopLossPrice,
+                recommendation.TargetPrice,
+                recommendation.ShareQuantity,
+                recommendation.Expectancy,
+                recommendation.ExecutionArtifact,
+                recommendation.MarketDataEvidence);
+            observation = observation with
+            {
+                Envelope = recommendationEnvelope with
+                {
+                    PayloadHash = TradingCoreIdentity.RecommendationPayload(observation)
+                }
+            };
+            var recorded = await core.SubmitRecommendationAsync(observation, ct);
+            if (recorded.Status == TradingCommandStatuses.Completed && !recorded.AlreadyAccepted)
+                notifications.Notify(recommendation);
+            return recorded.Status == TradingCommandStatuses.Completed;
+        }
         var resolvedAccount = accountId?.ToString(System.Globalization.CultureInfo.InvariantCulture)
             ?? await accounts.GetActiveAccountIdAsync(ct)
             ?? throw new InvalidOperationException("active-trading-account-missing");
-        var now = clock.GetUtcNow().UtcDateTime;
         var commandId = "entry:" + CanonicalJsonHash.Compute(new
         {
             SourceSignalId = recommendation.SourceSignalId.Value,
@@ -49,17 +82,9 @@ internal sealed class TradingCoreOrderService(
             recommendation.ExecutionArtifact.ArtifactId,
             recommendation.MarketDataEvidence.EvidenceId,
         });
-        var envelope = new TradingCommandEnvelope(
-            TradingCoreContractVersions.Current,
-            commandId,
-            TradingCommandKinds.AcceptEntry,
-            string.Empty,
-            commandId,
-            recommendation.SourceSignalId.Value.ToString(),
-            status.AuthorityGeneration,
-            status.AccountGeneration,
-            now,
-            now.AddMinutes(5));
+        var envelope = Envelope(
+            commandId, TradingCommandKinds.AcceptEntry,
+            recommendation.SourceSignalId.Value, status, now);
         var intent = new TradingEntryIntent(
             envelope,
             recommendation.SourceSignalId.Value.ToString(),
@@ -83,11 +108,38 @@ internal sealed class TradingCoreOrderService(
         logger.LogInformation(
             "Trading Core accepted entry {CommandId} for {Symbol}: {Status}",
             receipt.CommandId, recommendation.Symbol, receipt.Status);
+        if (receipt.Status is not TradingCommandStatuses.Rejected && !receipt.AlreadyAccepted)
+            notifications.Notify(recommendation);
         return receipt.Status is not TradingCommandStatuses.Rejected;
     }
 
-    public Task<(bool Success, string Message)> PlaceManualOrderAsync(
+    public async Task<(bool Success, string Message)> PlaceManualOrderAsync(
         long signalId,
-        CancellationToken ct = default) => Task.FromResult((false,
-            "Trading Core 전환 후 수동 주문은 불변 실행 근거 생성 경로가 준비될 때까지 차단됩니다."));
+        CancellationToken ct = default)
+    {
+        var prepared = await manualEntries.PrepareAsync(signalId, ct);
+        if (!prepared.Succeeded)
+            return (false, prepared.Message);
+        var accepted = await PlaceOrderAsync(prepared.Recommendation!, ct);
+        return accepted
+            ? (true, $"{prepared.Recommendation!.Symbol} 원격 주문이 내구성 있게 접수됐습니다. 체결 상태를 확인하세요.")
+            : (false, $"{prepared.Recommendation!.Symbol} 주문이 Trading Core 최종 위험 점검에서 거부됐습니다.");
+    }
+
+    private static TradingCommandEnvelope Envelope(
+        string commandId,
+        string kind,
+        long sourceSignalId,
+        TradingCoreStatus status,
+        DateTime now) => new(
+        TradingCoreContractVersions.Current,
+        commandId,
+        kind,
+        string.Empty,
+        commandId,
+        sourceSignalId.ToString(),
+        status.AuthorityGeneration,
+        status.AccountGeneration,
+        now,
+        now.AddMinutes(5));
 }

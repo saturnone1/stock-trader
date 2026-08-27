@@ -27,14 +27,14 @@ public static class TradingPositionSettlementPolicy
             var nextQuantity = checked(position.Quantity + command.Quantity);
             var average = ((position.EntryPrice * position.Quantity) + (fill * command.Quantity))
                 / nextQuantity;
-            return new TradingPositionSettlement(position with
+            return new TradingPositionSettlement(TradingPositionCommandStatePolicy.ClearRequest(position with
             {
                 Quantity = nextQuantity,
                 EntryPrice = average,
                 CurrentPrice = fill,
                 ScalingExecutions = RegisterScale(position.ScalingExecutions, command.ScalingRuleIndex),
                 ExecutionContext = position.ExecutionContext,
-            }, null);
+            }), null);
         }
 
         if (command.Quantity > position.Quantity)
@@ -42,7 +42,7 @@ public static class TradingPositionSettlementPolicy
         var remaining = position.Quantity - command.Quantity;
         var filledAt = Utc(evidence.FilledAtUtc.Value);
         var closed = remaining == 0;
-        var updated = position with
+        var updated = TradingPositionCommandStatePolicy.ClearRequest(position with
         {
             Quantity = remaining,
             CurrentPrice = fill,
@@ -53,7 +53,7 @@ public static class TradingPositionSettlementPolicy
                 ? RegisterScale(position.ScalingExecutions, command.ScalingRuleIndex)
                 : position.ScalingExecutions,
             ExecutionContext = position.ExecutionContext,
-        };
+        });
         var pnl = (fill - position.EntryPrice) * command.Quantity;
         var trade = new TradingTradeProjection(
             $"trade:{command.Envelope.CommandId}", position.SourceSignalId, position.Symbol,

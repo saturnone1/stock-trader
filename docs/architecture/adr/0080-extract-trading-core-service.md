@@ -168,3 +168,27 @@ outage convergence, backup/restore and secret/TLS rollback drills, and a single-
 rehearsal. No later MSA extraction may start while this work is paused. Operational evidence and the
 exact resume checklist are in the
 [Trading Core Projection operations note](../../operations/trading-core-projection.md).
+
+## Resumed read and command boundary checkpoint
+
+The 2026-08-27 implementation batch completed the code-side Remote compatibility boundary without
+changing production authority. In Remote mode the API now reads recommendation, position, trade,
+risk, account, and dashboard financial state from Trading Core and every compatibility store is
+read-only. Automatic and operator-selected entries carry a newly validated immutable execution
+artifact and completed-bar evidence; AlertOnly recommendations use a separate non-broker command.
+Position exits and scaling reuse the shared deterministic evaluator with the exact bars named by
+the command evidence. Monotonic highest-price, stop, initial-risk, breakeven, and trailing state is
+committed by Trading Core even when no broker order is due.
+
+Trading Core continuously imports broker account and position evidence only in Remote, exposes
+broker/canonical divergence in health and risk state, and blocks new entry preflight while an
+unresolved financial intent or divergence exists. Accepted position commands durably mark their
+canonical position pending; fills and terminal broker rejection clear that state, while ambiguous
+or quantity-mismatched evidence remains reconciliation-required.
+
+The complete local verification batch passed 1,010 backend tests, 75 desktop tests, API contract
+generation, both independent builds, and the desktop production build. Production remains at the
+`d9f4f30` Projection image pending a new deployment batch. The production application store had no
+open position and no pending entry at the read-only 2026-08-27 audit; this observation is not a
+cutover authorization. Shadow comparison, failure convergence, backup/restore, rotations, load,
+and cutover/rollback gates remain mandatory.

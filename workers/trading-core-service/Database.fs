@@ -50,6 +50,11 @@ CREATE TABLE IF NOT EXISTS canonical_positions (
  execution_context_json TEXT NOT NULL, version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS canonical_trades (
  identity TEXT PRIMARY KEY, payload_json TEXT NOT NULL, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_risk (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), payload_json TEXT NOT NULL,
+ version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS broker_accounts (
+ account_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, observed_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS broker_evidence (
  order_id TEXT PRIMARY KEY, client_order_id TEXT NOT NULL UNIQUE, command_id TEXT NOT NULL,
  payload_json TEXT NOT NULL, observed_at TEXT NOT NULL);
@@ -60,6 +65,7 @@ CREATE TABLE IF NOT EXISTS account_configuration (
  tag BLOB NOT NULL, accepted_at TEXT NOT NULL);
 INSERT OR IGNORE INTO state(key,value) VALUES('account_generation','0');
 INSERT OR IGNORE INTO state(key,value) VALUES('last_snapshot_id','');
+INSERT OR IGNORE INTO state(key,value) VALUES('last_broker_reconciliation_at','');
 """
         command.ExecuteNonQuery() |> ignore
         use seed = connection.CreateCommand()

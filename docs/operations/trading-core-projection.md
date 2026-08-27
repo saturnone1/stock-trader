@@ -61,6 +61,21 @@ All items below remain required as one meaningful acceptance batch:
 - Only for the Remote deployment, replace DNS-only egress with the smallest broker endpoint policy;
   never broaden Projection or Shadow broker access.
 
+### 2026-08-27 resume audit
+
+The first resumed service unit completed the Remote read routers, read-only compatibility stores,
+manual completed-bar evidence path, AlertOnly recommendation path, immutable position-context
+resolver, exact-evidence position evaluation, canonical policy-state update, account/risk views,
+latest-command reconciliation queries, and broker/canonical divergence fencing. The meaningful
+local batch passed 1,010 backend tests, 75 desktop tests, API contract checking, independent API and
+Trading Core builds, and the desktop production build.
+
+The production audit still found both deployments on `architecture-d9f4f30` in `Projection`, Ready
+with zero restarts. `/api/health` and the desktop proxy returned HTTP 200. The authoritative
+application database had zero open positions and zero pending entries. The candidate had no
+financial intent and remained unable to reach a broker. These facts allow Shadow preparation but
+do not satisfy Shadow, failure, backup, rotation, load, cutover, or rollback acceptance.
+
 If an imported open position lacks immutable execution context, Remote activation must fail with
 `open-position-execution-context-missing`. Wait for it to close or perform a separately reviewed,
 truth-preserving migration; do not fabricate historical evidence.

@@ -74,6 +74,18 @@ internal sealed class TradingCoreControlPlaneClient : ITradingCoreControlPlane, 
             ?? throw new InvalidOperationException("empty-trading-core-entry-receipt");
     }
 
+    public async Task<TradingCommandReceipt> SubmitRecommendationAsync(
+        TradingRecommendationObservation observation,
+        CancellationToken ct = default)
+    {
+        var client = _client ?? throw new InvalidOperationException("trading-core-client-disabled");
+        using var response = await client.PostAsJsonAsync(
+            "/v1/recommendations", observation, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingCommandReceipt>(ct)
+            ?? throw new InvalidOperationException("empty-trading-core-recommendation-receipt");
+    }
+
     public async Task<TradingCommandStatusView?> GetCommandAsync(
         string commandId,
         CancellationToken ct = default)
@@ -87,6 +99,16 @@ internal sealed class TradingCoreControlPlaneClient : ITradingCoreControlPlane, 
             ?? throw new InvalidOperationException("empty-trading-core-command-status");
     }
 
+    public Task<TradingCommandStatusView?> GetLatestPositionCommandAsync(
+        string positionId,
+        CancellationToken ct = default) => GetOptionalCommandAsync(
+            $"/v1/commands/positions/{Uri.EscapeDataString(positionId)}/latest", ct);
+
+    public Task<TradingCommandStatusView?> GetLatestEntryCommandAsync(
+        string sourceSignalId,
+        CancellationToken ct = default) => GetOptionalCommandAsync(
+            $"/v1/commands/entries/by-signal/{Uri.EscapeDataString(sourceSignalId)}/latest", ct);
+
     public async Task<TradingCommandReceipt> SubmitPositionAsync(
         TradingPositionCommand command,
         CancellationToken ct = default)
@@ -96,6 +118,17 @@ internal sealed class TradingCoreControlPlaneClient : ITradingCoreControlPlane, 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<TradingCommandReceipt>(ct)
             ?? throw new InvalidOperationException("empty-trading-core-position-receipt");
+    }
+
+    public async Task<TradingCommandReceipt> UpdatePositionStateAsync(
+        TradingPositionPolicyStateUpdate update,
+        CancellationToken ct = default)
+    {
+        var client = _client ?? throw new InvalidOperationException("trading-core-client-disabled");
+        using var response = await client.PostAsJsonAsync("/v1/positions/state", update, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingCommandReceipt>(ct)
+            ?? throw new InvalidOperationException("empty-trading-core-position-state-receipt");
     }
 
     private static HttpClient CreateClient(TradingCoreTransportOptions options)
@@ -122,6 +155,18 @@ internal sealed class TradingCoreControlPlaneClient : ITradingCoreControlPlane, 
     }
 
     public void Dispose() => _client?.Dispose();
+
+    private async Task<TradingCommandStatusView?> GetOptionalCommandAsync(
+        string path,
+        CancellationToken ct)
+    {
+        var client = _client ?? throw new InvalidOperationException("trading-core-client-disabled");
+        using var response = await client.GetAsync(path, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TradingCommandStatusView>(ct)
+            ?? throw new InvalidOperationException("empty-trading-core-command-status");
+    }
 
     private sealed record ProjectionReceipt(string SnapshotId, bool AlreadyApplied);
 }

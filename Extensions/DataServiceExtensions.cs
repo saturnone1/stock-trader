@@ -18,6 +18,7 @@ using StockTrader.Services.DataFeed;
 using StockTrader.Services.Financial;
 using StockTrader.Services.LsSecurities;
 using StockTrader.Services.Streaming;
+using StockTrader.Services.TradingCore;
 
 namespace StockTrader.Extensions;
 
@@ -35,10 +36,30 @@ public static class DataServiceExtensions
         services.AddScoped<IOhlcvRepository, MarketDataRepositoryRouter>();
         services.AddScoped<MarketDataRollbackProjector>();
         services.AddScoped<IPatternStatsRepository, PatternStatsRepository>();
-        services.AddSingleton<ITradeHistoryStore, TradeHistoryStore>();
-        services.AddSingleton<IOpenPositionStore, OpenPositionStore>();
-        services.AddSingleton<ITradeRecommendationStore, TradeRecommendationStore>();
-        services.AddSingleton<ITradeActivityStore, TradeActivityStore>();
+        services.AddSingleton<TradeHistoryStore>();
+        services.AddSingleton<TradingCoreRemoteTradeHistoryStore>();
+        services.AddSingleton<ITradeHistoryStore>(serviceProvider =>
+            IsTradingCoreRemote(serviceProvider)
+                ? serviceProvider.GetRequiredService<TradingCoreRemoteTradeHistoryStore>()
+                : serviceProvider.GetRequiredService<TradeHistoryStore>());
+        services.AddSingleton<OpenPositionStore>();
+        services.AddSingleton<TradingCoreRemotePositionStore>();
+        services.AddSingleton<IOpenPositionStore>(serviceProvider =>
+            IsTradingCoreRemote(serviceProvider)
+                ? serviceProvider.GetRequiredService<TradingCoreRemotePositionStore>()
+                : serviceProvider.GetRequiredService<OpenPositionStore>());
+        services.AddSingleton<TradeRecommendationStore>();
+        services.AddSingleton<TradingCoreRemoteRecommendationStore>();
+        services.AddSingleton<ITradeRecommendationStore>(serviceProvider =>
+            IsTradingCoreRemote(serviceProvider)
+                ? serviceProvider.GetRequiredService<TradingCoreRemoteRecommendationStore>()
+                : serviceProvider.GetRequiredService<TradeRecommendationStore>());
+        services.AddSingleton<TradeActivityStore>();
+        services.AddSingleton<TradingCoreRemoteTradeActivityStore>();
+        services.AddSingleton<ITradeActivityStore>(serviceProvider =>
+            IsTradingCoreRemote(serviceProvider)
+                ? serviceProvider.GetRequiredService<TradingCoreRemoteTradeActivityStore>()
+                : serviceProvider.GetRequiredService<TradeActivityStore>());
         services.AddSingleton<IPatternSignalStore, PatternSignalStore>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<ISettingsManagementStore, SettingsManagementStore>();
@@ -72,7 +93,12 @@ public static class DataServiceExtensions
         services.AddSingleton<ILiveEntryExecutionStore, LiveEntryExecutionStore>();
         services.AddSingleton<ILivePositionExecutionStore, LivePositionExecutionStore>();
         services.AddSingleton<IDailyReportActivityStore, DailyReportActivityStore>();
-        services.AddSingleton<IDashboardActivityStore, DashboardActivityStore>();
+        services.AddSingleton<DashboardActivityStore>();
+        services.AddSingleton<TradingCoreRemoteDashboardActivityStore>();
+        services.AddSingleton<IDashboardActivityStore>(serviceProvider =>
+            IsTradingCoreRemote(serviceProvider)
+                ? serviceProvider.GetRequiredService<TradingCoreRemoteDashboardActivityStore>()
+                : serviceProvider.GetRequiredService<DashboardActivityStore>());
         services.AddScoped<ITradingCoreProjectionSource, TradingCoreProjectionSource>();
         services.AddScoped<ITradingCoreAccountConfigurationSource, TradingCoreAccountConfigurationSource>();
         services.AddScoped<ITradingAccountIdentitySource, TradingAccountIdentitySource>();
@@ -144,4 +170,11 @@ public static class DataServiceExtensions
 
         return services;
     }
+
+    private static bool IsTradingCoreRemote(IServiceProvider serviceProvider) =>
+        string.Equals(serviceProvider
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<TradingCoreTransportOptions>>()
+                .Value.Mode,
+            "Remote",
+            StringComparison.Ordinal);
 }

@@ -116,6 +116,21 @@ module TradingCorePositionBrokerStore =
                         trade.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(settlement.Trade, this.Json)) |> ignore
                         trade.ExecuteNonQuery() |> ignore
                     status <- TradingCommandStatuses.Completed
+                elif status = TradingCommandStatuses.Rejected then
+                    use loadPosition = connection.CreateCommand()
+                    loadPosition.Transaction <- transaction
+                    loadPosition.CommandText <- "SELECT payload_json FROM canonical_positions WHERE identity=$id"
+                    loadPosition.Parameters.AddWithValue("$id", command.PositionId) |> ignore
+                    let position = JsonSerializer.Deserialize<TradingPositionProjection>(
+                        Convert.ToString(loadPosition.ExecuteScalar()), this.Json)
+                    if isNull position then invalidOp "position-not-found-for-rejection"
+                    let released = TradingPositionCommandStatePolicy.ClearRequest(position)
+                    use updatePosition = connection.CreateCommand()
+                    updatePosition.Transaction <- transaction
+                    updatePosition.CommandText <- "UPDATE canonical_positions SET payload_json=$payload,version=version+1 WHERE identity=$id"
+                    updatePosition.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(released, this.Json)) |> ignore
+                    updatePosition.Parameters.AddWithValue("$id", command.PositionId) |> ignore
+                    if updatePosition.ExecuteNonQuery() <> 1 then invalidOp "position-rejection-state-conflict"
                 use updateIntent = connection.CreateCommand()
                 updateIntent.Transaction <- transaction
                 updateIntent.CommandText <- "UPDATE financial_intents SET status=$status,broker_order_id=$order,updated_at=$at WHERE command_id=$id"

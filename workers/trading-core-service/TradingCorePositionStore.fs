@@ -74,6 +74,13 @@ module TradingCorePositionStore =
                     insertInbox.Parameters.AddWithValue("$receipt", JsonSerializer.Serialize(receipt, this.Json)) |> ignore
                     insertInbox.Parameters.AddWithValue("$at", acceptedAt.ToString("O")) |> ignore
                     insertInbox.ExecuteNonQuery() |> ignore
+                    let requested = TradingPositionCommandStatePolicy.MarkRequested(position, command)
+                    use updatePosition = connection.CreateCommand()
+                    updatePosition.Transaction <- transaction
+                    updatePosition.CommandText <- "UPDATE canonical_positions SET payload_json=$payload,version=version+1 WHERE identity=$id"
+                    updatePosition.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(requested, this.Json)) |> ignore
+                    updatePosition.Parameters.AddWithValue("$id", command.PositionId) |> ignore
+                    if updatePosition.ExecuteNonQuery() <> 1 then invalidOp "position-request-state-conflict"
                     use audit = connection.CreateCommand()
                     audit.Transaction <- transaction
                     audit.CommandText <- "INSERT INTO outbox VALUES($event,$aggregate,1,$payload,$at,NULL)"
