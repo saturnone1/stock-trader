@@ -20,6 +20,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y buildah skopeo
 
+      - name: Install Syft SBOM scanner
+        uses: anchore/sbom-action/download-syft@v0.20.6
+
       - name: Build sealed Stage 5 OCI archives
         run: |
           release_tag="$(git rev-parse --short=12 HEAD)"

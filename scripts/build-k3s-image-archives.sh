@@ -18,9 +18,10 @@ build_archive() {
   local sbom="$output_dir/${archive_name%.tar}.cdx.json"
   local target_args=()
   [[ -n "$target_stage" ]] && target_args=(--target "$target_stage")
-  buildah bud --pull=newer --layers --sbom syft-cyclonedx --sbom-output "$sbom" \
-    "${target_args[@]}" -f "$dockerfile" -t "$image" .
+  buildah bud --pull=newer --layers "${target_args[@]}" -f "$dockerfile" -t "$image" .
   buildah push "$image" "oci-archive:$output_dir/$archive_name:$image"
+  syft scan --from oci-archive "$output_dir/$archive_name" \
+    --output "cyclonedx-json=$sbom"
 }
 
 image_file_hash() {
