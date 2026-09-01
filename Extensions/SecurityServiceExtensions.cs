@@ -42,6 +42,11 @@ public static class SecurityServiceExtensions
                 "Optimization worker transport requires a 32+ character secret when enabled "
                 + "and a lease duration between 30 and 1800 seconds")
             .ValidateOnStart();
+        services.AddOptions<EdgeTransitionControlOptions>()
+            .Bind(configuration.GetSection(EdgeTransitionControlOptions.SectionName))
+            .Validate(settings => settings.IsValid(),
+                "Edge transition control requires server certificate, key, client CA, and coordinator role")
+            .ValidateOnStart();
 
         // HttpContextAccessor (needed by AuditService to read client IP)
         services.AddHttpContextAccessor();

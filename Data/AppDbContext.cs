@@ -28,6 +28,8 @@ public class AppDbContext : DbContext
     public DbSet<OptimizationResult> OptimizationResults => Set<OptimizationResult>();
     public DbSet<OptimizationWorkerLeaseRecord> OptimizationWorkerLeases =>
         Set<OptimizationWorkerLeaseRecord>();
+    public DbSet<FinancialAuthorityFence> FinancialAuthorityFences => Set<FinancialAuthorityFence>();
+    public DbSet<FinancialAuthorityMirror> FinancialAuthorityMirrors => Set<FinancialAuthorityMirror>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -212,6 +214,18 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(lease => lease.JobId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FinancialAuthorityFence>(entity =>
+        {
+            entity.HasKey(value => value.TransitionId);
+            entity.HasIndex(value => new { value.IsReleased, value.AuthorityGeneration });
+        });
+
+        modelBuilder.Entity<FinancialAuthorityMirror>(entity =>
+        {
+            entity.HasKey(value => value.Id);
+            entity.ToTable("FinancialAuthorityMirror");
         });
     }
 

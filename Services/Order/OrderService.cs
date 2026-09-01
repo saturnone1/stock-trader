@@ -1,6 +1,7 @@
 using StockTrader.Data.Repositories;
 using StockTrader.Application.MarketData;
 using StockTrader.Application.Trading;
+using StockTrader.Application.TradingCore;
 using StockTrader.Domain.MarketData;
 using StockTrader.Models;
 using StockTrader.Models.Enums;
@@ -29,6 +30,7 @@ public class OrderService : IOrderService
     private readonly IMarketCalendar _marketCalendar;
     private readonly ManualOrderWorkflow _manualOrders;
     private readonly ILiveEntryExecutionCoordinator _entryExecutions;
+    private readonly IFinancialCommandGate _commandGate;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
@@ -39,6 +41,7 @@ public class OrderService : IOrderService
         IMarketCalendar marketCalendar,
         ManualOrderWorkflow manualOrders,
         ILiveEntryExecutionCoordinator entryExecutions,
+        IFinancialCommandGate commandGate,
         ILogger<OrderService> logger)
     {
         _accountManager = accountManager;
@@ -48,6 +51,7 @@ public class OrderService : IOrderService
         _marketCalendar = marketCalendar;
         _manualOrders = manualOrders;
         _entryExecutions = entryExecutions;
+        _commandGate = commandGate;
         _logger = logger;
     }
 
@@ -59,6 +63,7 @@ public class OrderService : IOrderService
     public async Task<bool> PlaceOrderAsync(TradeRecommendation recommendation, int? accountId,
         CancellationToken ct = default)
     {
+        await _commandGate.EnsureOpenAsync(FinancialCommandClasses.NewEntry, ct);
         var userSettings = await _settingsRepo.GetAsync(ct);
 
         // 1. 항상 추천 내역 저장 및 알림 발송 (모드에 무관)
@@ -148,7 +153,10 @@ public class OrderService : IOrderService
     }
 
     /// <inheritdoc />
-    public Task<(bool Success, string Message)> PlaceManualOrderAsync(
+    public async Task<(bool Success, string Message)> PlaceManualOrderAsync(
         long signalId, CancellationToken ct = default)
-        => _manualOrders.ExecuteAsync(signalId, ct);
+    {
+        await _commandGate.EnsureOpenAsync(FinancialCommandClasses.ManualCommand, ct);
+        return await _manualOrders.ExecuteAsync(signalId, ct);
+    }
 }

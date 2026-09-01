@@ -135,6 +135,19 @@ public sealed record AuthorityFenceReceipt(
     long EnabledConsumerLag,
     string FenceHash);
 
+public sealed record EdgeAuthorityFenceRequest(
+    TradingControlOperation Operation,
+    string TransitionId,
+    long AuthorityGeneration);
+
+public sealed record EdgeAuthorityMirrorRequest(
+    TradingControlOperation Operation,
+    string TransitionId,
+    long AuthorityGeneration,
+    string Mode,
+    string Owner,
+    string AuthorityReceiptHash);
+
 public sealed record AuthorityDrainInventory(
     int UnresolvedIntentCount,
     int UnresolvedBrokerEffectCount,

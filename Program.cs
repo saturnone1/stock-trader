@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Serilog;
 using StockTrader.Api;
 using StockTrader.Configuration;
@@ -14,6 +16,30 @@ try
     var builder = WebApplication.CreateBuilder(args);
     if (!isOpenApiGeneration && !builder.Environment.IsDevelopment())
         builder.Configuration.AddUserSecrets<Program>(optional: true);
+
+    var edgeControl = builder.Configuration
+        .GetSection(EdgeTransitionControlOptions.SectionName)
+        .Get<EdgeTransitionControlOptions>() ?? new EdgeTransitionControlOptions();
+    if (!isOpenApiGeneration && edgeControl.Enabled)
+    {
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(8080);
+            options.ListenAnyIP(EdgeTransitionControlOptions.InternalPort, listen =>
+            {
+                var certificate = X509Certificate2.CreateFromPemFile(
+                    edgeControl.ServerCertificatePath,
+                    edgeControl.ServerCertificateKeyPath);
+                listen.UseHttps(https =>
+                {
+                    https.ServerCertificate = certificate;
+                    https.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
+                    // Full private-CA and SAN validation is performed by the internal endpoint.
+                    https.ClientCertificateValidation = (_, _, _) => true;
+                });
+            });
+        });
+    }
 
     if (builder.Configuration.GetValue<bool>(
             $"{OptimizationWorkerTransportOptions.SectionName}:LeaseTransportEnabled"))

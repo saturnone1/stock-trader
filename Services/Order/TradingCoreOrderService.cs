@@ -14,6 +14,7 @@ namespace StockTrader.Services.Order;
 internal sealed class TradingCoreOrderService(
     ITradingCoreControlPlane core,
     ITradingAccountIdentitySource accounts,
+    IFinancialCommandGate commandGate,
     TradingCoreManualEntryPreparation manualEntries,
     INotificationService notifications,
     TimeProvider clock,
@@ -28,6 +29,7 @@ internal sealed class TradingCoreOrderService(
         int? accountId,
         CancellationToken ct = default)
     {
+        await commandGate.EnsureOpenAsync(FinancialCommandClasses.NewEntry, ct);
         if (recommendation.ExecutionArtifact is null || recommendation.MarketDataEvidence is null)
             throw new InvalidOperationException("missing-immutable-trading-execution-context");
         if (recommendation.SourceSignalId is null)
@@ -91,6 +93,7 @@ internal sealed class TradingCoreOrderService(
         long signalId,
         CancellationToken ct = default)
     {
+        await commandGate.EnsureOpenAsync(FinancialCommandClasses.ManualCommand, ct);
         var prepared = await manualEntries.PrepareAsync(signalId, ct);
         if (!prepared.Succeeded)
             return (false, prepared.Message);

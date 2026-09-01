@@ -100,6 +100,12 @@ public static class DataServiceExtensions
         services.AddSingleton<IDailyReportActivityStore, DailyReportActivityStore>();
         services.AddScoped<ITradingCoreProjectionSource, TradingCoreProjectionSource>();
         services.AddScoped<ITradingCoreAccountConfigurationSource, TradingCoreAccountConfigurationSource>();
+        services.AddScoped<IFinancialCommandGate, EdgeFinancialCommandGate>();
+        services.AddSingleton<EdgeFinancialAuthorityControl>();
+        services.AddSingleton<IEdgeFinancialAuthorityControl>(serviceProvider =>
+            serviceProvider.GetRequiredService<EdgeFinancialAuthorityControl>());
+        services.AddSingleton<IFinancialCycleBarrier>(serviceProvider =>
+            serviceProvider.GetRequiredService<EdgeFinancialAuthorityControl>());
         services.AddScoped<ITradingAccountIdentitySource, TradingAccountIdentitySource>();
         services.AddScoped<DatabaseSchemaMigrator>();
         services.AddScoped<DatabaseMigrationStatusProvider>();

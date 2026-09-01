@@ -3,6 +3,7 @@ using StockTrader.Application.Execution;
 using StockTrader.Application.Settings;
 using StockTrader.Application.Strategies;
 using StockTrader.Application.Trading;
+using StockTrader.Application.TradingCore;
 using StockTrader.Configuration;
 using StockTrader.Data.Repositories;
 using StockTrader.Models;
@@ -27,11 +28,15 @@ public sealed class LivePositionMonitoringCycle(
     ILivePositionExecutionEvaluator executionEvaluator,
     INotificationService notifications,
     IOptions<TradingSettings> settings,
+    IFinancialCycleBarrier financialBarrier,
     TimeProvider timeProvider,
     ILogger<LivePositionMonitoringCycle> logger) : ILivePositionMonitoringCycle
 {
     public async Task RunAsync(CancellationToken ct = default)
     {
+        await using var cycleLease = await financialBarrier.TryEnterPositionCycleAsync(ct);
+        if (cycleLease is null)
+            return;
         var openPositions = await positions.GetOpenPositionsAsync(ct);
         if (openPositions.Count == 0)
             return;

@@ -7,6 +7,7 @@ using StockTrader.Application.Execution;
 using StockTrader.Application.MarketData;
 using StockTrader.Application.Signals;
 using StockTrader.Application.Trading;
+using StockTrader.Application.TradingCore;
 using StockTrader.Data;
 using StockTrader.Data.Repositories;
 using StockTrader.Domain.MarketData;
@@ -109,7 +110,17 @@ public class OrderServiceTests
             _marketCalendarMock.Object,
             manualOrders,
             entryExecutions,
+            OpenCommandGate(),
             NullLogger<OrderService>.Instance);
+    }
+
+    private static IFinancialCommandGate OpenCommandGate()
+    {
+        var gate = new Mock<IFinancialCommandGate>();
+        gate.Setup(value => value.EnsureOpenAsync(
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return gate.Object;
     }
 
     // ── 테스트 데이터 헬퍼 ─────────────────────────────────────────────────
