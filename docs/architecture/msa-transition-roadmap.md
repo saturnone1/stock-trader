@@ -274,6 +274,12 @@ that replay gate, load, and single-authority cutover/rollback gates recorded in 
 [Trading Core operations note](../operations/trading-core-projection.md). No Stage 6 extraction is
 active, and separate Risk, Order, Position, or Broker services remain prohibited.
 
+[ADR 0082](adr/0082-define-trading-core-acceptance-and-single-writer-cutover.md) now defines the
+design for those remaining gates. An isolated K3s fixture may close deterministic replay and broker
+convergence evidence without touching production state; genuine production Shadow observations are
+still independently required. Remote activation remains unauthorized until both evidence layers and
+the monotonic single-writer cutover/rollback preconditions pass.
+
 ## Stage 6 — Re-evaluate Strategy Research and Edge
 
 Do not extract a service merely to complete a diagram. Separate Strategy Research from Edge only if

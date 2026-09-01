@@ -137,6 +137,32 @@ The structured [MSA target blueprint](msa-target-blueprint.md) maps the decision
 target workloads, table ownership, contract registry, live-trading sequences, failure behavior,
 security policy, deployment waves, and the single Trading Core completion batch.
 
+[ADR 0082](adr/0082-define-trading-core-acceptance-and-single-writer-cutover.md) separates isolated
+functional acceptance from genuine production Shadow evidence and defines the monotonic
+single-writer Remote cutover and reconciled Remote-to-Local rollback state machines. It prohibits
+fabricating production positions or watermarks and keeps deterministic broker faults out of the
+production image. The ADR is design-only and does not authorize implementation or Remote authority.
+Its A0 details are frozen for review in the
+[Trading Core acceptance and authority contract](trading-core-acceptance-contracts.md), including
+transition phases, stable stop reasons, scenario identities, manifest derivation, and v1-to-v2
+compatibility rules.
+The corresponding A1/A2 Pod and composition design is in
+[Trading Core isolated acceptance design](trading-core-isolated-acceptance-design.md). It uses
+byte-identical shared runtime assemblies, an external durable Broker Emulator, one scenario at a
+time, default-deny networking, and no production broker credential or financial volume.
+The A3–A5 production handoff design is in
+[Trading Core cutover coordination and Edge fencing design](trading-core-cutover-coordination-design.md).
+It uses a resumable short-lived Coordinator, a canonical direction-neutral financial transfer,
+staged rollback import, and a Remote Edge image with no Local broker/writer capability.
+The A6/A7 completion campaign is defined in
+[Trading Core integrated candidate and acceptance plan](trading-core-integration-and-acceptance-plan.md),
+which permits one full verification sequence only after A0–A5 form one frozen candidate and ends in
+an explicitly released higher-generation Remote authority.
+The complete Stage 5 design has been reconciled in the
+[Trading Core final design review](trading-core-stage5-final-design-review.md). It records resolved
+state/outbox/RBAC/topology issues, the final source boundaries, and one compressed F0–F9
+implementation graph; the baseline still awaits user acceptance.
+
 ## Target modules
 
 | Module | Owns | Must not own |

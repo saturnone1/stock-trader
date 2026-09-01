@@ -357,6 +357,18 @@ The allow-list is directional:
 | Trading Core | Market Data evidence endpoint | 7443 | Target before Remote |
 | Trading Core | broker HTTPS, application-host allow-list | 443 | Remote only |
 
+Temporary Stage 5 acceptance/cutover edges are separately bounded and do not become steady-state
+service dependencies:
+
+| Source | Destination | Port | Lifetime |
+| --- | --- | ---: | --- |
+| acceptance driver | acceptance Trading Core | 9443, 9543 | isolated acceptance namespace only |
+| acceptance driver / Trading Core | Broker Emulator | 10443 | isolated acceptance namespace only |
+| acceptance Trading Core | Market Data evidence endpoint | 7443 | isolated acceptance run only |
+| Cutover Coordinator | Edge internal cutover endpoint | 3543 | active transition only |
+| Cutover Coordinator | Trading Core control endpoint | 9443 | active transition only |
+| Cutover Coordinator | Kubernetes API | 443 | active transition with scoped Role only |
+
 Every service also gets DNS egress and cluster-local health/metrics access only as documented.
 Trading Core-to-Market Data uses a dedicated client certificate and caller role, not Edge
 credentials. Market Data maps that identity only to evidence verification. NetworkPolicy widening
@@ -406,7 +418,7 @@ Secrets, credential ciphertext, cookies, authorization headers, and full account
 redacted.
 
 Minimum service metrics are request latency/error by contract operation, queue/lease age, active
-work, durable inbox/outbox backlog, evidence revision/freshness, unresolved financial intents,
+work, durable inbox identity count, activity-journal size and per-enabled-consumer lag, evidence revision/freshness, unresolved financial intents,
 broker/canonical divergence, last successful reconciliation, memory, CPU, and restart count.
 
 Health separates:
@@ -475,6 +487,32 @@ desktop, image, and K3s verification sequence. That sequence belongs to steps 5 
 
 ## 13. Trading Core completion batch
 
+The normative acceptance environment, evidence manifest, stop conditions, and monotonic
+single-writer cutover/rollback state machines are defined by
+[ADR 0082](adr/0082-define-trading-core-acceptance-and-single-writer-cutover.md). In particular, an
+isolated acceptance fixture may prove autonomous completed-bar replay without fabricating production
+financial state, but it cannot replace the required non-empty production Shadow corpus or authorize
+Remote by itself.
+The detailed A0 contract baseline is maintained in
+[Trading Core acceptance and authority contracts](trading-core-acceptance-contracts.md); later work
+must consume its stable phases, reason codes, scenario identities, manifest schema, and compatibility
+rules instead of defining them inside scripts or HTTP handlers.
+The ephemeral workload and failure-injection boundary are defined separately in
+[Trading Core isolated acceptance design](trading-core-isolated-acceptance-design.md); scripted
+broker and clock controls are acceptance-image concerns and must not enter the production image.
+The production handoff boundary is defined in
+[Trading Core cutover coordination and Edge fencing design](trading-core-cutover-coordination-design.md),
+including the short-lived Coordinator identity, Edge scheduler/command fences, direction-neutral
+financial transfer, staged rollback import, and separate `api-local`/`api-remote` capability proof.
+The single integrated completion gate is defined in
+[Trading Core integrated candidate and acceptance plan](trading-core-integration-and-acceptance-plan.md).
+It freezes one A0–A5 image set, executes the full local suite once, then links isolated, Shadow,
+cutover, Remote recovery, reconciled rollback, and final Remote recutover evidence.
+The final cross-document review and implementation context boundaries are in
+[Trading Core Stage 5 final design review](trading-core-stage5-final-design-review.md). Its completion
+means the design is ready for user acceptance, not that implementation or Remote activation has
+started.
+
 No later extraction starts until this complete batch is delivered:
 
 - migrate every internal edge to exact certificate-role authorization and retire shared transport
@@ -529,6 +567,25 @@ milestone. T6 is the first deployable completion candidate.
 | Shadow parity corpus | generation is active but has zero real decisions | identified market-open and market-closed observations |
 | Trading Core network | DNS-only egress | evidence-only edge first; public 443 plus broker-host validation only at Remote acceptance |
 | acceptance cadence | infrastructure subfeatures were separately verified/deployed | integrate T1–T5, then execute one completion gate |
+
+### 13.3 Acceptance and authority handoff
+
+The completion candidate is evaluated in two layers: an ephemeral K3s namespace proves replay,
+restart, broker-failure convergence, and resource bounds against isolated state; production Shadow
+proves real deployed identity, contract, Market Data, account-generation, and decision compatibility.
+Both are required.
+
+Authority then advances through explicit monotonic states:
+
+```text
+Stable(Shadow, Edge, g) -> Quiescing -> Reconciled -> Stable(Remote, TradingCore, g+1)
+Stable(Remote, TradingCore, g) -> RollbackQuiescing -> Reconciled
+                              -> Stable(Shadow, Edge, g+1)
+```
+
+No environment-only switch, old-database restore, automatic Local fallback, or generation reuse is
+a valid authority transition. The detailed preconditions and stop conditions live only in ADR 0082
+so deployment and runbook work do not invent a second protocol.
 
 ## 14. Conditional later boundaries
 
