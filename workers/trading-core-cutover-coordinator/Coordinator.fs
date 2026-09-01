@@ -204,7 +204,9 @@ module Coordinator =
                envValue "AuthorityCapabilityAttestation__RuntimeProfile" "api-remote"
                envValue "AuthorityCapabilityAttestation__HasBrokerEgress" "false"
                envDelete "ALPACA__APIKEY"
-               envDelete "ALPACA__APISECRET" |]
+               envDelete "ALPACA__APISECRET"
+               envDelete "ALPACA__ISPAPER"
+               envDelete "ALPACA__ENABLESTREAMING" |]
         else
             [| envValue "TradingCoreTransport__Mode" (plan.TargetMode.ToString())
                envValue "AuthorityCapabilityAttestation__RuntimeProfile" "api-local"

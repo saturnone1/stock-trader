@@ -12,6 +12,7 @@
     <Compile Include="ControlledTimeProvider.fs" />
     <Compile Include="Configuration.fs" />
     <Compile Include="ScriptedBrokerClient.fs" />
+    <Compile Include="AcceptanceScenarioGate.fs" />
     <Compile Include="HttpHost.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

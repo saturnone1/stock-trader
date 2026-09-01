@@ -706,6 +706,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         "unused-server-key",
         "unused-client-ca",
         "edge-trading-control.stocktrader.internal",
+        "trading-cutover-coordinator.stocktrader.internal",
         new Uri("https://market-data.test"),
         "unused-market-data-client-cert",
         "unused-market-data-client-key",
@@ -714,6 +715,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         TimeSpan.FromSeconds(30),
         Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
         "test-generation",
+        true,
         initialMode);
 
     private static T Some<T>(FSharpOption<T>? value)

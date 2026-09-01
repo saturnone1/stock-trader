@@ -1,8 +1,20 @@
 namespace StockTrader.ServiceContracts.TradingCore;
 
+using System.Security.Cryptography;
+using System.Text;
+
 public static class CanonicalFinancialTransferVersions
 {
     public const int Current = 2;
+}
+
+public static class FinancialExecutionIdentityPolicy
+{
+    public static string ClientOrderId(string commandId)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(commandId));
+        return "st-" + Convert.ToHexString(hash).ToLowerInvariant()[..32];
+    }
 }
 
 public sealed record FinancialTransferCompatibility(
@@ -143,6 +155,9 @@ public static class CanonicalFinancialTransferIdentity
 
     public static string Risk(FinancialRiskState risk) =>
         CanonicalJsonHash.Compute(risk, nameof(FinancialRiskState.StateHash));
+
+    public static string BrokerEvidence(FinancialBrokerEvidence evidence) =>
+        CanonicalJsonHash.Compute(evidence, nameof(FinancialBrokerEvidence.EvidenceHash));
 }
 
 public static class CanonicalFinancialTransferPolicy
@@ -205,8 +220,13 @@ public static class CanonicalFinancialTransferPolicy
                         || value.PayloadHash != CanonicalFinancialTransferIdentity.Payload(value.PayloadJson))
                 || transfer.ExecutionIdentities.Any(value =>
                     string.IsNullOrWhiteSpace(value.PayloadHash)
-                    || string.IsNullOrWhiteSpace(value.TerminalStatus))
-                || transfer.BrokerEvidence.Any(value => value.CanonicalQuantity != value.BrokerQuantity))
+                    || string.IsNullOrWhiteSpace(value.TerminalStatus)
+                    || value.LastEvidenceAtUtc.Kind != DateTimeKind.Utc)
+                || transfer.BrokerEvidence.Any(value =>
+                    value.CanonicalQuantity != value.BrokerQuantity
+                    || value.LastEvidenceAtUtc.Kind != DateTimeKind.Utc
+                    || value.EvidenceHash != CanonicalFinancialTransferIdentity.BrokerEvidence(value))
+                || !OpenPositionEvidenceCovered(transfer))
                 return "broker-canonical-quantity-divergence";
         }
         catch (System.Text.Json.JsonException)
@@ -260,5 +280,25 @@ public static class CanonicalFinancialTransferPolicy
             previous = identity;
         }
         return true;
+    }
+
+    private static bool OpenPositionEvidenceCovered(CanonicalFinancialTransferV2 transfer)
+    {
+        var required = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in transfer.Positions)
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(row.PayloadJson);
+            var root = document.RootElement;
+            if (root.TryGetProperty("closedAtUtc", out var closed)
+                && closed.ValueKind is not System.Text.Json.JsonValueKind.Null)
+                continue;
+            var accountId = root.GetProperty("accountId").GetString();
+            var symbol = root.GetProperty("symbol").GetString()?.ToUpperInvariant();
+            required.Add($"{accountId}|{symbol}");
+        }
+        var actual = transfer.BrokerEvidence
+            .Select(value => $"{value.AccountId}|{value.Symbol.ToUpperInvariant()}")
+            .ToHashSet(StringComparer.Ordinal);
+        return required.IsSubsetOf(actual);
     }
 }

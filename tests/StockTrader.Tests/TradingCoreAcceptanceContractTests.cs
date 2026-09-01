@@ -51,4 +51,39 @@ public sealed class TradingCoreAcceptanceContractTests
         TradingCoreAcceptancePolicy.ManifestError(manifest)
             .Should().Be("acceptance-manifest-invalid");
     }
+
+    [Fact]
+    public void CoordinatorPlanRequiresASeparateRollbackImportJob()
+    {
+        var now = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+        var transitionId = Guid.NewGuid().ToString();
+        var candidate = new TradingCoreTransitionPlanV1(
+            1, "", transitionId, AuthorityTransitionDirections.Rollback,
+            TradingAuthorityMode.Remote, TradingAuthorityMode.Shadow, 4, 2,
+            now, now.AddMinutes(30), new Uri("https://edge:3543"),
+            new Uri("https://core:9443"), "/state/financial-transfer.json", null,
+            new FinancialTransferCompatibility(2, "edge", "core", "engine", "artifact",
+                "patterns", "calendar", "market-data"), "BrokerTotalEquity",
+            new TradingCoreDeploymentTarget("stocktrader", "stocktrader-api",
+                "stocktrader-trading-core", "api", "trading-core", "edge-image",
+                "core-shadow-image", "stocktrader-alpaca"),
+            new TradingCoreRollbackTarget(
+                $"stocktrader-edge-rollback-import-{transitionId}",
+                "/state/rollback-import-receipt.json"),
+            "isolated-manifest", "shadow-manifest");
+        var plan = candidate with { PlanHash = TradingCoreCoordinatorIdentity.Plan(candidate) };
+
+        TradingCoreCoordinatorPolicy.Error(plan).Should().BeNull();
+        plan.Rollback!.ImportJobName.Should().StartWith("stocktrader-edge-rollback-import-");
+    }
+
+    [Fact]
+    public void FinancialExecutionClientIdentityIsStableAndNamespaced()
+    {
+        var first = FinancialExecutionIdentityPolicy.ClientOrderId("command-42");
+        var second = FinancialExecutionIdentityPolicy.ClientOrderId("command-42");
+
+        first.Should().Be(second).And.StartWith("st-").And.HaveLength(35);
+        FinancialExecutionIdentityPolicy.ClientOrderId("command-43").Should().NotBe(first);
+    }
 }

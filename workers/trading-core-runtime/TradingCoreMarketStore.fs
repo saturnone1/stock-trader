@@ -105,6 +105,20 @@ ON CONFLICT(account_id) DO UPDATE SET payload_json=excluded.payload_json,observe
             upsertAccount.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(account, this.Json)) |> ignore
             upsertAccount.Parameters.AddWithValue("$at", account.ObservedAtUtc.ToString("O")) |> ignore
             upsertAccount.ExecuteNonQuery() |> ignore
+            use clearPositions = connection.CreateCommand()
+            clearPositions.Transaction <- transaction
+            clearPositions.CommandText <- "DELETE FROM broker_positions WHERE account_id=$account"
+            clearPositions.Parameters.AddWithValue("$account", accountId) |> ignore
+            clearPositions.ExecuteNonQuery() |> ignore
+            for position in positions |> Seq.sortBy (fun value -> value.Symbol) do
+                use savePosition = connection.CreateCommand()
+                savePosition.Transaction <- transaction
+                savePosition.CommandText <- "INSERT INTO broker_positions VALUES($account,$symbol,$payload,$at)"
+                savePosition.Parameters.AddWithValue("$account", accountId) |> ignore
+                savePosition.Parameters.AddWithValue("$symbol", position.Symbol.ToUpperInvariant()) |> ignore
+                savePosition.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(position, this.Json)) |> ignore
+                savePosition.Parameters.AddWithValue("$at", account.ObservedAtUtc.ToString("O")) |> ignore
+                savePosition.ExecuteNonQuery() |> ignore
             transaction.Commit()
             this.RefreshRisk(dailyLossLimitPercent)
 

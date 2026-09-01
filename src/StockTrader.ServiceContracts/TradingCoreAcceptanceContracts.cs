@@ -99,6 +99,23 @@ public sealed record AcceptanceTimeAdvanceRequest(
     string ScenarioId, string OperationId, DateTime UtcNow, string CausationId);
 public sealed record AcceptanceTimeView(string ScenarioId, DateTime UtcNow, long Revision);
 
+public sealed record AcceptanceBootstrapRequest(
+    string ScenarioId,
+    string OperationId,
+    string FixtureHash,
+    TradingStateSnapshot Snapshot,
+    TradingAccountConfigurationSet AccountConfiguration,
+    TradingAuthorityContract RunningAuthority);
+
+public sealed record AcceptanceScenarioStartRequest(string ScenarioId, string OperationId);
+
+public sealed record AcceptanceScenarioState(
+    string ScenarioId,
+    string Phase,
+    string FixtureHash,
+    IReadOnlyList<string> OperationIds,
+    DateTime UpdatedAtUtc);
+
 public sealed record AcceptanceScenarioResult(
     string ScenarioId, string ScenarioCode, string FixtureHash, string ExpectedStateHash,
     string ActualStateHash, IReadOnlyList<string> EvidenceReferences,

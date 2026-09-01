@@ -6,13 +6,18 @@ cd "$repo_root"
 
 release_tag="${1:-$(git rev-parse --short=12 HEAD)}"
 deploy_scope="${STOCKTRADER_DEPLOY_SCOPE:-all}"
-api_image="localhost/stock-trader/api:architecture-${release_tag}"
+api_local_image="localhost/stock-trader/api-local:architecture-${release_tag}"
+api_remote_image="localhost/stock-trader/api-remote:architecture-${release_tag}"
+api_image="$api_local_image"
 desktop_image="localhost/stock-trader/desktop:architecture-${release_tag}"
 worker_image="localhost/stock-trader/optimization-worker:architecture-${release_tag}"
 market_data_image="localhost/stock-trader/market-data:architecture-${release_tag}"
 ml_training_image="localhost/stock-trader/ml-training:architecture-${release_tag}"
-trading_core_image="localhost/stock-trader/trading-core:architecture-${release_tag}"
+trading_core_remote_image="localhost/stock-trader/trading-core:architecture-${release_tag}"
+trading_core_shadow_image="localhost/stock-trader/trading-core-shadow:architecture-${release_tag}"
+trading_core_image="$trading_core_shadow_image"
 archive_dir="$(mktemp -d /tmp/stocktrader-deploy.XXXXXX)"
+source_archive_dir="${STOCKTRADER_IMAGE_ARCHIVE_DIR:-}"
 data_dir=""
 stocktrader_host=""
 migration_container="stocktrader-migrate-${release_tag}"
@@ -40,9 +45,15 @@ trading_core_dir="${STOCKTRADER_TRADING_CORE_DIR:-}"
 trading_core_tls_generation="${STOCKTRADER_TRADING_CORE_TLS_GENERATION:-}"
 trading_core_server_tls_secret=""
 trading_core_client_tls_secret=""
+edge_cutover_server_tls_secret=""
+cutover_coordinator_client_tls_secret=""
 trading_core_encryption_generation="${STOCKTRADER_TRADING_CORE_ENCRYPTION_GENERATION:-}"
 trading_core_encryption_secret=""
 trading_core_mode="${STOCKTRADER_TRADING_CORE_MODE:-Projection}"
+if [[ "$trading_core_mode" == "Remote" ]]; then
+  api_image="$api_remote_image"
+  trading_core_image="$trading_core_remote_image"
+fi
 
 deploy_api=false
 deploy_desktop=false
@@ -50,6 +61,8 @@ deploy_worker=false
 deploy_market_data=false
 deploy_ml_training=false
 deploy_trading_core=false
+deploy_transition=false
+transition_direction=""
 case "$deploy_scope" in
   all) deploy_api=true; deploy_desktop=true; deploy_worker=true; deploy_market_data=true; deploy_ml_training=true; deploy_trading_core=true ;;
   api) deploy_api=true ;;
@@ -58,13 +71,16 @@ case "$deploy_scope" in
   market-data) deploy_market_data=true ;;
   ml-training) deploy_ml_training=true ;;
   trading-core) deploy_trading_core=true ;;
+  trading-core-cutover) deploy_transition=true; transition_direction="Cutover" ;;
+  trading-core-rollback) deploy_transition=true; transition_direction="Rollback" ;;
+  trading-core-recutover) deploy_transition=true; transition_direction="Cutover" ;;
   *)
-    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, optimization-worker, market-data, ml-training, or trading-core." >&2
+    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, optimization-worker, market-data, ml-training, trading-core, trading-core-cutover, trading-core-rollback, or trading-core-recutover." >&2
     exit 1
     ;;
 esac
 
-if $deploy_api; then
+if $deploy_api || $deploy_transition; then
   data_dir="${STOCKTRADER_DATA_DIR:?Set STOCKTRADER_DATA_DIR to the absolute host data directory}"
 fi
 if $deploy_desktop; then
@@ -120,7 +136,7 @@ if $deploy_api || $deploy_market_data || $deploy_trading_core; then
   market_data_client_tls_secret="stocktrader-market-data-client-tls-$market_data_tls_generation"
   market_data_trading_core_client_tls_secret="stocktrader-market-data-trading-core-client-tls-$market_data_tls_generation"
 fi
-if $deploy_api || $deploy_trading_core; then
+if $deploy_api || $deploy_trading_core || $deploy_transition; then
   if [[ -z "$trading_core_tls_generation" ]]; then
     trading_core_tls_generation="$(sudo k3s kubectl -n stocktrader get configmap \
       stocktrader-trading-core-tls-active -o jsonpath='{.data.generation}' 2>/dev/null || true)"
@@ -132,6 +148,8 @@ if $deploy_api || $deploy_trading_core; then
   fi
   trading_core_server_tls_secret="stocktrader-trading-core-server-tls-$trading_core_tls_generation"
   trading_core_client_tls_secret="stocktrader-trading-core-client-tls-$trading_core_tls_generation"
+  edge_cutover_server_tls_secret="stocktrader-edge-cutover-server-tls-$trading_core_tls_generation"
+  cutover_coordinator_client_tls_secret="stocktrader-cutover-coordinator-client-tls-$trading_core_tls_generation"
 fi
 if $deploy_trading_core; then
   if [[ -z "$trading_core_encryption_generation" ]]; then
@@ -151,7 +169,7 @@ if $deploy_trading_core; then
   fi
 fi
 
-if $deploy_api && { [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; }; then
+if { $deploy_api || $deploy_transition; } && { [[ ! "$data_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$data_dir" == "/" ]]; }; then
   echo "STOCKTRADER_DATA_DIR must be a safe absolute path below the filesystem root." >&2
   exit 1
 fi
@@ -223,10 +241,35 @@ fi
 
 cleanup() {
   sudo buildah rm "$migration_container" >/dev/null 2>&1 || true
-  sudo rm -f -- "$archive_dir/api.tar" "$archive_dir/desktop.tar" "$archive_dir/worker.tar" "$archive_dir/market-data.tar" "$archive_dir/ml-training.tar" "$archive_dir/trading-core.tar"
+  sudo rm -f -- "$archive_dir/api.tar" "$archive_dir/desktop.tar" \
+    "$archive_dir/worker.tar" "$archive_dir/market-data.tar" \
+    "$archive_dir/ml-training.tar" "$archive_dir/trading-core.tar" \
+    "$archive_dir/deployment-api.yaml" "$archive_dir/deployment-api.yaml.remote" \
+    "$archive_dir/trading-core-transition.yaml"
   rmdir "$archive_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+prepare_image() {
+  local dockerfile="$1"
+  local image="$2"
+  local archive_name="$3"
+  local target_stage="${4:-}"
+  local target="$archive_dir/$archive_name"
+  if [[ -n "$source_archive_dir" ]]; then
+    local source="$source_archive_dir/$archive_name"
+    if [[ ! -f "$source" ]]; then
+      echo "Missing prebuilt image archive: $source" >&2
+      exit 1
+    fi
+    cp -- "$source" "$target"
+    return
+  fi
+  local target_args=()
+  [[ -n "$target_stage" ]] && target_args=(--target "$target_stage")
+  sudo buildah bud --layers "${target_args[@]}" -f "$dockerfile" -t "$image" .
+  sudo buildah push "$image" "oci-archive:$target:$image"
+}
 
 sudo k3s kubectl apply -f k8s/namespace.yaml
 if $deploy_api || $deploy_worker; then
@@ -238,7 +281,7 @@ fi
 if $deploy_api || $deploy_ml_training; then
   sudo k3s kubectl apply -f k8s/network-policy-ml-training.yaml
 fi
-if $deploy_api || $deploy_trading_core; then
+if $deploy_api || $deploy_trading_core || $deploy_transition; then
   sudo k3s kubectl apply -f k8s/network-policy-trading-core.yaml
 fi
 if $deploy_api && ! sudo k3s kubectl -n stocktrader get secret stocktrader-alpaca >/dev/null 2>&1; then
@@ -293,8 +336,9 @@ if $deploy_trading_core \
   echo "Create it from k8s/secret-trading-core.example.yaml before deploying." >&2
   exit 1
 fi
-for tls_secret in "$trading_core_server_tls_secret" "$trading_core_client_tls_secret"; do
-  if { $deploy_api || $deploy_trading_core; } \
+for tls_secret in "$trading_core_server_tls_secret" "$trading_core_client_tls_secret" \
+  "$edge_cutover_server_tls_secret" "$cutover_coordinator_client_tls_secret"; do
+  if { $deploy_api || $deploy_trading_core || $deploy_transition; } \
     && ! sudo k3s kubectl -n stocktrader get secret "$tls_secret" >/dev/null 2>&1; then
     echo "Missing Kubernetes secret stocktrader/$tls_secret." >&2
     echo "Create or rotate it with scripts/rotate-trading-core-tls.sh." >&2
@@ -302,31 +346,84 @@ for tls_secret in "$trading_core_server_tls_secret" "$trading_core_client_tls_se
   fi
 done
 
+if $deploy_transition; then
+  if [[ -z "$source_archive_dir" || ! -d "$source_archive_dir" ]]; then
+    echo "Trading Core transitions require STOCKTRADER_IMAGE_ARCHIVE_DIR from an off-node stage5 build." >&2
+    exit 1
+  fi
+  transition_plan_file="${STOCKTRADER_TRANSITION_PLAN_FILE:?Set STOCKTRADER_TRANSITION_PLAN_FILE}"
+  kubernetes_api_cidr="${STOCKTRADER_KUBERNETES_API_CIDR:?Set STOCKTRADER_KUBERNETES_API_CIDR, for example 10.43.0.1/32}"
+  if [[ ! -f "$transition_plan_file" || ! -f "$source_archive_dir/SHA256SUMS" ]]; then
+    echo "Transition plan or archive SHA256SUMS is missing." >&2
+    exit 1
+  fi
+  (cd "$source_archive_dir" && sha256sum -c SHA256SUMS)
+  transition_id="$(sed -n 's/.*"transitionId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$transition_plan_file" | head -n 1)"
+  plan_direction="$(sed -n 's/.*"direction"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$transition_plan_file" | head -n 1)"
+  if [[ ! "$transition_id" =~ ^[0-9a-fA-F-]{36}$ || "$plan_direction" != "$transition_direction" ]]; then
+    echo "Transition plan identity or direction does not match $deploy_scope." >&2
+    exit 1
+  fi
+  archive_names=(api-local.tar api-remote.tar trading-core.tar trading-core-shadow.tar \
+    trading-core-cutover-coordinator.tar edge-rollback-importer.tar)
+  for archive_name in "${archive_names[@]}"; do
+    if [[ ! -f "$source_archive_dir/$archive_name" ]]; then
+      echo "Missing stage5 image archive: $source_archive_dir/$archive_name" >&2
+      exit 1
+    fi
+    sudo k3s ctr images import "$source_archive_dir/$archive_name"
+  done
+  if sudo k3s kubectl -n stocktrader get job "stocktrader-cutover-$transition_id" >/dev/null 2>&1; then
+    echo "Transition job already exists; refusing to mutate immutable transition $transition_id." >&2
+    exit 1
+  fi
+  sudo k3s kubectl -n stocktrader create configmap "stocktrader-cutover-plan-$transition_id" \
+    --from-file=transition-plan.json="$transition_plan_file"
+  rendered_transition="$archive_dir/trading-core-transition.yaml"
+  sed -e "s|__TRANSITION_ID__|$transition_id|g" \
+    -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|g" \
+    -e "s|__CUTOVER_COORDINATOR_CLIENT_TLS_SECRET__|$cutover_coordinator_client_tls_secret|g" \
+    -e "s|__KUBERNETES_API_CIDR__|$kubernetes_api_cidr|g" \
+    -e "s|localhost/stock-trader/trading-core-cutover-coordinator:latest|localhost/stock-trader/trading-core-cutover-coordinator:architecture-$release_tag|g" \
+    -e "s|localhost/stock-trader/edge-rollback-importer:latest|localhost/stock-trader/edge-rollback-importer:architecture-$release_tag|g" \
+    k8s/job-trading-core-cutover-coordinator.yaml > "$rendered_transition"
+  sudo k3s kubectl apply -f "$rendered_transition"
+  if ! sudo k3s kubectl -n stocktrader wait --for=condition=complete \
+      "job/stocktrader-cutover-$transition_id" --timeout=900s; then
+    sudo k3s kubectl -n stocktrader logs "job/stocktrader-cutover-$transition_id" --all-containers=true || true
+    exit 1
+  fi
+  sudo k3s kubectl -n stocktrader logs "job/stocktrader-cutover-$transition_id" --all-containers=true
+  sudo k3s kubectl -n stocktrader get deployment stocktrader-api stocktrader-trading-core
+  sudo k3s kubectl -n stocktrader get pods -l 'app in (stocktrader-api,stocktrader-trading-core)'
+  exit 0
+fi
+
 if $deploy_api; then
-  sudo buildah bud --layers -f Dockerfile.api -t "$api_image" .
-  sudo buildah push "$api_image" "oci-archive:$archive_dir/api.tar:$api_image"
+  api_runtime_target="local"
+  [[ "$trading_core_mode" == "Remote" ]] && api_runtime_target="remote"
+  prepare_image Dockerfile.api "$api_image" api.tar "$api_runtime_target"
 fi
 
 if $deploy_desktop; then
-  sudo buildah bud --layers -f Dockerfile.desktop -t "$desktop_image" .
-  sudo buildah push "$desktop_image" "oci-archive:$archive_dir/desktop.tar:$desktop_image"
+  prepare_image Dockerfile.desktop "$desktop_image" desktop.tar
 fi
 
 if $deploy_worker; then
-  sudo buildah bud --layers -f Dockerfile.optimization-worker -t "$worker_image" .
-  sudo buildah push "$worker_image" "oci-archive:$archive_dir/worker.tar:$worker_image"
+  prepare_image Dockerfile.optimization-worker "$worker_image" worker.tar
 fi
 if $deploy_market_data; then
-  sudo buildah bud --layers -f Dockerfile.market-data -t "$market_data_image" .
-  sudo buildah push "$market_data_image" "oci-archive:$archive_dir/market-data.tar:$market_data_image"
+  prepare_image Dockerfile.market-data "$market_data_image" market-data.tar
 fi
 if $deploy_ml_training; then
-  sudo buildah bud --layers -f Dockerfile.ml-training -t "$ml_training_image" .
-  sudo buildah push "$ml_training_image" "oci-archive:$archive_dir/ml-training.tar:$ml_training_image"
+  prepare_image Dockerfile.ml-training "$ml_training_image" ml-training.tar
 fi
 if $deploy_trading_core; then
-  sudo buildah bud --layers -f Dockerfile.trading-core -t "$trading_core_image" .
-  sudo buildah push "$trading_core_image" "oci-archive:$archive_dir/trading-core.tar:$trading_core_image"
+  if [[ "$trading_core_mode" == "Remote" ]]; then
+    prepare_image Dockerfile.trading-core "$trading_core_image" trading-core.tar
+  else
+    prepare_image Dockerfile.trading-core-shadow "$trading_core_image" trading-core.tar
+  fi
 fi
 
 if $deploy_api && [[ "$market_data_mode" == "Local" ]] \
@@ -453,6 +550,18 @@ if $deploy_ml_training; then
   sudo k3s kubectl -n stocktrader rollout status deployment/stocktrader-ml-training --timeout=600s
 fi
 if $deploy_trading_core; then
+  trading_core_broker_capability="false"
+  trading_core_broker_egress="false"
+  trading_core_runtime_profile="trading-core-shadow"
+  if [[ "$trading_core_mode" == "Remote" ]]; then
+    trading_core_broker_capability="true"
+    trading_core_broker_egress="true"
+    trading_core_runtime_profile="trading-core-remote"
+  fi
+  trading_core_image_digest="sha256:$(sha256sum "$archive_dir/trading-core.tar" | awk '{print $1}')"
+  trading_core_service_inventory_hash="$(printf '%s' 'trading-core,market-data' | sha256sum | awk '{print $1}')"
+  trading_core_secret_reference_hash="$(printf '%s' "$trading_core_encryption_secret|$trading_core_server_tls_secret|$market_data_trading_core_client_tls_secret" | sha256sum | awk '{print $1}')"
+  trading_core_network_policy_hash="$(sha256sum k8s/network-policy-trading-core.yaml | awk '{print $1}')"
   sed -e "s|localhost/stock-trader/trading-core:latest|$trading_core_image|" \
     -e "s|__TRADING_CORE_DATA_DIR__|$trading_core_dir|" \
     -e "s|__TRADING_CORE_SERVER_TLS_SECRET__|$trading_core_server_tls_secret|" \
@@ -461,11 +570,29 @@ if $deploy_trading_core; then
     -e "s|__TRADING_CORE_ENCRYPTION_SECRET__|$trading_core_encryption_secret|" \
     -e "s|__TRADING_CORE_ENCRYPTION_GENERATION__|$trading_core_encryption_generation|" \
     -e "s|__TRADING_CORE_MODE__|$trading_core_mode|" \
+    -e "s|__TRADING_CORE_BROKER_CAPABILITY_ENABLED__|$trading_core_broker_capability|" \
+    -e "s|__TRADING_CORE_BROKER_EGRESS_ENABLED__|$trading_core_broker_egress|" \
+    -e "s|trading-core-production|$trading_core_runtime_profile|" \
+    -e "s|__TRADING_CORE_IMAGE_DIGEST__|$trading_core_image_digest|" \
+    -e "s|__TRADING_CORE_SERVICE_INVENTORY_HASH__|$trading_core_service_inventory_hash|" \
+    -e "s|__TRADING_CORE_SECRET_REFERENCE_HASH__|$trading_core_secret_reference_hash|" \
+    -e "s|__TRADING_CORE_NETWORK_POLICY_HASH__|$trading_core_network_policy_hash|" \
     k8s/deployment-trading-core.yaml | sudo k3s kubectl apply -f -
   sudo k3s kubectl -n stocktrader rollout status deployment/stocktrader-trading-core --timeout=300s
 fi
 
 if $deploy_api; then
+  api_runtime_profile="api-local"
+  api_has_broker_egress="true"
+  if [[ "$trading_core_mode" == "Remote" ]]; then
+    api_runtime_profile="api-remote"
+    api_has_broker_egress="false"
+  fi
+  api_image_digest="sha256:$(sha256sum "$archive_dir/api.tar" | awk '{print $1}')"
+  api_service_inventory_hash="$(printf '%s' 'api,desktop,market-data,trading-core' | sha256sum | awk '{print $1}')"
+  api_secret_reference_hash="$(printf '%s' "$trading_core_client_tls_secret|$edge_cutover_server_tls_secret|$cutover_coordinator_client_tls_secret" | sha256sum | awk '{print $1}')"
+  api_network_policy_hash="$(sha256sum k8s/network-policy-trading-core.yaml | awk '{print $1}')"
+  rendered_api="$archive_dir/deployment-api.yaml"
   sed -e "s|localhost/stock-trader/api:latest|$api_image|" \
     -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|" k8s/deployment-api.yaml \
     | sed -e "s|__OPTIMIZATION_WORKER_SERVER_TLS_SECRET__|$server_tls_secret|" \
@@ -480,7 +607,25 @@ if $deploy_api; then
       -e "s|__ML_TRAINING_CLIENT_TLS_SECRET__|$ml_training_client_tls_secret|" \
       -e "s|__TRADING_CORE_MODE__|$trading_core_mode|" \
       -e "s|__TRADING_CORE_CLIENT_TLS_SECRET__|$trading_core_client_tls_secret|" \
-    | sudo k3s kubectl apply -f -
+      -e "s|__EDGE_TRANSITION_CONTROL_ENABLED__|true|" \
+      -e "s|__EDGE_CUTOVER_SERVER_TLS_SECRET__|$edge_cutover_server_tls_secret|" \
+      -e "s|__CUTOVER_COORDINATOR_CLIENT_TLS_SECRET__|$cutover_coordinator_client_tls_secret|" \
+      -e "s|__API_RUNTIME_PROFILE__|$api_runtime_profile|" \
+      -e "s|__API_IMAGE_DIGEST__|$api_image_digest|" \
+      -e "s|__API_SERVICE_INVENTORY_HASH__|$api_service_inventory_hash|" \
+      -e "s|__API_SECRET_REFERENCE_HASH__|$api_secret_reference_hash|" \
+      -e "s|__API_NETWORK_POLICY_HASH__|$api_network_policy_hash|" \
+      -e "s|__API_HAS_BROKER_EGRESS__|$api_has_broker_egress|" \
+    > "$rendered_api"
+  if [[ "$trading_core_mode" == "Remote" ]]; then
+    awk '
+      skipping && /^        - name:/ { skipping=0 }
+      /^        - name: ALPACA__/ { skipping=1; next }
+      !skipping { print }
+    ' "$rendered_api" > "$rendered_api.remote"
+    mv "$rendered_api.remote" "$rendered_api"
+  fi
+  sudo k3s kubectl apply -f "$rendered_api"
 fi
 if $deploy_desktop; then
   sed -e "s|localhost/stock-trader/desktop:latest|$desktop_image|" \

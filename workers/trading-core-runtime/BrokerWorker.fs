@@ -1,8 +1,6 @@
 namespace StockTrader.TradingCoreService
 
 open System
-open System.Security.Cryptography
-open System.Text
 open System.Threading
 open System.Threading.Tasks
 open Microsoft.Extensions.Hosting
@@ -27,9 +25,7 @@ type BrokerWorker(
         Task.Delay(TimeSpan.FromMilliseconds(int64 milliseconds), clock, ct)
 
     let clientOrderId (commandId: string) =
-        let input: byte array = Encoding.UTF8.GetBytes(commandId)
-        let hash: byte array = SHA256.HashData(input)
-        "st-" + Convert.ToHexString(hash).ToLowerInvariant().Substring(0, 32)
+        FinancialExecutionIdentityPolicy.ClientOrderId commandId
 
     let brokerFor (configuration: TradingAccountConfigurationSet) accountId =
         let account = configuration.Accounts |> Seq.tryFind (fun item ->

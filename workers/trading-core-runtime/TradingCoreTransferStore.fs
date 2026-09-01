@@ -2,7 +2,9 @@ namespace StockTrader.TradingCoreService
 
 open System
 open System.Text.Json
+open StockTrader.ServiceContracts
 open StockTrader.ServiceContracts.TradingCore
+open StockTrader.TradingCore.Broker
 open StockTrader.TradingCore.Execution
 
 [<AutoOpen>]
@@ -19,6 +21,83 @@ module TradingCoreTransferStore =
             | Some value -> values.Add value
             | None -> invalidOp $"empty-{table}-payload"
         values.ToArray()
+
+    let private executionIdentities (store: TradingCoreStore)
+        (connection: Microsoft.Data.Sqlite.SqliteConnection) =
+        use command = connection.CreateCommand()
+        command.CommandText <- """SELECT f.command_id,f.payload_json,f.payload_hash,f.status,
+COALESCE(e.client_order_id,''),COALESCE(e.order_id,f.broker_order_id,''),
+COALESCE(e.observed_at,f.updated_at)
+FROM financial_intents f LEFT JOIN broker_evidence e ON e.command_id=f.command_id
+ORDER BY f.command_id"""
+        use reader = command.ExecuteReader()
+        [| while reader.Read() do
+            use payload = JsonDocument.Parse(reader.GetString 1)
+            let root = payload.RootElement
+            let sourceIdentity =
+                match root.TryGetProperty("sourceSignalId") with
+                | true, value -> value.GetString()
+                | _ -> root.GetProperty("positionId").GetString()
+            let commandId = reader.GetString 0
+            let clientId =
+                if reader.IsDBNull 4 || String.IsNullOrWhiteSpace(reader.GetString 4) then
+                    FinancialExecutionIdentityPolicy.ClientOrderId commandId
+                else reader.GetString 4
+            yield FinancialExecutionIdentity(sourceIdentity, commandId, clientId,
+                reader.GetString 5, reader.GetString 3, reader.GetString 2,
+                DateTime.Parse(reader.GetString 6, null,
+                    Globalization.DateTimeStyles.RoundtripKind)) |]
+
+    let private currentBrokerEvidence (store: TradingCoreStore)
+        (connection: Microsoft.Data.Sqlite.SqliteConnection)
+        (portfolio: TradingCorePortfolioView) =
+        let brokerPositions = Collections.Generic.Dictionary<string,int>(StringComparer.Ordinal)
+        use positionsCommand = connection.CreateCommand()
+        positionsCommand.CommandText <- "SELECT account_id,symbol,payload_json FROM broker_positions ORDER BY account_id,symbol"
+        use positionsReader = positionsCommand.ExecuteReader()
+        while positionsReader.Read() do
+            let value = JsonSerializer.Deserialize<BrokerPositionEvidence>(positionsReader.GetString 2, store.Json)
+            if isNull value then invalidOp "empty-broker-position-evidence"
+            brokerPositions[$"{positionsReader.GetString 0}|{positionsReader.GetString 1}"] <- value.Quantity
+        positionsReader.Close()
+        use command = connection.CreateCommand()
+        command.CommandText <- """SELECT f.command_kind,f.payload_json,e.payload_json,e.observed_at
+FROM broker_evidence e JOIN financial_intents f ON f.command_id=e.command_id
+ORDER BY e.client_order_id,e.order_id"""
+        use reader = command.ExecuteReader()
+        [| while reader.Read() do
+            use intent = JsonDocument.Parse(reader.GetString 1)
+            let root = intent.RootElement
+            let evidence = JsonSerializer.Deserialize<BrokerOrderEvidence>(reader.GetString 2, store.Json)
+            if isNull evidence then invalidOp "empty-broker-order-evidence"
+            let accountId, symbol =
+                if reader.GetString 0 = TradingCommandKinds.AcceptEntry then
+                    root.GetProperty("accountId").GetString(), root.GetProperty("symbol").GetString()
+                else
+                    let positionId = root.GetProperty("positionId").GetString()
+                    match portfolio.Positions |> Seq.tryFind (fun value -> value.PositionId = positionId) with
+                    | Some position -> position.AccountId, position.Symbol
+                    | None -> invalidOp "position-command-transfer-identity-missing"
+            let normalizedSymbol = symbol.ToUpperInvariant()
+            let canonicalQuantity =
+                portfolio.Positions
+                |> Seq.filter (fun value ->
+                    (value.AccountId = accountId)
+                    && value.Symbol.Equals(normalizedSymbol, StringComparison.OrdinalIgnoreCase)
+                    && (not value.ClosedAtUtc.HasValue))
+                |> Seq.sumBy _.Quantity
+            let mutable brokerQuantity = 0
+            brokerPositions.TryGetValue($"{accountId}|{normalizedSymbol}", &brokerQuantity) |> ignore
+            let observed = DateTime.Parse(reader.GetString 3, null,
+                               Globalization.DateTimeStyles.RoundtripKind)
+            let candidate = FinancialBrokerEvidence(accountId, normalizedSymbol,
+                canonicalQuantity, brokerQuantity, evidence.ClientOrderId,
+                evidence.OrderId, evidence.Side, evidence.Quantity,
+                evidence.FilledQuantity, evidence.Status, observed, "")
+            yield FinancialBrokerEvidence(accountId, normalizedSymbol, canonicalQuantity,
+                brokerQuantity, evidence.ClientOrderId, evidence.OrderId, evidence.Side,
+                evidence.Quantity, evidence.FilledQuantity, evidence.Status, observed,
+                CanonicalFinancialTransferIdentity.BrokerEvidence candidate) |]
 
     type TradingCoreStore with
         member this.ExportFinancialTransfer(request: CanonicalFinancialExportRequest) =
@@ -57,10 +136,22 @@ module TradingCoreTransferStore =
                 candidate.Recommendations, candidate.Positions, candidate.Trades,
                 candidate.Risk)
             use connection = this.Connect()
-            let identities = readTransferList<FinancialExecutionIdentity>
-                                 this connection "canonical_execution_identities" "command_id"
-            let brokerEvidence = readTransferList<FinancialBrokerEvidence>
-                                     this connection "canonical_transfer_broker_evidence" "identity"
+            let importedIdentities = readTransferList<FinancialExecutionIdentity>
+                                         this connection "canonical_execution_identities" "command_id"
+            let identities =
+                Seq.append importedIdentities (executionIdentities this connection)
+                |> Seq.groupBy _.CommandId
+                |> Seq.map (fun (_, values) -> values |> Seq.last)
+                |> Seq.sortBy _.CommandId
+                |> Seq.toArray
+            let importedBrokerEvidence = readTransferList<FinancialBrokerEvidence>
+                                             this connection "canonical_transfer_broker_evidence" "identity"
+            let brokerEvidence =
+                Seq.append importedBrokerEvidence (currentBrokerEvidence this connection portfolio)
+                |> Seq.groupBy (fun value -> $"{value.AccountId}|{value.ClientOrderId}|{value.BrokerOrderId}")
+                |> Seq.map (fun (_, values) -> values |> Seq.last)
+                |> Seq.sortBy (fun value -> $"{value.AccountId}|{value.ClientOrderId}|{value.BrokerOrderId}")
+                |> Seq.toArray
             use journal = connection.CreateCommand()
             journal.CommandText <- "SELECT COUNT(*) FROM outbox"
             let journalCount = Convert.ToInt64(journal.ExecuteScalar())

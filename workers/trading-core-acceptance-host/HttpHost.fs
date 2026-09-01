@@ -54,6 +54,9 @@ module HttpHost =
         builder.Services.AddSingleton<TimeProvider>(clock) |> ignore
         builder.Services.AddSingleton<ITradingBrokerFactory, ScriptedBrokerFactory>() |> ignore
         RuntimeComposition.add builder.Services
+        builder.Services.AddSingleton<AcceptanceScenarioGate>(fun services ->
+            AcceptanceScenarioGate(config.Runtime.DatabasePath + ".acceptance-state",
+                services.GetRequiredService<TradingCoreStore>(), json, clock)) |> ignore
         let app = builder.Build()
         let standard (ctx: HttpContext) =
             ctx.Connection.LocalPort = 9443 && not (isNull ctx.Connection.ClientCertificate)
@@ -65,6 +68,24 @@ module HttpHost =
             if ctx.Connection.LocalPort <> 9543 || isNull ctx.Connection.ClientCertificate then Results.Unauthorized()
             else
                 try Results.Ok(clock.Advance request)
+                with
+                | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
+                | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        let control (ctx: HttpContext) =
+            ctx.Connection.LocalPort = 9543 && not (isNull ctx.Connection.ClientCertificate)
+        app.MapGet("/internal/acceptance/scenario", Func<HttpContext,AcceptanceScenarioGate,IResult>(fun ctx gate ->
+            if control ctx then Results.Ok(gate.View()) else Results.Unauthorized())) |> ignore
+        app.MapPost("/internal/acceptance/bootstrap", Func<HttpContext,AcceptanceScenarioGate,AcceptanceBootstrapRequest,IResult>(fun ctx gate request ->
+            if not (control ctx) then Results.Unauthorized()
+            else
+                try Results.Ok(gate.Bootstrap request)
+                with
+                | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
+                | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore
+        app.MapPost("/internal/acceptance/start", Func<HttpContext,AcceptanceScenarioGate,AcceptanceScenarioStartRequest,IResult>(fun ctx gate request ->
+            if not (control ctx) then Results.Unauthorized()
+            else
+                try Results.Ok(gate.Start request)
                 with
                 | :? ArgumentException as error -> Results.BadRequest {| error = error.Message |}
                 | :? InvalidOperationException as error -> Results.Conflict {| error = error.Message |})) |> ignore

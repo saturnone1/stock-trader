@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS canonical_activity_continuity (
  version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS broker_accounts (
  account_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, observed_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS broker_positions (
+ account_id TEXT NOT NULL, symbol TEXT NOT NULL, payload_json TEXT NOT NULL,
+ observed_at TEXT NOT NULL, PRIMARY KEY(account_id,symbol));
 CREATE TABLE IF NOT EXISTS broker_evidence (
  order_id TEXT PRIMARY KEY, client_order_id TEXT NOT NULL UNIQUE, command_id TEXT NOT NULL,
  payload_json TEXT NOT NULL, observed_at TEXT NOT NULL);

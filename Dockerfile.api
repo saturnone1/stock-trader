@@ -31,4 +31,4 @@ ENTRYPOINT ["dotnet", "StockTrader.dll"]
 FROM runtime-base AS local
 
 FROM runtime-base AS remote
-RUN rm -f /app/Alpaca.Markets.dll /app/StockTrader.TradingCore.AlpacaAdapter.dll
+RUN rm -f /app/StockTrader.TradingCore.AlpacaAdapter.dll
