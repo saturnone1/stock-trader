@@ -57,7 +57,7 @@ module HttpHost =
         let app = builder.Build()
         let standard (ctx: HttpContext) =
             ctx.Connection.LocalPort = 9443 && not (isNull ctx.Connection.ClientCertificate)
-        RuntimeHttpEndpoints.map app standard
+        RuntimeHttpEndpoints.map app standard standard
         app.MapGet("/internal/acceptance/time", Func<HttpContext,IResult>(fun ctx ->
             if ctx.Connection.LocalPort = 9543 && not (isNull ctx.Connection.ClientCertificate) then Results.Ok(clock.View())
             else Results.Unauthorized())) |> ignore

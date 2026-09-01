@@ -44,6 +44,10 @@ module Configuration =
             match Environment.GetEnvironmentVariable "STOCKTRADER_TRADING_CORE_CLIENT_ROLE_DNS" with
             | null | "" -> "edge-trading-control.stocktrader.internal"
             | value -> value
+          CoordinatorRoleDnsName =
+            match Environment.GetEnvironmentVariable "STOCKTRADER_TRADING_CORE_COORDINATOR_ROLE_DNS" with
+            | null | "" -> "trading-cutover-coordinator.stocktrader.internal"
+            | value -> value
           MarketDataEndpoint = Uri(required "STOCKTRADER_MARKET_DATA_ENDPOINT")
           MarketDataClientCertificatePath = required "STOCKTRADER_MARKET_DATA_CLIENT_CERT_PATH"
           MarketDataClientKeyPath = required "STOCKTRADER_MARKET_DATA_CLIENT_KEY_PATH"
@@ -63,6 +67,10 @@ module Configuration =
             match Environment.GetEnvironmentVariable "STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION" with
             | null | "" -> "legacy"
             | _ -> generation "STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION"
+          BrokerCapabilityEnabled =
+            match Environment.GetEnvironmentVariable "STOCKTRADER_BROKER_CAPABILITY_ENABLED" with
+            | "false" -> false
+            | _ -> true
           InitialMode = initialMode }
 
     let loadEncryptionMigration () : EncryptionMigrationConfig =

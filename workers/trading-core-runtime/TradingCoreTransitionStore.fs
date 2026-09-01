@@ -102,6 +102,42 @@ VALUES($operation,$transition,$hash,$receipt,$at)"""
                 <> AuthorityCommandAcceptanceStates.Open then
                 invalidOp "authority-command-acceptance-fenced"
 
+        member this.DrainInventory(transitionId: string) =
+            let transition: AuthorityTransitionView =
+                match this.Transition transitionId with
+                | Some value -> value
+                | None -> invalidOp "authority-transition-not-found"
+            if transition.Phase <> AuthorityTransitionPhases.Quiescing
+                && transition.Phase <> AuthorityTransitionPhases.Draining then
+                invalidOp "authority-transition-phase-conflict"
+            use connection = this.Connect()
+            use unresolved = connection.CreateCommand()
+            unresolved.CommandText <- """SELECT COUNT(*) FROM financial_intents
+WHERE status IN ($pending,$awaiting,$reconcile)"""
+            unresolved.Parameters.AddWithValue("$pending", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
+            unresolved.Parameters.AddWithValue("$awaiting", TradingCommandStatuses.AwaitingBrokerEvidence) |> ignore
+            unresolved.Parameters.AddWithValue("$reconcile", TradingCommandStatuses.ReconciliationRequired) |> ignore
+            let unresolvedCount = Convert.ToInt32(unresolved.ExecuteScalar())
+            use journal = connection.CreateCommand()
+            journal.CommandText <- "SELECT COUNT(*) FROM outbox"
+            let journalCount = Convert.ToInt64(journal.ExecuteScalar())
+            use lastBar = connection.CreateCommand()
+            lastBar.CommandText <- "SELECT MAX(json_extract(payload_json,'$.lastEvaluatedBarUtc')) FROM canonical_positions"
+            let lastCompleted =
+                match lastBar.ExecuteScalar() with
+                | null -> Nullable()
+                | value when String.IsNullOrWhiteSpace(Convert.ToString value) -> Nullable()
+                | value -> Nullable(DateTime.Parse(Convert.ToString value, null,
+                    Globalization.DateTimeStyles.RoundtripKind))
+            let candidate = AuthorityDrainInventory(
+                unresolvedCount, unresolvedCount, 0, journalCount, 0L,
+                DateTime.UtcNow, "")
+            AuthorityDrainInventory(
+                candidate.UnresolvedIntentCount, candidate.UnresolvedBrokerEffectCount,
+                candidate.UnprocessedBrokerFillCount, candidate.ActivityJournalCount,
+                candidate.EnabledConsumerLag, candidate.ObservedAtUtc,
+                TradingControlIdentity.Drain(candidate))
+
         member this.Transition(transitionId: string) =
             use connection = this.Connect()
             use command = connection.CreateCommand()

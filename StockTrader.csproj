@@ -27,6 +27,7 @@
     <Compile Remove="Domain\Trading\OrderMode.cs" />
     <Compile Remove="Domain\Trading\OrderModeCatalog.cs" />
     <Compile Remove="Domain\Strategies\IndicatorCatalog.cs" />
+    <Compile Remove="Domain\Strategies\PatternType.cs" />
     <Compile Remove="Domain\Strategies\RuleOperatorCatalog.cs" />
     <Compile Remove="Domain\Strategies\StrategyCatalog.cs" />
     <Compile Remove="Domain\Strategies\StrategyDocumentDefaults.cs" />

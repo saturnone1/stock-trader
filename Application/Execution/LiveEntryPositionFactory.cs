@@ -1,4 +1,5 @@
 using StockTrader.Models;
+using System.Text.Json;
 
 namespace StockTrader.Application.Execution;
 
@@ -9,6 +10,9 @@ namespace StockTrader.Application.Execution;
 /// </summary>
 public static class LiveEntryPositionFactory
 {
+    private static readonly JsonSerializerOptions ContractJson =
+        new(JsonSerializerDefaults.Web);
+
     public static Position CreateFromFill(
         TradeRecommendation recommendation,
         int accountId,
@@ -24,6 +28,7 @@ public static class LiveEntryPositionFactory
             recommendation.TargetPrice,
             averageFillPrice);
 
+        var evidence = recommendation.MarketDataEvidence;
         return new Position
         {
             SourceSignalId = recommendation.SourceSignalId,
@@ -40,6 +45,15 @@ public static class LiveEntryPositionFactory
             OpenedAt = filledAt,
             HighSinceEntry = averageFillPrice,
             InitialRiskDistance = fill.RiskDistance,
+            ExecutionArtifactJson = recommendation.ExecutionArtifact is null
+                ? null
+                : JsonSerializer.Serialize(recommendation.ExecutionArtifact, ContractJson),
+            EntryMarketDataEvidenceJson = evidence is null
+                ? null
+                : JsonSerializer.Serialize(evidence, ContractJson),
+            LastEvaluatedEvidenceId = evidence?.EvidenceId,
+            LastEvaluatedBarUtc = evidence?.LastBarUtc,
+            LastEvaluatedMarketDataRevision = evidence?.Revision ?? 0,
         };
     }
 }

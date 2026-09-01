@@ -19,7 +19,6 @@
     <Compile Include="TradingCoreStore.fs" />
     <Compile Include="TradingCoreAuthorityStore.fs" />
     <Compile Include="TradingCoreTransitionStore.fs" />
-    <Compile Include="TradingCoreTransferStore.fs" />
     <Compile Include="TradingCoreRecommendationStore.fs" />
     <Compile Include="TradingCoreEntryStore.fs" />
     <Compile Include="TradingCoreEntryBrokerStore.fs" />
@@ -30,6 +29,7 @@
     <Compile Include="TradingCorePositionBrokerStore.fs" />
     <Compile Include="TradingCoreQueryStore.fs" />
     <Compile Include="TradingCoreMarketStore.fs" />
+    <Compile Include="TradingCoreTransferStore.fs" />
     <Compile Include="TradingCoreOperations.fs" />
     <Compile Include="BrokerWorker.fs" />
     <Compile Include="PositionProtectionWorker.fs" />

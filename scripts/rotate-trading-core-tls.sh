@@ -14,8 +14,10 @@ if [[ ! "$generation" =~ ^[a-z0-9][a-z0-9-]{0,13}$ ]]; then
 fi
 server_secret="stocktrader-trading-core-server-tls-$generation"
 client_secret="stocktrader-trading-core-client-tls-$generation"
+edge_server_secret="stocktrader-edge-cutover-server-tls-$generation"
+coordinator_client_secret="stocktrader-cutover-coordinator-client-tls-$generation"
 sudo k3s kubectl apply -f k8s/namespace.yaml
-for secret in "$server_secret" "$client_secret"; do
+for secret in "$server_secret" "$client_secret" "$edge_server_secret" "$coordinator_client_secret"; do
   if sudo k3s kubectl -n "$namespace" get secret "$secret" >/dev/null 2>&1; then
     echo "Refusing to replace preserved TLS generation $generation ($secret exists)." >&2
     exit 1
@@ -26,7 +28,10 @@ cleanup() {
   rm -f -- "$tls_dir/ca.key" "$tls_dir/ca.crt" "$tls_dir/ca.srl" \
     "$tls_dir/server.key" "$tls_dir/server.csr" "$tls_dir/server.crt" \
     "$tls_dir/client.key" "$tls_dir/client.csr" "$tls_dir/client.crt" \
-    "$tls_dir/server.ext" "$tls_dir/client.ext"
+    "$tls_dir/edge-server.key" "$tls_dir/edge-server.csr" "$tls_dir/edge-server.crt" \
+    "$tls_dir/coordinator.key" "$tls_dir/coordinator.csr" "$tls_dir/coordinator.crt" \
+    "$tls_dir/server.ext" "$tls_dir/client.ext" "$tls_dir/edge-server.ext" \
+    "$tls_dir/coordinator.ext"
   rmdir "$tls_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -53,11 +58,37 @@ printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSig
 openssl x509 -req -sha256 -days "$valid_days" -in "$tls_dir/client.csr" \
   -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAserial "$tls_dir/ca.srl" \
   -out "$tls_dir/client.crt" -extfile "$tls_dir/client.ext" >/dev/null 2>&1
+openssl genrsa -out "$tls_dir/edge-server.key" 2048 >/dev/null 2>&1
+openssl req -new -sha256 -key "$tls_dir/edge-server.key" -out "$tls_dir/edge-server.csr" \
+  -subj "/CN=stocktrader-api-cutover" >/dev/null 2>&1
+printf '%s\n' 'basicConstraints=critical,CA:FALSE' \
+  'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' \
+  'subjectAltName=DNS:stocktrader-api,DNS:stocktrader-api.stocktrader,DNS:stocktrader-api.stocktrader.svc' \
+  > "$tls_dir/edge-server.ext"
+openssl x509 -req -sha256 -days "$valid_days" -in "$tls_dir/edge-server.csr" \
+  -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAserial "$tls_dir/ca.srl" \
+  -out "$tls_dir/edge-server.crt" -extfile "$tls_dir/edge-server.ext" >/dev/null 2>&1
+openssl genrsa -out "$tls_dir/coordinator.key" 2048 >/dev/null 2>&1
+openssl req -new -sha256 -key "$tls_dir/coordinator.key" -out "$tls_dir/coordinator.csr" \
+  -subj "/CN=stocktrader-cutover-coordinator" >/dev/null 2>&1
+printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature' \
+  'extendedKeyUsage=clientAuth' \
+  'subjectAltName=DNS:trading-cutover-coordinator.stocktrader.internal' \
+  > "$tls_dir/coordinator.ext"
+openssl x509 -req -sha256 -days "$valid_days" -in "$tls_dir/coordinator.csr" \
+  -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAserial "$tls_dir/ca.srl" \
+  -out "$tls_dir/coordinator.crt" -extfile "$tls_dir/coordinator.ext" >/dev/null 2>&1
 sudo k3s kubectl -n "$namespace" create secret generic "$server_secret" \
   --from-file=tls.crt="$tls_dir/server.crt" --from-file=tls.key="$tls_dir/server.key" \
   --from-file=ca.crt="$tls_dir/ca.crt" --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 sudo k3s kubectl -n "$namespace" create secret generic "$client_secret" \
   --from-file=tls.crt="$tls_dir/client.crt" --from-file=tls.key="$tls_dir/client.key" \
+  --from-file=ca.crt="$tls_dir/ca.crt" --dry-run=client -o yaml | sudo k3s kubectl apply -f -
+sudo k3s kubectl -n "$namespace" create secret generic "$edge_server_secret" \
+  --from-file=tls.crt="$tls_dir/edge-server.crt" --from-file=tls.key="$tls_dir/edge-server.key" \
+  --from-file=ca.crt="$tls_dir/ca.crt" --dry-run=client -o yaml | sudo k3s kubectl apply -f -
+sudo k3s kubectl -n "$namespace" create secret generic "$coordinator_client_secret" \
+  --from-file=tls.crt="$tls_dir/coordinator.crt" --from-file=tls.key="$tls_dir/coordinator.key" \
   --from-file=ca.crt="$tls_dir/ca.crt" --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 sudo k3s kubectl -n "$namespace" create configmap stocktrader-trading-core-tls-active \
   --from-literal=generation="$generation" --dry-run=client -o yaml | sudo k3s kubectl apply -f -

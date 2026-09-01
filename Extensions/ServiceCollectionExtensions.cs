@@ -277,6 +277,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMarketRegimeTrainingDataSource, MarketRegimeTrainingDataSource>();
         services.AddSingleton<IMlTrainingTransport, MlTrainingTransport>();
         services.AddSingleton<ITradingCoreControlPlane, TradingCoreControlPlaneClient>();
+        services.AddSingleton<EdgeAuthorityCapabilityAttestor>();
         services.AddSingleton<TradingAccountConfigurationGenerationState>();
         services.AddSingleton(serviceProvider =>
         {

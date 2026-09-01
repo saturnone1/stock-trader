@@ -24,7 +24,6 @@ try
     {
         builder.WebHost.ConfigureKestrel(options =>
         {
-            options.ListenAnyIP(8080);
             options.ListenAnyIP(EdgeTransitionControlOptions.InternalPort, listen =>
             {
                 var certificate = X509Certificate2.CreateFromPemFile(
@@ -100,6 +99,20 @@ try
     }
     if (!isOpenApiGeneration)
         await app.InitializeStockTraderAsync();
+    if (!isOpenApiGeneration && edgeControl.Enabled)
+    {
+        app.Use(async (context, next) =>
+        {
+            if (context.Connection.LocalPort == EdgeTransitionControlOptions.InternalPort
+                && !context.Request.Path.StartsWithSegments(
+                    "/internal/v2/edge-authority", StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            await next(context);
+        });
+    }
     app.UseStockTraderPipeline();
     app.MapStockTraderApi();
     if (app.Environment.IsDevelopment())

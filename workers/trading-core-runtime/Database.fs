@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS canonical_trades (
 CREATE TABLE IF NOT EXISTS canonical_risk (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), payload_json TEXT NOT NULL,
  version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_transfer_accounts (
+ identity TEXT PRIMARY KEY, payload_json TEXT NOT NULL, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_execution_identities (
+ command_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_transfer_broker_evidence (
+ identity TEXT PRIMARY KEY, payload_json TEXT NOT NULL, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS canonical_activity_continuity (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), payload_json TEXT NOT NULL,
+ version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS broker_accounts (
  account_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, observed_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS broker_evidence (
@@ -104,6 +113,10 @@ CREATE TABLE IF NOT EXISTS canonical_financial_imports (
  PRIMARY KEY(transfer_id,reserved_generation));
 CREATE UNIQUE INDEX IF NOT EXISTS ux_canonical_financial_import_generation
  ON canonical_financial_imports(reserved_generation);
+CREATE TABLE IF NOT EXISTS canonical_financial_exports (
+ transfer_id TEXT NOT NULL, reserved_generation INTEGER NOT NULL,
+ transfer_hash TEXT NOT NULL, payload_json TEXT NOT NULL, exported_at TEXT NOT NULL,
+ PRIMARY KEY(transfer_id,reserved_generation));
 INSERT OR IGNORE INTO state(key,value) VALUES('account_generation','0');
 INSERT OR IGNORE INTO state(key,value) VALUES('last_snapshot_id','');
 INSERT OR IGNORE INTO state(key,value) VALUES('last_broker_reconciliation_at','');

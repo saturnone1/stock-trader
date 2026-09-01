@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using StockTrader.Application.Risk;
 using StockTrader.Application.TradingCore;
 using StockTrader.ServiceContracts.TradingCore;
@@ -10,6 +11,9 @@ internal sealed class TradingCoreProjectionSource(
     IRiskManagementService riskManagement,
     TimeProvider clock) : ITradingCoreProjectionSource
 {
+    private static readonly JsonSerializerOptions ContractJson =
+        new(JsonSerializerDefaults.Web);
+
     public async Task<TradingStateSnapshot> CaptureAsync(CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -48,7 +52,8 @@ internal sealed class TradingCoreProjectionSource(
                 item.ExecutionRequestRuleIndex, item.ExecutionOrderId,
                 item.ScalingExecutions.OrderBy(scale => scale.RuleIndex)
                     .Select(scale => new TradingScalingProjection(scale.RuleIndex, scale.ExecutionCount))
-                    .ToArray(), null)).ToArray(),
+                    .ToArray(), ExecutionContext(item), item.LastEvaluatedEvidenceId,
+                Utc(item.LastEvaluatedBarUtc), item.LastEvaluatedMarketDataRevision)).ToArray(),
             trades.Select(item => new TradingTradeProjection(
                 item.Id.ToString(), item.SourceSignalId?.ToString(), item.Symbol,
                 item.PatternType.ToString(), item.CustomPatternName, item.EntryPrice, item.ExitPrice,
@@ -67,4 +72,25 @@ internal sealed class TradingCoreProjectionSource(
     };
 
     private static DateTime? Utc(DateTime? value) => value.HasValue ? Utc(value.Value) : null;
+
+    private static TradingPositionExecutionContext? ExecutionContext(Models.Position position)
+    {
+        if (string.IsNullOrWhiteSpace(position.ExecutionArtifactJson)
+            || string.IsNullOrWhiteSpace(position.EntryMarketDataEvidenceJson))
+            return null;
+        try
+        {
+            var artifact = JsonSerializer.Deserialize<TradingStrategyExecutionArtifact>(
+                position.ExecutionArtifactJson, ContractJson);
+            var evidence = JsonSerializer.Deserialize<StockTrader.ServiceContracts.MarketData.MarketDataEvidenceContract>(
+                position.EntryMarketDataEvidenceJson, ContractJson);
+            return artifact is null || evidence is null
+                ? null
+                : new TradingPositionExecutionContext(artifact, evidence);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

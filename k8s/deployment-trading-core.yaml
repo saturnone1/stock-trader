@@ -55,8 +55,24 @@ spec:
           value: "/data"
         - name: STOCKTRADER_TRADING_CORE_MODE
           value: "__TRADING_CORE_MODE__"
+        - name: STOCKTRADER_BROKER_CAPABILITY_ENABLED
+          value: "__TRADING_CORE_BROKER_CAPABILITY_ENABLED__"
         - name: STOCKTRADER_TRADING_CORE_CLIENT_ROLE_DNS
           value: "edge-trading-control.stocktrader.internal"
+        - name: STOCKTRADER_TRADING_CORE_COORDINATOR_ROLE_DNS
+          value: "trading-cutover-coordinator.stocktrader.internal"
+        - name: STOCKTRADER_TRADING_CORE_RUNTIME_PROFILE
+          value: "trading-core-production"
+        - name: STOCKTRADER_IMAGE_DIGEST
+          value: "__TRADING_CORE_IMAGE_DIGEST__"
+        - name: STOCKTRADER_SERVICE_INVENTORY_HASH
+          value: "__TRADING_CORE_SERVICE_INVENTORY_HASH__"
+        - name: STOCKTRADER_SECRET_REFERENCE_HASH
+          value: "__TRADING_CORE_SECRET_REFERENCE_HASH__"
+        - name: STOCKTRADER_NETWORK_POLICY_HASH
+          value: "__TRADING_CORE_NETWORK_POLICY_HASH__"
+        - name: STOCKTRADER_BROKER_EGRESS_ENABLED
+          value: "__TRADING_CORE_BROKER_EGRESS_ENABLED__"
         - name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:

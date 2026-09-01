@@ -6,11 +6,13 @@ COPY ["src/StockTrader.OptimizationProtocol/StockTrader.OptimizationProtocol.csp
 COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
 COPY ["src/StockTrader.MlTrainingCompute/StockTrader.MlTrainingCompute.csproj", "src/StockTrader.MlTrainingCompute/"]
 COPY ["src/StockTrader.TradingCore/StockTrader.TradingCore.csproj", "src/StockTrader.TradingCore/"]
+COPY ["src/StockTrader.TradingCore.BrokerPorts/StockTrader.TradingCore.BrokerPorts.csproj", "src/StockTrader.TradingCore.BrokerPorts/"]
+COPY ["src/StockTrader.TradingCore.AlpacaAdapter/StockTrader.TradingCore.AlpacaAdapter.csproj", "src/StockTrader.TradingCore.AlpacaAdapter/"]
 RUN dotnet restore "StockTrader.csproj"
 COPY . .
 RUN dotnet publish "StockTrader.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime-base
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
@@ -25,3 +27,8 @@ EXPOSE 5239
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl --fail --silent http://localhost:5239/api/health || exit 1
 ENTRYPOINT ["dotnet", "StockTrader.dll"]
+
+FROM runtime-base AS local
+
+FROM runtime-base AS remote
+RUN rm -f /app/Alpaca.Markets.dll /app/StockTrader.TradingCore.AlpacaAdapter.dll

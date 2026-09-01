@@ -1,0 +1,230 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stocktrader-cutover-coordinator
+  namespace: stocktrader
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stocktrader-cutover-coordinator
+  namespace: stocktrader
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  resourceNames: ["stocktrader-api", "stocktrader-trading-core"]
+  verbs: ["get", "watch", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["stocktrader-cutover-plan-__TRANSITION_ID__"]
+  verbs: ["get"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  resourceNames: ["stocktrader-edge-rollback-import-__TRANSITION_ID__"]
+  verbs: ["get", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stocktrader-cutover-coordinator
+  namespace: stocktrader
+subjects:
+- kind: ServiceAccount
+  name: stocktrader-cutover-coordinator
+  namespace: stocktrader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stocktrader-cutover-coordinator
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stocktrader-cutover-__TRANSITION_ID__
+  namespace: stocktrader
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stocktrader-cutover-__TRANSITION_ID__
+  namespace: stocktrader
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app: stocktrader-cutover-coordinator
+        stocktrader.io/transition-id: "__TRANSITION_ID__"
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: stocktrader-cutover-coordinator
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: coordinator
+        image: localhost/stock-trader/trading-core-cutover-coordinator:latest
+        imagePullPolicy: Never
+        env:
+        - name: STOCKTRADER_TRANSITION_PLAN_PATH
+          value: /plan/transition-plan.json
+        - name: STOCKTRADER_COORDINATOR_STATE_PATH
+          value: /state/coordinator-state.json
+        - name: STOCKTRADER_COORDINATOR_CLIENT_CERT_PATH
+          value: /tls/tls.crt
+        - name: STOCKTRADER_COORDINATOR_CLIENT_KEY_PATH
+          value: /tls/tls.key
+        - name: STOCKTRADER_COORDINATOR_SERVER_CA_PATH
+          value: /tls/ca.crt
+        resources:
+          requests: {cpu: 25m, memory: 48Mi}
+          limits: {cpu: 150m, memory: 128Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - {name: plan, mountPath: /plan, readOnly: true}
+        - {name: state, mountPath: /state}
+        - {name: tls, mountPath: /tls, readOnly: true}
+        - {name: tmp, mountPath: /tmp}
+      volumes:
+      - name: plan
+        configMap:
+          name: stocktrader-cutover-plan-__TRANSITION_ID__
+      - name: state
+        persistentVolumeClaim:
+          claimName: stocktrader-cutover-__TRANSITION_ID__
+      - name: tls
+        secret:
+          secretName: __CUTOVER_COORDINATOR_CLIENT_TLS_SECRET__
+      - name: tmp
+        emptyDir:
+          sizeLimit: 32Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stocktrader-edge-rollback-import-__TRANSITION_ID__
+  namespace: stocktrader
+spec:
+  suspend: true
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: stocktrader-edge-rollback-importer
+        stocktrader.io/transition-id: "__TRANSITION_ID__"
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: importer
+        image: localhost/stock-trader/edge-rollback-importer:latest
+        imagePullPolicy: Never
+        env:
+        - {name: STOCKTRADER_EDGE_DATABASE_PATH, value: /edge-data/stocktrader.db}
+        - {name: STOCKTRADER_FINANCIAL_TRANSFER_PATH, value: /state/financial-transfer.json}
+        - {name: STOCKTRADER_EDGE_STAGING_DATABASE_PATH, value: /edge-data/stocktrader.rollback-staging.db}
+        - {name: STOCKTRADER_EDGE_BACKUP_DATABASE_PATH, value: /edge-data/backups/stocktrader-before-rollback-__TRANSITION_ID__.db}
+        - {name: STOCKTRADER_FINANCIAL_IMPORT_RECEIPT_PATH, value: /state/rollback-import-receipt.json}
+        resources:
+          requests: {cpu: 25m, memory: 48Mi}
+          limits: {cpu: 150m, memory: 128Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - {name: state, mountPath: /state}
+        - {name: edge-data, mountPath: /edge-data}
+        - {name: tmp, mountPath: /tmp}
+      volumes:
+      - name: state
+        persistentVolumeClaim:
+          claimName: stocktrader-cutover-__TRANSITION_ID__
+      - name: edge-data
+        hostPath:
+          path: __STOCKTRADER_DATA_DIR__
+          type: Directory
+      - name: tmp
+        emptyDir:
+          sizeLimit: 32Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: stocktrader-cutover-__TRANSITION_ID__
+  namespace: stocktrader
+spec:
+  podSelector:
+    matchLabels:
+      app: stocktrader-cutover-coordinator
+      stocktrader.io/transition-id: "__TRANSITION_ID__"
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - {protocol: UDP, port: 53}
+    - {protocol: TCP, port: 53}
+  - to:
+    - podSelector:
+        matchLabels:
+          app: stocktrader-api
+    ports:
+    - {protocol: TCP, port: 5543}
+  - to:
+    - podSelector:
+        matchLabels:
+          app: stocktrader-trading-core
+    ports:
+    - {protocol: TCP, port: 9443}
+  - to:
+    - ipBlock:
+        cidr: __KUBERNETES_API_CIDR__
+    ports:
+    - {protocol: TCP, port: 443}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: stocktrader-edge-rollback-import-__TRANSITION_ID__
+  namespace: stocktrader
+spec:
+  podSelector:
+    matchLabels:
+      app: stocktrader-edge-rollback-importer
+      stocktrader.io/transition-id: "__TRANSITION_ID__"
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []

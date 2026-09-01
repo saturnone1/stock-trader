@@ -21,6 +21,7 @@
     <Compile Include="..\..\Domain\Trading\OrderMode.cs" Link="Domain\Trading\OrderMode.cs" />
     <Compile Include="..\..\Domain\Trading\OrderModeCatalog.cs" Link="Domain\Trading\OrderModeCatalog.cs" />
     <Compile Include="..\..\Domain\Strategies\IndicatorCatalog.cs" Link="Domain\Strategies\IndicatorCatalog.cs" />
+    <Compile Include="..\..\Domain\Strategies\PatternType.cs" Link="Domain\Strategies\PatternType.cs" />
     <Compile Include="..\..\Domain\Strategies\RuleOperatorCatalog.cs" Link="Domain\Strategies\RuleOperatorCatalog.cs" />
     <Compile Include="..\..\Domain\Strategies\StrategyCatalog.cs" Link="Domain\Strategies\StrategyCatalog.cs" />
     <Compile Include="..\..\Domain\Strategies\StrategyDocumentDefaults.cs" Link="Domain\Strategies\StrategyDocumentDefaults.cs" />

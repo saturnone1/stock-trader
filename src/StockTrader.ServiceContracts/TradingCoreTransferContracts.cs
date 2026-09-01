@@ -112,8 +112,21 @@ public sealed record CanonicalFinancialImportReceipt(
     bool AlreadyApplied,
     DateTime ImportedAtUtc);
 
+public sealed record CanonicalFinancialExportRequest(
+    TradingControlOperation Operation,
+    string TransferId,
+    string TransitionId,
+    string Direction,
+    TradingAuthorityMode SourceMode,
+    long SourceGeneration,
+    long ReservedTargetGeneration,
+    FinancialTransferCompatibility Compatibility,
+    string EquityBasis);
+
 public static class CanonicalFinancialTransferIdentity
 {
+    public static string Export(CanonicalFinancialExportRequest request) =>
+        CanonicalJsonHash.Compute(request, nameof(TradingControlOperation.PayloadHash));
     public static string Transfer(CanonicalFinancialTransferV2 transfer) =>
         CanonicalJsonHash.Compute(transfer, nameof(CanonicalFinancialTransferV2.TransferHash));
 
@@ -140,8 +153,29 @@ public static class CanonicalFinancialTransferPolicy
         "executionIdentities", "brokerEvidence", "risk", "activity"
     ];
 
+    public static string? Error(CanonicalFinancialExportRequest request)
+    {
+        if (request is null || !Guid.TryParse(request.TransferId, out _)
+            || !Guid.TryParse(request.TransitionId, out _)
+            || !AuthorityTransitionDirections.All.Contains(request.Direction)
+            || request.SourceGeneration < 1
+            || request.ReservedTargetGeneration != request.SourceGeneration + 1
+            || request.Compatibility is null
+            || string.IsNullOrWhiteSpace(request.EquityBasis))
+            return "invalid-financial-export-request";
+        return request.Operation.ContractVersion != TradingControlContractVersions.Current
+            || !Guid.TryParse(request.Operation.OperationId, out _)
+            || string.IsNullOrWhiteSpace(request.Operation.CorrelationId)
+            || request.Operation.ObservedAtUtc.Kind != DateTimeKind.Utc
+            || request.Operation.PayloadHash != CanonicalFinancialTransferIdentity.Export(request)
+            ? "payload-hash-mismatch"
+            : null;
+    }
+
     public static string? Error(CanonicalFinancialTransferV2 transfer)
     {
+        if (transfer is null)
+            return "invalid-transfer-identity";
         if (transfer.ContractVersion != CanonicalFinancialTransferVersions.Current
             || transfer.Compatibility.TransferVersion != CanonicalFinancialTransferVersions.Current)
             return "unsupported-contract";
@@ -162,16 +196,23 @@ public static class CanonicalFinancialTransferPolicy
             || !OrderedUnique(transfer.BrokerEvidence.Select(value =>
                 $"{value.AccountId}|{value.ClientOrderId}|{value.BrokerOrderId}")))
             return "duplicate-financial-identity";
-        if (transfer.Accounts.Any(value => value.ConfigurationGeneration < 1
-                || string.IsNullOrWhiteSpace(value.ConfigurationHash))
-            || transfer.Recommendations.Concat(transfer.Positions).Concat(transfer.RealizedTrades)
-                .Any(value => string.IsNullOrWhiteSpace(value.Identity)
-                    || value.PayloadHash != CanonicalFinancialTransferIdentity.Payload(value.PayloadJson))
-            || transfer.ExecutionIdentities.Any(value =>
-                string.IsNullOrWhiteSpace(value.PayloadHash)
-                || string.IsNullOrWhiteSpace(value.TerminalStatus))
-            || transfer.BrokerEvidence.Any(value => value.CanonicalQuantity != value.BrokerQuantity))
-            return "broker-canonical-quantity-divergence";
+        try
+        {
+            if (transfer.Accounts.Any(value => value.ConfigurationGeneration < 1
+                    || string.IsNullOrWhiteSpace(value.ConfigurationHash))
+                || transfer.Recommendations.Concat(transfer.Positions).Concat(transfer.RealizedTrades)
+                    .Any(value => string.IsNullOrWhiteSpace(value.Identity)
+                        || value.PayloadHash != CanonicalFinancialTransferIdentity.Payload(value.PayloadJson))
+                || transfer.ExecutionIdentities.Any(value =>
+                    string.IsNullOrWhiteSpace(value.PayloadHash)
+                    || string.IsNullOrWhiteSpace(value.TerminalStatus))
+                || transfer.BrokerEvidence.Any(value => value.CanonicalQuantity != value.BrokerQuantity))
+                return "broker-canonical-quantity-divergence";
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return "canonical-financial-row-hash-mismatch";
+        }
         if (transfer.Risk.StateHash != CanonicalFinancialTransferIdentity.Risk(transfer.Risk)
             || transfer.Activity.ContinuityHash
                 != CanonicalFinancialTransferIdentity.Activity(transfer.Activity))

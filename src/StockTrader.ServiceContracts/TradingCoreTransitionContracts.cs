@@ -242,6 +242,12 @@ public static class TradingControlIdentity
     public static string Step(AuthorityTransitionStepRequest request) =>
         CanonicalJsonHash.Compute(request, nameof(TradingControlOperation.PayloadHash));
 
+    public static string EdgeFence(EdgeAuthorityFenceRequest request) =>
+        CanonicalJsonHash.Compute(request, nameof(TradingControlOperation.PayloadHash));
+
+    public static string EdgeMirror(EdgeAuthorityMirrorRequest request) =>
+        CanonicalJsonHash.Compute(request, nameof(TradingControlOperation.PayloadHash));
+
     public static string Fence(AuthorityFenceReceipt receipt) =>
         CanonicalJsonHash.Compute(receipt, nameof(AuthorityFenceReceipt.FenceHash));
 
@@ -254,6 +260,21 @@ public static class TradingControlIdentity
 
 public static class TradingControlCompatibilityPolicy
 {
+    public static string? Error(EdgeAuthorityFenceRequest request) =>
+        request is null || !Guid.TryParse(request.TransitionId, out _)
+            || request.AuthorityGeneration < 1
+            ? "invalid-edge-authority-transition"
+            : OperationError(request.Operation, TradingControlIdentity.EdgeFence(request));
+
+    public static string? Error(EdgeAuthorityMirrorRequest request) =>
+        request is null || !Guid.TryParse(request.TransitionId, out _)
+            || request.AuthorityGeneration < 1
+            || !Enum.TryParse<TradingAuthorityMode>(request.Mode, false, out var mode)
+            || AuthorityOwners.ForMode(mode) != request.Owner
+            || string.IsNullOrWhiteSpace(request.AuthorityReceiptHash)
+            ? "invalid-edge-authority-mirror"
+            : OperationError(request.Operation, TradingControlIdentity.EdgeMirror(request));
+
     public static string? Error(AuthorityTransitionRequest request, TradingAuthorityV2View current)
     {
         var operationError = OperationError(request.Operation, TradingControlIdentity.Transition(request));

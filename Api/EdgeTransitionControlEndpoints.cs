@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using StockTrader.Application.TradingCore;
 using StockTrader.Configuration;
 using StockTrader.ServiceContracts.TradingCore;
+using StockTrader.Services.TradingCore;
 
 namespace StockTrader.Api;
 
@@ -14,26 +15,48 @@ public static class EdgeTransitionControlEndpoints
     {
         var group = endpoints.MapGroup("/internal/v2/edge-authority")
             .ExcludeFromDescription();
+        group.MapGet("/capability", async (HttpContext context,
+            EdgeAuthorityCapabilityAttestor attestor,
+            IOptions<EdgeTransitionControlOptions> options) =>
+            await IsCoordinatorAsync(context, options.Value)
+                ? Results.Ok(attestor.Attest())
+                : Results.Unauthorized());
         group.MapPost("/fence", async (HttpContext context,
             EdgeAuthorityFenceRequest request, IEdgeFinancialAuthorityControl control,
             IOptions<EdgeTransitionControlOptions> options, CancellationToken ct) =>
-            await InvokeAsync(context, options.Value, () => control.FenceAsync(
-                request.TransitionId, request.AuthorityGeneration, ct)));
+            await InvokeAsync(context, options.Value, () =>
+            {
+                EnsureValid(request);
+                return control.FenceAsync(request.TransitionId, request.AuthorityGeneration, ct);
+            }));
         group.MapPost("/barrier", async (HttpContext context,
             EdgeAuthorityFenceRequest request, IEdgeFinancialAuthorityControl control,
             IOptions<EdgeTransitionControlOptions> options, CancellationToken ct) =>
-            await InvokeAsync(context, options.Value, () => control.EnterPositionBarrierAsync(
-                request.TransitionId, request.AuthorityGeneration, ct)));
+            await InvokeAsync(context, options.Value, () =>
+            {
+                EnsureValid(request);
+                return control.EnterPositionBarrierAsync(
+                    request.TransitionId, request.AuthorityGeneration, ct);
+            }));
         group.MapGet("/{transitionId}/drain", async (HttpContext context,
             string transitionId, IEdgeFinancialAuthorityControl control,
             IOptions<EdgeTransitionControlOptions> options, CancellationToken ct) =>
             await InvokeAsync(context, options.Value,
                 () => control.ReadDrainInventoryAsync(transitionId, ct)));
+        group.MapPost("/financial-transfers/export", async (HttpContext context,
+            CanonicalFinancialExportRequest request,
+            IEdgeCanonicalFinancialTransferService transfers,
+            IOptions<EdgeTransitionControlOptions> options,
+            CancellationToken ct) =>
+            await InvokeAsync(context, options.Value,
+                () => transfers.ExportAsync(request, ct)));
         group.MapPost("/mirror", async (HttpContext context,
             EdgeAuthorityMirrorRequest request, IEdgeFinancialAuthorityControl control,
             IOptions<EdgeTransitionControlOptions> options, CancellationToken ct) =>
             await InvokeAsync(context, options.Value, async () =>
             {
+                if (TradingControlCompatibilityPolicy.Error(request) is { } error)
+                    throw new ArgumentException(error, nameof(request));
                 await control.MirrorAuthorityAsync(request.TransitionId,
                     request.AuthorityGeneration, request.Mode, request.Owner,
                     request.AuthorityReceiptHash, ct);
@@ -42,8 +65,11 @@ public static class EdgeTransitionControlEndpoints
         group.MapPost("/release", async (HttpContext context,
             EdgeAuthorityFenceRequest request, IEdgeFinancialAuthorityControl control,
             IOptions<EdgeTransitionControlOptions> options, CancellationToken ct) =>
-            await InvokeAsync(context, options.Value, () => control.ReleaseAsync(
-                request.TransitionId, request.AuthorityGeneration, ct)));
+            await InvokeAsync(context, options.Value, () =>
+            {
+                EnsureValid(request);
+                return control.ReleaseAsync(request.TransitionId, request.AuthorityGeneration, ct);
+            }));
         return endpoints;
     }
 
@@ -95,5 +121,11 @@ public static class EdgeTransitionControlEndpoints
             .Any(value => string.Equals(value, options.CoordinatorRoleDnsName,
                 StringComparison.Ordinal));
         return hasClientAuth && hasRole && chain.Build(certificate);
+    }
+
+    private static void EnsureValid(EdgeAuthorityFenceRequest request)
+    {
+        if (TradingControlCompatibilityPolicy.Error(request) is { } error)
+            throw new ArgumentException(error, nameof(request));
     }
 }

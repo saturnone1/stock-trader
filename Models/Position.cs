@@ -1,4 +1,5 @@
 using StockTrader.Models.Enums;
+using System.Text.Json.Serialization;
 
 namespace StockTrader.Models;
 
@@ -69,6 +70,21 @@ public class Position
 
     /// <summary>브로커가 반환한 주문 ID. 재시작 후 체결 재조정에 사용한다.</summary>
     public string? ExecutionOrderId { get; set; }
+
+    /// <summary>
+    /// 진입 시 확정한 실행 아티팩트와 시장데이터 증거의 불변 JSON입니다.
+    /// 포지션 소유권 이전 시 전략 의미를 다시 추론하거나 현재 설정으로 덮어쓰지 않습니다.
+    /// </summary>
+    [JsonIgnore]
+    public string? ExecutionArtifactJson { get; set; }
+
+    [JsonIgnore]
+    public string? EntryMarketDataEvidenceJson { get; set; }
+
+    /// <summary>마지막으로 완료한 일봉 판단의 시장데이터 증거/바/수정 세대입니다.</summary>
+    public string? LastEvaluatedEvidenceId { get; set; }
+    public DateTime? LastEvaluatedBarUtc { get; set; }
+    public long LastEvaluatedMarketDataRevision { get; set; }
 
     public List<PositionScalingExecution> ScalingExecutions { get; set; } = [];
 

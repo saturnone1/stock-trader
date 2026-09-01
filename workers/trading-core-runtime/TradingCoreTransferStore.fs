@@ -7,7 +7,130 @@ open StockTrader.TradingCore.Execution
 
 [<AutoOpen>]
 module TradingCoreTransferStore =
+    let private readTransferList<'T when 'T : not struct and 'T : not null>
+        (store: TradingCoreStore) (connection: Microsoft.Data.Sqlite.SqliteConnection)
+        table orderBy =
+        use command = connection.CreateCommand()
+        command.CommandText <- $"SELECT payload_json FROM {table} ORDER BY {orderBy}"
+        use reader = command.ExecuteReader()
+        let values = ResizeArray<'T>()
+        while reader.Read() do
+            match Option.ofObj (JsonSerializer.Deserialize<'T>(reader.GetString 0, store.Json)) with
+            | Some value -> values.Add value
+            | None -> invalidOp $"empty-{table}-payload"
+        values.ToArray()
+
     type TradingCoreStore with
+        member this.ExportFinancialTransfer(request: CanonicalFinancialExportRequest) =
+            match Option.ofObj (CanonicalFinancialTransferPolicy.Error request) with
+            | Some error -> invalidArg "request" error
+            | None -> ()
+            if request.Direction <> AuthorityTransitionDirections.Rollback
+                || request.SourceMode <> TradingAuthorityMode.Remote
+                then
+                invalidArg "request" "invalid-financial-export-request"
+            let transition =
+                match this.Transition request.TransitionId with
+                | Some value -> value
+                | None -> invalidOp "authority-transition-not-found"
+            if transition.Phase <> AuthorityTransitionPhases.Draining
+                || transition.SourceGeneration <> request.SourceGeneration
+                || transition.ReservedGeneration <> request.ReservedTargetGeneration then
+                invalidOp "authority-transition-phase-conflict"
+            let configuration =
+                match this.AccountConfiguration() with
+                | Some value -> value
+                | None -> invalidOp "account-configuration-unavailable"
+            let portfolio = this.Portfolio()
+            let captured = request.Operation.ObservedAtUtc
+            let candidate = TradingStateSnapshot(
+                TradingCoreContractVersions.Current, "", request.SourceGeneration,
+                captured, configuration.Accounts |> Seq.map (fun account ->
+                    TradingAccountProjection(account.AccountId, account.BrokerCode,
+                        account.Environment, account.IsEnabled, account.IsActive,
+                        configuration.Generation)) |> Seq.toArray,
+                portfolio.Recommendations, portfolio.Positions, portfolio.Trades,
+                portfolio.Risk)
+            let snapshot = TradingStateSnapshot(
+                candidate.ContractVersion, TradingCoreIdentity.Snapshot(candidate),
+                candidate.SourceGeneration, candidate.CapturedAtUtc, candidate.Accounts,
+                candidate.Recommendations, candidate.Positions, candidate.Trades,
+                candidate.Risk)
+            use connection = this.Connect()
+            let identities = readTransferList<FinancialExecutionIdentity>
+                                 this connection "canonical_execution_identities" "command_id"
+            let brokerEvidence = readTransferList<FinancialBrokerEvidence>
+                                     this connection "canonical_transfer_broker_evidence" "identity"
+            use journal = connection.CreateCommand()
+            journal.CommandText <- "SELECT COUNT(*) FROM outbox"
+            let journalCount = Convert.ToInt64(journal.ExecuteScalar())
+            use versionsCommand = connection.CreateCommand()
+            versionsCommand.CommandText <- "SELECT aggregate_id,MAX(aggregate_version) FROM outbox GROUP BY aggregate_id ORDER BY aggregate_id"
+            use versionReader = versionsCommand.ExecuteReader()
+            let versions = Collections.Generic.SortedDictionary<string,int64>(StringComparer.Ordinal)
+            while versionReader.Read() do versions.Add(versionReader.GetString 0, versionReader.GetInt64 1)
+            let activity = CanonicalFinancialTransferMapper.Activity(
+                versions, journalCount, Array.Empty<FinancialConsumerCursor>())
+            let transfer = CanonicalFinancialTransferMapper.Create(
+                request.TransferId, request.TransitionId, request.Direction,
+                request.SourceMode, request.ReservedTargetGeneration,
+                request.Compatibility, configuration, snapshot, identities,
+                brokerEvidence, activity, request.EquityBasis)
+            use persist = connection.CreateCommand()
+            persist.CommandText <- """INSERT INTO canonical_financial_exports
+(transfer_id,reserved_generation,transfer_hash,payload_json,exported_at)
+VALUES($id,$generation,$hash,$payload,$at)
+ON CONFLICT(transfer_id,reserved_generation) DO NOTHING"""
+            persist.Parameters.AddWithValue("$id", transfer.TransferId) |> ignore
+            persist.Parameters.AddWithValue("$generation", transfer.ReservedTargetGeneration) |> ignore
+            persist.Parameters.AddWithValue("$hash", transfer.TransferHash) |> ignore
+            persist.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(transfer, this.Json)) |> ignore
+            persist.Parameters.AddWithValue("$at", transfer.CapturedAtUtc.ToString("O")) |> ignore
+            if persist.ExecuteNonQuery() = 0 then
+                use existing = connection.CreateCommand()
+                existing.CommandText <- """SELECT transfer_hash FROM canonical_financial_exports
+WHERE transfer_id=$id AND reserved_generation=$generation"""
+                existing.Parameters.AddWithValue("$id", transfer.TransferId) |> ignore
+                existing.Parameters.AddWithValue("$generation", transfer.ReservedTargetGeneration) |> ignore
+                if Convert.ToString(existing.ExecuteScalar()) <> transfer.TransferHash then
+                    invalidOp "transfer-identity-conflict"
+            transfer
+
+        member this.RecordExternalFinancialImport(receipt: CanonicalFinancialImportReceipt) =
+            if isNull receipt
+                || receipt.ContractVersion <> CanonicalFinancialTransferVersions.Current
+                || not (Guid.TryParse(receipt.TransferId) |> fst)
+                || receipt.ReservedGeneration < 2L
+                || String.IsNullOrWhiteSpace receipt.TransferHash
+                || String.IsNullOrWhiteSpace receipt.ImportStateHash then
+                invalidArg "receipt" "invalid-financial-import-receipt"
+            use connection = this.Connect()
+            use exported = connection.CreateCommand()
+            exported.CommandText <- """SELECT transfer_hash FROM canonical_financial_exports
+WHERE transfer_id=$id AND reserved_generation=$generation"""
+            exported.Parameters.AddWithValue("$id", receipt.TransferId) |> ignore
+            exported.Parameters.AddWithValue("$generation", receipt.ReservedGeneration) |> ignore
+            match exported.ExecuteScalar() with
+            | null -> invalidOp "canonical-financial-export-not-found"
+            | value when Convert.ToString(value) <> receipt.TransferHash ->
+                invalidOp "canonical-import-mismatch"
+            | _ -> ()
+            use command = connection.CreateCommand()
+            command.CommandText <- """INSERT INTO canonical_financial_imports
+(transfer_id,reserved_generation,transfer_hash,receipt_json,imported_at)
+VALUES($id,$generation,$hash,$receipt,$at)
+ON CONFLICT(transfer_id,reserved_generation) DO NOTHING"""
+            command.Parameters.AddWithValue("$id", receipt.TransferId) |> ignore
+            command.Parameters.AddWithValue("$generation", receipt.ReservedGeneration) |> ignore
+            command.Parameters.AddWithValue("$hash", receipt.TransferHash) |> ignore
+            command.Parameters.AddWithValue("$receipt", JsonSerializer.Serialize(receipt, this.Json)) |> ignore
+            command.Parameters.AddWithValue("$at", receipt.ImportedAtUtc.ToString("O")) |> ignore
+            let inserted = command.ExecuteNonQuery() = 1
+            CanonicalFinancialImportReceipt(
+                receipt.ContractVersion, receipt.TransferId, receipt.TransferHash,
+                receipt.ReservedGeneration, receipt.ImportStateHash, not inserted,
+                receipt.ImportedAtUtc)
+
         member this.ImportFinancialTransfer(transfer: CanonicalFinancialTransferV2) =
             match Option.ofObj (CanonicalFinancialTransferPolicy.Error transfer) with
             | Some error -> invalidArg "transfer" error
@@ -62,8 +185,19 @@ DELETE FROM canonical_recommendations;
 DELETE FROM canonical_positions;
 DELETE FROM canonical_trades;
 DELETE FROM canonical_risk;
+DELETE FROM canonical_transfer_accounts;
+DELETE FROM canonical_execution_identities;
+DELETE FROM canonical_transfer_broker_evidence;
+DELETE FROM canonical_activity_continuity;
 """
                     clear.ExecuteNonQuery() |> ignore
+                    for account in transfer.Accounts do
+                        use command = connection.CreateCommand()
+                        command.Transaction <- transaction
+                        command.CommandText <- "INSERT INTO canonical_transfer_accounts VALUES($id,$payload,1)"
+                        command.Parameters.AddWithValue("$id", account.AccountId) |> ignore
+                        command.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(account, this.Json)) |> ignore
+                        command.ExecuteNonQuery() |> ignore
                     for recommendation in snapshot.Recommendations do
                         use command = connection.CreateCommand()
                         command.Transaction <- transaction
@@ -101,6 +235,25 @@ DELETE FROM canonical_risk;
                     risk.CommandText <- "INSERT INTO canonical_risk VALUES(1,$payload,1)"
                     risk.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(snapshot.Risk, this.Json)) |> ignore
                     risk.ExecuteNonQuery() |> ignore
+                    for identity in transfer.ExecutionIdentities do
+                        use command = connection.CreateCommand()
+                        command.Transaction <- transaction
+                        command.CommandText <- "INSERT INTO canonical_execution_identities VALUES($id,$payload,1)"
+                        command.Parameters.AddWithValue("$id", identity.CommandId) |> ignore
+                        command.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(identity, this.Json)) |> ignore
+                        command.ExecuteNonQuery() |> ignore
+                    for evidence in transfer.BrokerEvidence do
+                        use command = connection.CreateCommand()
+                        command.Transaction <- transaction
+                        command.CommandText <- "INSERT INTO canonical_transfer_broker_evidence VALUES($id,$payload,1)"
+                        command.Parameters.AddWithValue("$id", $"{evidence.AccountId}|{evidence.ClientOrderId}|{evidence.BrokerOrderId}") |> ignore
+                        command.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(evidence, this.Json)) |> ignore
+                        command.ExecuteNonQuery() |> ignore
+                    use activity = connection.CreateCommand()
+                    activity.Transaction <- transaction
+                    activity.CommandText <- "INSERT INTO canonical_activity_continuity VALUES(1,$payload,1)"
+                    activity.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(transfer.Activity, this.Json)) |> ignore
+                    activity.ExecuteNonQuery() |> ignore
                     let receipt = CanonicalFinancialImportReceipt(
                         CanonicalFinancialTransferVersions.Current, transfer.TransferId,
                         transfer.TransferHash, transfer.ReservedTargetGeneration,

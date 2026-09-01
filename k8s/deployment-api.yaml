@@ -23,6 +23,8 @@ spec:
         - containerPort: 5239
         - name: worker-tls
           containerPort: 5443
+        - name: cutover-tls
+          containerPort: 5543
         env:
         - name: ASPNETCORE_ENVIRONMENT
           value: "Production"
@@ -124,6 +126,28 @@ spec:
           value: "/tls/trading-core-client/ca.crt"
         - name: TradingCoreTransport__ServerCertificateCommonName
           value: "stocktrader-trading-core"
+        - name: EdgeTransitionControl__Enabled
+          value: "__EDGE_TRANSITION_CONTROL_ENABLED__"
+        - name: EdgeTransitionControl__ServerCertificatePath
+          value: "/tls/edge-cutover-server/tls.crt"
+        - name: EdgeTransitionControl__ServerCertificateKeyPath
+          value: "/tls/edge-cutover-server/tls.key"
+        - name: EdgeTransitionControl__ClientCertificateAuthorityPath
+          value: "/tls/edge-cutover-client-ca/ca.crt"
+        - name: EdgeTransitionControl__CoordinatorRoleDnsName
+          value: "trading-cutover-coordinator.stocktrader.internal"
+        - name: AuthorityCapabilityAttestation__RuntimeProfile
+          value: "__API_RUNTIME_PROFILE__"
+        - name: AuthorityCapabilityAttestation__ImageDigest
+          value: "__API_IMAGE_DIGEST__"
+        - name: AuthorityCapabilityAttestation__ServiceInventoryHash
+          value: "__API_SERVICE_INVENTORY_HASH__"
+        - name: AuthorityCapabilityAttestation__SecretReferenceHash
+          value: "__API_SECRET_REFERENCE_HASH__"
+        - name: AuthorityCapabilityAttestation__NetworkPolicyHash
+          value: "__API_NETWORK_POLICY_HASH__"
+        - name: AuthorityCapabilityAttestation__HasBrokerEgress
+          value: "__API_HAS_BROKER_EGRESS__"
         resources:
           requests:
             memory: "256Mi"
@@ -148,6 +172,12 @@ spec:
           readOnly: true
         - name: trading-core-client-tls
           mountPath: /tls/trading-core-client
+          readOnly: true
+        - name: edge-cutover-server-tls
+          mountPath: /tls/edge-cutover-server
+          readOnly: true
+        - name: edge-cutover-client-ca
+          mountPath: /tls/edge-cutover-client-ca
           readOnly: true
         livenessProbe:
           httpGet:
@@ -186,6 +216,15 @@ spec:
       - name: trading-core-client-tls
         secret:
           secretName: __TRADING_CORE_CLIENT_TLS_SECRET__
+      - name: edge-cutover-server-tls
+        secret:
+          secretName: __EDGE_CUTOVER_SERVER_TLS_SECRET__
+      - name: edge-cutover-client-ca
+        secret:
+          secretName: __CUTOVER_COORDINATOR_CLIENT_TLS_SECRET__
+          items:
+          - key: ca.crt
+            path: ca.crt
 
 ---
 apiVersion: v1
@@ -205,4 +244,8 @@ spec:
     protocol: TCP
     port: 3443
     targetPort: 5443
+  - name: cutover-tls
+    protocol: TCP
+    port: 3543
+    targetPort: 5543
   type: ClusterIP

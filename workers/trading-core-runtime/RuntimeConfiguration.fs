@@ -9,6 +9,7 @@ type ServiceConfig =
       ServerCertificateKeyPath: string
       ClientCaPath: string
       ClientRoleDnsName: string
+      CoordinatorRoleDnsName: string
       MarketDataEndpoint: Uri
       MarketDataClientCertificatePath: string
       MarketDataClientKeyPath: string
@@ -17,6 +18,7 @@ type ServiceConfig =
       PositionEvaluationInterval: TimeSpan
       EncryptionKey: byte array
       EncryptionKeyGeneration: string
+      BrokerCapabilityEnabled: bool
       InitialMode: TradingAuthorityMode }
 
 type EncryptionMigrationConfig =

@@ -12,6 +12,13 @@ public interface ITradingCoreAccountConfigurationSource
     Task<TradingAccountConfigurationSet> CaptureAsync(CancellationToken ct = default);
 }
 
+public interface IEdgeCanonicalFinancialTransferService
+{
+    Task<CanonicalFinancialTransferV2> ExportAsync(
+        CanonicalFinancialExportRequest request,
+        CancellationToken ct = default);
+}
+
 public interface ITradingAccountIdentitySource
 {
     Task<string?> GetActiveAccountIdAsync(CancellationToken ct = default);

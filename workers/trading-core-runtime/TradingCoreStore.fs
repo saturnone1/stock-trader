@@ -10,7 +10,7 @@ open StockTrader.TradingCore.Execution
 
 type TradingCoreStore(config: ServiceConfig, json: JsonSerializerOptions, secrets: SecretStore) =
     do Database.initialize config.DatabasePath config.InitialMode
-    do
+    do if config.BrokerCapabilityEnabled then
         use connection = Database.connect config.DatabasePath
         use command = connection.CreateCommand()
         command.CommandText <- "SELECT ciphertext,nonce,tag,encryption_key_generation FROM account_configuration WHERE singleton=1"

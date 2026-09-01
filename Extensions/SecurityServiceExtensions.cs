@@ -47,6 +47,8 @@ public static class SecurityServiceExtensions
             .Validate(settings => settings.IsValid(),
                 "Edge transition control requires server certificate, key, client CA, and coordinator role")
             .ValidateOnStart();
+        services.AddOptions<AuthorityCapabilityAttestationOptions>()
+            .Bind(configuration.GetSection(AuthorityCapabilityAttestationOptions.SectionName));
 
         // HttpContextAccessor (needed by AuditService to read client IP)
         services.AddHttpContextAccessor();
