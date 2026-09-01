@@ -82,6 +82,8 @@
     <ProjectReference Include="src\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
     <ProjectReference Include="src\StockTrader.MlTrainingCompute\StockTrader.MlTrainingCompute.csproj" />
     <ProjectReference Include="src\StockTrader.TradingCore\StockTrader.TradingCore.csproj" />
+    <ProjectReference Include="src\StockTrader.TradingCore.BrokerPorts\StockTrader.TradingCore.BrokerPorts.csproj" />
+    <ProjectReference Include="src\StockTrader.TradingCore.AlpacaAdapter\StockTrader.TradingCore.AlpacaAdapter.csproj" />
   </ItemGroup>
 
   <ItemGroup>

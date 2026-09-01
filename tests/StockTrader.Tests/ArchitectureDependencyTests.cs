@@ -1277,7 +1277,7 @@ public class ArchitectureDependencyTests
                 "workers/trading-core-service/PositionProtectionWorker.fs"))
             .Should().Contain("TradingPositionEvaluator.Evaluate");
         File.ReadAllText(Path.Combine(repository,
-                "workers/trading-core-service/BrokerWorker.fs"))
+                "workers/trading-core-runtime/BrokerWorker.fs"))
             .Should().Contain("marketData.VerifyAsync(intent.MarketDataEvidence");
         background.Should().Contain("services.AddHostedService<PositionExecutionManagerService>()");
         remote.Should().NotContain("AppDbContext");
@@ -1291,6 +1291,30 @@ public class ArchitectureDependencyTests
         networkPolicy.Should().Contain("app: stocktrader-market-data");
         networkPolicy.Should().Contain("port: 7443");
         networkPolicy.Should().Contain("port: 443");
+    }
+
+    [Fact]
+    public void TradingCoreRuntimeDependsOnBrokerPortsInsteadOfAlpacaSdk()
+    {
+        var repository = FindRepositoryRoot();
+        var runtimeProject = File.ReadAllText(Path.Combine(
+            repository, "src/StockTrader.TradingCore/StockTrader.TradingCore.csproj"));
+        var brokerWorker = File.ReadAllText(Path.Combine(
+            repository, "workers/trading-core-runtime/BrokerWorker.fs"));
+        var serviceProject = File.ReadAllText(Path.Combine(
+            repository,
+            "workers/trading-core-service/StockTrader.TradingCoreService.fsproj"));
+        var alpacaProject = File.ReadAllText(Path.Combine(
+            repository,
+            "src/StockTrader.TradingCore.AlpacaAdapter/StockTrader.TradingCore.AlpacaAdapter.csproj"));
+
+        runtimeProject.Should().Contain("StockTrader.TradingCore.BrokerPorts");
+        runtimeProject.Should().NotContain("Alpaca.Markets");
+        brokerWorker.Should().Contain("ITradingBrokerFactory");
+        brokerWorker.Should().NotContain("new AlpacaTradingBroker");
+        serviceProject.Should().Contain("StockTrader.TradingCore.AlpacaAdapter");
+        alpacaProject.Should().Contain("Alpaca.Markets");
+        alpacaProject.Should().Contain("StockTrader.TradingCore.BrokerPorts");
     }
 
     [Fact]

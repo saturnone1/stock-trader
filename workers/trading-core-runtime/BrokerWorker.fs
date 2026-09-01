@@ -14,10 +14,17 @@ open StockTrader.TradingCore.Broker
 type BrokerWorker(
     store: TradingCoreStore,
     marketData: MarketDataExecutionClient,
+    brokerFactory: ITradingBrokerFactory,
+    clock: TimeProvider,
     logger: ILogger<BrokerWorker>) =
     inherit BackgroundService()
 
     let mutable nextPortfolioSync = DateTime.MinValue
+
+    let utcNow () = clock.GetUtcNow().UtcDateTime
+
+    let delay (milliseconds: int) (ct: CancellationToken) =
+        Task.Delay(TimeSpan.FromMilliseconds(int64 milliseconds), clock, ct)
 
     let clientOrderId (commandId: string) =
         let input: byte array = Encoding.UTF8.GetBytes(commandId)
@@ -30,13 +37,12 @@ type BrokerWorker(
         match account with
         | None -> Error "active-account-configuration-missing"
         | Some value when value.BrokerCode <> "Alpaca" -> Error "unsupported-trading-core-broker"
-        | Some value -> Ok (new AlpacaTradingBroker(
-            value.ApiKey, value.ApiSecret,
-            not (String.Equals(value.Environment, "Live", StringComparison.OrdinalIgnoreCase)),
-            TimeProvider.System))
+        | Some value -> Ok (brokerFactory.Create(TradingBrokerConnection(
+            value.BrokerCode, value.Environment, value.ApiKey, value.ApiSecret)))
 
     let reconcile (broker: ITradingBroker) clientId ct = task {
-        let! orders = broker.GetOrdersAsync(DateTime.UtcNow.AddDays(-7), DateTime.UtcNow, ct)
+        let observedAt = utcNow ()
+        let! orders = broker.GetOrdersAsync(observedAt.AddDays(-7), observedAt, ct)
         return orders |> Seq.tryFind (fun order -> order.ClientOrderId = clientId)
     }
 
@@ -64,8 +70,9 @@ type BrokerWorker(
     }
 
     let syncPortfolio (configuration: TradingAccountConfigurationSet) ct = task {
-        if DateTime.UtcNow >= nextPortfolioSync then
-            nextPortfolioSync <- DateTime.UtcNow.AddSeconds(5)
+        let observedAt = utcNow ()
+        if observedAt >= nextPortfolioSync then
+            nextPortfolioSync <- observedAt.AddSeconds(5)
             for account in configuration.Accounts do
                 if account.IsEnabled && account.IsActive then
                     match brokerFor configuration account.AccountId with
@@ -88,7 +95,7 @@ type BrokerWorker(
     override _.ExecuteAsync(stoppingToken: CancellationToken) = task {
         try
             while not stoppingToken.IsCancellationRequested do
-                let expired = store.RejectExpiredPendingIntents(DateTime.UtcNow)
+                let expired = store.RejectExpiredPendingIntents(utcNow ())
                 if expired > 0 then
                     logger.LogWarning(
                         "Rejected {Count} trading commands that expired before broker submission", expired)
@@ -112,15 +119,15 @@ type BrokerWorker(
                                 let! evidence = reconcile broker clientId stoppingToken
                                 match evidence with
                                 | Some order -> store.RecordBrokerEvidence(intent.Envelope.CommandId, order) |> ignore
-                                | None -> do! Task.Delay(5000, stoppingToken)
+                                | None -> do! delay 5000 stoppingToken
                             with error ->
                                 store.RequireReconciliation intent.Envelope.CommandId
                                 logger.LogError(error, "Trading entry {CommandId} reconciliation failed",
                                     intent.Envelope.CommandId)
-                                do! Task.Delay(5000, stoppingToken)
+                                do! delay 5000 stoppingToken
                         else
                             let session = ExchangeSessionPolicy.Evaluate(
-                                MarketRegion.UnitedStates, DateTime.UtcNow)
+                                MarketRegion.UnitedStates, utcNow ())
                             if not session.IsOpen then
                                 store.RejectIntent(intent.Envelope.CommandId, session.Reason)
                                 logger.LogWarning(
@@ -139,7 +146,7 @@ type BrokerWorker(
                                     logger.LogWarning(error,
                                         "Trading entry {CommandId} pre-submit evidence unavailable; released for retry",
                                         intent.Envelope.CommandId)
-                                    do! Task.Delay(2000, stoppingToken)
+                                    do! delay 2000 stoppingToken
                                 | Ok decision when not decision.Allowed ->
                                         store.RejectIntent(intent.Envelope.CommandId, decision.Reason)
                                         logger.LogWarning("Trading entry {CommandId} rejected by final risk gate: {Reason}",
@@ -154,7 +161,7 @@ type BrokerWorker(
                                             intent.Envelope.CommandId, evidence.OrderId, evidence.Status)
                                         if evidence.Status <> "Filled" && evidence.Status <> "Rejected"
                                             && evidence.Status <> "Cancelled" && evidence.Status <> "Expired" then
-                                            do! Task.Delay(2000, stoppingToken)
+                                            do! delay 2000 stoppingToken
                                     with error ->
                                         try
                                             let! evidence = reconcile broker clientId stoppingToken
@@ -256,6 +263,6 @@ type BrokerWorker(
                 | Some configuration when store.Authority().Mode = TradingAuthorityMode.Remote ->
                     do! syncPortfolio configuration stoppingToken
                 | _ -> ()
-                do! Task.Delay(500, stoppingToken)
+                do! delay 500 stoppingToken
         with :? OperationCanceledException when stoppingToken.IsCancellationRequested -> ()
     }

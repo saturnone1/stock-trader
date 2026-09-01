@@ -41,6 +41,12 @@ public sealed record BrokerAccountEvidence(
     bool IsTradingBlocked,
     DateTime ObservedAtUtc);
 
+public sealed record TradingBrokerConnection(
+    string BrokerCode,
+    string Environment,
+    string ApiKey,
+    string ApiSecret);
+
 public sealed record TradingPositionRiskEvidence(string Symbol, string Sector);
 
 public sealed record TradingRiskGateRequest(
@@ -80,7 +86,7 @@ public static class TradingRiskGate
     }
 }
 
-public interface ITradingBroker
+public interface ITradingBroker : IDisposable
 {
     Task<BrokerOrderEvidence> SubmitEntryAsync(
         BrokerEntryOrderRequest request,
@@ -101,4 +107,9 @@ public interface ITradingBroker
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken ct = default);
+}
+
+public interface ITradingBrokerFactory
+{
+    ITradingBroker Create(TradingBrokerConnection connection);
 }

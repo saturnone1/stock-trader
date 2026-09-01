@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);3261</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+    <ProjectReference Include="..\..\src\StockTrader.ServiceContracts\StockTrader.ServiceContracts.csproj" />
+    <ProjectReference Include="..\..\src\StockTrader.Engine\StockTrader.Engine.csproj" />
+    <ProjectReference Include="..\..\src\StockTrader.TradingCore\StockTrader.TradingCore.csproj" />
+    <ProjectReference Include="..\..\src\StockTrader.TradingCore.BrokerPorts\StockTrader.TradingCore.BrokerPorts.csproj" />
+    <Compile Include="RuntimeConfiguration.fs" />
+    <Compile Include="Database.fs" />
+    <Compile Include="SecretStore.fs" />
+    <Compile Include="MarketDataExecutionClient.fs" />
+    <Compile Include="TradingCoreStore.fs" />
+    <Compile Include="TradingCoreAuthorityStore.fs" />
+    <Compile Include="TradingCoreRecommendationStore.fs" />
+    <Compile Include="TradingCoreEntryStore.fs" />
+    <Compile Include="TradingCoreEntryBrokerStore.fs" />
+    <Compile Include="TradingCoreShadowStore.fs" />
+    <Compile Include="TradingCoreCommandStore.fs" />
+    <Compile Include="TradingCorePositionStore.fs" />
+    <Compile Include="TradingCorePositionStateStore.fs" />
+    <Compile Include="TradingCorePositionBrokerStore.fs" />
+    <Compile Include="TradingCoreQueryStore.fs" />
+    <Compile Include="TradingCoreMarketStore.fs" />
+    <Compile Include="TradingCoreOperations.fs" />
+    <Compile Include="BrokerWorker.fs" />
+    <Compile Include="PositionProtectionWorker.fs" />
+    <Compile Include="RuntimeHost.fs" />
+  </ItemGroup>
+</Project>

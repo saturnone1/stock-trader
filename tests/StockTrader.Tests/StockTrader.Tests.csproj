@@ -20,8 +20,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\StockTrader.csproj" />
     <ProjectReference Include="..\..\workers\trading-core-service\StockTrader.TradingCoreService.fsproj" />
+    <ProjectReference Include="..\..\workers\trading-core-runtime\StockTrader.TradingCore.Runtime.fsproj" />
     <ProjectReference Include="..\..\workers\market-data-service\StockTrader.MarketDataService.fsproj" />
     <ProjectReference Include="..\..\src\StockTrader.TradingCore\StockTrader.TradingCore.csproj" />
+    <ProjectReference Include="..\..\src\StockTrader.TradingCore.BrokerPorts\StockTrader.TradingCore.BrokerPorts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

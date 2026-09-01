@@ -4,29 +4,6 @@ open System
 open System.IO
 open StockTrader.ServiceContracts.TradingCore
 
-type ServiceConfig =
-    { DatabasePath: string
-      ServerCertificatePath: string
-      ServerCertificateKeyPath: string
-      ClientCaPath: string
-      ClientRoleDnsName: string
-      MarketDataEndpoint: Uri
-      MarketDataClientCertificatePath: string
-      MarketDataClientKeyPath: string
-      MarketDataServerCaPath: string
-      MarketDataServerCommonName: string
-      PositionEvaluationInterval: TimeSpan
-      EncryptionKey: byte array
-      EncryptionKeyGeneration: string
-      InitialMode: TradingAuthorityMode }
-
-type EncryptionMigrationConfig =
-    { DatabasePath: string
-      OldKey: byte array
-      OldGeneration: string
-      NewKey: byte array
-      NewGeneration: string }
-
 module Configuration =
     let private required name =
         match Environment.GetEnvironmentVariable name with
@@ -50,7 +27,7 @@ module Configuration =
             failwith $"{name} must be 1-14 lowercase letters, digits, or hyphens"
         value
 
-    let load () =
+    let load () : ServiceConfig =
         let root = dataRoot ()
         let initialMode =
             match Environment.GetEnvironmentVariable "STOCKTRADER_TRADING_CORE_MODE" with
@@ -88,7 +65,7 @@ module Configuration =
             | _ -> generation "STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION"
           InitialMode = initialMode }
 
-    let loadEncryptionMigration () =
+    let loadEncryptionMigration () : EncryptionMigrationConfig =
         { DatabasePath = Path.Combine(dataRoot (), "trading-core.db")
           OldKey = key "STOCKTRADER_TRADING_CORE_OLD_ENCRYPTION_KEY"
           OldGeneration = generation "STOCKTRADER_TRADING_CORE_OLD_ENCRYPTION_GENERATION"
