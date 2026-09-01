@@ -148,7 +148,7 @@ public sealed class TradingCoreStage5EvidenceTests
     private static Stage5AuthorityEvidence Authority(
         long generation, string owner, TradingAuthorityMode mode) => new(
         mode.ToString(), owner, generation, 1, AuthorityCommandAcceptanceStates.Open,
-        0, 0, 0, 0, 0, Hash, Hash, Hash);
+        0, 0, 0, 0, 0, 2, 0, Now, true, true, null, Hash, Hash, Hash);
 
     private static IReadOnlyDictionary<string, string> Map(string key) =>
         new Dictionary<string, string> { [key] = Hash };

@@ -104,6 +104,12 @@ public sealed record Stage5AuthorityEvidence(
     int UnprocessedBrokerFillCount,
     int DivergenceCount,
     long EnabledConsumerLag,
+    int ShadowObservationCount,
+    int ShadowMismatchCount,
+    DateTime? LastBrokerReconciledAtUtc,
+    bool DatabaseIntegrityPassed,
+    bool ResourceObjectivesPassed,
+    string? HealthError,
     string CapabilityReceiptHash,
     string ReconciliationHash,
     string DatabaseIntegrityHash);
@@ -399,6 +405,13 @@ public static class Stage5EvidencePolicy
         if (AuthorityError(input.InitialAuthority) is not null
             || AuthorityError(input.FinalAuthority) is not null)
             yield return "authority-evidence-invalid";
+        if (input.EnvironmentClass == Stage5EnvironmentClasses.ProductionShadow
+            && (input.FinalAuthority.ShadowObservationCount < 2
+                || input.FinalAuthority.ShadowMismatchCount != 0))
+            yield return "production-shadow-corpus-incomplete";
+        if (input.EnvironmentClass != Stage5EnvironmentClasses.ProductionShadow
+            && input.FinalAuthority.LastBrokerReconciledAtUtc is null)
+            yield return "broker-reconciliation-evidence-missing";
         if (Unresolved(input.FinalAuthority) != 0)
             yield return "financial-state-not-converged";
     }
@@ -409,7 +422,12 @@ public static class Stage5EvidencePolicy
         || string.IsNullOrWhiteSpace(authority.CommandAcceptance)
         || authority.UnresolvedIntentCount < 0 || authority.UnresolvedBrokerEffectCount < 0
         || authority.UnprocessedBrokerFillCount < 0 || authority.DivergenceCount < 0
-        || authority.EnabledConsumerLag < 0 || NotHash(authority.CapabilityReceiptHash)
+        || authority.EnabledConsumerLag < 0 || authority.ShadowObservationCount < 0
+        || authority.ShadowMismatchCount < 0
+        || (authority.LastBrokerReconciledAtUtc is { Kind: not DateTimeKind.Utc })
+        || !authority.DatabaseIntegrityPassed || !authority.ResourceObjectivesPassed
+        || !string.IsNullOrWhiteSpace(authority.HealthError)
+        || NotHash(authority.CapabilityReceiptHash)
         || NotHash(authority.ReconciliationHash) || NotHash(authority.DatabaseIntegrityHash)
             ? "authority-evidence-invalid" : null;
 
