@@ -32,6 +32,19 @@ image_file_hash() {
   printf '%s' "$value"
 }
 
+oci_archive_digest() {
+  local archive="$1"
+  local digest
+  digest="$(tar -xOf "$archive" index.json \
+    | sed -nE 's/.*"digest"[[:space:]]*:[[:space:]]*"(sha256:[0-9a-f]{64})".*/\1/p' \
+    | head -n 1)"
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+    echo "Cannot derive OCI manifest digest from $archive" >&2
+    exit 1
+  }
+  printf '%s' "$digest"
+}
+
 case "$scope" in
   all)
     build_archive Dockerfile.api api-local api.tar local
@@ -44,6 +57,7 @@ case "$scope" in
   trading-core-stage5)
     build_archive Dockerfile.api api-local api-local.tar local
     build_archive Dockerfile.api api-remote api-remote.tar remote
+    build_archive Dockerfile.market-data market-data market-data.tar
     build_archive Dockerfile.trading-core trading-core trading-core.tar
     build_archive Dockerfile.trading-core-shadow trading-core-shadow trading-core-shadow.tar
     build_archive Dockerfile.trading-core-acceptance trading-core-acceptance trading-core-acceptance.tar
@@ -79,6 +93,12 @@ if [[ "$scope" == "trading-core-stage5" ]]; then
     printf 'ENGINE_HASH=%s\n' "$engine_hash"
     printf 'TRADING_CORE_HASH=%s\n' "$trading_core_hash"
     printf 'RUNTIME_HASH=%s\n' "$runtime_hash"
+    printf 'EDGE_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/api-remote.tar")"
+    printf 'TRADING_CORE_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core.tar")"
+    printf 'MARKET_DATA_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/market-data.tar")"
+    printf 'ACCEPTANCE_CORE_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-acceptance.tar")"
+    printf 'BROKER_EMULATOR_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-broker-emulator.tar")"
+    printf 'DRIVER_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-acceptance-driver.tar")"
   } > "$output_dir/stage5-metadata.env"
 fi
 

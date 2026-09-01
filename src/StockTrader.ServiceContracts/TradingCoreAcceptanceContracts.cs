@@ -192,6 +192,18 @@ public sealed record AcceptanceManifestV1(
     IReadOnlyList<AcceptanceScenarioResult> Scenarios, DateTime StartedAtUtc,
     DateTime EndedAtUtc, bool Passed, IReadOnlyList<string> StopReasons);
 
+public static class TradingCoreAcceptanceImageCatalog
+{
+    public static IReadOnlyList<string> Required { get; } =
+    ["edge", "trading-core", "market-data", "acceptance-core", "broker-emulator", "driver"];
+}
+
+public static class TradingCoreAcceptanceAssemblyCatalog
+{
+    public static IReadOnlyList<string> Required { get; } =
+    ["service-contracts", "engine", "trading-core", "runtime"];
+}
+
 public static class TradingCoreAcceptanceIdentity
 {
     public static string Plan(ScriptedBrokerPlan plan) =>
@@ -246,16 +258,30 @@ public static class TradingCoreAcceptancePolicy
     public static string? ManifestError(AcceptanceManifestV1 manifest)
     {
         if (manifest.ContractVersion != TradingCoreAcceptanceVersions.Current
-            || manifest.EnvironmentClass != "IsolatedAcceptance")
+            || manifest.EnvironmentClass != "IsolatedAcceptance"
+            || string.IsNullOrWhiteSpace(manifest.RepositoryCommit)
+            || string.IsNullOrWhiteSpace(manifest.BuildId))
             return "unsupported-contract";
         var codes = manifest.Scenarios.Select(value => value.ScenarioCode).ToArray();
         if (TradingCoreAcceptanceScenarioCatalog.Required.Any(required =>
                 codes.Count(code => code == required) != 1)
+            || !HasHashes(manifest.ImageDigests, TradingCoreAcceptanceImageCatalog.Required)
+            || !HasHashes(manifest.SharedAssemblyHashes,
+                TradingCoreAcceptanceAssemblyCatalog.Required)
             || manifest.Passed != manifest.Scenarios.All(value => value.Passed)
             || manifest.ManifestId != TradingCoreAcceptanceIdentity.Manifest(manifest))
             return "acceptance-manifest-invalid";
         return null;
     }
+
+    private static bool HasHashes(IReadOnlyDictionary<string, string> values,
+        IReadOnlyList<string> required) =>
+        required.All(values.ContainsKey) && values.Values.All(value =>
+        {
+            if (value.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                value = value[7..];
+            return value.Length >= 32 && value.All(Uri.IsHexDigit);
+        });
 
 
     public static string? FixtureError(AcceptanceScenarioFixture fixture)

@@ -27,8 +27,10 @@ public sealed class TradingCoreAcceptanceContractTests
                 "state", [], now, now.AddMinutes(1), true, null)).ToArray();
         var candidate = new AcceptanceManifestV1(
             TradingCoreAcceptanceVersions.Current, string.Empty, Guid.NewGuid().ToString(),
-            "IsolatedAcceptance", "commit", "build", new Dictionary<string, string>(),
-            new Dictionary<string, string>(), results, now, now.AddMinutes(1), true, []);
+            "IsolatedAcceptance", "commit", "build", Hashes(
+                TradingCoreAcceptanceImageCatalog.Required), Hashes(
+                TradingCoreAcceptanceAssemblyCatalog.Required), results,
+            now, now.AddMinutes(1), true, []);
         var manifest = candidate with
         {
             ManifestId = TradingCoreAcceptanceIdentity.Manifest(candidate)
@@ -86,4 +88,7 @@ public sealed class TradingCoreAcceptanceContractTests
         first.Should().Be(second).And.StartWith("st-").And.HaveLength(35);
         FinancialExecutionIdentityPolicy.ClientOrderId("command-43").Should().NotBe(first);
     }
+
+    private static IReadOnlyDictionary<string, string> Hashes(IEnumerable<string> keys) =>
+        keys.ToDictionary(key => key, _ => new string('a', 64));
 }

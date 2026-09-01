@@ -273,6 +273,11 @@ prepare_image() {
   local target="$archive_dir/$archive_name"
   if [[ -n "$source_archive_dir" ]]; then
     local source="$source_archive_dir/$archive_name"
+    local image_archive="${image##*/}"
+    image_archive="${image_archive%%:*}.tar"
+    if [[ -f "$source_archive_dir/$image_archive" ]]; then
+      source="$source_archive_dir/$image_archive"
+    fi
     if [[ ! -f "$source" ]]; then
       echo "Missing prebuilt image archive: $source" >&2
       exit 1
@@ -290,6 +295,19 @@ metadata_value() {
   local key="$1"
   local metadata="$source_archive_dir/stage5-metadata.env"
   sed -n "s/^${key}=//p" "$metadata" | head -n 1
+}
+
+oci_archive_digest() {
+  local archive="$1"
+  local digest
+  digest="$(tar -xOf "$archive" index.json \
+    | sed -nE 's/.*"digest"[[:space:]]*:[[:space:]]*"(sha256:[0-9a-f]{64})".*/\1/p' \
+    | head -n 1)"
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+    echo "Cannot derive OCI manifest digest from $archive" >&2
+    exit 1
+  }
+  printf '%s' "$digest"
 }
 
 wait_acceptance_job() {
@@ -528,8 +546,17 @@ if $deploy_acceptance; then
   engine_hash="$(metadata_value ENGINE_HASH)"
   trading_core_hash="$(metadata_value TRADING_CORE_HASH)"
   runtime_hash="$(metadata_value RUNTIME_HASH)"
+  edge_image_digest="$(metadata_value EDGE_IMAGE_DIGEST)"
+  production_core_image_digest="$(metadata_value TRADING_CORE_IMAGE_DIGEST)"
+  market_data_image_digest="$(metadata_value MARKET_DATA_IMAGE_DIGEST)"
+  acceptance_core_image_digest="$(metadata_value ACCEPTANCE_CORE_IMAGE_DIGEST)"
+  broker_emulator_image_digest="$(metadata_value BROKER_EMULATOR_IMAGE_DIGEST)"
+  driver_image_digest="$(metadata_value DRIVER_IMAGE_DIGEST)"
   for value in "$repository_commit" "$build_id" "$service_contracts_hash" "$engine_hash" \
-      "$trading_core_hash" "$runtime_hash"; do
+      "$trading_core_hash" "$runtime_hash" "$edge_image_digest" \
+      "$production_core_image_digest" "$market_data_image_digest" \
+      "$acceptance_core_image_digest" "$broker_emulator_image_digest" \
+      "$driver_image_digest"; do
     [[ -n "$value" ]] || { echo "Incomplete stage5 metadata." >&2; exit 1; }
   done
   rendered_manifest="$archive_dir/acceptance-manifest.yaml"
@@ -538,9 +565,12 @@ if $deploy_acceptance; then
     -e "s|__RELEASE_TAG__|$release_tag|g" \
     -e "s|__REPOSITORY_COMMIT__|$repository_commit|g" \
     -e "s|__BUILD_ID__|$build_id|g" \
-    -e "s|__TRADING_CORE_ACCEPTANCE_DIGEST__|sha256:$(sha256sum "$source_archive_dir/trading-core-acceptance.tar" | awk '{print $1}')|g" \
-    -e "s|__BROKER_EMULATOR_DIGEST__|sha256:$(sha256sum "$source_archive_dir/trading-core-broker-emulator.tar" | awk '{print $1}')|g" \
-    -e "s|__DRIVER_DIGEST__|sha256:$(sha256sum "$source_archive_dir/trading-core-acceptance-driver.tar" | awk '{print $1}')|g" \
+    -e "s|__EDGE_DIGEST__|$edge_image_digest|g" \
+    -e "s|__TRADING_CORE_DIGEST__|$production_core_image_digest|g" \
+    -e "s|__MARKET_DATA_DIGEST__|$market_data_image_digest|g" \
+    -e "s|__TRADING_CORE_ACCEPTANCE_DIGEST__|$acceptance_core_image_digest|g" \
+    -e "s|__BROKER_EMULATOR_DIGEST__|$broker_emulator_image_digest|g" \
+    -e "s|__DRIVER_DIGEST__|$driver_image_digest|g" \
     -e "s|__SERVICE_CONTRACTS_HASH__|$service_contracts_hash|g" \
     -e "s|__ENGINE_HASH__|$engine_hash|g" \
     -e "s|__TRADING_CORE_HASH__|$trading_core_hash|g" \
@@ -785,7 +815,7 @@ if $deploy_trading_core; then
     trading_core_broker_egress="true"
     trading_core_runtime_profile="trading-core-remote"
   fi
-  trading_core_image_digest="sha256:$(sha256sum "$archive_dir/trading-core.tar" | awk '{print $1}')"
+  trading_core_image_digest="$(oci_archive_digest "$archive_dir/trading-core.tar")"
   trading_core_service_inventory_hash="$(printf '%s' 'trading-core,market-data' | sha256sum | awk '{print $1}')"
   trading_core_secret_reference_hash="$(printf '%s' "$trading_core_encryption_secret|$trading_core_server_tls_secret|$market_data_trading_core_client_tls_secret" | sha256sum | awk '{print $1}')"
   trading_core_network_policy_hash="$(sha256sum k8s/network-policy-trading-core.yaml | awk '{print $1}')"
@@ -816,7 +846,7 @@ if $deploy_api; then
     api_runtime_profile="api-remote"
     api_has_broker_egress="false"
   fi
-  api_image_digest="sha256:$(sha256sum "$archive_dir/api.tar" | awk '{print $1}')"
+  api_image_digest="$(oci_archive_digest "$archive_dir/api.tar")"
   api_service_inventory_hash="$(printf '%s' 'api,desktop,market-data,trading-core' | sha256sum | awk '{print $1}')"
   api_secret_reference_hash="$(printf '%s' "$trading_core_client_tls_secret|$edge_cutover_server_tls_secret|$cutover_coordinator_client_tls_secret" | sha256sum | awk '{print $1}')"
   api_network_policy_hash="$(sha256sum k8s/network-policy-api.yaml | awk '{print $1}')"
