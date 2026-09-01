@@ -58,6 +58,7 @@ public sealed record FinancialRiskState(
     string EquityBasis,
     string DailyPnl,
     string DailyPnlPercent,
+    int OpenPositionCount,
     bool IsTradingHalted,
     DateTime ObservedAtUtc,
     long AccountGeneration,
@@ -118,6 +119,12 @@ public static class CanonicalFinancialTransferIdentity
 
     public static string Rows<T>(IReadOnlyList<T> rows) => CanonicalJsonHash.Compute(rows);
 
+    public static string Payload(string payloadJson)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(payloadJson);
+        return CanonicalJsonHash.Compute(document.RootElement);
+    }
+
     public static string Activity(FinancialActivityContinuity activity) =>
         CanonicalJsonHash.Compute(activity, nameof(FinancialActivityContinuity.ContinuityHash));
 
@@ -157,6 +164,9 @@ public static class CanonicalFinancialTransferPolicy
             return "duplicate-financial-identity";
         if (transfer.Accounts.Any(value => value.ConfigurationGeneration < 1
                 || string.IsNullOrWhiteSpace(value.ConfigurationHash))
+            || transfer.Recommendations.Concat(transfer.Positions).Concat(transfer.RealizedTrades)
+                .Any(value => string.IsNullOrWhiteSpace(value.Identity)
+                    || value.PayloadHash != CanonicalFinancialTransferIdentity.Payload(value.PayloadJson))
             || transfer.ExecutionIdentities.Any(value =>
                 string.IsNullOrWhiteSpace(value.PayloadHash)
                 || string.IsNullOrWhiteSpace(value.TerminalStatus))

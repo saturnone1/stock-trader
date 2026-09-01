@@ -11,6 +11,7 @@ type TradingCoreOperations(store: TradingCoreStore) =
     member _.CreateTransition(request) = store.CreateTransition request
     member _.ApplyTransitionStep(request) = store.ApplyTransitionStep request
     member _.Transition(transitionId) = store.Transition transitionId
+    member _.ImportFinancialTransfer(transfer) = store.ImportFinancialTransfer transfer
     member _.Import(snapshot) = store.Import snapshot
     member _.ApplyAccountConfiguration(configuration) = store.ApplyAccountConfiguration configuration
     member _.Activate(authority) = store.Activate authority

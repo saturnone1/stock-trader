@@ -5,6 +5,7 @@ using StockTrader.ServiceContracts.MarketData;
 using StockTrader.ServiceContracts.Optimization;
 using StockTrader.ServiceContracts.TradingCore;
 using StockTrader.TradingCore.Broker;
+using StockTrader.TradingCore.Execution;
 using StockTrader.TradingCoreService;
 using Microsoft.FSharp.Core;
 
@@ -62,6 +63,69 @@ public sealed class TradingCoreServiceTests : IDisposable
             AuthorityTransitionPhases.ReadyToRelease, now.AddMinutes(2));
         operations.ApplyTransitionStep(release).Phase.Should().Be(AuthorityTransitionPhases.Completed);
         operations.AuthorityV2().CommandAcceptance.Should().Be(AuthorityCommandAcceptanceStates.Open);
+    }
+
+    [Fact]
+    public void SealedFinancialTransferMustBeImportedBeforeReconciliation()
+    {
+        var path = Path.Combine(_root, "financial-transfer.db");
+        var config = CreateConfig(path, TradingAuthorityMode.Shadow);
+        var store = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        var operations = new TradingCoreOperations(store);
+        var now = new DateTime(2026, 9, 1, 13, 0, 0, DateTimeKind.Utc);
+        var accountConfiguration = AccountConfiguration(now);
+        operations.ApplyAccountConfiguration(accountConfiguration);
+
+        var transitionId = Guid.NewGuid().ToString();
+        var createOperation = new TradingControlOperation(
+            TradingControlContractVersions.Current, Guid.NewGuid().ToString(), string.Empty,
+            "transfer-test", null, now);
+        var create = new AuthorityTransitionRequest(
+            createOperation, transitionId, AuthorityTransitionDirections.Cutover,
+            TradingAuthorityMode.Shadow, TradingAuthorityMode.Remote, 1, 1,
+            now, now.AddMinutes(30));
+        createOperation = createOperation with
+        {
+            PayloadHash = TradingControlIdentity.Transition(create)
+        };
+        operations.CreateTransition(create with { Operation = createOperation });
+
+        var sourceFence = Fence(AuthorityOwners.Edge, now);
+        var targetFence = Fence(AuthorityOwners.TradingCore, now);
+        operations.ApplyTransitionStep(Step(
+            transitionId, AuthorityTransitionOperations.Quiesce,
+            AuthorityTransitionPhases.Requested, now.AddSeconds(1),
+            sourceFence, targetFence));
+        var drain = new AuthorityDrainInventory(0, 0, 0, 0, 0, now.AddSeconds(2), string.Empty);
+        drain = drain with { InventoryHash = TradingControlIdentity.Drain(drain) };
+        operations.ApplyTransitionStep(Step(
+            transitionId, AuthorityTransitionOperations.Drain,
+            AuthorityTransitionPhases.Quiescing, now.AddSeconds(2),
+            drainInventory: drain));
+
+        var snapshot = EmptySnapshot(now.AddSeconds(3));
+        var activity = CanonicalFinancialTransferMapper.Activity(
+            new Dictionary<string, long>(), 0, Array.Empty<FinancialConsumerCursor>());
+        var transfer = CanonicalFinancialTransferMapper.Create(
+            Guid.NewGuid().ToString(), transitionId, AuthorityTransitionDirections.Cutover,
+            TradingAuthorityMode.Shadow, 2,
+            new FinancialTransferCompatibility(2, "edge-v1", "trading-core-v1",
+                "engine-v1", "artifact-v1", "patterns-v1", "calendar-v1", "market-data-v1"),
+            accountConfiguration, snapshot,
+            Array.Empty<FinancialExecutionIdentity>(), Array.Empty<FinancialBrokerEvidence>(),
+            activity, "broker-equity");
+
+        operations.ImportFinancialTransfer(transfer).AlreadyApplied.Should().BeFalse();
+        operations.ImportFinancialTransfer(transfer).AlreadyApplied.Should().BeTrue();
+        var reconciliation = new AuthorityReconciliationEvidence(
+            snapshot.SnapshotId, "broker-reconciled", now.AddSeconds(4), 0,
+            transfer.TransferId, transfer.TransferHash);
+        operations.ApplyTransitionStep(Step(
+                transitionId, AuthorityTransitionOperations.Reconcile,
+                AuthorityTransitionPhases.Draining, now.AddSeconds(4),
+                drainInventory: drain, reconciliation: reconciliation))
+            .Phase.Should().Be(AuthorityTransitionPhases.Reconciled);
     }
 
     [Fact]
@@ -605,16 +669,33 @@ public sealed class TradingCoreServiceTests : IDisposable
     }
 
     private static AuthorityTransitionStepRequest Step(
-        string transitionId, string step, string expectedPhase, DateTime observedAt)
+        string transitionId,
+        string step,
+        string expectedPhase,
+        DateTime observedAt,
+        AuthorityFenceReceipt? sourceFence = null,
+        AuthorityFenceReceipt? targetFence = null,
+        AuthorityDrainInventory? drainInventory = null,
+        AuthorityReconciliationEvidence? reconciliation = null)
     {
         var operation = new TradingControlOperation(
             TradingControlContractVersions.Current, Guid.NewGuid().ToString(), string.Empty,
             "transition-test", null, observedAt);
         var request = new AuthorityTransitionStepRequest(
-            operation, transitionId, step, expectedPhase, null, null, null, null,
+            operation, transitionId, step, expectedPhase, sourceFence, targetFence,
+            drainInventory, reconciliation,
             null, null, Array.Empty<string>());
         operation = operation with { PayloadHash = TradingControlIdentity.Step(request) };
         return request with { Operation = operation };
+    }
+
+    private static AuthorityFenceReceipt Fence(string owner, DateTime observedAt)
+    {
+        var receipt = new AuthorityFenceReceipt(
+            owner, 1, AuthorityCommandAcceptanceStates.Fenced,
+            AuthorityCommandAcceptanceStates.Fenced, "AtBarrier", "Clear", "Clear",
+            observedAt, 0, 0, 0, 0, string.Empty);
+        return receipt with { FenceHash = TradingControlIdentity.Fence(receipt) };
     }
 
     private static ServiceConfig CreateConfig(
