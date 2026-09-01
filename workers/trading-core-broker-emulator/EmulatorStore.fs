@@ -2,6 +2,7 @@ namespace StockTrader.TradingCoreBrokerEmulator
 
 open System
 open System.IO
+open System.Globalization
 open System.Text.Json
 open Microsoft.Data.Sqlite
 open StockTrader.ServiceContracts
@@ -44,6 +45,70 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
         match state connection "plan" with
         | None -> invalidOp "broker-plan-not-loaded"
         | Some value -> JsonSerializer.Deserialize<ScriptedBrokerPlan>(value, json)
+
+    let decimalValue (value: string) = Decimal.Parse(value, NumberStyles.Number, CultureInfo.InvariantCulture)
+    let decimalText (value: decimal) = value.ToString("G29", CultureInfo.InvariantCulture)
+
+    let applyFill (connection: SqliteConnection) (transaction: SqliteTransaction)
+        (operation: string) (evidence: ScriptedBrokerOrder) =
+        if operation = ScriptedBrokerOperations.SubmitEntry
+           || operation = ScriptedBrokerOperations.IncreasePosition
+           || operation = ScriptedBrokerOperations.ClosePosition then
+            use previousCommand = connection.CreateCommand()
+            previousCommand.Transaction <- transaction
+            previousCommand.CommandText <- "SELECT payload_json FROM broker_orders WHERE client_order_id=$client"
+            previousCommand.Parameters.AddWithValue("$client", evidence.ClientOrderId) |> ignore
+            let previousFilled =
+                match previousCommand.ExecuteScalar() with
+                | null -> 0
+                | value ->
+                    let previous = JsonSerializer.Deserialize<ScriptedBrokerOrder>(Convert.ToString value, json)
+                    previous.FilledQuantity
+            let delta = Math.Max(0, evidence.FilledQuantity - previousFilled)
+            if delta > 0 then
+                let current = JsonSerializer.Deserialize<ScriptedBrokerPosition array>(
+                    state connection "positions" |> Option.get, json)
+                let price =
+                    if String.IsNullOrWhiteSpace evidence.AverageFillPrice then 0M
+                    else decimalValue evidence.AverageFillPrice
+                let matching = current |> Array.tryFind (fun value ->
+                    value.Symbol.Equals(evidence.Symbol, StringComparison.OrdinalIgnoreCase))
+                let next =
+                    if operation = ScriptedBrokerOperations.ClosePosition then
+                        current
+                        |> Array.choose (fun value ->
+                            if not (value.Symbol.Equals(evidence.Symbol, StringComparison.OrdinalIgnoreCase)) then Some value
+                            else
+                                let quantity = Math.Max(0, value.Quantity - delta)
+                                if quantity = 0 then None
+                                else Some(ScriptedBrokerPosition(value.Symbol, quantity,
+                                    value.AverageEntryPrice, decimalText price)))
+                    else
+                        let existingQuantity = matching |> Option.map _.Quantity |> Option.defaultValue 0
+                        let existingAverage = matching |> Option.map (fun value -> decimalValue value.AverageEntryPrice) |> Option.defaultValue 0M
+                        let quantity = existingQuantity + delta
+                        let average =
+                            if quantity = 0 then 0M
+                            else (existingAverage * decimal existingQuantity + price * decimal delta) / decimal quantity
+                        let updated = ScriptedBrokerPosition(evidence.Symbol.ToUpperInvariant(), quantity,
+                            decimalText average, decimalText price)
+                        Array.append
+                            (current |> Array.filter (fun value ->
+                                not (value.Symbol.Equals(evidence.Symbol, StringComparison.OrdinalIgnoreCase))))
+                            [| updated |]
+                        |> Array.sortBy _.Symbol
+                setState connection transaction "positions" (JsonSerializer.Serialize(next, json))
+                let account = JsonSerializer.Deserialize<ScriptedBrokerAccount>(
+                    state connection "account" |> Option.get, json)
+                let signed = if operation = ScriptedBrokerOperations.ClosePosition then 1M else -1M
+                let cash = decimalValue account.Cash + signed * price * decimal delta
+                let marketValue = next |> Seq.sumBy (fun value ->
+                    decimal value.Quantity * decimalValue value.CurrentPrice)
+                let updatedAccount = ScriptedBrokerAccount(account.AccountId,
+                    decimalText (cash + marketValue), account.PreviousDayEquity,
+                    decimalText cash, decimalText cash, account.IsTradingBlocked,
+                    evidence.FilledAtUtc.GetValueOrDefault(evidence.SubmittedAtUtc))
+                setState connection transaction "account" (JsonSerializer.Serialize(updatedAccount, json))
 
     member _.LoadPlan(value: ScriptedBrokerPlan) =
         match Option.ofObj (TradingCoreAcceptancePolicy.PlanError value) with
@@ -91,6 +156,7 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
                   ScriptedBrokerActions.ReturnOutOfOrderEvidence ]
             if effectActions |> List.contains step.Action then
                 if isNull step.Evidence then invalidOp "scripted-broker-evidence-missing"
+                applyFill connection transaction operation step.Evidence
                 use order = connection.CreateCommand()
                 order.Transaction <- transaction
                 order.CommandText <- "INSERT INTO broker_orders(order_id,client_order_id,payload_json,visible_after_barrier) VALUES($id,$client,$payload,$barrier) ON CONFLICT(client_order_id) DO UPDATE SET payload_json=excluded.payload_json,visible_after_barrier=excluded.visible_after_barrier"
@@ -152,3 +218,24 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
             yield ScriptedBrokerCall(reader.GetString 0,
                 (if reader.IsDBNull 1 then null else reader.GetString 1), reader.GetString 2,
                 DateTime.Parse(reader.GetString 3, null, Globalization.DateTimeStyles.RoundtripKind)) |]
+
+    member _.TerminalState() =
+        use connection = connect ()
+        let account = JsonSerializer.Deserialize<ScriptedBrokerAccount>(
+            state connection "account" |> Option.get, json)
+        let positions = JsonSerializer.Deserialize<ScriptedBrokerPosition array>(
+            state connection "positions" |> Option.get, json)
+        use orderCommand = connection.CreateCommand()
+        orderCommand.CommandText <- """SELECT payload_json FROM broker_orders o
+WHERE o.visible_after_barrier IS NULL OR EXISTS(
+ SELECT 1 FROM barriers b WHERE b.name=o.visible_after_barrier)
+ORDER BY o.order_id"""
+        use orderReader = orderCommand.ExecuteReader()
+        let orders =
+            [| while orderReader.Read() do
+                yield JsonSerializer.Deserialize<ScriptedBrokerOrder>(orderReader.GetString 0, json) |]
+        orderReader.Close()
+        let journal = this.Journal()
+        let candidate = ScriptedBrokerTerminalState(account, positions, orders, journal, "")
+        ScriptedBrokerTerminalState(account, positions, orders, journal,
+            TradingCoreAcceptanceIdentity.BrokerState candidate)

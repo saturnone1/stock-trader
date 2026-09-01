@@ -1,0 +1,216 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: acceptance-core, namespace: __ACCEPTANCE_NAMESPACE__}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: acceptance-emulator, namespace: __ACCEPTANCE_NAMESPACE__}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: acceptance-driver, namespace: __ACCEPTANCE_NAMESPACE__}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: acceptance-driver-pod-loss, namespace: __ACCEPTANCE_NAMESPACE__}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: acceptance-driver-pod-loss, namespace: __ACCEPTANCE_NAMESPACE__}
+subjects:
+- {kind: ServiceAccount, name: acceptance-driver, namespace: __ACCEPTANCE_NAMESPACE__}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: acceptance-driver-pod-loss}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: tc-__SCENARIO_ID__, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: {requests: {storage: 256Mi}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: broker-__SCENARIO_ID__, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: {requests: {storage: 128Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: acceptance-broker-__SCENARIO_ID__, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: stocktrader-acceptance-broker, scenario: "__SCENARIO_ID__"}}
+  template:
+    metadata: {labels: {app: stocktrader-acceptance-broker, scenario: "__SCENARIO_ID__"}}
+    spec:
+      serviceAccountName: acceptance-emulator
+      automountServiceAccountToken: false
+      securityContext: &podSecurity
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+      - name: broker
+        image: localhost/stock-trader/trading-core-broker-emulator:architecture-__RELEASE_TAG__
+        imagePullPolicy: Never
+        env:
+        - {name: STOCKTRADER_BROKER_EMULATOR_DATA, value: /data}
+        - {name: STOCKTRADER_BROKER_EMULATOR_SERVER_CERT_PATH, value: /tls/server/tls.crt}
+        - {name: STOCKTRADER_BROKER_EMULATOR_SERVER_KEY_PATH, value: /tls/server/tls.key}
+        - {name: STOCKTRADER_BROKER_EMULATOR_CLIENT_CA_PATH, value: /tls/client-ca/ca.crt}
+        - {name: STOCKTRADER_ACCEPTANCE_DRIVER_ROLE_DNS, value: acceptance-driver.__RUN_ID__.stocktrader.internal}
+        - {name: STOCKTRADER_ACCEPTANCE_CORE_ROLE_DNS, value: acceptance-trading-core.__RUN_ID__.stocktrader.internal}
+        resources: {requests: {cpu: 25m, memory: 48Mi}, limits: {cpu: 250m, memory: 128Mi}}
+        securityContext: &containerSecurity
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: ["ALL"]}
+        volumeMounts:
+        - {name: data, mountPath: /data}
+        - {name: server, mountPath: /tls/server, readOnly: true}
+        - {name: client-ca, mountPath: /tls/client-ca, readOnly: true}
+        - {name: tmp, mountPath: /tmp}
+        readinessProbe: {httpGet: {path: /health/live, port: 8080}, periodSeconds: 2}
+      volumes:
+      - {name: data, persistentVolumeClaim: {claimName: broker-__SCENARIO_ID__}}
+      - {name: server, secret: {secretName: acceptance-broker-server-tls}}
+      - name: client-ca
+        secret: {secretName: acceptance-driver-client-tls, items: [{key: ca.crt, path: ca.crt}]}
+      - {name: tmp, emptyDir: {sizeLimit: 32Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: acceptance-broker, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  selector: {app: stocktrader-acceptance-broker, scenario: "__SCENARIO_ID__"}
+  ports: [{name: mtls, port: 10443, targetPort: 10443}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: acceptance-core-__SCENARIO_ID__, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: stocktrader-acceptance-trading-core, scenario: "__SCENARIO_ID__"}}
+  template:
+    metadata: {labels: {app: stocktrader-acceptance-trading-core, scenario: "__SCENARIO_ID__"}}
+    spec:
+      serviceAccountName: acceptance-core
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+      - name: trading-core
+        image: localhost/stock-trader/trading-core-acceptance:architecture-__RELEASE_TAG__
+        imagePullPolicy: Never
+        env:
+        - {name: STOCKTRADER_TRADING_CORE_DATA, value: /data}
+        - {name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY, valueFrom: {secretKeyRef: {name: acceptance-encryption, key: encryption-key}}}
+        - {name: STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION, value: acceptance-__RUN_ID__}
+        - {name: STOCKTRADER_TRADING_CORE_SERVER_CERT_PATH, value: /tls/server/tls.crt}
+        - {name: STOCKTRADER_TRADING_CORE_SERVER_KEY_PATH, value: /tls/server/tls.key}
+        - {name: STOCKTRADER_TRADING_CORE_CLIENT_CA_PATH, value: /tls/driver-ca/ca.crt}
+        - {name: STOCKTRADER_ACCEPTANCE_DRIVER_ROLE_DNS, value: acceptance-driver.__RUN_ID__.stocktrader.internal}
+        - {name: STOCKTRADER_MARKET_DATA_ENDPOINT, value: "https://stocktrader-market-data.stocktrader.svc:7443"}
+        - {name: STOCKTRADER_MARKET_DATA_CLIENT_CERT_PATH, value: /tls/market-data/tls.crt}
+        - {name: STOCKTRADER_MARKET_DATA_CLIENT_KEY_PATH, value: /tls/market-data/tls.key}
+        - {name: STOCKTRADER_MARKET_DATA_SERVER_CA_PATH, value: /tls/market-data/ca.crt}
+        - {name: STOCKTRADER_MARKET_DATA_SERVER_COMMON_NAME, value: stocktrader-market-data}
+        - {name: STOCKTRADER_ACCEPTANCE_BROKER_ENDPOINT, value: "https://acceptance-broker:10443"}
+        - {name: STOCKTRADER_ACCEPTANCE_BROKER_CLIENT_CERT_PATH, value: /tls/broker-client/tls.crt}
+        - {name: STOCKTRADER_ACCEPTANCE_BROKER_CLIENT_KEY_PATH, value: /tls/broker-client/tls.key}
+        - {name: STOCKTRADER_ACCEPTANCE_BROKER_SERVER_CA_PATH, value: /tls/broker-client/ca.crt}
+        - {name: STOCKTRADER_ACCEPTANCE_BROKER_SERVER_COMMON_NAME, value: acceptance-broker}
+        resources: {requests: {cpu: 50m, memory: 96Mi}, limits: {cpu: 500m, memory: 256Mi}}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: ["ALL"]}
+        volumeMounts:
+        - {name: data, mountPath: /data}
+        - {name: server, mountPath: /tls/server, readOnly: true}
+        - {name: driver-ca, mountPath: /tls/driver-ca, readOnly: true}
+        - {name: broker-client, mountPath: /tls/broker-client, readOnly: true}
+        - {name: market-data, mountPath: /tls/market-data, readOnly: true}
+        - {name: tmp, mountPath: /tmp}
+        readinessProbe: {httpGet: {path: /health/ready, port: 8080}, periodSeconds: 2}
+      volumes:
+      - {name: data, persistentVolumeClaim: {claimName: tc-__SCENARIO_ID__}}
+      - {name: server, secret: {secretName: acceptance-core-server-tls}}
+      - name: driver-ca
+        secret: {secretName: acceptance-driver-client-tls, items: [{key: ca.crt, path: ca.crt}]}
+      - {name: broker-client, secret: {secretName: acceptance-core-client-tls}}
+      - {name: market-data, secret: {secretName: acceptance-market-data-client-tls}}
+      - {name: tmp, emptyDir: {sizeLimit: 32Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: acceptance-core, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  selector: {app: stocktrader-acceptance-trading-core, scenario: "__SCENARIO_ID__"}
+  ports:
+  - {name: standard, port: 9443, targetPort: 9443}
+  - {name: control, port: 9543, targetPort: 9543}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: acceptance-driver-__SCENARIO_ID__, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  backoffLimit: 0
+  template:
+    metadata: {labels: {app: stocktrader-acceptance-driver, scenario: "__SCENARIO_ID__"}}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: acceptance-driver
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+      - name: driver
+        image: localhost/stock-trader/trading-core-acceptance-driver:architecture-__RELEASE_TAG__
+        imagePullPolicy: Never
+        env:
+        - {name: STOCKTRADER_ACCEPTANCE_FIXTURE_PATH, value: /fixture/scenario.json}
+        - {name: STOCKTRADER_ACCEPTANCE_RESULT_PATH, value: /manifest/fragments/__SCENARIO_CODE__.scenario.json}
+        - {name: STOCKTRADER_ACCEPTANCE_CORE_ENDPOINT, value: "https://acceptance-core:9443"}
+        - {name: STOCKTRADER_ACCEPTANCE_CONTROL_ENDPOINT, value: "https://acceptance-core:9543"}
+        - {name: STOCKTRADER_ACCEPTANCE_BROKER_ENDPOINT, value: "https://acceptance-broker:10443"}
+        - {name: STOCKTRADER_ACCEPTANCE_CORE_SERVER_NAME, value: acceptance-core}
+        - {name: STOCKTRADER_ACCEPTANCE_BROKER_SERVER_NAME, value: acceptance-broker}
+        - {name: STOCKTRADER_ACCEPTANCE_DRIVER_CERT_PATH, value: /tls/tls.crt}
+        - {name: STOCKTRADER_ACCEPTANCE_DRIVER_KEY_PATH, value: /tls/tls.key}
+        - {name: STOCKTRADER_ACCEPTANCE_SERVER_CA_PATH, value: /tls/ca.crt}
+        - {name: STOCKTRADER_ACCEPTANCE_NAMESPACE, value: __ACCEPTANCE_NAMESPACE__}
+        - {name: STOCKTRADER_ACCEPTANCE_CORE_POD_SELECTOR, value: "app=stocktrader-acceptance-trading-core,scenario=__SCENARIO_ID__"}
+        resources: {requests: {cpu: 25m, memory: 32Mi}, limits: {cpu: 150m, memory: 96Mi}}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: ["ALL"]}
+        volumeMounts:
+        - {name: fixture, mountPath: /fixture, readOnly: true}
+        - {name: manifest, mountPath: /manifest}
+        - {name: tls, mountPath: /tls, readOnly: true}
+        - {name: tmp, mountPath: /tmp}
+      volumes:
+      - {name: fixture, configMap: {name: acceptance-fixture-__SCENARIO_ID__}}
+      - {name: manifest, persistentVolumeClaim: {claimName: acceptance-manifest}}
+      - {name: tls, secret: {secretName: acceptance-driver-client-tls}}
+      - {name: tmp, emptyDir: {sizeLimit: 32Mi}}

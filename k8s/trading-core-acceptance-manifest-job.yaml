@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata: {name: acceptance-manifest, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  backoffLimit: 0
+  template:
+    metadata: {labels: {app: stocktrader-acceptance-driver}}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+      - name: manifest
+        image: localhost/stock-trader/trading-core-acceptance-driver:architecture-__RELEASE_TAG__
+        imagePullPolicy: Never
+        env:
+        - {name: STOCKTRADER_ACCEPTANCE_MANIFEST_DIR, value: /manifest}
+        - {name: STOCKTRADER_ACCEPTANCE_RUN_ID, value: __RUN_ID__}
+        - {name: STOCKTRADER_REPOSITORY_COMMIT, value: __REPOSITORY_COMMIT__}
+        - {name: STOCKTRADER_BUILD_ID, value: __BUILD_ID__}
+        - {name: STOCKTRADER_IMAGE_DIGEST_TRADING_CORE, value: __TRADING_CORE_ACCEPTANCE_DIGEST__}
+        - {name: STOCKTRADER_IMAGE_DIGEST_BROKER_EMULATOR, value: __BROKER_EMULATOR_DIGEST__}
+        - {name: STOCKTRADER_IMAGE_DIGEST_DRIVER, value: __DRIVER_DIGEST__}
+        - {name: STOCKTRADER_SHARED_ASSEMBLY_HASH_SERVICE_CONTRACTS, value: __SERVICE_CONTRACTS_HASH__}
+        - {name: STOCKTRADER_SHARED_ASSEMBLY_HASH_ENGINE, value: __ENGINE_HASH__}
+        - {name: STOCKTRADER_SHARED_ASSEMBLY_HASH_TRADING_CORE, value: __TRADING_CORE_HASH__}
+        - {name: STOCKTRADER_SHARED_ASSEMBLY_HASH_RUNTIME, value: __RUNTIME_HASH__}
+        resources: {requests: {cpu: 10m, memory: 24Mi}, limits: {cpu: 100m, memory: 64Mi}}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: ["ALL"]}
+        volumeMounts:
+        - {name: manifest, mountPath: /manifest}
+        - {name: tmp, mountPath: /tmp}
+      volumes:
+      - {name: manifest, persistentVolumeClaim: {claimName: acceptance-manifest}}
+      - {name: tmp, emptyDir: {sizeLimit: 16Mi}}

@@ -1,4 +1,8 @@
+open System
 open StockTrader.TradingCoreAcceptanceDriver
 
 [<EntryPoint>]
-let main _ = ManifestDriver.run ()
+let main _ =
+    match Environment.GetEnvironmentVariable "STOCKTRADER_ACCEPTANCE_FIXTURE_PATH" with
+    | null | "" -> ManifestDriver.run ()
+    | _ -> ScenarioDriver.run ()

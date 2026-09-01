@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: __ACCEPTANCE_NAMESPACE__
+  labels:
+    stocktrader.io/acceptance-run: "true"
+    stocktrader.io/run-id: "__RUN_ID__"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata: {name: acceptance-budget, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  hard:
+    requests.cpu: "250m"
+    requests.memory: 384Mi
+    limits.cpu: "1200m"
+    limits.memory: 768Mi
+    persistentvolumeclaims: "4"
+    requests.storage: 1Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata: {name: acceptance-defaults, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  limits:
+  - type: Container
+    defaultRequest: {cpu: 10m, memory: 24Mi}
+    default: {cpu: 250m, memory: 128Mi}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: acceptance-manifest, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: {requests: {storage: 256Mi}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: acceptance-broker-edges, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  podSelector: {matchLabels: {app: stocktrader-acceptance-broker}}
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector: {matchLabels: {app: stocktrader-acceptance-driver}}
+    - podSelector: {matchLabels: {app: stocktrader-acceptance-trading-core}}
+    ports: [{protocol: TCP, port: 10443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: acceptance-core-edges, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  podSelector: {matchLabels: {app: stocktrader-acceptance-trading-core}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+  - from:
+    - podSelector: {matchLabels: {app: stocktrader-acceptance-driver}}
+    ports:
+    - {protocol: TCP, port: 9443}
+    - {protocol: TCP, port: 9543}
+  egress:
+  - to:
+    - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+      podSelector: {matchLabels: {k8s-app: kube-dns}}
+    ports:
+    - {protocol: UDP, port: 53}
+    - {protocol: TCP, port: 53}
+  - to:
+    - podSelector: {matchLabels: {app: stocktrader-acceptance-broker}}
+    ports: [{protocol: TCP, port: 10443}]
+  - to:
+    - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: stocktrader}}
+      podSelector: {matchLabels: {app: stocktrader-market-data}}
+    ports: [{protocol: TCP, port: 7443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: acceptance-driver-edges, namespace: __ACCEPTANCE_NAMESPACE__}
+spec:
+  podSelector: {matchLabels: {app: stocktrader-acceptance-driver}}
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+      podSelector: {matchLabels: {k8s-app: kube-dns}}
+    ports:
+    - {protocol: UDP, port: 53}
+    - {protocol: TCP, port: 53}
+  - to:
+    - podSelector: {matchLabels: {app: stocktrader-acceptance-broker}}
+    ports: [{protocol: TCP, port: 10443}]
+  - to:
+    - podSelector: {matchLabels: {app: stocktrader-acceptance-trading-core}}
+    ports:
+    - {protocol: TCP, port: 9443}
+    - {protocol: TCP, port: 9543}
+  - to:
+    - ipBlock: {cidr: __KUBERNETES_API_CIDR__}
+    ports: [{protocol: TCP, port: 443}]

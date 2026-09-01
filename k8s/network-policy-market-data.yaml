@@ -16,6 +16,12 @@ spec:
     - podSelector:
         matchLabels:
           app: stocktrader-trading-core
+    - namespaceSelector:
+        matchLabels:
+          stocktrader.io/acceptance-run: "true"
+      podSelector:
+        matchLabels:
+          app: stocktrader-acceptance-trading-core
     ports:
     - protocol: TCP
       port: 7443

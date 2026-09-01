@@ -19,8 +19,9 @@ fi
 server_secret="stocktrader-market-data-server-tls-$generation"
 client_secret="stocktrader-market-data-client-tls-$generation"
 trading_core_client_secret="stocktrader-market-data-trading-core-client-tls-$generation"
+acceptance_client_secret="stocktrader-market-data-acceptance-client-tls-$generation"
 sudo k3s kubectl apply -f k8s/namespace.yaml
-for secret in "$server_secret" "$client_secret" "$trading_core_client_secret"; do
+for secret in "$server_secret" "$client_secret" "$trading_core_client_secret" "$acceptance_client_secret"; do
   if sudo k3s kubectl -n "$namespace" get secret "$secret" >/dev/null 2>&1; then
     echo "Refusing to replace preserved TLS generation $generation ($secret exists)." >&2
     exit 1
@@ -33,7 +34,8 @@ cleanup() {
     "$tls_dir/server.key" "$tls_dir/server.csr" "$tls_dir/server.crt" \
     "$tls_dir/client.key" "$tls_dir/client.csr" "$tls_dir/client.crt" \
     "$tls_dir/trading-core.key" "$tls_dir/trading-core.csr" "$tls_dir/trading-core.crt" \
-    "$tls_dir/server.ext" "$tls_dir/client.ext" "$tls_dir/trading-core.ext"
+    "$tls_dir/acceptance.key" "$tls_dir/acceptance.csr" "$tls_dir/acceptance.crt" \
+    "$tls_dir/server.ext" "$tls_dir/client.ext" "$tls_dir/trading-core.ext" "$tls_dir/acceptance.ext"
   rmdir "$tls_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -82,6 +84,19 @@ openssl x509 -req -sha256 -days "$valid_days" -in "$tls_dir/trading-core.csr" \
   -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAserial "$tls_dir/ca.srl" \
   -out "$tls_dir/trading-core.crt" -extfile "$tls_dir/trading-core.ext" >/dev/null 2>&1
 
+openssl genrsa -out "$tls_dir/acceptance.key" 2048 >/dev/null 2>&1
+openssl req -new -sha256 -key "$tls_dir/acceptance.key" -out "$tls_dir/acceptance.csr" \
+  -subj "/CN=stocktrader-trading-core-acceptance" >/dev/null 2>&1
+printf '%s\n' \
+  'basicConstraints=critical,CA:FALSE' \
+  'keyUsage=critical,digitalSignature' \
+  'extendedKeyUsage=clientAuth' \
+  'subjectAltName=DNS:trading-core-evidence.stocktrader.internal' \
+  > "$tls_dir/acceptance.ext"
+openssl x509 -req -sha256 -days "$valid_days" -in "$tls_dir/acceptance.csr" \
+  -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAserial "$tls_dir/ca.srl" \
+  -out "$tls_dir/acceptance.crt" -extfile "$tls_dir/acceptance.ext" >/dev/null 2>&1
+
 sudo k3s kubectl -n "$namespace" create secret generic "$server_secret" \
   --from-file=tls.crt="$tls_dir/server.crt" --from-file=tls.key="$tls_dir/server.key" \
   --from-file=ca.crt="$tls_dir/ca.crt" --dry-run=client -o yaml \
@@ -92,6 +107,10 @@ sudo k3s kubectl -n "$namespace" create secret generic "$client_secret" \
   | sudo k3s kubectl apply -f -
 sudo k3s kubectl -n "$namespace" create secret generic "$trading_core_client_secret" \
   --from-file=tls.crt="$tls_dir/trading-core.crt" --from-file=tls.key="$tls_dir/trading-core.key" \
+  --from-file=ca.crt="$tls_dir/ca.crt" --dry-run=client -o yaml \
+  | sudo k3s kubectl apply -f -
+sudo k3s kubectl -n "$namespace" create secret generic "$acceptance_client_secret" \
+  --from-file=tls.crt="$tls_dir/acceptance.crt" --from-file=tls.key="$tls_dir/acceptance.key" \
   --from-file=ca.crt="$tls_dir/ca.crt" --dry-run=client -o yaml \
   | sudo k3s kubectl apply -f -
 sudo k3s kubectl -n "$namespace" create configmap stocktrader-market-data-tls-active \

@@ -94,6 +94,13 @@ public sealed record ScriptedBrokerCall(
     string RequestHash,
     DateTime ObservedAtUtc);
 
+public sealed record ScriptedBrokerTerminalState(
+    ScriptedBrokerAccount Account,
+    IReadOnlyList<ScriptedBrokerPosition> Positions,
+    IReadOnlyList<ScriptedBrokerOrder> Orders,
+    IReadOnlyList<ScriptedBrokerCall> Journal,
+    string StateHash);
+
 public sealed record ScriptedBrokerBarrierRequest(string Name);
 public sealed record AcceptanceTimeAdvanceRequest(
     string ScenarioId, string OperationId, DateTime UtcNow, string CausationId);
@@ -116,6 +123,50 @@ public sealed record AcceptanceScenarioState(
     IReadOnlyList<string> OperationIds,
     DateTime UpdatedAtUtc);
 
+public static class AcceptanceDriverTargets
+{
+    public const string TradingCore = "TradingCore";
+    public const string AcceptanceControl = "AcceptanceControl";
+    public const string BrokerControl = "BrokerControl";
+    public const string DeleteTradingCorePod = "DeleteTradingCorePod";
+    public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        TradingCore, AcceptanceControl, BrokerControl, DeleteTradingCorePod
+    };
+}
+
+public sealed record AcceptanceDriverOperation(
+    string OperationId,
+    string Target,
+    string Method,
+    string Path,
+    string? BodyJson,
+    int ExpectedStatus,
+    string? ExpectedResponseHash,
+    int MaxAttempts);
+
+public sealed record AcceptanceStateAssertion(
+    string Name,
+    string Target,
+    string JsonPointer,
+    string ExpectedJson);
+
+public sealed record AcceptanceAssertionObservation(
+    string Name,
+    string Target,
+    string JsonPointer,
+    string ValueHash);
+
+public sealed record AcceptanceScenarioFixture(
+    int ContractVersion,
+    string FixtureHash,
+    ScriptedBrokerPlan BrokerPlan,
+    AcceptanceBootstrapRequest Bootstrap,
+    IReadOnlyList<AcceptanceDriverOperation> Operations,
+    IReadOnlyList<AcceptanceStateAssertion> Assertions,
+    string ExpectedStateHash,
+    string? ExpectedStopReason);
+
 public sealed record AcceptanceScenarioResult(
     string ScenarioId, string ScenarioCode, string FixtureHash, string ExpectedStateHash,
     string ActualStateHash, IReadOnlyList<string> EvidenceReferences,
@@ -134,6 +185,17 @@ public static class TradingCoreAcceptanceIdentity
         CanonicalJsonHash.Compute(plan, nameof(ScriptedBrokerPlan.PlanHash));
     public static string Manifest(AcceptanceManifestV1 manifest) =>
         CanonicalJsonHash.Compute(manifest, nameof(AcceptanceManifestV1.ManifestId));
+    public static string BrokerState(ScriptedBrokerTerminalState state) =>
+        CanonicalJsonHash.Compute(state, nameof(ScriptedBrokerTerminalState.StateHash));
+    public static string Fixture(AcceptanceScenarioFixture fixture) =>
+        CanonicalJsonHash.Compute(fixture, nameof(AcceptanceScenarioFixture.FixtureHash));
+    public static string ExpectedState(IReadOnlyList<AcceptanceStateAssertion> assertions) =>
+        CanonicalJsonHash.Compute(assertions
+            .OrderBy(value => value.Name, StringComparer.Ordinal)
+            .Select(value => new AcceptanceAssertionObservation(
+                value.Name, value.Target, value.JsonPointer,
+                CanonicalFinancialTransferIdentity.Payload(value.ExpectedJson)))
+            .ToArray());
 }
 
 public static class TradingCoreAcceptancePolicy
@@ -163,6 +225,34 @@ public static class TradingCoreAcceptancePolicy
             || manifest.Passed != manifest.Scenarios.All(value => value.Passed)
             || manifest.ManifestId != TradingCoreAcceptanceIdentity.Manifest(manifest))
             return "acceptance-manifest-invalid";
+        return null;
+    }
+
+
+    public static string? FixtureError(AcceptanceScenarioFixture fixture)
+    {
+        if (fixture is null
+            || fixture.ContractVersion != TradingCoreAcceptanceVersions.Current
+            || PlanError(fixture.BrokerPlan) is not null
+            || fixture.Bootstrap.ScenarioId != fixture.BrokerPlan.ScenarioId
+            || fixture.Operations.Count == 0
+            || fixture.Assertions.Count == 0
+            || fixture.Assertions.Select(value => value.Name).Distinct(StringComparer.Ordinal).Count()
+                != fixture.Assertions.Count
+            || fixture.Assertions.Any(value =>
+                string.IsNullOrWhiteSpace(value.Name)
+                || value.Target is not (AcceptanceDriverTargets.TradingCore
+                    or AcceptanceDriverTargets.BrokerControl)
+                || !value.JsonPointer.StartsWith('/'))
+            || fixture.ExpectedStateHash
+                != TradingCoreAcceptanceIdentity.ExpectedState(fixture.Assertions)
+            || fixture.Operations.Any(value =>
+                string.IsNullOrWhiteSpace(value.OperationId)
+                || !AcceptanceDriverTargets.All.Contains(value.Target)
+                || value.MaxAttempts is < 1 or > 100
+                || value.ExpectedStatus is < 100 or > 599)
+            || fixture.FixtureHash != TradingCoreAcceptanceIdentity.Fixture(fixture))
+            return "acceptance-fixture-invalid";
         return null;
     }
 }
