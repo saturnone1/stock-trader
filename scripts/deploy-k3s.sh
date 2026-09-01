@@ -77,12 +77,13 @@ case "$deploy_scope" in
   market-data) deploy_market_data=true ;;
   ml-training) deploy_ml_training=true ;;
   trading-core) deploy_trading_core=true ;;
+  trading-core-shadow-candidate) deploy_api=true; deploy_trading_core=true; trading_core_mode="Shadow"; api_image="$api_local_image"; trading_core_image="$trading_core_shadow_image" ;;
   trading-core-cutover) deploy_transition=true; transition_direction="Cutover" ;;
   trading-core-rollback) deploy_transition=true; transition_direction="Rollback" ;;
   trading-core-recutover) deploy_transition=true; transition_direction="Cutover" ;;
   trading-core-acceptance) deploy_acceptance=true ;;
   *)
-    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, optimization-worker, market-data, ml-training, trading-core, trading-core-acceptance, trading-core-cutover, trading-core-rollback, or trading-core-recutover." >&2
+    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, optimization-worker, market-data, ml-training, trading-core, trading-core-acceptance, trading-core-shadow-candidate, trading-core-cutover, trading-core-rollback, or trading-core-recutover." >&2
     exit 1
     ;;
 esac
@@ -310,6 +311,9 @@ wait_acceptance_job() {
 }
 
 sudo k3s kubectl apply -f k8s/namespace.yaml
+if $deploy_api || $deploy_transition; then
+  sudo k3s kubectl apply -f k8s/network-policy-api.yaml
+fi
 if $deploy_api || $deploy_worker; then
   sudo k3s kubectl apply -f k8s/network-policy-optimization-worker.yaml
 fi
@@ -795,6 +799,7 @@ if $deploy_trading_core; then
     -e "s|__TRADING_CORE_MODE__|$trading_core_mode|" \
     -e "s|__TRADING_CORE_BROKER_CAPABILITY_ENABLED__|$trading_core_broker_capability|" \
     -e "s|__TRADING_CORE_BROKER_EGRESS_ENABLED__|$trading_core_broker_egress|" \
+    -e "s|__TRADING_CORE_BROKER_EGRESS_LABEL__|$(if [[ "$trading_core_broker_egress" == "true" ]]; then printf enabled; else printf disabled; fi)|" \
     -e "s|trading-core-production|$trading_core_runtime_profile|" \
     -e "s|__TRADING_CORE_IMAGE_DIGEST__|$trading_core_image_digest|" \
     -e "s|__TRADING_CORE_SERVICE_INVENTORY_HASH__|$trading_core_service_inventory_hash|" \
@@ -814,7 +819,7 @@ if $deploy_api; then
   api_image_digest="sha256:$(sha256sum "$archive_dir/api.tar" | awk '{print $1}')"
   api_service_inventory_hash="$(printf '%s' 'api,desktop,market-data,trading-core' | sha256sum | awk '{print $1}')"
   api_secret_reference_hash="$(printf '%s' "$trading_core_client_tls_secret|$edge_cutover_server_tls_secret|$cutover_coordinator_client_tls_secret" | sha256sum | awk '{print $1}')"
-  api_network_policy_hash="$(sha256sum k8s/network-policy-trading-core.yaml | awk '{print $1}')"
+  api_network_policy_hash="$(sha256sum k8s/network-policy-api.yaml | awk '{print $1}')"
   rendered_api="$archive_dir/deployment-api.yaml"
   sed -e "s|localhost/stock-trader/api:latest|$api_image|" \
     -e "s|__STOCKTRADER_DATA_DIR__|$data_dir|" k8s/deployment-api.yaml \
@@ -839,6 +844,7 @@ if $deploy_api; then
       -e "s|__API_SECRET_REFERENCE_HASH__|$api_secret_reference_hash|" \
       -e "s|__API_NETWORK_POLICY_HASH__|$api_network_policy_hash|" \
       -e "s|__API_HAS_BROKER_EGRESS__|$api_has_broker_egress|" \
+      -e "s|__API_BROKER_EGRESS_LABEL__|$(if [[ "$api_has_broker_egress" == "true" ]]; then printf enabled; else printf disabled; fi)|" \
     > "$rendered_api"
   if [[ "$trading_core_mode" == "Remote" ]]; then
     awk '

@@ -25,6 +25,7 @@ spec:
     metadata:
       labels:
         app: stocktrader-trading-core
+        stocktrader.io/broker-egress: "__TRADING_CORE_BROKER_EGRESS_LABEL__"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/path: "/metrics"

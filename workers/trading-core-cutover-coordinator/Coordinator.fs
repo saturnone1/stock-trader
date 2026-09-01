@@ -34,14 +34,23 @@ module Coordinator =
         handler.ClientCertificates.Add(X509Certificate2.CreateFromPemFile(
             required "STOCKTRADER_COORDINATOR_CLIENT_CERT_PATH",
             required "STOCKTRADER_COORDINATOR_CLIENT_KEY_PATH")) |> ignore
-        handler.ServerCertificateCustomValidationCallback <- fun _ certificate _ _ ->
-            if isNull certificate then false else
+        handler.ServerCertificateCustomValidationCallback <- fun request certificate _ _ ->
+            if isNull certificate || isNull request.RequestUri then false else
             use root = X509Certificate2.CreateFromPemFile(required "STOCKTRADER_COORDINATOR_SERVER_CA_PATH")
             use chain = new X509Chain()
             chain.ChainPolicy.TrustMode <- X509ChainTrustMode.CustomRootTrust
             chain.ChainPolicy.CustomTrustStore.Add root |> ignore
             chain.ChainPolicy.RevocationMode <- X509RevocationMode.NoCheck
-            chain.Build certificate
+            let expected = request.RequestUri.Host
+            let nameMatches =
+                certificate.Extensions
+                |> Seq.cast<X509Extension>
+                |> Seq.choose (function
+                    | :? X509SubjectAlternativeNameExtension as san -> Some san
+                    | _ -> None)
+                |> Seq.collect _.EnumerateDnsNames()
+                |> Seq.exists (fun name -> name = expected)
+            nameMatches && chain.Build certificate
         new HttpClient(handler, true)
 
     let private get<'T> (client: HttpClient) (uri: Uri) (ct: CancellationToken) = task {
@@ -134,7 +143,7 @@ module Coordinator =
 
     let private patchDeployment (target: TradingCoreDeploymentTarget) (name: string)
         (container: string) (image: string) (environment: obj array)
-        (replicas: Nullable<int>)
+        (replicas: Nullable<int>) (brokerEgressLabel: string)
         (ct: CancellationToken) = task {
         let token = File.ReadAllText("/var/run/secrets/kubernetes.io/serviceaccount/token")
         let host = required "KUBERNETES_SERVICE_HOST"
@@ -152,11 +161,17 @@ module Coordinator =
         use client = new HttpClient(handler, true)
         client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Bearer", token)
         let endpoint = $"https://{host}:{port}/apis/apps/v1/namespaces/{target.Namespace}/deployments/{name}"
-        let payload =
-            if replicas.HasValue then
-                JsonSerializer.Serialize {| spec = {| replicas = replicas.Value; template = {| spec = {| containers = [| {| name = container; image = image; env = environment |} |] |} |} |} |}
-            else
-                JsonSerializer.Serialize {| spec = {| template = {| spec = {| containers = [| {| name = container; image = image; env = environment |} |] |} |} |} |}
+        let containerPatch = {| name = container; image = image; env = environment |}
+        let template = Collections.Generic.Dictionary<string,obj>(StringComparer.Ordinal)
+        template["spec"] <- box {| containers = [| containerPatch |] |}
+        if not (String.IsNullOrWhiteSpace brokerEgressLabel) then
+            let labels = Collections.Generic.Dictionary<string,string>(StringComparer.Ordinal)
+            labels["stocktrader.io/broker-egress"] <- brokerEgressLabel
+            template["metadata"] <- box {| labels = labels |}
+        let spec = Collections.Generic.Dictionary<string,obj>(StringComparer.Ordinal)
+        spec["template"] <- box template
+        if replicas.HasValue then spec["replicas"] <- box replicas.Value
+        let payload = JsonSerializer.Serialize {| spec = spec |}
         use content = new StringContent(payload, Encoding.UTF8, "application/strategic-merge-patch+json")
         use request = new HttpRequestMessage(HttpMethod.Patch, endpoint, Content = content)
         use! response = client.SendAsync(request, ct)
@@ -278,9 +293,10 @@ module Coordinator =
     }
 
     let private writeState (path: string) (plan: TradingCoreTransitionPlanV1)
-        (step: string) (receipt: string) =
+        (operationStep: string) (completedPhase: string) (receipt: string) =
         let state = TradingCoreCoordinatorState(TradingCoreCoordinatorVersions.Current,
-            plan.PlanHash, plan.TransitionId, step, null, receipt, DateTime.UtcNow)
+            plan.PlanHash, plan.TransitionId, completedPhase,
+            operationId plan.TransitionId operationStep, receipt, DateTime.UtcNow)
         let temporary = path + ".tmp"
         File.WriteAllText(temporary, JsonSerializer.Serialize state)
         File.Move(temporary, path, true)
@@ -318,7 +334,8 @@ module Coordinator =
                             (stepRequest plan AuthorityTransitionOperations.Quiesce
                                 AuthorityTransitionPhases.Requested 2 sourceFence targetFence
                                 null null null null) ct
-        writeState statePath plan quiesced.Phase quiesced.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Quiesce
+            quiesced.Phase quiesced.PayloadHash
         let! drain = waitForCoreDrain http
                          (core $"/v2/authority/transitions/{plan.TransitionId}/drain") ct
         let! drained = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
@@ -326,7 +343,8 @@ module Coordinator =
                            (stepRequest plan AuthorityTransitionOperations.Drain
                                AuthorityTransitionPhases.Quiescing 3 sourceFence targetFence
                                drain null null null) ct
-        writeState statePath plan drained.Phase drained.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Drain
+            drained.Phase drained.PayloadHash
         let! transfer = post<CanonicalFinancialExportRequest,CanonicalFinancialTransferV2> http
                             (core "/v2/financial-transfers/export") (exportRequest plan) ct
         match Option.ofObj (CanonicalFinancialTransferPolicy.Error transfer) with
@@ -339,7 +357,8 @@ module Coordinator =
         File.Move(temporaryTransfer, plan.SealedTransferPath, true)
         do! patchDeployment plan.Deployments plan.Deployments.EdgeDeployment
                 plan.Deployments.EdgeContainer plan.Deployments.EdgeImage
-                (edgeEnvironment plan) (Nullable 0) ct
+                (edgeEnvironment plan) (Nullable 0)
+                (if plan.TargetMode = TradingAuthorityMode.Remote then "disabled" else "enabled") ct
         let! edgeReceipt = runRollbackImporterJob plan ct
         let! recorded = post<CanonicalFinancialImportReceipt,CanonicalFinancialImportReceipt> http
                             (core "/v2/financial-transfers/external-import-receipts") edgeReceipt ct
@@ -351,19 +370,23 @@ module Coordinator =
                               (stepRequest plan AuthorityTransitionOperations.Reconcile
                                   AuthorityTransitionPhases.Draining 4 sourceFence targetFence
                                   drain evidence null null) ct
-        writeState statePath plan reconciled.Phase reconciled.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Reconcile
+            reconciled.Phase reconciled.PayloadHash
         let! committed = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                             (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                             (stepRequest plan AuthorityTransitionOperations.Commit
                                 AuthorityTransitionPhases.Reconciled 5 sourceFence targetFence
                                 drain evidence null null) ct
-        writeState statePath plan committed.Phase committed.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Commit
+            committed.Phase committed.PayloadHash
         do! patchDeployment plan.Deployments plan.Deployments.TradingCoreDeployment
                 plan.Deployments.TradingCoreContainer plan.Deployments.TradingCoreImage
-                (coreEnvironment plan) (Nullable()) ct
+                (coreEnvironment plan) (Nullable())
+                (if plan.TargetMode = TradingAuthorityMode.Remote then "enabled" else "disabled") ct
         do! patchDeployment plan.Deployments plan.Deployments.EdgeDeployment
                 plan.Deployments.EdgeContainer plan.Deployments.EdgeImage
-                (edgeEnvironment plan) (Nullable 1) ct
+                (edgeEnvironment plan) (Nullable 1)
+                (if plan.TargetMode = TradingAuthorityMode.Remote then "disabled" else "enabled") ct
         let! sourceCapability = get<AuthorityCapabilityReceipt> http
                                     (core "/v2/authority/capability") ct
         let! targetCapability = get<AuthorityCapabilityReceipt> http
@@ -373,7 +396,8 @@ module Coordinator =
                            (stepRequest plan AuthorityTransitionOperations.CompleteVerification
                                AuthorityTransitionPhases.Verifying 6 sourceFence targetFence
                                drain evidence sourceCapability targetCapability) ct
-        writeState statePath plan verified.Phase verified.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.CompleteVerification
+            verified.Phase verified.PayloadHash
         let mirror = mirrorRequest plan "edge-rollback-mirror" 7
                          committed.EffectiveGeneration (plan.TargetMode.ToString())
                          AuthorityOwners.Edge committed.PayloadHash
@@ -387,7 +411,8 @@ module Coordinator =
         let! _ = post<EdgeAuthorityFenceRequest,AuthorityFenceReceipt> http
                      (edge "/internal/v2/edge-authority/release")
                      (fenceRequest plan "edge-rollback-release" 9) ct
-        writeState statePath plan released.Phase released.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Release
+            released.Phase released.PayloadHash
         return 0
     }
 
@@ -404,7 +429,8 @@ module Coordinator =
         let! quiesced = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                             (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                             (stepRequest plan AuthorityTransitionOperations.Quiesce AuthorityTransitionPhases.Requested 2 sourceFence targetFence null null null null) ct
-        writeState statePath plan quiesced.Phase quiesced.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Quiesce
+            quiesced.Phase quiesced.PayloadHash
         let! sourceBarrier = post<EdgeAuthorityFenceRequest,AuthorityFenceReceipt> http
                                 (edge "/internal/v2/edge-authority/barrier") (fenceRequest plan "edge-barrier" 3) ct
         let! drain = get<AuthorityDrainInventory> http
@@ -412,7 +438,8 @@ module Coordinator =
         let! drained = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                            (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                            (stepRequest plan AuthorityTransitionOperations.Drain AuthorityTransitionPhases.Quiescing 4 sourceBarrier targetFence drain null null null) ct
-        writeState statePath plan drained.Phase drained.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Drain
+            drained.Phase drained.PayloadHash
         let! transfer = post<CanonicalFinancialExportRequest,CanonicalFinancialTransferV2> http
                             (edge "/internal/v2/edge-authority/financial-transfers/export")
                             (exportRequest plan) ct
@@ -432,17 +459,21 @@ module Coordinator =
         let! reconciled = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                               (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                               (stepRequest plan AuthorityTransitionOperations.Reconcile AuthorityTransitionPhases.Draining 5 sourceBarrier targetFence drain evidence null null) ct
-        writeState statePath plan reconciled.Phase reconciled.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Reconcile
+            reconciled.Phase reconciled.PayloadHash
         let! committed = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                             (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                             (stepRequest plan AuthorityTransitionOperations.Commit AuthorityTransitionPhases.Reconciled 6 sourceBarrier targetFence drain evidence null null) ct
-        writeState statePath plan committed.Phase committed.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Commit
+            committed.Phase committed.PayloadHash
         do! patchDeployment plan.Deployments plan.Deployments.EdgeDeployment
                 plan.Deployments.EdgeContainer plan.Deployments.EdgeImage
-                (edgeEnvironment plan) (Nullable()) ct
+                (edgeEnvironment plan) (Nullable())
+                (if plan.TargetMode = TradingAuthorityMode.Remote then "disabled" else "enabled") ct
         do! patchDeployment plan.Deployments plan.Deployments.TradingCoreDeployment
                 plan.Deployments.TradingCoreContainer plan.Deployments.TradingCoreImage
-                (coreEnvironment plan) (Nullable()) ct
+                (coreEnvironment plan) (Nullable())
+                (if plan.TargetMode = TradingAuthorityMode.Remote then "enabled" else "disabled") ct
         let! sourceCapability = get<AuthorityCapabilityReceipt> http
                                     (edge "/internal/v2/edge-authority/capability") ct
         let! targetCapability = get<AuthorityCapabilityReceipt> http
@@ -450,7 +481,8 @@ module Coordinator =
         let! verified = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                            (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                            (stepRequest plan AuthorityTransitionOperations.CompleteVerification AuthorityTransitionPhases.Verifying 7 sourceBarrier targetFence drain evidence sourceCapability targetCapability) ct
-        writeState statePath plan verified.Phase verified.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.CompleteVerification
+            verified.Phase verified.PayloadHash
         let mirror = mirrorRequest plan "edge-mirror" 8
                          committed.EffectiveGeneration (plan.TargetMode.ToString())
                          AuthorityOwners.TradingCore committed.PayloadHash
@@ -459,7 +491,8 @@ module Coordinator =
         let! released = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                             (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                             (stepRequest plan AuthorityTransitionOperations.Release AuthorityTransitionPhases.ReadyToRelease 9 sourceBarrier targetFence drain evidence sourceCapability targetCapability) ct
-        writeState statePath plan released.Phase released.PayloadHash
+        writeState statePath plan AuthorityTransitionOperations.Release
+            released.Phase released.PayloadHash
         return 0
     }
 
