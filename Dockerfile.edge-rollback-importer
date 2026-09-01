@@ -5,7 +5,6 @@ RUN dotnet publish src/StockTrader.EdgeRollbackImporter/StockTrader.EdgeRollback
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0
 WORKDIR /app
-RUN useradd --uid 1654 --create-home appuser
 COPY --from=build /out .
-USER 1654
+USER $APP_UID
 ENTRYPOINT ["dotnet", "StockTrader.EdgeRollbackImporter.dll"]
