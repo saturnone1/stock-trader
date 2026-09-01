@@ -32,7 +32,7 @@ module TradingCoreMarketStore =
                 let hasDivergence = Convert.ToInt64(divergenceCommand.ExecuteScalar()) > 0L
                 let risk = TradingPortfolioProjectionPolicy.Risk(
                     accounts.ToArray(), openCount, dailyLossLimitPercent, hasDivergence,
-                    DateTime.UtcNow)
+                    this.UtcNow)
                 use upsert = connection.CreateCommand()
                 upsert.CommandText <- """INSERT INTO canonical_risk(singleton,payload_json,version)
 VALUES(1,$payload,1) ON CONFLICT(singleton) DO UPDATE SET
@@ -83,7 +83,7 @@ payload_json=excluded.payload_json,version=canonical_risk.version+1"""
                 state.CommandText <- "INSERT INTO state(key,value) VALUES($key,$value) ON CONFLICT(key) DO UPDATE SET value=excluded.value; UPDATE state SET value=$at WHERE key='last_broker_reconciliation_at'"
                 state.Parameters.AddWithValue("$key", "portfolio_divergence:" + accountId) |> ignore
                 state.Parameters.AddWithValue("$value", if divergence then "true" else "false") |> ignore
-                state.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+                state.Parameters.AddWithValue("$at", this.UtcNow.ToString("O")) |> ignore
                 state.ExecuteNonQuery() |> ignore
             for identity, position in canonical do
                 match positions |> Seq.tryFind (fun value ->

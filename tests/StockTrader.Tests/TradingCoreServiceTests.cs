@@ -21,7 +21,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         var path = Path.Combine(_root, "transition.db");
         var config = CreateConfig(path, TradingAuthorityMode.Shadow);
         var store = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         var operations = new TradingCoreOperations(store);
         using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}"))
         {
@@ -71,7 +71,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         var path = Path.Combine(_root, "financial-transfer.db");
         var config = CreateConfig(path, TradingAuthorityMode.Shadow);
         var store = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         var operations = new TradingCoreOperations(store);
         var now = new DateTime(2026, 9, 1, 13, 0, 0, DateTimeKind.Utc);
         var accountConfiguration = AccountConfiguration(now);
@@ -135,12 +135,12 @@ public sealed class TradingCoreServiceTests : IDisposable
         var path = Path.Combine(_root, "corrupt.db");
         var config = CreateConfig(path);
         _ = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         using (var file = File.Open(path, FileMode.Open, FileAccess.Write, FileShare.None))
             file.SetLength(128);
 
         var construct = () => new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
 
         construct.Should().Throw<InvalidOperationException>()
             .WithMessage("trading-core-database-integrity-check-failed");
@@ -152,7 +152,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         Directory.CreateDirectory(_root);
         var config = CreateConfig(Path.Combine(_root, "projection.db"));
         var store = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         var operations = new TradingCoreOperations(store);
         var now = DateTime.UtcNow;
         var recommendation = new TradingRecommendationProjection(
@@ -180,7 +180,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         Directory.CreateDirectory(_root);
         var config = CreateConfig(Path.Combine(_root, "core.db"));
         var store = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         var operations = new TradingCoreOperations(store);
         var now = DateTime.UtcNow;
         var snapshot = EmptySnapshot(now);
@@ -277,7 +277,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         Directory.CreateDirectory(_root);
         var config = CreateConfig(Path.Combine(_root, "core.db"));
         var store = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         var operations = new TradingCoreOperations(store);
         var now = DateTime.UtcNow;
         var snapshot = EmptySnapshot(now);
@@ -312,7 +312,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         var config = CreateConfig(database);
         var now = DateTime.UtcNow;
         var store = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         var operations = new TradingCoreOperations(store);
         var snapshot = EmptySnapshot(now);
         operations.Import(snapshot);
@@ -336,7 +336,7 @@ public sealed class TradingCoreServiceTests : IDisposable
 
         // A new process instance must continue evidence reconciliation, never submit the order again.
         var restartedStore = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         operations = new TradingCoreOperations(restartedStore);
         operations.ClaimEntry().Should().BeNull();
         operations.RecordBrokerEvidence(entry.Envelope.CommandId, new BrokerOrderEvidence(
@@ -408,7 +408,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         Directory.CreateDirectory(_root);
         var config = CreateConfig(Path.Combine(_root, "shadow.db"));
         var store = new TradingCoreStore(
-            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config), TimeProvider.System);
         var operations = new TradingCoreOperations(store);
         var openAt = new DateTime(2026, 8, 26, 15, 0, 0, DateTimeKind.Utc);
         var snapshot = EmptySnapshot(openAt);

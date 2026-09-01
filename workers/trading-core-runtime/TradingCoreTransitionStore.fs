@@ -131,7 +131,7 @@ WHERE status IN ($pending,$awaiting,$reconcile)"""
                     Globalization.DateTimeStyles.RoundtripKind))
             let candidate = AuthorityDrainInventory(
                 unresolvedCount, unresolvedCount, 0, journalCount, 0L,
-                DateTime.UtcNow, "")
+                this.UtcNow, "")
             AuthorityDrainInventory(
                 candidate.UnresolvedIntentCount, candidate.UnresolvedBrokerEffectCount,
                 candidate.UnprocessedBrokerFillCount, candidate.ActivityJournalCount,

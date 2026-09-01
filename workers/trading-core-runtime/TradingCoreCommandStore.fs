@@ -32,7 +32,7 @@ module TradingCoreCommandStore =
             use command = connection.CreateCommand()
             command.CommandText <- "UPDATE financial_intents SET status=$status,updated_at=$at WHERE command_id=$id AND status=$pending"
             command.Parameters.AddWithValue("$status", TradingCommandStatuses.ReconciliationRequired) |> ignore
-            command.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+            command.Parameters.AddWithValue("$at", this.UtcNow.ToString("O")) |> ignore
             command.Parameters.AddWithValue("$id", commandId) |> ignore
             command.Parameters.AddWithValue("$pending", TradingCommandStatuses.AwaitingBrokerEvidence) |> ignore
             command.ExecuteNonQuery() |> ignore
@@ -42,7 +42,7 @@ module TradingCoreCommandStore =
             use command = connection.CreateCommand()
             command.CommandText <- "UPDATE financial_intents SET status=$status,updated_at=$at WHERE command_id=$id AND status=$awaiting"
             command.Parameters.AddWithValue("$status", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
-            command.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+            command.Parameters.AddWithValue("$at", this.UtcNow.ToString("O")) |> ignore
             command.Parameters.AddWithValue("$id", commandId) |> ignore
             command.Parameters.AddWithValue("$awaiting", TradingCommandStatuses.AwaitingBrokerEvidence) |> ignore
             command.ExecuteNonQuery() = 1
@@ -54,7 +54,7 @@ module TradingCoreCommandStore =
             command.Transaction <- transaction
             command.CommandText <- "UPDATE financial_intents SET status=$status,updated_at=$at WHERE command_id=$id AND status IN ($pending,$awaiting,$reconcile)"
             command.Parameters.AddWithValue("$status", TradingCommandStatuses.Rejected) |> ignore
-            command.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+            command.Parameters.AddWithValue("$at", this.UtcNow.ToString("O")) |> ignore
             command.Parameters.AddWithValue("$id", commandId) |> ignore
             command.Parameters.AddWithValue("$pending", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
             command.Parameters.AddWithValue("$awaiting", TradingCommandStatuses.AwaitingBrokerEvidence) |> ignore
@@ -114,7 +114,7 @@ module TradingCoreCommandStore =
                 audit.Parameters.AddWithValue("$aggregate", commandId) |> ignore
                 audit.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(
                     {| commandId = commandId; status = TradingCommandStatuses.Rejected; reason = reason |}, this.Json)) |> ignore
-                audit.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+                audit.Parameters.AddWithValue("$at", this.UtcNow.ToString("O")) |> ignore
                 audit.ExecuteNonQuery() |> ignore
                 transaction.Commit()
             else transaction.Rollback()

@@ -158,7 +158,7 @@ module RuntimeHttpEndpoints =
                     files |> Array.exists (fun path -> Path.GetFileName(path) = "StockTrader.TradingCore.AlpacaAdapter.dll"),
                     config.BrokerCapabilityEnabled && store.AccountConfiguration().IsSome,
                     environment "STOCKTRADER_BROKER_EGRESS_ENABLED" = "true",
-                    DateTime.UtcNow,
+                    store.UtcNow,
                     "")
                 let sealedReceipt = AuthorityCapabilityReceipt(
                     receipt.Owner, receipt.RuntimeProfile, receipt.ImageDigest,

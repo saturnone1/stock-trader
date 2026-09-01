@@ -16,7 +16,7 @@ module TradingCoreShadowStore =
             use connection = this.Connect()
             let accountGeneration = Int64.Parse(this.StateValue(connection, "account_generation"))
             match Option.ofObj (TradingCoreCompatibilityPolicy.Error(
-                observation, authority, accountGeneration, DateTime.UtcNow)) with
+                observation, authority, accountGeneration, this.UtcNow)) with
             | Some error -> invalidArg "observation" error
             | None ->
                 use existing = connection.CreateCommand()
@@ -61,7 +61,7 @@ module TradingCoreShadowStore =
                         TradingShadowEntryDecisionRequest(
                             observation.OrderMode, observation.Intent, session.IsOpen,
                             risk, positions.ToArray(), configuration))
-                    let comparedAt = DateTime.UtcNow
+                    let comparedAt = this.UtcNow
                     let matched = candidate.Disposition = observation.AuthoritativeDisposition
                     let receipt = TradingShadowDecisionReceipt(
                         TradingCoreContractVersions.Current, observation.DecisionId,
@@ -117,7 +117,7 @@ module TradingCoreShadowStore =
         member this.CompareShadowPosition(observation: TradingShadowPositionObservation) =
             let authority = this.Authority()
             match Option.ofObj (TradingCoreCompatibilityPolicy.Error(
-                observation, authority, DateTime.UtcNow)) with
+                observation, authority, this.UtcNow)) with
             | Some error -> invalidArg "observation" error
             | None ->
                 use connection = this.Connect()
@@ -178,7 +178,7 @@ module TradingCoreShadowStore =
                     let policyStateMatched =
                         observation.AuthoritativePolicyState = observation.CandidatePolicyState
                     let matched = decisionMatched && policyStateMatched
-                    let comparedAt = DateTime.UtcNow
+                    let comparedAt = this.UtcNow
                     let receipt = TradingShadowPositionDecisionReceipt(
                         TradingCoreContractVersions.Current, observation.DecisionId,
                         observation.PayloadHash, observation.AuthoritativeDisposition,

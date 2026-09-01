@@ -18,6 +18,7 @@ type PositionProtectionWorker(
     store: TradingCoreStore,
     marketData: MarketDataExecutionClient,
     config: ServiceConfig,
+    clock: TimeProvider,
     logger: ILogger<PositionProtectionWorker>) =
     inherit BackgroundService()
 
@@ -124,7 +125,7 @@ type PositionProtectionWorker(
         elif not (pending position.PositionId) then
             let artifact = position.ExecutionContext.ExecutionArtifact
             let management = artifact.PositionManagement
-            let now = DateTime.UtcNow
+            let now = clock.GetUtcNow().UtcDateTime
             let completed = TradingCompletedBarPolicy.Resolve(
                 now, position.ExecutionContext.EntryMarketDataEvidence.Provider)
             let references = Dictionary<string, MarketDataExecutionWindowResponse>(StringComparer.OrdinalIgnoreCase)

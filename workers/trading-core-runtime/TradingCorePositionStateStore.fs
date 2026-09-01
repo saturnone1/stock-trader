@@ -13,7 +13,7 @@ module TradingCorePositionStateStore =
             use connection = this.Connect()
             let accountGeneration = Int64.Parse(this.StateValue(connection, "account_generation"))
             match Option.ofObj (TradingCoreCompatibilityPolicy.Error(
-                update, authority, accountGeneration, DateTime.UtcNow)) with
+                update, authority, accountGeneration, this.UtcNow)) with
             | Some error -> invalidArg "update" error
             | None ->
                 use transaction = connection.BeginTransaction()
@@ -48,7 +48,7 @@ module TradingCorePositionStateStore =
                             Convert.ToString payload, this.Json)
                         if isNull position then invalidOp "empty-position-policy-state"
                         let next = TradingPositionPolicyStateUpdatePolicy.Apply(position, update)
-                        let acceptedAt = DateTime.UtcNow
+                        let acceptedAt = this.UtcNow
                         let receipt = TradingCommandReceipt(
                             TradingCoreContractVersions.Current, update.Envelope.CommandId,
                             update.Envelope.PayloadHash, TradingCommandStatuses.Completed,

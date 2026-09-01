@@ -38,7 +38,7 @@ module EncryptionKeyMigration =
                 invalidOp "trading-core-encryption-migration-remote-prohibited"
             authorityConnection.Close()
 
-            Database.initialize config.DatabasePath TradingAuthorityMode.Projection
+            Database.initialize config.DatabasePath TradingAuthorityMode.Projection DateTime.UtcNow
             use connection = Database.connect config.DatabasePath
             use select = connection.CreateCommand()
             select.CommandText <- "SELECT configuration_hash,encryption_key_generation,ciphertext,nonce,tag FROM account_configuration WHERE singleton=1"

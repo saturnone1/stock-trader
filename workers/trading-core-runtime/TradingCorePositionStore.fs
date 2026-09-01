@@ -16,7 +16,7 @@ module TradingCorePositionStore =
             use connection = this.Connect()
             let accountGeneration = Int64.Parse(this.StateValue(connection, "account_generation"))
             match Option.ofObj (TradingCoreCompatibilityPolicy.Error(
-                command, authority, accountGeneration, DateTime.UtcNow)) with
+                command, authority, accountGeneration, this.UtcNow)) with
             | Some error -> invalidArg "command" error
             | None ->
                 use transaction = connection.BeginTransaction()
@@ -50,7 +50,7 @@ module TradingCorePositionStore =
                     if command.Action <> TradingPositionActionKinds.ScaleIn
                         && command.Quantity > position.Quantity then
                         invalidOp "position-command-quantity-exceeds-open-position"
-                    let acceptedAt = DateTime.UtcNow
+                    let acceptedAt = this.UtcNow
                     let receipt = TradingCommandReceipt(
                         TradingCoreContractVersions.Current, command.Envelope.CommandId,
                         command.Envelope.PayloadHash, TradingCommandStatuses.PendingBrokerSubmission,

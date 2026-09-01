@@ -12,7 +12,7 @@ module TradingCoreRecommendationStore =
             use connection = this.Connect()
             let accountGeneration = Int64.Parse(this.StateValue(connection, "account_generation"))
             match Option.ofObj (TradingCoreCompatibilityPolicy.Error(
-                observation, authority, accountGeneration, DateTime.UtcNow)) with
+                observation, authority, accountGeneration, this.UtcNow)) with
             | Some error -> invalidArg "observation" error
             | None ->
                 use transaction = connection.BeginTransaction()
@@ -36,7 +36,7 @@ module TradingCoreRecommendationStore =
                 else
                     reader.Close()
                     this.RequireCommandAcceptance()
-                    let acceptedAt = DateTime.UtcNow
+                    let acceptedAt = this.UtcNow
                     let receipt = TradingCommandReceipt(
                         TradingCoreContractVersions.Current, observation.Envelope.CommandId,
                         observation.Envelope.PayloadHash, TradingCommandStatuses.Completed,

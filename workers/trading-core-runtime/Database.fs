@@ -11,7 +11,7 @@ module Database =
         connection.Open()
         connection
 
-    let initialize path initialMode =
+    let initialize path initialMode (initializedAtUtc: DateTime) =
         match IO.Path.GetDirectoryName(IO.Path.GetFullPath path) with
         | null | "" -> ()
         | parent -> IO.Directory.CreateDirectory parent |> ignore
@@ -138,5 +138,5 @@ INSERT OR IGNORE INTO state(key,value) VALUES('last_broker_reconciliation_at',''
 VALUES(1,$mode,1,$id,$at,'','',NULL,0)"""
         seed.Parameters.AddWithValue("$mode", initialMode.ToString()) |> ignore
         seed.Parameters.AddWithValue("$id", TradingCoreContractVersions.Service) |> ignore
-        seed.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+        seed.Parameters.AddWithValue("$at", initializedAtUtc.ToString("O")) |> ignore
         seed.ExecuteNonQuery() |> ignore

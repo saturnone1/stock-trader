@@ -16,7 +16,7 @@ module TradingCoreEntryStore =
             use connection = this.Connect()
             let accountGeneration = Int64.Parse(this.StateValue(connection, "account_generation"))
             match Option.ofObj (TradingCoreCompatibilityPolicy.Error(
-                intent, authority, accountGeneration, DateTime.UtcNow)) with
+                intent, authority, accountGeneration, this.UtcNow)) with
             | Some error -> invalidArg "intent" error
             | None ->
                 use transaction = connection.BeginTransaction()
@@ -47,7 +47,7 @@ module TradingCoreEntryStore =
                 else
                     reader.Close()
                     this.RequireCommandAcceptance()
-                    let acceptedAt = DateTime.UtcNow
+                    let acceptedAt = this.UtcNow
                     let receipt = TradingCommandReceipt(
                         TradingCoreContractVersions.Current, intent.Envelope.CommandId,
                         intent.Envelope.PayloadHash, TradingCommandStatuses.PendingBrokerSubmission,

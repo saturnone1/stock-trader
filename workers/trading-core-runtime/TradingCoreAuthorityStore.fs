@@ -49,7 +49,7 @@ module TradingCoreAuthorityStore =
                     insert.Parameters.AddWithValue("$generation", snapshot.SourceGeneration) |> ignore
                     insert.Parameters.AddWithValue("$captured", snapshot.CapturedAtUtc.ToString("O")) |> ignore
                     insert.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(snapshot, this.Json)) |> ignore
-                    insert.Parameters.AddWithValue("$accepted", DateTime.UtcNow.ToString("O")) |> ignore
+                    insert.Parameters.AddWithValue("$accepted", this.UtcNow.ToString("O")) |> ignore
                     insert.ExecuteNonQuery() |> ignore
                     use clear = connection.CreateCommand()
                     clear.Transaction <- transaction
@@ -137,7 +137,7 @@ module TradingCoreAuthorityStore =
                     upsert.Parameters.AddWithValue("$nonce", protectedPayload.Nonce) |> ignore
                     upsert.Parameters.AddWithValue("$tag", protectedPayload.Tag) |> ignore
                     upsert.Parameters.AddWithValue("$keyGeneration", this.Secrets.KeyGeneration) |> ignore
-                    upsert.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+                    upsert.Parameters.AddWithValue("$at", this.UtcNow.ToString("O")) |> ignore
                     upsert.ExecuteNonQuery() |> ignore
                     use state = connection.CreateCommand()
                     state.Transaction <- transaction
@@ -164,7 +164,7 @@ module TradingCoreAuthorityStore =
                     use check = this.Connect()
                     if next.PreviousStateHash <> this.StateValue(check, "last_snapshot_id") then
                         invalidOp "cutover-state-hash-mismatch"
-                    if next.BrokerReconciledAtUtc.Value < DateTime.UtcNow.AddMinutes(-5) then
+                    if next.BrokerReconciledAtUtc.Value < this.UtcNow.AddMinutes(-5) then
                         invalidOp "stale-broker-reconciliation"
                 use connection = this.Connect()
                 use transaction = connection.BeginTransaction()

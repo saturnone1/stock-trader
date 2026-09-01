@@ -38,7 +38,7 @@ module TradingCoreEntryBrokerStore =
                 select.CommandText <- "SELECT command_id,payload_json FROM financial_intents WHERE command_kind=$kind AND status=$status AND julianday(json_extract(payload_json,'$.envelope.expiresAtUtc')) > julianday($observed) ORDER BY accepted_at LIMIT 1"
                 select.Parameters.AddWithValue("$kind", TradingCommandKinds.AcceptEntry) |> ignore
                 select.Parameters.AddWithValue("$status", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
-                select.Parameters.AddWithValue("$observed", DateTime.UtcNow.ToString("O")) |> ignore
+                select.Parameters.AddWithValue("$observed", this.UtcNow.ToString("O")) |> ignore
                 use reader = select.ExecuteReader()
                 if not (reader.Read()) then None
                 else
@@ -48,7 +48,7 @@ module TradingCoreEntryBrokerStore =
                     update.Transaction <- transaction
                     update.CommandText <- "UPDATE financial_intents SET status=$status,updated_at=$at WHERE command_id=$id AND status=$pending"
                     update.Parameters.AddWithValue("$status", TradingCommandStatuses.AwaitingBrokerEvidence) |> ignore
-                    update.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+                    update.Parameters.AddWithValue("$at", this.UtcNow.ToString("O")) |> ignore
                     update.Parameters.AddWithValue("$id", commandId) |> ignore
                     update.Parameters.AddWithValue("$pending", TradingCommandStatuses.PendingBrokerSubmission) |> ignore
                     if update.ExecuteNonQuery() <> 1 then None
@@ -88,7 +88,7 @@ module TradingCoreEntryBrokerStore =
             | payload ->
                 let intent = JsonSerializer.Deserialize<TradingEntryIntent>(Convert.ToString payload, this.Json)
                 if isNull intent then invalidOp "empty-entry-intent-for-broker-evidence"
-                let observedAt = DateTime.UtcNow
+                let observedAt = this.UtcNow
                 use brokerEvidence = connection.CreateCommand()
                 brokerEvidence.Transaction <- transaction
                 brokerEvidence.CommandText <- """INSERT INTO broker_evidence VALUES($order,$client,$command,$payload,$at)
