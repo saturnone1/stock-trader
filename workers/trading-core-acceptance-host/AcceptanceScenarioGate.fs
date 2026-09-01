@@ -30,10 +30,22 @@ type AcceptanceScenarioGate(path: string, store: TradingCoreStore,
         if not (Guid.TryParse(request.ScenarioId) |> fst)
            || String.IsNullOrWhiteSpace request.OperationId
            || String.IsNullOrWhiteSpace request.FixtureHash
-           || not (request.Snapshot.SnapshotId.StartsWith("acceptance-", StringComparison.Ordinal))
+           || TradingCoreCompatibilityPolicy.Error(request.Snapshot) <> null
            || not (request.RunningAuthority.AuthorityId.StartsWith("acceptance-", StringComparison.Ordinal))
            || request.RunningAuthority.Mode <> TradingAuthorityMode.Remote
            || request.AccountConfiguration.Accounts.Count = 0
+           || (request.Snapshot.Accounts
+               |> Seq.exists (fun account ->
+                   not (account.AccountId.StartsWith("acceptance-", StringComparison.Ordinal))))
+           || (request.Snapshot.Recommendations
+               |> Seq.exists (fun value ->
+                   not (value.RecommendationId.StartsWith("acceptance-", StringComparison.Ordinal))))
+           || (request.Snapshot.Positions
+               |> Seq.exists (fun value ->
+                   not (value.PositionId.StartsWith("acceptance-", StringComparison.Ordinal))))
+           || (request.Snapshot.Trades
+               |> Seq.exists (fun value ->
+                   not (value.TradeId.StartsWith("acceptance-", StringComparison.Ordinal))))
            || (request.AccountConfiguration.Accounts
                |> Seq.exists (fun account ->
                    not (account.AccountId.StartsWith("acceptance-", StringComparison.Ordinal)))) then

@@ -7,6 +7,7 @@ type ServiceSettings = {
     ClientCaPath: string
     EdgeRoleDnsName: string
     TradingCoreRoleDnsName: string
+    AcceptanceRoleDnsName: string
     YahooBaseUrl: string
     YahooUserAgent: string
     YahooDelayMs: int
@@ -36,6 +37,7 @@ module ServiceSettings =
         ClientCaPath = value "MARKET_DATA_CLIENT_CA_PATH" ""
         EdgeRoleDnsName = value "MARKET_DATA_EDGE_ROLE_DNS" "edge-market-data.stocktrader.internal"
         TradingCoreRoleDnsName = value "MARKET_DATA_TRADING_CORE_ROLE_DNS" "trading-core-evidence.stocktrader.internal"
+        AcceptanceRoleDnsName = value "MARKET_DATA_ACCEPTANCE_ROLE_DNS" "acceptance-trading-core.stocktrader.internal"
         YahooBaseUrl = value "YAHOO_BASE_URL" "https://query1.finance.yahoo.com"
         YahooUserAgent = value "YAHOO_USER_AGENT" "StockTrader-MarketData/1.0"
         YahooDelayMs = positiveInt "YAHOO_RATE_LIMIT_DELAY_MS" 200

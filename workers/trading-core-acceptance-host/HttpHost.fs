@@ -5,12 +5,14 @@ open System.IO
 open System.Security.Cryptography
 open System.Security.Cryptography.X509Certificates
 open System.Text.Json
+open System.Threading
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Server.Kestrel.Https
 open Microsoft.AspNetCore.Server.Kestrel.Core
 open Microsoft.Extensions.DependencyInjection
+open StockTrader.ServiceContracts.MarketData
 open StockTrader.ServiceContracts.TradingCore
 open StockTrader.TradingCore.Broker
 open StockTrader.TradingCoreService
@@ -75,6 +77,16 @@ module HttpHost =
             ctx.Connection.LocalPort = 9543 && not (isNull ctx.Connection.ClientCertificate)
         app.MapGet("/internal/acceptance/scenario", Func<HttpContext,AcceptanceScenarioGate,IResult>(fun ctx gate ->
             if control ctx then Results.Ok(gate.View()) else Results.Unauthorized())) |> ignore
+        app.MapPost("/internal/acceptance/market-data/latest-completed",
+            Func<HttpContext,MarketDataExecutionClient,MarketDataExecutionWindowRequest,CancellationToken,Threading.Tasks.Task<IResult>>(
+                fun ctx marketData request ct -> task {
+                    if not (control ctx) then return Results.Unauthorized()
+                    else
+                        try
+                            let! response = marketData.LatestCompletedAsync(request, ct)
+                            return Results.Ok(response)
+                        with error ->
+                            return Results.Problem(error.Message, statusCode = 502) })) |> ignore
         app.MapPost("/internal/acceptance/bootstrap", Func<HttpContext,AcceptanceScenarioGate,AcceptanceBootstrapRequest,IResult>(fun ctx gate request ->
             if not (control ctx) then Results.Unauthorized()
             else

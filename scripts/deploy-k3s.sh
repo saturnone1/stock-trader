@@ -15,8 +15,12 @@ market_data_image="localhost/stock-trader/market-data:architecture-${release_tag
 ml_training_image="localhost/stock-trader/ml-training:architecture-${release_tag}"
 trading_core_remote_image="localhost/stock-trader/trading-core:architecture-${release_tag}"
 trading_core_shadow_image="localhost/stock-trader/trading-core-shadow:architecture-${release_tag}"
+acceptance_core_image="localhost/stock-trader/trading-core-acceptance:architecture-${release_tag}"
+acceptance_broker_image="localhost/stock-trader/trading-core-broker-emulator:architecture-${release_tag}"
+acceptance_driver_image="localhost/stock-trader/trading-core-acceptance-driver:architecture-${release_tag}"
 trading_core_image="$trading_core_shadow_image"
 archive_dir="$(mktemp -d /tmp/stocktrader-deploy.XXXXXX)"
+acceptance_tls_dir=""
 source_archive_dir="${STOCKTRADER_IMAGE_ARCHIVE_DIR:-}"
 data_dir=""
 stocktrader_host=""
@@ -36,6 +40,7 @@ market_data_tls_generation="${STOCKTRADER_MARKET_DATA_TLS_GENERATION:-}"
 market_data_server_tls_secret=""
 market_data_client_tls_secret=""
 market_data_trading_core_client_tls_secret=""
+market_data_acceptance_client_tls_secret=""
 ml_training_dir="${STOCKTRADER_ML_TRAINING_DIR:-}"
 ml_training_tls_generation="${STOCKTRADER_ML_TRAINING_TLS_GENERATION:-}"
 ml_training_server_tls_secret=""
@@ -62,6 +67,7 @@ deploy_market_data=false
 deploy_ml_training=false
 deploy_trading_core=false
 deploy_transition=false
+deploy_acceptance=false
 transition_direction=""
 case "$deploy_scope" in
   all) deploy_api=true; deploy_desktop=true; deploy_worker=true; deploy_market_data=true; deploy_ml_training=true; deploy_trading_core=true ;;
@@ -74,8 +80,9 @@ case "$deploy_scope" in
   trading-core-cutover) deploy_transition=true; transition_direction="Cutover" ;;
   trading-core-rollback) deploy_transition=true; transition_direction="Rollback" ;;
   trading-core-recutover) deploy_transition=true; transition_direction="Cutover" ;;
+  trading-core-acceptance) deploy_acceptance=true ;;
   *)
-    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, optimization-worker, market-data, ml-training, trading-core, trading-core-cutover, trading-core-rollback, or trading-core-recutover." >&2
+    echo "STOCKTRADER_DEPLOY_SCOPE must be all, api, desktop, optimization-worker, market-data, ml-training, trading-core, trading-core-acceptance, trading-core-cutover, trading-core-rollback, or trading-core-recutover." >&2
     exit 1
     ;;
 esac
@@ -122,7 +129,7 @@ if $deploy_api || $deploy_ml_training; then
   ml_training_server_tls_secret="stocktrader-ml-training-server-tls-$ml_training_tls_generation"
   ml_training_client_tls_secret="stocktrader-ml-training-client-tls-$ml_training_tls_generation"
 fi
-if $deploy_api || $deploy_market_data || $deploy_trading_core; then
+if $deploy_api || $deploy_market_data || $deploy_trading_core || $deploy_acceptance; then
   if [[ -z "$market_data_tls_generation" ]]; then
     market_data_tls_generation="$(sudo k3s kubectl -n stocktrader get configmap \
       stocktrader-market-data-tls-active -o jsonpath='{.data.generation}' 2>/dev/null || true)"
@@ -135,6 +142,7 @@ if $deploy_api || $deploy_market_data || $deploy_trading_core; then
   market_data_server_tls_secret="stocktrader-market-data-server-tls-$market_data_tls_generation"
   market_data_client_tls_secret="stocktrader-market-data-client-tls-$market_data_tls_generation"
   market_data_trading_core_client_tls_secret="stocktrader-market-data-trading-core-client-tls-$market_data_tls_generation"
+  market_data_acceptance_client_tls_secret="stocktrader-market-data-acceptance-client-tls-$market_data_tls_generation"
 fi
 if $deploy_api || $deploy_trading_core || $deploy_transition; then
   if [[ -z "$trading_core_tls_generation" ]]; then
@@ -245,7 +253,13 @@ cleanup() {
     "$archive_dir/worker.tar" "$archive_dir/market-data.tar" \
     "$archive_dir/ml-training.tar" "$archive_dir/trading-core.tar" \
     "$archive_dir/deployment-api.yaml" "$archive_dir/deployment-api.yaml.remote" \
-    "$archive_dir/trading-core-transition.yaml"
+    "$archive_dir/trading-core-transition.yaml" "$archive_dir/acceptance-run.yaml" \
+    "$archive_dir/acceptance-scenario.yaml" "$archive_dir/acceptance-manifest.yaml" \
+    "$archive_dir/scenario-definition.json"
+  if [[ -n "$acceptance_tls_dir" && -d "$acceptance_tls_dir" ]]; then
+    sudo rm -f -- "$acceptance_tls_dir"/*
+    rmdir "$acceptance_tls_dir" 2>/dev/null || true
+  fi
   rmdir "$archive_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -271,11 +285,35 @@ prepare_image() {
   sudo buildah push "$image" "oci-archive:$target:$image"
 }
 
+metadata_value() {
+  local key="$1"
+  local metadata="$source_archive_dir/stage5-metadata.env"
+  sed -n "s/^${key}=//p" "$metadata" | head -n 1
+}
+
+wait_acceptance_job() {
+  local namespace="$1"
+  local job="$2"
+  local attempts=0
+  while (( attempts < 300 )); do
+    local complete failed
+    complete="$(sudo k3s kubectl -n "$namespace" get job "$job" \
+      -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)"
+    failed="$(sudo k3s kubectl -n "$namespace" get job "$job" \
+      -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)"
+    [[ "$complete" == "True" ]] && return 0
+    [[ "$failed" == "True" ]] && return 1
+    sleep 2
+    attempts=$((attempts + 1))
+  done
+  return 1
+}
+
 sudo k3s kubectl apply -f k8s/namespace.yaml
 if $deploy_api || $deploy_worker; then
   sudo k3s kubectl apply -f k8s/network-policy-optimization-worker.yaml
 fi
-if $deploy_api || $deploy_market_data; then
+if $deploy_api || $deploy_market_data || $deploy_acceptance; then
   sudo k3s kubectl apply -f k8s/network-policy-market-data.yaml
 fi
 if $deploy_api || $deploy_ml_training; then
@@ -330,6 +368,12 @@ for tls_secret in "$market_data_server_tls_secret" "$market_data_client_tls_secr
     exit 1
   fi
 done
+if $deploy_acceptance \
+  && ! sudo k3s kubectl -n stocktrader get secret "$market_data_acceptance_client_tls_secret" >/dev/null 2>&1; then
+  echo "Missing Kubernetes secret stocktrader/$market_data_acceptance_client_tls_secret." >&2
+  echo "Rotate and redeploy Market Data TLS before isolated acceptance." >&2
+  exit 1
+fi
 if $deploy_trading_core \
   && ! sudo k3s kubectl -n stocktrader get secret "$trading_core_encryption_secret" >/dev/null 2>&1; then
   echo "Missing Kubernetes secret stocktrader/$trading_core_encryption_secret." >&2
@@ -345,6 +389,185 @@ for tls_secret in "$trading_core_server_tls_secret" "$trading_core_client_tls_se
     exit 1
   fi
 done
+
+if $deploy_acceptance; then
+  if [[ -z "$source_archive_dir" || ! -d "$source_archive_dir" \
+    || ! -f "$source_archive_dir/SHA256SUMS" \
+    || ! -f "$source_archive_dir/stage5-metadata.env" ]]; then
+    echo "Trading Core acceptance requires a verified off-node stage5 archive directory." >&2
+    exit 1
+  fi
+  (cd "$source_archive_dir" && sha256sum -c SHA256SUMS)
+  kubernetes_api_cidr="${STOCKTRADER_KUBERNETES_API_CIDR:?Set STOCKTRADER_KUBERNETES_API_CIDR, for example 10.43.0.1/32}"
+  acceptance_output_dir="${STOCKTRADER_ACCEPTANCE_OUTPUT_DIR:?Set STOCKTRADER_ACCEPTANCE_OUTPUT_DIR}"
+  acceptance_run_id="${STOCKTRADER_ACCEPTANCE_RUN_ID:-${release_tag}-$(date -u +%Y%m%d%H%M%S)}"
+  if [[ ! "$acceptance_run_id" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]]; then
+    echo "STOCKTRADER_ACCEPTANCE_RUN_ID must be 1-40 lowercase letters, digits, or hyphens." >&2
+    exit 1
+  fi
+  acceptance_namespace="stocktrader-acceptance-$acceptance_run_id"
+  if sudo k3s kubectl get namespace "$acceptance_namespace" >/dev/null 2>&1; then
+    echo "Acceptance namespace already exists: $acceptance_namespace" >&2
+    exit 1
+  fi
+  for archive_name in trading-core-acceptance.tar trading-core-broker-emulator.tar \
+      trading-core-acceptance-driver.tar; do
+    [[ -f "$source_archive_dir/$archive_name" ]] || {
+      echo "Missing stage5 image archive: $source_archive_dir/$archive_name" >&2
+      exit 1
+    }
+    sudo k3s ctr images import "$source_archive_dir/$archive_name"
+  done
+
+  rendered_run="$archive_dir/acceptance-run.yaml"
+  sed -e "s|__ACCEPTANCE_NAMESPACE__|$acceptance_namespace|g" \
+    -e "s|__RUN_ID__|$acceptance_run_id|g" \
+    -e "s|__KUBERNETES_API_CIDR__|$kubernetes_api_cidr|g" \
+    k8s/trading-core-acceptance-run.yaml > "$rendered_run"
+  sudo k3s kubectl apply -f "$rendered_run"
+
+  acceptance_tls_dir="$(mktemp -d /tmp/stocktrader-acceptance-tls.XXXXXX)"
+  sudo chown "$(id -u):$(id -g)" "$acceptance_tls_dir"
+  chmod 700 "$acceptance_tls_dir"
+  openssl genrsa -out "$acceptance_tls_dir/ca.key" 3072 >/dev/null 2>&1
+  openssl req -x509 -new -sha256 -days 7 -key "$acceptance_tls_dir/ca.key" \
+    -out "$acceptance_tls_dir/ca.crt" -subj "/CN=StockTrader Acceptance $acceptance_run_id" >/dev/null 2>&1
+  issue_acceptance_certificate() {
+    local name="$1" common_name="$2" san="$3" eku="$4"
+    openssl genrsa -out "$acceptance_tls_dir/$name.key" 2048 >/dev/null 2>&1
+    openssl req -new -sha256 -key "$acceptance_tls_dir/$name.key" \
+      -out "$acceptance_tls_dir/$name.csr" -subj "/CN=$common_name" >/dev/null 2>&1
+    printf '%s\n' 'basicConstraints=critical,CA:FALSE' \
+      'keyUsage=critical,digitalSignature,keyEncipherment' \
+      "extendedKeyUsage=$eku" "subjectAltName=DNS:$san" > "$acceptance_tls_dir/$name.ext"
+    openssl x509 -req -sha256 -days 7 -in "$acceptance_tls_dir/$name.csr" \
+      -CA "$acceptance_tls_dir/ca.crt" -CAkey "$acceptance_tls_dir/ca.key" \
+      -CAcreateserial -out "$acceptance_tls_dir/$name.crt" \
+      -extfile "$acceptance_tls_dir/$name.ext" >/dev/null 2>&1
+  }
+  issue_acceptance_certificate broker acceptance-broker acceptance-broker serverAuth
+  issue_acceptance_certificate core acceptance-core acceptance-core serverAuth
+  issue_acceptance_certificate driver acceptance-driver \
+    "acceptance-driver.$acceptance_run_id.stocktrader.internal" clientAuth
+  issue_acceptance_certificate core-client acceptance-trading-core \
+    "acceptance-trading-core.$acceptance_run_id.stocktrader.internal" clientAuth
+  for item in "acceptance-broker-server-tls:broker" \
+      "acceptance-core-server-tls:core" \
+      "acceptance-driver-client-tls:driver" \
+      "acceptance-core-client-tls:core-client"; do
+    secret="${item%%:*}"
+    certificate="${item##*:}"
+    sudo k3s kubectl -n "$acceptance_namespace" create secret generic "$secret" \
+      --from-file=tls.crt="$acceptance_tls_dir/$certificate.crt" \
+      --from-file=tls.key="$acceptance_tls_dir/$certificate.key" \
+      --from-file=ca.crt="$acceptance_tls_dir/ca.crt"
+  done
+  openssl rand -base64 32 > "$acceptance_tls_dir/encryption-key"
+  sudo k3s kubectl -n "$acceptance_namespace" create secret generic acceptance-encryption \
+    --from-file=encryption-key="$acceptance_tls_dir/encryption-key"
+  for key in tls.crt tls.key ca.crt; do
+    sudo k3s kubectl -n stocktrader get secret "$market_data_acceptance_client_tls_secret" \
+      -o "jsonpath={.data.${key//./\\.}}" | base64 -d > "$acceptance_tls_dir/market-data-$key"
+  done
+  sudo k3s kubectl -n "$acceptance_namespace" create secret generic acceptance-market-data-client-tls \
+    --from-file=tls.crt="$acceptance_tls_dir/market-data-tls.crt" \
+    --from-file=tls.key="$acceptance_tls_dir/market-data-tls.key" \
+    --from-file=ca.crt="$acceptance_tls_dir/market-data-ca.crt"
+
+  scenario_failed=false
+  scenario_codes=(
+    completed-bar-downtime-replay duplicate-command-delivery command-identity-conflict
+    broker-rejection-before-fill broker-timeout-before-submission-proof
+    broker-accepted-then-timeout delayed-out-of-order-partial-fills
+    cancellation-with-partial-fill contradictory-terminal-quantity duplicate-broker-response
+    broker-outage-and-recovery trading-core-pod-loss edge-loss-autonomous-protection
+    evaluated-range-evidence-correction accepted-resource-load
+    isolated-cutover-and-rollback-generation
+  )
+  for scenario_code in "${scenario_codes[@]}"; do
+    scenario_id="$(tr -d '-' < /proc/sys/kernel/random/uuid | cut -c1-20)"
+    scenario_guid="$(cat /proc/sys/kernel/random/uuid)"
+    printf '{"contractVersion":1,"scenarioCode":"%s","scenarioId":"%s","provider":"Yahoo","symbol":"AAPL","adjustmentMode":"Raw","market":"US","calendarVersion":"market-calendar-v1","requiredBars":50}\n' \
+      "$scenario_code" "$scenario_guid" > "$archive_dir/scenario-definition.json"
+    sudo k3s kubectl -n "$acceptance_namespace" create configmap \
+      "acceptance-definition-$scenario_id" \
+      --from-file=scenario.json="$archive_dir/scenario-definition.json"
+    rendered_scenario="$archive_dir/acceptance-scenario.yaml"
+    sed -e "s|__ACCEPTANCE_NAMESPACE__|$acceptance_namespace|g" \
+      -e "s|__RUN_ID__|$acceptance_run_id|g" \
+      -e "s|__SCENARIO_ID__|$scenario_id|g" \
+      -e "s|__SCENARIO_CODE__|$scenario_code|g" \
+      -e "s|__RELEASE_TAG__|$release_tag|g" \
+      k8s/trading-core-acceptance-scenario.yaml > "$rendered_scenario"
+    sudo k3s kubectl apply -f "$rendered_scenario"
+    if ! sudo k3s kubectl -n "$acceptance_namespace" rollout status \
+        "deployment/acceptance-broker-$scenario_id" --timeout=180s \
+      || ! sudo k3s kubectl -n "$acceptance_namespace" rollout status \
+        "deployment/acceptance-core-$scenario_id" --timeout=180s \
+      || ! wait_acceptance_job "$acceptance_namespace" "acceptance-driver-$scenario_id"; then
+      sudo k3s kubectl -n "$acceptance_namespace" logs \
+        "job/acceptance-driver-$scenario_id" --all-containers=true || true
+      scenario_failed=true
+    fi
+    sudo k3s kubectl -n "$acceptance_namespace" delete \
+      "job/acceptance-driver-$scenario_id" \
+      "deployment/acceptance-broker-$scenario_id" "deployment/acceptance-core-$scenario_id" \
+      service/acceptance-broker service/acceptance-core \
+      "configmap/acceptance-definition-$scenario_id" \
+      "pvc/tc-$scenario_id" "pvc/broker-$scenario_id" --wait=true
+    $scenario_failed && break
+  done
+
+  repository_commit="$(metadata_value REPOSITORY_COMMIT)"
+  build_id="$(metadata_value BUILD_ID)"
+  service_contracts_hash="$(metadata_value SERVICE_CONTRACTS_HASH)"
+  engine_hash="$(metadata_value ENGINE_HASH)"
+  trading_core_hash="$(metadata_value TRADING_CORE_HASH)"
+  runtime_hash="$(metadata_value RUNTIME_HASH)"
+  for value in "$repository_commit" "$build_id" "$service_contracts_hash" "$engine_hash" \
+      "$trading_core_hash" "$runtime_hash"; do
+    [[ -n "$value" ]] || { echo "Incomplete stage5 metadata." >&2; exit 1; }
+  done
+  rendered_manifest="$archive_dir/acceptance-manifest.yaml"
+  sed -e "s|__ACCEPTANCE_NAMESPACE__|$acceptance_namespace|g" \
+    -e "s|__RUN_ID__|$acceptance_run_id|g" \
+    -e "s|__RELEASE_TAG__|$release_tag|g" \
+    -e "s|__REPOSITORY_COMMIT__|$repository_commit|g" \
+    -e "s|__BUILD_ID__|$build_id|g" \
+    -e "s|__TRADING_CORE_ACCEPTANCE_DIGEST__|sha256:$(sha256sum "$source_archive_dir/trading-core-acceptance.tar" | awk '{print $1}')|g" \
+    -e "s|__BROKER_EMULATOR_DIGEST__|sha256:$(sha256sum "$source_archive_dir/trading-core-broker-emulator.tar" | awk '{print $1}')|g" \
+    -e "s|__DRIVER_DIGEST__|sha256:$(sha256sum "$source_archive_dir/trading-core-acceptance-driver.tar" | awk '{print $1}')|g" \
+    -e "s|__SERVICE_CONTRACTS_HASH__|$service_contracts_hash|g" \
+    -e "s|__ENGINE_HASH__|$engine_hash|g" \
+    -e "s|__TRADING_CORE_HASH__|$trading_core_hash|g" \
+    -e "s|__RUNTIME_HASH__|$runtime_hash|g" \
+    k8s/trading-core-acceptance-manifest-job.yaml > "$rendered_manifest"
+  sudo k3s kubectl apply -f "$rendered_manifest"
+  if ! wait_acceptance_job "$acceptance_namespace" acceptance-manifest; then
+    sudo k3s kubectl -n "$acceptance_namespace" logs job/acceptance-manifest || true
+    exit 1
+  fi
+  sudo install -d -m 0750 "$acceptance_output_dir"
+  manifest_pod="$(sudo k3s kubectl -n "$acceptance_namespace" get pod \
+    -l job-name=acceptance-manifest -o jsonpath='{.items[0].metadata.name}')"
+  manifest_output="$acceptance_output_dir/$acceptance_run_id.acceptance-manifest.json"
+  sudo k3s kubectl -n "$acceptance_namespace" cp \
+    "$manifest_pod:/manifest/acceptance-manifest.json" "$manifest_output"
+  manifest_sha="$(sha256sum "$manifest_output" | awk '{print $1}')"
+  printf '%s  %s\n' "$manifest_sha" "$(basename "$manifest_output")" \
+    > "$manifest_output.sha256"
+  sudo k3s kubectl label namespace "$acceptance_namespace" \
+    "stocktrader.io/manifest-sha=$manifest_sha" --overwrite
+  if grep -q '"passed"[[:space:]]*:[[:space:]]*true' "$manifest_output"; then
+    [[ "$(sudo k3s kubectl get namespace "$acceptance_namespace" \
+      -o jsonpath='{.metadata.labels.stocktrader\.io/run-id}')" == "$acceptance_run_id" ]] || exit 1
+    sudo k3s kubectl delete namespace "$acceptance_namespace" --wait=true
+    echo "Isolated acceptance passed: $manifest_output"
+    exit 0
+  fi
+  echo "Isolated acceptance failed; retained namespace $acceptance_namespace and artifact $manifest_output" >&2
+  exit 1
+fi
 
 if $deploy_transition; then
   if [[ -z "$source_archive_dir" || ! -d "$source_archive_dir" ]]; then

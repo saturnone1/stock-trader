@@ -65,6 +65,8 @@ spec:
           value: "edge-market-data.stocktrader.internal"
         - name: MARKET_DATA_TRADING_CORE_ROLE_DNS
           value: "trading-core-evidence.stocktrader.internal"
+        - name: MARKET_DATA_ACCEPTANCE_ROLE_DNS
+          value: "acceptance-trading-core.stocktrader.internal"
         - name: ALPACA_API_KEY
           valueFrom:
             secretKeyRef:

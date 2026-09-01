@@ -49,11 +49,37 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
     let decimalValue (value: string) = Decimal.Parse(value, NumberStyles.Number, CultureInfo.InvariantCulture)
     let decimalText (value: decimal) = value.ToString("G29", CultureInfo.InvariantCulture)
 
+    let isTerminal (status: string) =
+        status = "Filled" || status = "Rejected" || status = "Cancelled" || status = "Expired"
+
+    let durableEvidence (existing: ScriptedBrokerOrder option) (candidate: ScriptedBrokerOrder) =
+        match existing with
+        | None -> candidate
+        | Some current when candidate.FilledQuantity > current.FilledQuantity -> candidate
+        | Some current when candidate.FilledQuantity < current.FilledQuantity -> current
+        | Some current when isTerminal current.Status && not (isTerminal candidate.Status) -> current
+        | _ -> candidate
+
+    let storedOrder (connection: SqliteConnection) (transaction: SqliteTransaction)
+        (clientOrderId: string) =
+        use command = connection.CreateCommand()
+        command.Transaction <- transaction
+        command.CommandText <- "SELECT payload_json FROM broker_orders WHERE client_order_id=$client"
+        command.Parameters.AddWithValue("$client", clientOrderId) |> ignore
+        match command.ExecuteScalar() with
+        | null -> None
+        | value -> Some(JsonSerializer.Deserialize<ScriptedBrokerOrder>(Convert.ToString value, json))
+
     let applyFill (connection: SqliteConnection) (transaction: SqliteTransaction)
         (operation: string) (evidence: ScriptedBrokerOrder) =
-        if operation = ScriptedBrokerOperations.SubmitEntry
-           || operation = ScriptedBrokerOperations.IncreasePosition
-           || operation = ScriptedBrokerOperations.ClosePosition then
+        let isClose = operation = ScriptedBrokerOperations.ClosePosition
+                      || (operation = ScriptedBrokerOperations.GetOrders
+                          && evidence.Side.Equals("Sell", StringComparison.OrdinalIgnoreCase))
+        let isFinancial = operation = ScriptedBrokerOperations.SubmitEntry
+                          || operation = ScriptedBrokerOperations.IncreasePosition
+                          || isClose
+                          || operation = ScriptedBrokerOperations.GetOrders
+        if isFinancial then
             use previousCommand = connection.CreateCommand()
             previousCommand.Transaction <- transaction
             previousCommand.CommandText <- "SELECT payload_json FROM broker_orders WHERE client_order_id=$client"
@@ -74,7 +100,7 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
                 let matching = current |> Array.tryFind (fun value ->
                     value.Symbol.Equals(evidence.Symbol, StringComparison.OrdinalIgnoreCase))
                 let next =
-                    if operation = ScriptedBrokerOperations.ClosePosition then
+                    if isClose then
                         current
                         |> Array.choose (fun value ->
                             if not (value.Symbol.Equals(evidence.Symbol, StringComparison.OrdinalIgnoreCase)) then Some value
@@ -100,7 +126,7 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
                 setState connection transaction "positions" (JsonSerializer.Serialize(next, json))
                 let account = JsonSerializer.Deserialize<ScriptedBrokerAccount>(
                     state connection "account" |> Option.get, json)
-                let signed = if operation = ScriptedBrokerOperations.ClosePosition then 1M else -1M
+                let signed = if isClose then 1M else -1M
                 let cash = decimalValue account.Cash + signed * price * decimal delta
                 let marketValue = next |> Seq.sumBy (fun value ->
                     decimal value.Quantity * decimalValue value.CurrentPrice)
@@ -128,7 +154,7 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
                 transaction.Commit()
                 true
 
-    member _.Execute(operation: string, clientOrderId: string, requestHash: string) =
+    member private _.ExecuteStep(operation: string, clientOrderId: string, requestHash: string) =
         use connection = connect ()
         let current = plan connection
         use ordinalCommand = connection.CreateCommand()
@@ -148,23 +174,29 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
             call.Parameters.AddWithValue("$operation", operation) |> ignore
             call.Parameters.AddWithValue("$client", if String.IsNullOrWhiteSpace clientOrderId then box DBNull.Value else box clientOrderId) |> ignore
             call.Parameters.AddWithValue("$hash", requestHash) |> ignore
-            call.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("O")) |> ignore
+            call.Parameters.AddWithValue("$at", current.VirtualStartUtc.AddTicks(int64 ordinal + 1L).ToString("O")) |> ignore
             call.ExecuteNonQuery() |> ignore
             let effectActions: string list =
-                [ ScriptedBrokerActions.RecordThenReturn; ScriptedBrokerActions.RecordThenTimeout
+                [ ScriptedBrokerActions.ReturnEvidence; ScriptedBrokerActions.RecordThenReturn
+                  ScriptedBrokerActions.RecordThenTimeout
                   ScriptedBrokerActions.DelayVisibilityUntilBarrier; ScriptedBrokerActions.ReturnDuplicateEvidence
                   ScriptedBrokerActions.ReturnOutOfOrderEvidence ]
             if effectActions |> List.contains step.Action then
-                if isNull step.Evidence then invalidOp "scripted-broker-evidence-missing"
-                applyFill connection transaction operation step.Evidence
-                use order = connection.CreateCommand()
-                order.Transaction <- transaction
-                order.CommandText <- "INSERT INTO broker_orders(order_id,client_order_id,payload_json,visible_after_barrier) VALUES($id,$client,$payload,$barrier) ON CONFLICT(client_order_id) DO UPDATE SET payload_json=excluded.payload_json,visible_after_barrier=excluded.visible_after_barrier"
-                order.Parameters.AddWithValue("$id", step.Evidence.OrderId) |> ignore
-                order.Parameters.AddWithValue("$client", step.Evidence.ClientOrderId) |> ignore
-                order.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(step.Evidence, json)) |> ignore
-                order.Parameters.AddWithValue("$barrier", if step.Action = ScriptedBrokerActions.DelayVisibilityUntilBarrier then box step.Barrier else box DBNull.Value) |> ignore
-                order.ExecuteNonQuery() |> ignore
+                if isNull step.Evidence then
+                    if step.Action <> ScriptedBrokerActions.ReturnEvidence then
+                        invalidOp "scripted-broker-evidence-missing"
+                else
+                    let durable = durableEvidence (storedOrder connection transaction
+                        step.Evidence.ClientOrderId) step.Evidence
+                    applyFill connection transaction operation durable
+                    use order = connection.CreateCommand()
+                    order.Transaction <- transaction
+                    order.CommandText <- "INSERT INTO broker_orders(order_id,client_order_id,payload_json,visible_after_barrier) VALUES($id,$client,$payload,$barrier) ON CONFLICT(client_order_id) DO UPDATE SET payload_json=excluded.payload_json,visible_after_barrier=excluded.visible_after_barrier"
+                    order.Parameters.AddWithValue("$id", durable.OrderId) |> ignore
+                    order.Parameters.AddWithValue("$client", durable.ClientOrderId) |> ignore
+                    order.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(durable, json)) |> ignore
+                    order.Parameters.AddWithValue("$barrier", if step.Action = ScriptedBrokerActions.DelayVisibilityUntilBarrier then box step.Barrier else box DBNull.Value) |> ignore
+                    order.ExecuteNonQuery() |> ignore
             transaction.Commit()
             if step.Action = ScriptedBrokerActions.ThrowWithoutEffect then
                 invalidOp "scripted-broker-failure-before-effect"
@@ -173,7 +205,10 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
             if step.Action = ScriptedBrokerActions.EnterOutageUntilBarrier then
                 if String.IsNullOrWhiteSpace step.Barrier || not (this.BarrierAdvanced step.Barrier) then
                     invalidOp "scripted-broker-outage"
-            step.Evidence
+            step
+
+    member this.Execute(operation: string, clientOrderId: string, requestHash: string) =
+        (this.ExecuteStep(operation, clientOrderId, requestHash)).Evidence
 
     member _.BarrierAdvanced(name: string) =
         use connection = connect ()
@@ -202,12 +237,20 @@ CREATE TABLE IF NOT EXISTS barriers(name TEXT PRIMARY KEY,advanced_at TEXT NOT N
         JsonSerializer.Deserialize<ScriptedBrokerPosition array>(state connection "positions" |> Option.get, json)
 
     member _.Orders(fromUtc: DateTime, toUtc: DateTime) =
-        this.Execute(ScriptedBrokerOperations.GetOrders, "", CanonicalJsonHash.Compute {| fromUtc = fromUtc; toUtc = toUtc |}) |> ignore
+        let step = this.ExecuteStep(ScriptedBrokerOperations.GetOrders, "", CanonicalJsonHash.Compute {| fromUtc = fromUtc; toUtc = toUtc |})
         use connection = connect ()
         use command = connection.CreateCommand()
         command.CommandText <- """SELECT payload_json FROM broker_orders o WHERE o.visible_after_barrier IS NULL OR EXISTS(SELECT 1 FROM barriers b WHERE b.name=o.visible_after_barrier) ORDER BY o.order_id"""
         use reader = command.ExecuteReader()
-        [| while reader.Read() do yield JsonSerializer.Deserialize<ScriptedBrokerOrder>(reader.GetString 0, json) |]
+        let durable =
+            [| while reader.Read() do yield JsonSerializer.Deserialize<ScriptedBrokerOrder>(reader.GetString 0, json) |]
+        if step.Action = ScriptedBrokerActions.ReturnEvidence && not (isNull step.Evidence) then
+            [| step.Evidence |]
+        elif step.Action = ScriptedBrokerActions.ReturnDuplicateEvidence && not (isNull step.Evidence) then
+            [| step.Evidence; step.Evidence |]
+        elif step.Action = ScriptedBrokerActions.ReturnOutOfOrderEvidence && not (isNull step.Evidence) then
+            Array.append [| step.Evidence |] durable
+        else durable
 
     member _.Journal() =
         use connection = connect ()

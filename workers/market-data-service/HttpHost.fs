@@ -61,6 +61,7 @@ module HttpHost =
                 if not clientEku || not (chain.Build(trustedCertificate)) then None
                 elif names |> Array.exists (fun name -> String.Equals(name, settings.EdgeRoleDnsName, StringComparison.Ordinal)) then Some "edge"
                 elif names |> Array.exists (fun name -> String.Equals(name, settings.TradingCoreRoleDnsName, StringComparison.Ordinal)) then Some "trading-core-evidence"
+                elif names |> Array.exists (fun name -> String.Equals(name, settings.AcceptanceRoleDnsName, StringComparison.Ordinal)) then Some "acceptance-evidence"
                 else None
             with _ -> None
 
@@ -95,6 +96,8 @@ module HttpHost =
                 match clientRole settings certificate with
                 | Some "edge" -> do! next.Invoke(context)
                 | Some "trading-core-evidence" when context.Request.Path.StartsWithSegments("/v1/execution-evidence") ->
+                    do! next.Invoke(context)
+                | Some "acceptance-evidence" when context.Request.Path.StartsWithSegments("/v1/execution-evidence") ->
                     do! next.Invoke(context)
                 | Some _ -> context.Response.StatusCode <- int HttpStatusCode.Forbidden
                 | None -> context.Response.StatusCode <- int HttpStatusCode.Unauthorized

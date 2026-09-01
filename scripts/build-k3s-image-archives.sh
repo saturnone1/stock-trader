@@ -21,6 +21,17 @@ build_archive() {
   buildah push "$image" "oci-archive:$output_dir/$archive_name:$image"
 }
 
+image_file_hash() {
+  local image="$1"
+  local path="$2"
+  local container
+  container="$(buildah from "$image")"
+  local value
+  value="$(buildah run "$container" -- sha256sum "$path" | awk '{print $1}')"
+  buildah rm "$container" >/dev/null
+  printf '%s' "$value"
+}
+
 case "$scope" in
   all)
     build_archive Dockerfile.api api-local api.tar local
@@ -47,4 +58,32 @@ case "$scope" in
     ;;
 esac
 
-(cd "$output_dir" && sha256sum -- *.tar > SHA256SUMS)
+if [[ "$scope" == "trading-core-stage5" ]]; then
+  remote_image="localhost/stock-trader/trading-core:architecture-${release_tag}"
+  acceptance_image="localhost/stock-trader/trading-core-acceptance:architecture-${release_tag}"
+  service_contracts_hash="$(image_file_hash "$remote_image" /app/StockTrader.ServiceContracts.dll)"
+  engine_hash="$(image_file_hash "$remote_image" /app/StockTrader.Engine.dll)"
+  trading_core_hash="$(image_file_hash "$remote_image" /app/StockTrader.TradingCore.dll)"
+  runtime_hash="$(image_file_hash "$remote_image" /app/StockTrader.TradingCore.Runtime.dll)"
+  [[ "$service_contracts_hash" == "$(image_file_hash "$acceptance_image" /app/StockTrader.ServiceContracts.dll)" \
+    && "$engine_hash" == "$(image_file_hash "$acceptance_image" /app/StockTrader.Engine.dll)" \
+    && "$trading_core_hash" == "$(image_file_hash "$acceptance_image" /app/StockTrader.TradingCore.dll)" \
+    && "$runtime_hash" == "$(image_file_hash "$acceptance_image" /app/StockTrader.TradingCore.Runtime.dll)" ]] || {
+      echo "Production and acceptance financial runtime assemblies differ." >&2
+      exit 1
+    }
+  {
+    printf 'REPOSITORY_COMMIT=%s\n' "$(git rev-parse HEAD)"
+    printf 'BUILD_ID=%s\n' "$release_tag"
+    printf 'SERVICE_CONTRACTS_HASH=%s\n' "$service_contracts_hash"
+    printf 'ENGINE_HASH=%s\n' "$engine_hash"
+    printf 'TRADING_CORE_HASH=%s\n' "$trading_core_hash"
+    printf 'RUNTIME_HASH=%s\n' "$runtime_hash"
+  } > "$output_dir/stage5-metadata.env"
+fi
+
+if [[ -f "$output_dir/stage5-metadata.env" ]]; then
+  (cd "$output_dir" && sha256sum -- *.tar stage5-metadata.env > SHA256SUMS)
+else
+  (cd "$output_dir" && sha256sum -- *.tar > SHA256SUMS)
+fi

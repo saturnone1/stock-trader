@@ -43,7 +43,8 @@ module Configuration =
               EncryptionKey = encryptionKey
               EncryptionKeyGeneration = required "STOCKTRADER_TRADING_CORE_ENCRYPTION_KEY_GENERATION"
               BrokerCapabilityEnabled = true
-              InitialMode = TradingAuthorityMode.Projection }
+              // Shadow accepts projection/bootstrap writes while financial commands remain fenced.
+              InitialMode = TradingAuthorityMode.Shadow }
         { Runtime = runtime
           BrokerEndpoint = Uri(required "STOCKTRADER_ACCEPTANCE_BROKER_ENDPOINT")
           BrokerClientCertificatePath = required "STOCKTRADER_ACCEPTANCE_BROKER_CLIENT_CERT_PATH"

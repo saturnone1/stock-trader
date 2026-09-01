@@ -187,7 +187,7 @@ spec:
         image: localhost/stock-trader/trading-core-acceptance-driver:architecture-__RELEASE_TAG__
         imagePullPolicy: Never
         env:
-        - {name: STOCKTRADER_ACCEPTANCE_FIXTURE_PATH, value: /fixture/scenario.json}
+        - {name: STOCKTRADER_ACCEPTANCE_DEFINITION_PATH, value: /fixture/scenario.json}
         - {name: STOCKTRADER_ACCEPTANCE_RESULT_PATH, value: /manifest/fragments/__SCENARIO_CODE__.scenario.json}
         - {name: STOCKTRADER_ACCEPTANCE_CORE_ENDPOINT, value: "https://acceptance-core:9443"}
         - {name: STOCKTRADER_ACCEPTANCE_CONTROL_ENDPOINT, value: "https://acceptance-core:9543"}
@@ -210,7 +210,7 @@ spec:
         - {name: tls, mountPath: /tls, readOnly: true}
         - {name: tmp, mountPath: /tmp}
       volumes:
-      - {name: fixture, configMap: {name: acceptance-fixture-__SCENARIO_ID__}}
+      - {name: fixture, configMap: {name: acceptance-definition-__SCENARIO_ID__}}
       - {name: manifest, persistentVolumeClaim: {claimName: acceptance-manifest}}
       - {name: tls, secret: {secretName: acceptance-driver-client-tls}}
       - {name: tmp, emptyDir: {sizeLimit: 32Mi}}

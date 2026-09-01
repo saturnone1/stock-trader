@@ -91,7 +91,7 @@ printf '%s\n' \
   'basicConstraints=critical,CA:FALSE' \
   'keyUsage=critical,digitalSignature' \
   'extendedKeyUsage=clientAuth' \
-  'subjectAltName=DNS:trading-core-evidence.stocktrader.internal' \
+  'subjectAltName=DNS:acceptance-trading-core.stocktrader.internal' \
   > "$tls_dir/acceptance.ext"
 openssl x509 -req -sha256 -days "$valid_days" -in "$tls_dir/acceptance.csr" \
   -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAserial "$tls_dir/ca.srl" \

@@ -1,3 +1,5 @@
+using StockTrader.ServiceContracts.MarketData;
+
 namespace StockTrader.ServiceContracts.TradingCore;
 
 public static class TradingCoreAcceptanceVersions
@@ -106,6 +108,17 @@ public sealed record AcceptanceTimeAdvanceRequest(
     string ScenarioId, string OperationId, DateTime UtcNow, string CausationId);
 public sealed record AcceptanceTimeView(string ScenarioId, DateTime UtcNow, long Revision);
 
+public sealed record AcceptanceScenarioDefinition(
+    int ContractVersion,
+    string ScenarioCode,
+    string ScenarioId,
+    string Provider,
+    string Symbol,
+    string AdjustmentMode,
+    string Market,
+    string CalendarVersion,
+    int RequiredBars);
+
 public sealed record AcceptanceBootstrapRequest(
     string ScenarioId,
     string OperationId,
@@ -200,6 +213,22 @@ public static class TradingCoreAcceptanceIdentity
 
 public static class TradingCoreAcceptancePolicy
 {
+    public static string? DefinitionError(AcceptanceScenarioDefinition definition)
+    {
+        if (definition is null
+            || definition.ContractVersion != TradingCoreAcceptanceVersions.Current
+            || !TradingCoreAcceptanceScenarioCatalog.IsRequired(definition.ScenarioCode)
+            || !Guid.TryParse(definition.ScenarioId, out _)
+            || string.IsNullOrWhiteSpace(definition.Provider)
+            || string.IsNullOrWhiteSpace(definition.Symbol)
+            || string.IsNullOrWhiteSpace(definition.AdjustmentMode)
+            || string.IsNullOrWhiteSpace(definition.Market)
+            || string.IsNullOrWhiteSpace(definition.CalendarVersion)
+            || definition.RequiredBars is < 2 or > MarketDataExecutionEvidenceLimits.MaximumBars)
+            return "acceptance-definition-invalid";
+        return null;
+    }
+
     public static string? PlanError(ScriptedBrokerPlan plan)
     {
         if (plan.ContractVersion != TradingCoreAcceptanceVersions.Current)

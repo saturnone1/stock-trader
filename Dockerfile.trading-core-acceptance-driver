@@ -2,6 +2,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY ["workers/trading-core-acceptance-driver/StockTrader.TradingCoreAcceptanceDriver.fsproj", "workers/trading-core-acceptance-driver/"]
 COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
+COPY ["src/StockTrader.TradingCore.AcceptanceFixtures/StockTrader.TradingCore.AcceptanceFixtures.csproj", "src/StockTrader.TradingCore.AcceptanceFixtures/"]
+COPY ["src/StockTrader.Engine/StockTrader.Engine.csproj", "src/StockTrader.Engine/"]
 RUN dotnet restore "workers/trading-core-acceptance-driver/StockTrader.TradingCoreAcceptanceDriver.fsproj"
 COPY . .
 RUN dotnet publish "workers/trading-core-acceptance-driver/StockTrader.TradingCoreAcceptanceDriver.fsproj" -c Release -o /app/publish /p:UseAppHost=false

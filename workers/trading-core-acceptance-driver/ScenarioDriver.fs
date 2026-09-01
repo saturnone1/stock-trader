@@ -4,13 +4,16 @@ open System
 open System.IO
 open System.Net.Http
 open System.Net.Http.Headers
+open System.Net.Http.Json
 open System.Security.Cryptography.X509Certificates
 open System.Text
 open System.Text.Json
 open System.Threading
 open System.Threading.Tasks
 open StockTrader.ServiceContracts
+open StockTrader.ServiceContracts.MarketData
 open StockTrader.ServiceContracts.TradingCore
+open StockTrader.TradingCore.AcceptanceFixtures
 
 module ScenarioDriver =
     let private required name =
@@ -68,20 +71,71 @@ module ScenarioDriver =
         let mutable responseHash = ""
         while not complete && attempt < operation.MaxAttempts do
             attempt <- attempt + 1
-            use request = new HttpRequestMessage(HttpMethod(operation.Method), operation.Path)
-            if not (String.IsNullOrWhiteSpace operation.BodyJson) then
-                request.Content <- new StringContent(operation.BodyJson, Encoding.UTF8, "application/json")
-            use! response = http.SendAsync(request, ct)
-            let! body = response.Content.ReadAsStringAsync ct
-            responseHash <- hashBody body
-            complete <- int response.StatusCode = operation.ExpectedStatus
-                && (String.IsNullOrWhiteSpace operation.ExpectedResponseHash
-                    || responseHash = operation.ExpectedResponseHash)
+            try
+                use request = new HttpRequestMessage(HttpMethod(operation.Method), operation.Path)
+                if not (String.IsNullOrWhiteSpace operation.BodyJson) then
+                    request.Content <- new StringContent(operation.BodyJson, Encoding.UTF8, "application/json")
+                use! response = http.SendAsync(request, ct)
+                let! body = response.Content.ReadAsStringAsync ct
+                responseHash <- hashBody body
+                complete <- int response.StatusCode = operation.ExpectedStatus
+                    && (String.IsNullOrWhiteSpace operation.ExpectedResponseHash
+                        || responseHash = operation.ExpectedResponseHash)
+            with
+            | :? HttpRequestException -> ()
+            | :? IO.IOException -> ()
             if not complete && attempt < operation.MaxAttempts then
                 do! Task.Delay(TimeSpan.FromMilliseconds 100.0, ct)
         if not complete then invalidOp $"acceptance-operation-mismatch:{operation.OperationId}"
         return responseHash
     }
+
+    let private getStringWithRetry (http: HttpClient) (path: string) (ct: CancellationToken) = task {
+        let mutable attempt = 0
+        let mutable value: string = null
+        while isNull value && attempt < 100 do
+            attempt <- attempt + 1
+            try
+                use! response = http.GetAsync(path, ct)
+                if response.IsSuccessStatusCode then
+                    let! body = response.Content.ReadAsStringAsync ct
+                    value <- body
+            with
+            | :? HttpRequestException -> ()
+            | :? IO.IOException -> ()
+            if isNull value then do! Task.Delay(TimeSpan.FromMilliseconds 100.0, ct)
+        if isNull value then invalidOp $"acceptance-final-state-unavailable:{path}"
+        return value
+    }
+
+    let private compileFixture (control: HttpClient) (json: JsonSerializerOptions)
+        (ct: CancellationToken) =
+        let definitionPath = required "STOCKTRADER_ACCEPTANCE_DEFINITION_PATH"
+        let definition = JsonSerializer.Deserialize<AcceptanceScenarioDefinition>(
+            File.ReadAllText definitionPath, json)
+        match Option.ofObj (TradingCoreAcceptancePolicy.DefinitionError definition) with
+        | Some error -> invalidOp error
+        | None -> ()
+        let mutable candidate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1.0))
+        let mutable response: MarketDataExecutionWindowResponse = null
+        let mutable attempts = 0
+        while isNull response && attempts < 21 do
+            if candidate.DayOfWeek <> DayOfWeek.Saturday
+               && candidate.DayOfWeek <> DayOfWeek.Sunday then
+                let request = AcceptanceScenarioCompiler.EvidenceRequest(definition, candidate)
+                use result =
+                    (control.PostAsJsonAsync(
+                        "/internal/acceptance/market-data/latest-completed", request, json, ct))
+                        .GetAwaiter().GetResult()
+                if result.IsSuccessStatusCode then
+                    let value =
+                        (result.Content.ReadFromJsonAsync<MarketDataExecutionWindowResponse>(json, ct))
+                            .GetAwaiter().GetResult()
+                    if not (isNull value) && value.Evidence.IsComplete then response <- value
+            attempts <- attempts + 1
+            candidate <- candidate.AddDays(-1)
+        if isNull response then invalidOp "acceptance-completed-market-data-evidence-unavailable"
+        AcceptanceScenarioCompiler.Compile(definition, response)
 
     let private deleteCorePod (operation: AcceptanceDriverOperation)
         (ct: CancellationToken) = task {
@@ -122,15 +176,9 @@ module ScenarioDriver =
     }
 
     let run () =
-        let fixturePath = required "STOCKTRADER_ACCEPTANCE_FIXTURE_PATH"
         let fragmentPath = required "STOCKTRADER_ACCEPTANCE_RESULT_PATH"
         let json = JsonSerializerOptions(JsonSerializerDefaults.Web)
         json.WriteIndented <- true
-        let fixture = JsonSerializer.Deserialize<AcceptanceScenarioFixture>(
-            File.ReadAllText fixturePath, json)
-        match Option.ofObj (TradingCoreAcceptancePolicy.FixtureError fixture) with
-        | Some error -> invalidOp error
-        | None -> ()
         use core = client (required "STOCKTRADER_ACCEPTANCE_CORE_ENDPOINT")
                            (required "STOCKTRADER_ACCEPTANCE_CORE_SERVER_NAME")
         use control = client (required "STOCKTRADER_ACCEPTANCE_CONTROL_ENDPOINT")
@@ -138,10 +186,28 @@ module ScenarioDriver =
         use broker = client (required "STOCKTRADER_ACCEPTANCE_BROKER_ENDPOINT")
                              (required "STOCKTRADER_ACCEPTANCE_BROKER_SERVER_NAME")
         use cancellation = new CancellationTokenSource(TimeSpan.FromMinutes 10.0)
+        let fixture =
+            match Environment.GetEnvironmentVariable "STOCKTRADER_ACCEPTANCE_FIXTURE_PATH" with
+            | null | "" -> compileFixture control json cancellation.Token
+            | fixturePath -> JsonSerializer.Deserialize<AcceptanceScenarioFixture>(
+                                 File.ReadAllText fixturePath, json)
+        match Option.ofObj (TradingCoreAcceptancePolicy.FixtureError fixture) with
+        | Some error -> invalidOp error
+        | None -> ()
+        let fixtureArchive = Path.Combine(Path.GetDirectoryName fragmentPath, "..", "fixtures",
+                                          fixture.BrokerPlan.ScenarioCode + ".fixture.json")
+        Directory.CreateDirectory(Path.GetDirectoryName fixtureArchive) |> ignore
+        File.WriteAllText(fixtureArchive, JsonSerializer.Serialize(fixture, json))
         let evidence = ResizeArray<string>()
         let mutable failure: string = null
         let started = DateTime.UtcNow
         try
+            send control (AcceptanceDriverOperation("set-initial-time",
+                AcceptanceDriverTargets.AcceptanceControl, "POST", "/internal/acceptance/time",
+                JsonSerializer.Serialize(AcceptanceTimeAdvanceRequest(
+                    fixture.BrokerPlan.ScenarioId, "set-initial-time-" + fixture.BrokerPlan.ScenarioId,
+                    fixture.BrokerPlan.VirtualStartUtc, "fixture-compile"), json),
+                200, null, 1)) cancellation.Token |> _.GetAwaiter().GetResult() |> ignore
             send broker (AcceptanceDriverOperation("load-plan", AcceptanceDriverTargets.BrokerControl,
                 "POST", "/control/plan", JsonSerializer.Serialize(fixture.BrokerPlan, json),
                 200, null, 1)) cancellation.Token |> _.GetAwaiter().GetResult() |> ignore
@@ -165,10 +231,10 @@ module ScenarioDriver =
                         send target operation cancellation.Token |> _.GetAwaiter().GetResult()
                 evidence.Add($"{operation.OperationId}:{hash}")
         with error -> failure <- error.Message
-        let coreState = core.GetStringAsync("/v1/portfolio", cancellation.Token)
-                           .GetAwaiter().GetResult()
-        let brokerState = broker.GetStringAsync("/control/state", cancellation.Token)
-                             .GetAwaiter().GetResult()
+        let coreState = getStringWithRetry core "/v1/portfolio" cancellation.Token
+                            |> _.GetAwaiter().GetResult()
+        let brokerState = getStringWithRetry broker "/control/state" cancellation.Token
+                              |> _.GetAwaiter().GetResult()
         use coreDocument = JsonDocument.Parse coreState
         use brokerDocument = JsonDocument.Parse brokerState
         let observations =
