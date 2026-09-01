@@ -631,6 +631,20 @@ if $deploy_transition; then
     echo "Transition plan identity or direction does not match $deploy_scope." >&2
     exit 1
   fi
+  plan_edge_digest="$(sed -n 's/.*"edgeImageDigest"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$transition_plan_file" | head -n 1)"
+  plan_core_digest="$(sed -n 's/.*"tradingCoreImageDigest"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$transition_plan_file" | head -n 1)"
+  if [[ "$transition_direction" == "Rollback" ]]; then
+    expected_edge_archive="$source_archive_dir/api-local.tar"
+    expected_core_archive="$source_archive_dir/trading-core-shadow.tar"
+  else
+    expected_edge_archive="$source_archive_dir/api-remote.tar"
+    expected_core_archive="$source_archive_dir/trading-core.tar"
+  fi
+  if [[ "$plan_edge_digest" != "$(oci_archive_digest "$expected_edge_archive")" \
+    || "$plan_core_digest" != "$(oci_archive_digest "$expected_core_archive")" ]]; then
+    echo "Transition plan digest does not match the sealed candidate archives." >&2
+    exit 1
+  fi
   archive_names=(api-local.tar api-remote.tar trading-core.tar trading-core-shadow.tar \
     trading-core-cutover-coordinator.tar edge-rollback-importer.tar)
   for archive_name in "${archive_names[@]}"; do

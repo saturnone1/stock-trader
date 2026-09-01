@@ -213,10 +213,19 @@ module Coordinator =
         value["$patch"] <- "delete"
         box value
 
+    let private requireCandidateCapability expectedOwner expectedDigest
+        (receipt: AuthorityCapabilityReceipt) =
+        if receipt.Owner <> expectedOwner
+           || receipt.ImageDigest <> expectedDigest
+           || receipt.ReceiptHash <> TradingControlIdentity.Capability receipt then
+            invalidOp "candidate-capability-digest-mismatch"
+
     let private edgeEnvironment (plan: TradingCoreTransitionPlanV1) =
         if plan.TargetMode = TradingAuthorityMode.Remote then
             [| envValue "TradingCoreTransport__Mode" "Remote"
                envValue "AuthorityCapabilityAttestation__RuntimeProfile" "api-remote"
+               envValue "AuthorityCapabilityAttestation__ImageDigest"
+                   plan.Deployments.EdgeImageDigest
                envValue "AuthorityCapabilityAttestation__HasBrokerEgress" "false"
                envDelete "ALPACA__APIKEY"
                envDelete "ALPACA__APISECRET"
@@ -225,6 +234,8 @@ module Coordinator =
         else
             [| envValue "TradingCoreTransport__Mode" (plan.TargetMode.ToString())
                envValue "AuthorityCapabilityAttestation__RuntimeProfile" "api-local"
+               envValue "AuthorityCapabilityAttestation__ImageDigest"
+                   plan.Deployments.EdgeImageDigest
                envValue "AuthorityCapabilityAttestation__HasBrokerEgress" "true"
                envSecret "ALPACA__APIKEY" plan.Deployments.BrokerSecretName "api-key"
                envSecret "ALPACA__APISECRET" plan.Deployments.BrokerSecretName "api-secret" |]
@@ -232,6 +243,7 @@ module Coordinator =
     let private coreEnvironment (plan: TradingCoreTransitionPlanV1) =
         let enabled = plan.TargetMode = TradingAuthorityMode.Remote
         [| envValue "STOCKTRADER_TRADING_CORE_MODE" (plan.TargetMode.ToString())
+           envValue "STOCKTRADER_IMAGE_DIGEST" plan.Deployments.TradingCoreImageDigest
            envValue "STOCKTRADER_TRADING_CORE_RUNTIME_PROFILE"
                (if enabled then "trading-core-remote" else "trading-core-shadow")
            envValue "STOCKTRADER_BROKER_CAPABILITY_ENABLED"
@@ -391,6 +403,10 @@ module Coordinator =
                                     (core "/v2/authority/capability") ct
         let! targetCapability = get<AuthorityCapabilityReceipt> http
                                     (edge "/internal/v2/edge-authority/capability") ct
+        requireCandidateCapability AuthorityOwners.TradingCore
+            plan.Deployments.TradingCoreImageDigest sourceCapability
+        requireCandidateCapability AuthorityOwners.Edge
+            plan.Deployments.EdgeImageDigest targetCapability
         let! verified = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                            (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                            (stepRequest plan AuthorityTransitionOperations.CompleteVerification
@@ -478,6 +494,10 @@ module Coordinator =
                                     (edge "/internal/v2/edge-authority/capability") ct
         let! targetCapability = get<AuthorityCapabilityReceipt> http
                                     (core "/v2/authority/capability") ct
+        requireCandidateCapability AuthorityOwners.Edge
+            plan.Deployments.EdgeImageDigest sourceCapability
+        requireCandidateCapability AuthorityOwners.TradingCore
+            plan.Deployments.TradingCoreImageDigest targetCapability
         let! verified = post<AuthorityTransitionStepRequest,AuthorityTransitionReceipt> http
                            (core $"/v2/authority/transitions/{plan.TransitionId}/steps")
                            (stepRequest plan AuthorityTransitionOperations.CompleteVerification AuthorityTransitionPhases.Verifying 7 sourceBarrier targetFence drain evidence sourceCapability targetCapability) ct

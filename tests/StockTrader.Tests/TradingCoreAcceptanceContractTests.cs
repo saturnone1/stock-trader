@@ -67,8 +67,11 @@ public sealed class TradingCoreAcceptanceContractTests
             new FinancialTransferCompatibility(2, "edge", "core", "engine", "artifact",
                 "patterns", "calendar", "market-data"), "BrokerTotalEquity",
             new TradingCoreDeploymentTarget("stocktrader", "stocktrader-api",
-                "stocktrader-trading-core", "api", "trading-core", "edge-image",
-                "core-shadow-image", "stocktrader-alpaca"),
+                "stocktrader-trading-core", "api", "trading-core",
+                "edge-image@sha256:" + new string('a', 64),
+                "core-shadow-image@sha256:" + new string('b', 64),
+                "sha256:" + new string('a', 64),
+                "sha256:" + new string('b', 64), "stocktrader-alpaca"),
             new TradingCoreRollbackTarget(
                 $"stocktrader-edge-rollback-import-{transitionId}",
                 "/state/rollback-import-receipt.json"),

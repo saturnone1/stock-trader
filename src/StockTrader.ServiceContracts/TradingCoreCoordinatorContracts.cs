@@ -13,6 +13,8 @@ public sealed record TradingCoreDeploymentTarget(
     string TradingCoreContainer,
     string EdgeImage,
     string TradingCoreImage,
+    string EdgeImageDigest,
+    string TradingCoreImageDigest,
     string BrokerSecretName);
 
 public sealed record TradingCoreRollbackTarget(
@@ -73,6 +75,12 @@ public static class TradingCoreCoordinatorPolicy
             || plan.TransferCompatibility is null
             || string.IsNullOrWhiteSpace(plan.EquityBasis)
             || string.IsNullOrWhiteSpace(plan.Deployments.Namespace)
+            || !IsDigest(plan.Deployments.EdgeImageDigest)
+            || !IsDigest(plan.Deployments.TradingCoreImageDigest)
+            || !plan.Deployments.EdgeImage.EndsWith(
+                "@" + plan.Deployments.EdgeImageDigest, StringComparison.Ordinal)
+            || !plan.Deployments.TradingCoreImage.EndsWith(
+                "@" + plan.Deployments.TradingCoreImageDigest, StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(plan.Deployments.BrokerSecretName)
             || string.IsNullOrWhiteSpace(plan.AcceptedIsolatedManifestId)
             || string.IsNullOrWhiteSpace(plan.AcceptedShadowManifestId)
@@ -93,4 +101,9 @@ public static class TradingCoreCoordinatorPolicy
         };
         return legal ? null : "illegal-authority-transition";
     }
+
+    private static bool IsDigest(string value) => value is { Length: 71 }
+        && value.StartsWith("sha256:", StringComparison.Ordinal)
+        && value[7..].All(character => character is >= '0' and <= '9'
+            or >= 'a' and <= 'f');
 }

@@ -17,15 +17,18 @@ var targetMode = direction == AuthorityTransitionDirections.Cutover
 var started = DateTime.UtcNow;
 var sourceGeneration = Long("STOCKTRADER_SOURCE_GENERATION");
 var releaseTag = Required("STOCKTRADER_RELEASE_TAG");
+var edgeDigest = Required("STOCKTRADER_EDGE_IMAGE_DIGEST");
+var coreDigest = Required("STOCKTRADER_TRADING_CORE_IMAGE_DIGEST");
 var deployment = new TradingCoreDeploymentTarget(
     "stocktrader", "stocktrader-api", "stocktrader-trading-core",
     "api", "trading-core",
     targetMode == TradingAuthorityMode.Remote
-        ? $"localhost/stock-trader/api-remote:architecture-{releaseTag}"
-        : $"localhost/stock-trader/api-local:architecture-{releaseTag}",
+        ? $"localhost/stock-trader/api-remote:architecture-{releaseTag}@{edgeDigest}"
+        : $"localhost/stock-trader/api-local:architecture-{releaseTag}@{edgeDigest}",
     targetMode == TradingAuthorityMode.Remote
-        ? $"localhost/stock-trader/trading-core:architecture-{releaseTag}"
-        : $"localhost/stock-trader/trading-core-shadow:architecture-{releaseTag}",
+        ? $"localhost/stock-trader/trading-core:architecture-{releaseTag}@{coreDigest}"
+        : $"localhost/stock-trader/trading-core-shadow:architecture-{releaseTag}@{coreDigest}",
+    edgeDigest, coreDigest,
     Optional("STOCKTRADER_BROKER_SECRET_NAME") ?? "stocktrader-alpaca");
 var rollback = direction == AuthorityTransitionDirections.Rollback
     ? new TradingCoreRollbackTarget(
