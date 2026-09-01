@@ -47,6 +47,11 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration,
         bool includeHostedServices = true)
     {
+        var tradingCoreMode = configuration[$"{TradingCoreTransportOptions.SectionName}:Mode"]
+            ?? "Local";
+        var isTradingCoreRemote = string.Equals(
+            tradingCoreMode, "Remote", StringComparison.Ordinal);
+
         // Configuration binding
         services.Configure<AlpacaSettings>(configuration.GetSection("Alpaca"));
         services.AddOptions<MarketDataTransportOptions>()
@@ -233,12 +238,16 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
 
         // Database
-        services.AddDbContextFactory<AppDbContext>(options =>
-            options.UseSqlite(configuration.GetConnectionString("DefaultConnection")));
+        services.AddSingleton<LegacyFinancialWriteGuard>();
+        services.AddDbContextFactory<AppDbContext>((serviceProvider, options) =>
+            options
+                .UseSqlite(configuration.GetConnectionString("DefaultConnection"))
+                .AddInterceptors(serviceProvider.GetRequiredService<LegacyFinancialWriteGuard>()));
 
         // Domain services
         services.AddDataServices(configuration);
-        services.AddBrokerServices();
+        if (!isTradingCoreRemote)
+            services.AddBrokerServices();
         services.AddPatternServices();
         services.AddNotificationServices();
         services.AddBackgroundServices(configuration, includeHostedServices);
@@ -300,15 +309,14 @@ public static class ServiceCollectionExtensions
                 settings.MaxTotalPositions,
                 settings.MaxPositionsPerSector);
         });
-        services.AddSingleton<RiskStateStore>();
-        services.AddScoped<IRiskManagementDataSource, RiskManagementDataSource>();
-        services.AddScoped<MultiAccountRiskService>();
-        services.AddScoped<TradingCoreRemoteRiskService>();
-        services.AddScoped<IRiskManagementService>(serviceProvider =>
-            string.Equals(serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
-                    .Value.Mode, "Remote", StringComparison.Ordinal)
-                ? serviceProvider.GetRequiredService<TradingCoreRemoteRiskService>()
-                : serviceProvider.GetRequiredService<MultiAccountRiskService>());
+        if (isTradingCoreRemote)
+            services.AddScoped<IRiskManagementService, TradingCoreRemoteRiskService>();
+        else
+        {
+            services.AddSingleton<RiskStateStore>();
+            services.AddScoped<IRiskManagementDataSource, RiskManagementDataSource>();
+            services.AddScoped<IRiskManagementService, MultiAccountRiskService>();
+        }
         services.AddScoped<IRiskOverviewQuery, RiskOverviewQuery>();
         services.AddScoped<IPortfolioPerformanceQuery, PortfolioPerformanceQuery>();
         services.AddScoped<IOpenPositionQuery, OpenPositionQuery>();
@@ -316,45 +324,40 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDailyReportScheduleQuery, DailyReportScheduleQuery>();
         services.AddScoped<IDailyReportGenerator, DailyReportGenerator>();
         services.AddSingleton<IActiveAccountEquityReader, ActiveAccountEquityReader>();
-        services.AddSingleton<ActiveBrokerAccountQuery>();
-        services.AddSingleton<TradingCoreRemoteAccountQuery>();
-        services.AddSingleton<IActiveBrokerAccountQuery>(serviceProvider =>
-            string.Equals(serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
-                    .Value.Mode, "Remote", StringComparison.Ordinal)
-                ? serviceProvider.GetRequiredService<TradingCoreRemoteAccountQuery>()
-                : serviceProvider.GetRequiredService<ActiveBrokerAccountQuery>());
+        if (isTradingCoreRemote)
+            services.AddSingleton<IActiveBrokerAccountQuery, TradingCoreRemoteAccountQuery>();
+        else
+            services.AddSingleton<IActiveBrokerAccountQuery, ActiveBrokerAccountQuery>();
         services.AddScoped<IDashboardQuery, DashboardQuery>();
-        services.AddScoped<ManualOrderWorkflow>();
         services.AddSingleton<ManualSignalEntryPolicy>();
-        services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
-        services.AddScoped<ILiveEntryReconciliationCycle, LiveEntryReconciliationCycle>();
-        services.AddScoped<OrderService>();
-        services.AddScoped<TradingCoreShadowOrderService>();
         services.AddScoped<TradingCoreManualEntryPreparation>();
-        services.AddScoped<TradingCoreOrderService>();
-        services.AddScoped<IOrderService>(serviceProvider =>
-            serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
-                .Value.Mode switch
-            {
-                "Remote" => serviceProvider.GetRequiredService<TradingCoreOrderService>(),
-                "Shadow" => serviceProvider.GetRequiredService<TradingCoreShadowOrderService>(),
-                _ => serviceProvider.GetRequiredService<OrderService>(),
-            });
-        services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
-        services.AddScoped<LiveOrderManagement>();
-        services.AddScoped<TradingCoreLiveOrderManagement>();
-        services.AddScoped<ILiveOrderManagement>(serviceProvider =>
-            string.Equals(serviceProvider.GetRequiredService<IOptions<TradingCoreTransportOptions>>()
-                    .Value.Mode, "Remote", StringComparison.Ordinal)
-                ? serviceProvider.GetRequiredService<TradingCoreLiveOrderManagement>()
-                : serviceProvider.GetRequiredService<LiveOrderManagement>());
-        services.AddScoped<LivePositionExecutionEvaluator>();
-        services.AddScoped<ILivePositionExecutionEvaluator>(sp =>
-            sp.GetRequiredService<LivePositionExecutionEvaluator>());
-        services.AddScoped<LivePositionMonitoringCycle>();
-        services.AddScoped<TradingCorePositionShadowCycle>();
-        services.AddScoped<ILivePositionMonitoringCycle>(serviceProvider =>
-            serviceProvider.GetRequiredService<LivePositionMonitoringCycle>());
+        if (isTradingCoreRemote)
+        {
+            services.AddScoped<IOrderService, TradingCoreOrderService>();
+            services.AddScoped<ILiveOrderManagement, TradingCoreLiveOrderManagement>();
+        }
+        else
+        {
+            services.AddScoped<ManualOrderWorkflow>();
+            services.AddScoped<ILiveEntryExecutionCoordinator, LiveEntryExecutionCoordinator>();
+            services.AddScoped<ILiveEntryReconciliationCycle, LiveEntryReconciliationCycle>();
+            services.AddScoped<OrderService>();
+            services.AddScoped<TradingCoreShadowOrderService>();
+            services.AddScoped<IOrderService>(serviceProvider =>
+                tradingCoreMode == "Shadow"
+                    ? serviceProvider.GetRequiredService<TradingCoreShadowOrderService>()
+                    : serviceProvider.GetRequiredService<OrderService>());
+            services.AddScoped<ILivePositionExecutionCoordinator, LivePositionExecutionCoordinator>();
+            services.AddScoped<ILiveOrderManagement, LiveOrderManagement>();
+            services.AddScoped<LivePositionExecutionEvaluator>();
+            services.AddScoped<ILivePositionExecutionEvaluator>(sp =>
+                sp.GetRequiredService<LivePositionExecutionEvaluator>());
+            services.AddScoped<LivePositionMonitoringCycle>();
+            services.AddScoped<ILivePositionMonitoringCycle>(sp =>
+                sp.GetRequiredService<LivePositionMonitoringCycle>());
+            if (tradingCoreMode == "Shadow")
+                services.AddScoped<TradingCorePositionShadowCycle>();
+        }
         services.AddScoped<TradingPositionExecutionContextResolver>();
         services.AddScoped<CustomPatternManagementService>();
         services.AddScoped<ISymbolProfileStore, SymbolProfileStore>();

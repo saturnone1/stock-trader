@@ -1260,13 +1260,13 @@ public class ArchitectureDependencyTests
             .ToArray();
         var remote = string.Join(Environment.NewLine, remoteFiles);
 
-        data.Should().Contain("IsTradingCoreRemote(serviceProvider)");
+        data.Should().Contain("if (isTradingCoreRemote)");
         data.Should().Contain("TradingCoreRemoteTradeHistoryStore");
         data.Should().Contain("TradingCoreRemotePositionStore");
         data.Should().Contain("TradingCoreRemoteRecommendationStore");
         data.Should().Contain("TradingCoreRemoteDashboardActivityStore");
-        services.Should().Contain("TradingCoreRemoteRiskService");
-        services.Should().Contain("TradingCoreRemoteAccountQuery");
+        services.Should().Contain("IRiskManagementService, TradingCoreRemoteRiskService");
+        services.Should().Contain("IActiveBrokerAccountQuery, TradingCoreRemoteAccountQuery");
         services.Should().Contain("TradingCoreOrderService");
         services.Should().Contain("TradingCoreLiveOrderManagement");
         services.Should().NotContain("TradingCorePositionMonitoringCycle");
@@ -1274,12 +1274,23 @@ public class ArchitectureDependencyTests
                 "BackgroundServices/PositionExecutionManagerService.cs"))
             .Should().Contain("Trading Core owns autonomous protection");
         File.ReadAllText(Path.Combine(repository,
-                "workers/trading-core-service/PositionProtectionWorker.fs"))
+                "workers/trading-core-runtime/PositionProtectionWorker.fs"))
             .Should().Contain("TradingPositionEvaluator.Evaluate");
         File.ReadAllText(Path.Combine(repository,
                 "workers/trading-core-runtime/BrokerWorker.fs"))
             .Should().Contain("marketData.VerifyAsync(intent.MarketDataEvidence");
         background.Should().Contain("services.AddHostedService<PositionExecutionManagerService>()");
+        background.Should().Contain("TradingCoreAccountConfigurationPublisherService");
+        background.Should().Contain("if (!isRemote)");
+        File.ReadAllText(Path.Combine(repository,
+                "BackgroundServices/TradingCoreProjectionService.cs"))
+            .Should().NotContain("PublishAccountConfigurationAsync");
+        File.ReadAllText(Path.Combine(repository,
+                "BackgroundServices/TradingCoreAccountConfigurationPublisherService.cs"))
+            .Should().Contain("PublishAccountConfigurationAsync");
+        File.ReadAllText(Path.Combine(repository,
+                "Data/LegacyFinancialWriteGuard.cs"))
+            .Should().Contain("remote-edge-legacy-financial-write-blocked");
         remote.Should().NotContain("AppDbContext");
         remote.Should().NotContain("IBrokerService");
         remote.Should().NotContain("Alpaca.Markets");

@@ -27,39 +27,44 @@ public static class DataServiceExtensions
     public static IServiceCollection AddDataServices(this IServiceCollection services,
         IConfiguration configuration)
     {
+        var isTradingCoreRemote = string.Equals(
+            configuration[$"{TradingCoreTransportOptions.SectionName}:Mode"],
+            "Remote",
+            StringComparison.Ordinal);
+
         // Repositories
-        services.AddScoped<OhlcvRepository>();
         services.AddScoped<RemoteOhlcvRepository>();
-        services.AddScoped<LocalMarketDataBarWriter>();
         services.AddScoped<RemoteMarketDataBarWriter>();
-        services.AddScoped<IMarketDataBarWriter, MarketDataBarWriterRouter>();
-        services.AddScoped<IOhlcvRepository, MarketDataRepositoryRouter>();
+        if (isTradingCoreRemote)
+        {
+            services.AddScoped<IMarketDataBarWriter, RemoteMarketDataBarWriter>();
+            services.AddScoped<IOhlcvRepository, RemoteOhlcvRepository>();
+        }
+        else
+        {
+            services.AddScoped<OhlcvRepository>();
+            services.AddScoped<LocalMarketDataBarWriter>();
+            services.AddScoped<IMarketDataBarWriter, MarketDataBarWriterRouter>();
+            services.AddScoped<IOhlcvRepository, MarketDataRepositoryRouter>();
+        }
         services.AddScoped<MarketDataRollbackProjector>();
         services.AddScoped<IPatternStatsRepository, PatternStatsRepository>();
-        services.AddSingleton<TradeHistoryStore>();
-        services.AddSingleton<TradingCoreRemoteTradeHistoryStore>();
-        services.AddSingleton<ITradeHistoryStore>(serviceProvider =>
-            IsTradingCoreRemote(serviceProvider)
-                ? serviceProvider.GetRequiredService<TradingCoreRemoteTradeHistoryStore>()
-                : serviceProvider.GetRequiredService<TradeHistoryStore>());
-        services.AddSingleton<OpenPositionStore>();
-        services.AddSingleton<TradingCoreRemotePositionStore>();
-        services.AddSingleton<IOpenPositionStore>(serviceProvider =>
-            IsTradingCoreRemote(serviceProvider)
-                ? serviceProvider.GetRequiredService<TradingCoreRemotePositionStore>()
-                : serviceProvider.GetRequiredService<OpenPositionStore>());
-        services.AddSingleton<TradeRecommendationStore>();
-        services.AddSingleton<TradingCoreRemoteRecommendationStore>();
-        services.AddSingleton<ITradeRecommendationStore>(serviceProvider =>
-            IsTradingCoreRemote(serviceProvider)
-                ? serviceProvider.GetRequiredService<TradingCoreRemoteRecommendationStore>()
-                : serviceProvider.GetRequiredService<TradeRecommendationStore>());
-        services.AddSingleton<TradeActivityStore>();
-        services.AddSingleton<TradingCoreRemoteTradeActivityStore>();
-        services.AddSingleton<ITradeActivityStore>(serviceProvider =>
-            IsTradingCoreRemote(serviceProvider)
-                ? serviceProvider.GetRequiredService<TradingCoreRemoteTradeActivityStore>()
-                : serviceProvider.GetRequiredService<TradeActivityStore>());
+        if (isTradingCoreRemote)
+        {
+            services.AddSingleton<ITradeHistoryStore, TradingCoreRemoteTradeHistoryStore>();
+            services.AddSingleton<IOpenPositionStore, TradingCoreRemotePositionStore>();
+            services.AddSingleton<ITradeRecommendationStore, TradingCoreRemoteRecommendationStore>();
+            services.AddSingleton<ITradeActivityStore, TradingCoreRemoteTradeActivityStore>();
+            services.AddSingleton<IDashboardActivityStore, TradingCoreRemoteDashboardActivityStore>();
+        }
+        else
+        {
+            services.AddSingleton<ITradeHistoryStore, TradeHistoryStore>();
+            services.AddSingleton<IOpenPositionStore, OpenPositionStore>();
+            services.AddSingleton<ITradeRecommendationStore, TradeRecommendationStore>();
+            services.AddSingleton<ITradeActivityStore, TradeActivityStore>();
+            services.AddSingleton<IDashboardActivityStore, DashboardActivityStore>();
+        }
         services.AddSingleton<IPatternSignalStore, PatternSignalStore>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddScoped<ISettingsManagementStore, SettingsManagementStore>();
@@ -93,12 +98,6 @@ public static class DataServiceExtensions
         services.AddSingleton<ILiveEntryExecutionStore, LiveEntryExecutionStore>();
         services.AddSingleton<ILivePositionExecutionStore, LivePositionExecutionStore>();
         services.AddSingleton<IDailyReportActivityStore, DailyReportActivityStore>();
-        services.AddSingleton<DashboardActivityStore>();
-        services.AddSingleton<TradingCoreRemoteDashboardActivityStore>();
-        services.AddSingleton<IDashboardActivityStore>(serviceProvider =>
-            IsTradingCoreRemote(serviceProvider)
-                ? serviceProvider.GetRequiredService<TradingCoreRemoteDashboardActivityStore>()
-                : serviceProvider.GetRequiredService<DashboardActivityStore>());
         services.AddScoped<ITradingCoreProjectionSource, TradingCoreProjectionSource>();
         services.AddScoped<ITradingCoreAccountConfigurationSource, TradingCoreAccountConfigurationSource>();
         services.AddScoped<ITradingAccountIdentitySource, TradingAccountIdentitySource>();
@@ -106,7 +105,6 @@ public static class DataServiceExtensions
         services.AddScoped<DatabaseMigrationStatusProvider>();
 
         // Data Feed - Keyed services for multiple providers
-        services.AddScoped<AlpacaDataFeedService>();
         services.AddHttpClient<MarketDataServiceClient>((serviceProvider, client) =>
         {
             var transport = serviceProvider
@@ -137,26 +135,38 @@ public static class DataServiceExtensions
             client.DefaultRequestHeaders.Add("Accept", "application/json");
         });
 
-        // LS Securities 공통 인증 (Singleton: 토큰을 앱 전체에서 공유)
-        services.AddSingleton<LsAuthService>();
-
-        // HttpClient + Keyed DI for LS Securities
-        services.AddHttpClient<LsSecuritiesDataFeedService>();
-        services.AddKeyedScoped<IDataFeedService>(DataSource.Alpaca, (sp, _) =>
-            new MarketDataFeedRouter(DataSource.Alpaca,
-                sp.GetRequiredService<AlpacaDataFeedService>(),
-                sp.GetRequiredService<MarketDataServiceClient>(),
-                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
-        services.AddKeyedScoped<IDataFeedService>(DataSource.Yahoo, (sp, _) =>
-            new MarketDataFeedRouter(DataSource.Yahoo,
-                sp.GetRequiredService<YahooFinanceDataFeedService>(),
-                sp.GetRequiredService<MarketDataServiceClient>(),
-                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
-        services.AddKeyedScoped<IDataFeedService>(DataSource.LsSecurities, (sp, _) =>
-            new MarketDataFeedRouter(DataSource.LsSecurities,
-                sp.GetRequiredService<LsSecuritiesDataFeedService>(),
-                sp.GetRequiredService<MarketDataServiceClient>(),
-                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
+        if (isTradingCoreRemote)
+        {
+            foreach (var source in new[]
+                     { DataSource.Alpaca, DataSource.Yahoo, DataSource.LsSecurities })
+            {
+                services.AddKeyedScoped<IDataFeedService>(source, (sp, _) =>
+                    new RemoteDataFeedService(
+                        source,
+                        sp.GetRequiredService<MarketDataServiceClient>()));
+            }
+        }
+        else
+        {
+            services.AddScoped<AlpacaDataFeedService>();
+            services.AddSingleton<LsAuthService>();
+            services.AddHttpClient<LsSecuritiesDataFeedService>();
+            services.AddKeyedScoped<IDataFeedService>(DataSource.Alpaca, (sp, _) =>
+                new MarketDataFeedRouter(DataSource.Alpaca,
+                    sp.GetRequiredService<AlpacaDataFeedService>(),
+                    sp.GetRequiredService<MarketDataServiceClient>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
+            services.AddKeyedScoped<IDataFeedService>(DataSource.Yahoo, (sp, _) =>
+                new MarketDataFeedRouter(DataSource.Yahoo,
+                    sp.GetRequiredService<YahooFinanceDataFeedService>(),
+                    sp.GetRequiredService<MarketDataServiceClient>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
+            services.AddKeyedScoped<IDataFeedService>(DataSource.LsSecurities, (sp, _) =>
+                new MarketDataFeedRouter(DataSource.LsSecurities,
+                    sp.GetRequiredService<LsSecuritiesDataFeedService>(),
+                    sp.GetRequiredService<MarketDataServiceClient>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MarketDataTransportOptions>>()));
+        }
 
         // Data Feed Factory for runtime provider switching
         services.AddScoped<IDataFeedServiceFactory, DataFeedServiceFactory>();
@@ -170,11 +180,4 @@ public static class DataServiceExtensions
 
         return services;
     }
-
-    private static bool IsTradingCoreRemote(IServiceProvider serviceProvider) =>
-        string.Equals(serviceProvider
-                .GetRequiredService<Microsoft.Extensions.Options.IOptions<TradingCoreTransportOptions>>()
-                .Value.Mode,
-            "Remote",
-            StringComparison.Ordinal);
 }

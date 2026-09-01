@@ -4,16 +4,15 @@ using StockTrader.Configuration;
 
 namespace StockTrader.BackgroundServices;
 
-public sealed class TradingCoreProjectionService(
+public sealed class TradingCoreAccountConfigurationPublisherService(
     IServiceScopeFactory scopeFactory,
     ITradingCoreControlPlane controlPlane,
     IOptions<TradingCoreTransportOptions> options,
     TimeProvider clock,
-    ILogger<TradingCoreProjectionService> logger) : BackgroundService
+    ILogger<TradingCoreAccountConfigurationPublisherService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (options.Value.Mode is "Local" or "Remote") return;
         using var timer = new PeriodicTimer(
             TimeSpan.FromSeconds(options.Value.ProjectionIntervalSeconds), clock);
         do
@@ -21,12 +20,13 @@ public sealed class TradingCoreProjectionService(
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var source = scope.ServiceProvider.GetRequiredService<ITradingCoreProjectionSource>();
-                var snapshot = await source.CaptureAsync(stoppingToken);
-                var duplicate = await controlPlane.PublishProjectionAsync(snapshot, stoppingToken);
-                logger.LogInformation(
-                    "Trading Core projection {SnapshotId} published (duplicate={Duplicate})",
-                    snapshot.SnapshotId, duplicate);
+                var source = scope.ServiceProvider
+                    .GetRequiredService<ITradingCoreAccountConfigurationSource>();
+                var configuration = await source.CaptureAsync(stoppingToken);
+                await controlPlane.PublishAccountConfigurationAsync(configuration, stoppingToken);
+                logger.LogDebug(
+                    "Trading Core account configuration generation {Generation} published",
+                    configuration.Generation);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -34,7 +34,7 @@ public sealed class TradingCoreProjectionService(
             }
             catch (Exception error)
             {
-                logger.LogError(error, "Trading Core projection failed; Local financial authority unchanged");
+                logger.LogError(error, "Trading Core account configuration publication failed");
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
