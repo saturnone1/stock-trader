@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["workers/trading-core-broker-emulator/StockTrader.TradingCoreBrokerEmulator.fsproj", "workers/trading-core-broker-emulator/"]
+COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
+COPY ["src/StockTrader.TradingCore.BrokerPorts/StockTrader.TradingCore.BrokerPorts.csproj", "src/StockTrader.TradingCore.BrokerPorts/"]
+RUN dotnet restore "workers/trading-core-broker-emulator/StockTrader.TradingCoreBrokerEmulator.fsproj"
+COPY . .
+RUN dotnet publish "workers/trading-core-broker-emulator/StockTrader.TradingCoreBrokerEmulator.fsproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+ENV ASPNETCORE_ENVIRONMENT=Production
+EXPOSE 8080 10443
+USER $APP_UID
+ENTRYPOINT ["dotnet", "StockTrader.TradingCoreBrokerEmulator.dll"]

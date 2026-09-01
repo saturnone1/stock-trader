@@ -1,0 +1,13 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["workers/trading-core-acceptance-driver/StockTrader.TradingCoreAcceptanceDriver.fsproj", "workers/trading-core-acceptance-driver/"]
+COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
+RUN dotnet restore "workers/trading-core-acceptance-driver/StockTrader.TradingCoreAcceptanceDriver.fsproj"
+COPY . .
+RUN dotnet publish "workers/trading-core-acceptance-driver/StockTrader.TradingCoreAcceptanceDriver.fsproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+USER $APP_UID
+ENTRYPOINT ["dotnet", "StockTrader.TradingCoreAcceptanceDriver.dll"]

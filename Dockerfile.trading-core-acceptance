@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["workers/trading-core-acceptance-host/StockTrader.TradingCoreAcceptanceHost.fsproj", "workers/trading-core-acceptance-host/"]
+COPY ["workers/trading-core-runtime/StockTrader.TradingCore.Runtime.fsproj", "workers/trading-core-runtime/"]
+COPY ["src/StockTrader.ServiceContracts/StockTrader.ServiceContracts.csproj", "src/StockTrader.ServiceContracts/"]
+COPY ["src/StockTrader.Engine/StockTrader.Engine.csproj", "src/StockTrader.Engine/"]
+COPY ["src/StockTrader.TradingCore/StockTrader.TradingCore.csproj", "src/StockTrader.TradingCore/"]
+COPY ["src/StockTrader.TradingCore.BrokerPorts/StockTrader.TradingCore.BrokerPorts.csproj", "src/StockTrader.TradingCore.BrokerPorts/"]
+RUN dotnet restore "workers/trading-core-acceptance-host/StockTrader.TradingCoreAcceptanceHost.fsproj"
+COPY . .
+RUN dotnet publish "workers/trading-core-acceptance-host/StockTrader.TradingCoreAcceptanceHost.fsproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+ENV ASPNETCORE_ENVIRONMENT=Production
+EXPOSE 8080 9443 9543
+USER $APP_UID
+ENTRYPOINT ["dotnet", "StockTrader.TradingCoreAcceptanceHost.dll"]
