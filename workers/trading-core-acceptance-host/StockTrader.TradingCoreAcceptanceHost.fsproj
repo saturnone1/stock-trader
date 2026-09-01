@@ -13,6 +13,7 @@
     <Compile Include="Configuration.fs" />
     <Compile Include="ScriptedBrokerClient.fs" />
     <Compile Include="AcceptanceScenarioGate.fs" />
+    <Compile Include="AcceptanceMarketDataExecutionClient.fs" />
     <Compile Include="HttpHost.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

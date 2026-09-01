@@ -116,26 +116,43 @@ module ScenarioDriver =
         match Option.ofObj (TradingCoreAcceptancePolicy.DefinitionError definition) with
         | Some error -> invalidOp error
         | None -> ()
-        let mutable candidate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1.0))
-        let mutable response: MarketDataExecutionWindowResponse = null
-        let mutable attempts = 0
-        while isNull response && attempts < 21 do
-            if candidate.DayOfWeek <> DayOfWeek.Saturday
-               && candidate.DayOfWeek <> DayOfWeek.Sunday then
-                let request = AcceptanceScenarioCompiler.EvidenceRequest(definition, candidate)
-                use result =
-                    (control.PostAsJsonAsync(
-                        "/internal/acceptance/market-data/latest-completed", request, json, ct))
-                        .GetAwaiter().GetResult()
-                if result.IsSuccessStatusCode then
-                    let value =
-                        (result.Content.ReadFromJsonAsync<MarketDataExecutionWindowResponse>(json, ct))
+        let fetch (start: DateOnly) =
+            let mutable candidate = start
+            let mutable response: MarketDataExecutionWindowResponse = null
+            let mutable attempts = 0
+            while isNull response && attempts < 21 do
+                if candidate.DayOfWeek <> DayOfWeek.Saturday
+                   && candidate.DayOfWeek <> DayOfWeek.Sunday then
+                    let request = AcceptanceScenarioCompiler.EvidenceRequest(definition, candidate)
+                    use result =
+                        (control.PostAsJsonAsync(
+                            "/internal/acceptance/market-data/latest-completed", request, json, ct))
                             .GetAwaiter().GetResult()
-                    if not (isNull value) && value.Evidence.IsComplete then response <- value
-            attempts <- attempts + 1
-            candidate <- candidate.AddDays(-1)
-        if isNull response then invalidOp "acceptance-completed-market-data-evidence-unavailable"
-        AcceptanceScenarioCompiler.Compile(definition, response)
+                    if result.IsSuccessStatusCode then
+                        let value =
+                            (result.Content.ReadFromJsonAsync<MarketDataExecutionWindowResponse>(json, ct))
+                                .GetAwaiter().GetResult()
+                        if not (isNull value) && value.Evidence.IsComplete then response <- value
+                attempts <- attempts + 1
+                candidate <- candidate.AddDays(-1)
+            if isNull response then
+                invalidOp "acceptance-completed-market-data-evidence-unavailable"
+            response
+        let requiresReplay =
+            definition.ScenarioCode = "completed-bar-downtime-replay"
+            || definition.ScenarioCode = "edge-loss-autonomous-protection"
+            || definition.ScenarioCode = "evaluated-range-evidence-correction"
+        let latest = fetch (DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1.0)))
+        let baseline =
+            if requiresReplay then
+                fetch (DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-8.0)))
+            else latest
+        if requiresReplay
+           && (not latest.Evidence.LastBarUtc.HasValue
+               || not baseline.Evidence.LastBarUtc.HasValue
+               || latest.Evidence.LastBarUtc.Value <= baseline.Evidence.LastBarUtc.Value) then
+            invalidOp "acceptance-replay-market-data-range-unavailable"
+        AcceptanceScenarioCompiler.Compile(definition, baseline, latest)
 
     let private deleteCorePod (operation: AcceptanceDriverOperation)
         (ct: CancellationToken) = task {
@@ -231,25 +248,38 @@ module ScenarioDriver =
                         send target operation cancellation.Token |> _.GetAwaiter().GetResult()
                 evidence.Add($"{operation.OperationId}:{hash}")
         with error -> failure <- error.Message
-        let coreState = getStringWithRetry core "/v1/portfolio" cancellation.Token
-                            |> _.GetAwaiter().GetResult()
-        let brokerState = getStringWithRetry broker "/control/state" cancellation.Token
-                              |> _.GetAwaiter().GetResult()
-        use coreDocument = JsonDocument.Parse coreState
-        use brokerDocument = JsonDocument.Parse brokerState
-        let observations =
+        let observe () =
+            let coreState = getStringWithRetry core "/v1/portfolio" cancellation.Token
+                                |> _.GetAwaiter().GetResult()
+            let coreStatus = getStringWithRetry core "/v1/status" cancellation.Token
+                                 |> _.GetAwaiter().GetResult()
+            let brokerState = getStringWithRetry broker "/control/state" cancellation.Token
+                                  |> _.GetAwaiter().GetResult()
+            use coreDocument = JsonDocument.Parse coreState
+            use statusDocument = JsonDocument.Parse coreStatus
+            use brokerDocument = JsonDocument.Parse brokerState
             fixture.Assertions
             |> Seq.sortBy _.Name
             |> Seq.map (fun assertion ->
                 let root =
                     if assertion.Target = AcceptanceDriverTargets.TradingCore then
                         coreDocument.RootElement
+                    elif assertion.Target = AcceptanceDriverTargets.TradingCoreStatus then
+                        statusDocument.RootElement
                     else brokerDocument.RootElement
                 let value = resolvePointer root assertion.JsonPointer
                 AcceptanceAssertionObservation(assertion.Name, assertion.Target,
                     assertion.JsonPointer, CanonicalJsonHash.Compute value))
             |> Seq.toArray
-        let actualStateHash = CanonicalJsonHash.Compute observations
+        let mutable observations = observe ()
+        let mutable actualStateHash = CanonicalJsonHash.Compute observations
+        let mutable assertionAttempt = 1
+        while actualStateHash <> fixture.ExpectedStateHash && assertionAttempt < 100 do
+            Task.Delay(TimeSpan.FromMilliseconds 100.0, cancellation.Token)
+                .GetAwaiter().GetResult()
+            observations <- observe ()
+            actualStateHash <- CanonicalJsonHash.Compute observations
+            assertionAttempt <- assertionAttempt + 1
         let expectedFailure = fixture.ExpectedStopReason
         let passed =
             (actualStateHash = fixture.ExpectedStateHash)

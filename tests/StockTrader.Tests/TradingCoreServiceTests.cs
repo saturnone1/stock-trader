@@ -16,6 +16,30 @@ public sealed class TradingCoreServiceTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"trading-core-{Guid.NewGuid():N}");
 
     [Fact]
+    public void Evaluated_range_correction_is_a_durable_financial_fence()
+    {
+        var path = Path.Combine(_root, "correction-fence.db");
+        var config = CreateConfig(path, TradingAuthorityMode.Remote);
+        var store = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web),
+            new SecretStore(config), TimeProvider.System);
+        var operations = new TradingCoreOperations(store);
+
+        operations.FencePositionEvidenceCorrection(
+            "position-1", "position-market-data-correction-requires-reconciliation");
+
+        operations.PositionRequiresReconciliation("position-1").Should().BeTrue();
+        operations.FinancialStateReady().Should().BeFalse();
+        operations.Status().LastError.Should().Be(
+            "position-market-data-correction-requires-reconciliation");
+        var restarted = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web),
+            new SecretStore(config), TimeProvider.System);
+        new TradingCoreOperations(restarted).PositionRequiresReconciliation("position-1")
+            .Should().BeTrue();
+    }
+
+    [Fact]
     public void PreCommitAbortConsumesGenerationAndRequiresExplicitRelease()
     {
         var path = Path.Combine(_root, "transition.db");

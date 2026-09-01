@@ -121,6 +121,7 @@ public sealed record AcceptanceScenarioDefinition(
 
 public sealed record AcceptanceBootstrapRequest(
     string ScenarioId,
+    string ScenarioCode,
     string OperationId,
     string FixtureHash,
     TradingStateSnapshot Snapshot,
@@ -131,6 +132,7 @@ public sealed record AcceptanceScenarioStartRequest(string ScenarioId, string Op
 
 public sealed record AcceptanceScenarioState(
     string ScenarioId,
+    string ScenarioCode,
     string Phase,
     string FixtureHash,
     IReadOnlyList<string> OperationIds,
@@ -139,12 +141,13 @@ public sealed record AcceptanceScenarioState(
 public static class AcceptanceDriverTargets
 {
     public const string TradingCore = "TradingCore";
+    public const string TradingCoreStatus = "TradingCoreStatus";
     public const string AcceptanceControl = "AcceptanceControl";
     public const string BrokerControl = "BrokerControl";
     public const string DeleteTradingCorePod = "DeleteTradingCorePod";
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        TradingCore, AcceptanceControl, BrokerControl, DeleteTradingCorePod
+        TradingCore, TradingCoreStatus, AcceptanceControl, BrokerControl, DeleteTradingCorePod
     };
 }
 
@@ -300,6 +303,7 @@ public static class TradingCoreAcceptancePolicy
             || fixture.Assertions.Any(value =>
                 string.IsNullOrWhiteSpace(value.Name)
                 || value.Target is not (AcceptanceDriverTargets.TradingCore
+                    or AcceptanceDriverTargets.TradingCoreStatus
                     or AcceptanceDriverTargets.BrokerControl)
                 || !value.JsonPointer.StartsWith('/'))
             || fixture.ExpectedStateHash

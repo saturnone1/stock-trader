@@ -14,7 +14,12 @@ public static class AcceptanceScenarioCompiler
 
     public static AcceptanceScenarioFixture Compile(
         AcceptanceScenarioDefinition definition,
-        MarketDataExecutionWindowResponse marketData)
+        MarketDataExecutionWindowResponse marketData) => Compile(definition, marketData, marketData);
+
+    public static AcceptanceScenarioFixture Compile(
+        AcceptanceScenarioDefinition definition,
+        MarketDataExecutionWindowResponse marketData,
+        MarketDataExecutionWindowResponse latestMarketData)
     {
         var definitionError = TradingCoreAcceptancePolicy.DefinitionError(definition);
         if (definitionError is not null) throw new ArgumentException(definitionError, nameof(definition));
@@ -24,14 +29,21 @@ public static class AcceptanceScenarioCompiler
             || !string.Equals(marketData.Evidence.Provider, definition.Provider, StringComparison.Ordinal)
             || !string.Equals(marketData.Evidence.CalendarVersion, definition.CalendarVersion, StringComparison.Ordinal))
             throw new ArgumentException("acceptance-market-data-evidence-incomplete", nameof(marketData));
+        if (latestMarketData is null || !latestMarketData.Evidence.IsComplete
+            || !string.Equals(latestMarketData.Evidence.Symbol, definition.Symbol,
+                StringComparison.Ordinal)
+            || latestMarketData.Evidence.LastBarUtc < marketData.Evidence.LastBarUtc)
+            throw new ArgumentException("acceptance-latest-market-data-evidence-incomplete",
+                nameof(latestMarketData));
 
-        var now = NextOpenObservation(marketData.Evidence.LastBarUtc!.Value);
+        var now = NextOpenObservation((UsesOpenPosition(definition.ScenarioCode)
+            ? latestMarketData : marketData).Evidence.LastBarUtc!.Value);
         var artifact = Artifact(marketData.Evidence);
         var commandId = $"acceptance-{definition.ScenarioCode}";
         var signalId = $"acceptance-signal-{definition.ScenarioCode}";
         var intent = EntryIntent(commandId, signalId, definition.Symbol, now, artifact, marketData.Evidence);
         var initialPosition = UsesOpenPosition(definition.ScenarioCode)
-            ? Position(definition, artifact, marketData.Evidence, now)
+            ? Position(definition, artifact, marketData, now)
             : null;
         var snapshot = Snapshot(definition, initialPosition, now);
         var accountConfiguration = AccountConfiguration(now);
@@ -42,10 +54,11 @@ public static class AcceptanceScenarioCompiler
             now, 0);
         var brokerPlan = BrokerPlan(definition, intent, initialPosition, now);
         var operations = Operations(definition, intent, brokerPlan, now);
-        var assertions = Assertions(definition, initialPosition);
+        var assertions = Assertions(definition, initialPosition, marketData, latestMarketData);
         var expectedStateHash = TradingCoreAcceptanceIdentity.ExpectedState(assertions);
         var bootstrap = new AcceptanceBootstrapRequest(
-            definition.ScenarioId, $"bootstrap-{definition.ScenarioId}", "pending",
+            definition.ScenarioId, definition.ScenarioCode,
+            $"bootstrap-{definition.ScenarioId}", "pending",
             snapshot, accountConfiguration, authority);
         var pending = new AcceptanceScenarioFixture(
             TradingCoreAcceptanceVersions.Current, "", brokerPlan, bootstrap,
@@ -94,8 +107,8 @@ public static class AcceptanceScenarioCompiler
     {
         const string settings = "{\"patternConfiguration\":{},\"exitPolicy\":{}}";
         var management = new TradingPositionManagementArtifact(
-            new TradingLongPositionPolicy(20, true, 2.5m, 1m, true, 2m, true, true,
-                1.5m, "stop", "protected-stop"),
+            new TradingLongPositionPolicy(10000, false, 100m, 100m, false, 100m,
+                false, false, 100m, "stop", "protected-stop"),
             50, null, null);
         var hash = TradingExecutionArtifactPolicy.ComputeDefinitionHash(
             TradingExecutionArtifactKinds.BuiltInPattern, "Breakout", null, settings,
@@ -124,13 +137,21 @@ public static class AcceptanceScenarioCompiler
     }
 
     private static TradingPositionProjection Position(AcceptanceScenarioDefinition definition,
-        TradingStrategyExecutionArtifact artifact, MarketDataEvidenceContract evidence, DateTime now) =>
+        TradingStrategyExecutionArtifact artifact, MarketDataExecutionWindowResponse marketData,
+        DateTime now)
+    {
+        var evidence = marketData.Evidence;
+        var entry = marketData.Bars[^1].Close;
+        var stop = Math.Max(0.01m, marketData.Bars.Min(value => value.Low) * 0.5m);
+        var target = marketData.Bars.Max(value => value.High) * 10m;
+        return
         new($"acceptance-position-{definition.ScenarioCode}", null, AccountId,
-            definition.Symbol, "Technology", 10, 10, 100m, 101m, 95m, 120m,
-            "Breakout", null, now.AddDays(-1), null, null, 103m, 2m, 5m,
+            definition.Symbol, "Technology", 10, 10, entry, entry, stop, target,
+            "Breakout", null, now.AddDays(-1), null, null, entry, 0m, entry - stop,
             false, false, false, null, null, null, false, null, null, null, [],
             new TradingPositionExecutionContext(artifact, evidence), evidence.EvidenceId,
             evidence.LastBarUtc, evidence.Revision);
+    }
 
     private static TradingStateSnapshot Snapshot(AcceptanceScenarioDefinition definition,
         TradingPositionProjection? position, DateTime now)
@@ -264,7 +285,11 @@ public static class AcceptanceScenarioCompiler
         ScriptedBrokerPlan brokerPlan, DateTime now)
     {
         var values = new List<AcceptanceDriverOperation>();
-        if (UsesEntryCommand(definition.ScenarioCode))
+        if (definition.ScenarioCode == "isolated-cutover-and-rollback-generation")
+        {
+            AddAbortedRollbackTransition(values, definition, now);
+        }
+        else if (UsesEntryCommand(definition.ScenarioCode))
         {
             values.Add(Http("submit-entry", AcceptanceDriverTargets.TradingCore, "POST",
                 "/v1/commands/entries", intent, 202));
@@ -321,12 +346,69 @@ public static class AcceptanceScenarioCompiler
         return values;
     }
 
+    private static void AddAbortedRollbackTransition(
+        ICollection<AcceptanceDriverOperation> values,
+        AcceptanceScenarioDefinition definition,
+        DateTime now)
+    {
+        var transitionId = Guid.NewGuid().ToString();
+        var correlation = $"acceptance-transition-{definition.ScenarioId}";
+        var createOperation = new TradingControlOperation(
+            TradingControlContractVersions.Current, Guid.NewGuid().ToString(), "",
+            correlation, null, now);
+        var create = new AuthorityTransitionRequest(
+            createOperation, transitionId, AuthorityTransitionDirections.Rollback,
+            TradingAuthorityMode.Remote, TradingAuthorityMode.Shadow, 2, 1,
+            now, now.AddHours(1));
+        create = create with
+        {
+            Operation = createOperation with
+            {
+                PayloadHash = TradingControlIdentity.Transition(create)
+            }
+        };
+        values.Add(Http("create-rollback-transition", AcceptanceDriverTargets.TradingCore,
+            "POST", "/v2/authority/transitions", create, 200));
+        var abort = TransitionStep(transitionId, correlation,
+            AuthorityTransitionOperations.Abort, AuthorityTransitionPhases.Requested, now);
+        values.Add(Http("abort-rollback-transition", AcceptanceDriverTargets.TradingCore,
+            "POST", $"/v2/authority/transitions/{transitionId}/steps", abort, 200));
+        var release = TransitionStep(transitionId, correlation,
+            AuthorityTransitionOperations.Release, AuthorityTransitionPhases.ReadyToRelease,
+            now.AddSeconds(1));
+        values.Add(Http("release-retained-authority", AcceptanceDriverTargets.TradingCore,
+            "POST", $"/v2/authority/transitions/{transitionId}/steps", release, 200));
+        var expected = new TradingAuthorityV2View(
+            TradingControlContractVersions.Current, TradingAuthorityMode.Remote,
+            AuthorityOwners.TradingCore, 3, AuthorityCommandAcceptanceStates.Open, null, null);
+        values.Add(new AcceptanceDriverOperation("verify-monotonic-generation",
+            AcceptanceDriverTargets.TradingCore, "GET", "/v2/authority", null, 200,
+            CanonicalJsonHash.Compute(expected), 10));
+    }
+
+    private static AuthorityTransitionStepRequest TransitionStep(
+        string transitionId, string correlation, string step, string expectedPhase, DateTime now)
+    {
+        var operation = new TradingControlOperation(
+            TradingControlContractVersions.Current, Guid.NewGuid().ToString(), "",
+            correlation, null, now);
+        var request = new AuthorityTransitionStepRequest(
+            operation, transitionId, step, expectedPhase, null, null, null, null,
+            null, null, [$"acceptance:{step}"]);
+        return request with
+        {
+            Operation = operation with { PayloadHash = TradingControlIdentity.Step(request) }
+        };
+    }
+
     private static AcceptanceDriverOperation Http<T>(string id, string target, string method,
         string path, T body, int status) =>
         new(id, target, method, path, JsonSerializer.Serialize(body, Json), status, null, 1);
 
     private static IReadOnlyList<AcceptanceStateAssertion> Assertions(
-        AcceptanceScenarioDefinition definition, TradingPositionProjection? initialPosition)
+        AcceptanceScenarioDefinition definition, TradingPositionProjection? initialPosition,
+        MarketDataExecutionWindowResponse baseline,
+        MarketDataExecutionWindowResponse latest)
     {
         var values = new List<AcceptanceStateAssertion>
         {
@@ -352,15 +434,35 @@ public static class AcceptanceScenarioCompiler
             values.Add(new("broker-has-no-position", AcceptanceDriverTargets.BrokerControl,
                 "/positions", "[]"));
         }
+        if (initialPosition is not null
+            && definition.ScenarioCode is "completed-bar-downtime-replay"
+                or "edge-loss-autonomous-protection")
+        {
+            values.Add(new("completed-bar-watermark", AcceptanceDriverTargets.TradingCore,
+                "/positions/0/lastEvaluatedBarUtc",
+                JsonSerializer.Serialize(latest.Evidence.LastBarUtc, Json)));
+        }
+        if (definition.ScenarioCode == "evaluated-range-evidence-correction")
+        {
+            values.Add(new("correction-fences-position",
+                AcceptanceDriverTargets.TradingCoreStatus, "/lastError",
+                JsonSerializer.Serialize(
+                    "position-market-data-correction-requires-reconciliation", Json)));
+            values.Add(new("correction-does-not-advance-watermark",
+                AcceptanceDriverTargets.TradingCore, "/positions/0/lastEvaluatedBarUtc",
+                JsonSerializer.Serialize(baseline.Evidence.LastBarUtc, Json)));
+        }
         return values;
     }
 
     private static bool UsesEntryCommand(string code) => code is not (
-        "edge-loss-autonomous-protection" or "evaluated-range-evidence-correction"
+        "completed-bar-downtime-replay" or "edge-loss-autonomous-protection"
+        or "evaluated-range-evidence-correction"
         or "isolated-cutover-and-rollback-generation");
 
     private static bool UsesOpenPosition(string code) => code is
-        "edge-loss-autonomous-protection" or "evaluated-range-evidence-correction";
+        "completed-bar-downtime-replay" or "edge-loss-autonomous-protection"
+        or "evaluated-range-evidence-correction";
 
     private static int ExpectedEntryQuantity(string code) => code switch
     {

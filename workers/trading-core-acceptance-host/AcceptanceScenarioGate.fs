@@ -13,7 +13,7 @@ type private PersistedAcceptanceScenario =
 type AcceptanceScenarioGate(path: string, store: TradingCoreStore,
                             json: JsonSerializerOptions, clock: TimeProvider) =
     let sync = obj ()
-    let emptyView = AcceptanceScenarioState("", "Empty", "", Array.empty,
+    let emptyView = AcceptanceScenarioState("", "", "Empty", "", Array.empty,
                                              clock.GetUtcNow().UtcDateTime)
     let mutable current: PersistedAcceptanceScenario option =
         if File.Exists path then
@@ -28,6 +28,7 @@ type AcceptanceScenarioGate(path: string, store: TradingCoreStore,
 
     let validateIdentity (request: AcceptanceBootstrapRequest) =
         if not (Guid.TryParse(request.ScenarioId) |> fst)
+           || not (TradingCoreAcceptanceScenarioCatalog.IsRequired request.ScenarioCode)
            || String.IsNullOrWhiteSpace request.OperationId
            || String.IsNullOrWhiteSpace request.FixtureHash
            || TradingCoreCompatibilityPolicy.Error(request.Snapshot) <> null
@@ -62,7 +63,8 @@ type AcceptanceScenarioGate(path: string, store: TradingCoreStore,
         | None ->
             store.Import request.Snapshot |> ignore
             store.ApplyAccountConfiguration request.AccountConfiguration |> ignore
-            let view = AcceptanceScenarioState(request.ScenarioId, "Prepared", request.FixtureHash,
+            let view = AcceptanceScenarioState(request.ScenarioId, request.ScenarioCode,
+                                                "Prepared", request.FixtureHash,
                                                 [| request.OperationId |], clock.GetUtcNow().UtcDateTime)
             let value = { View = view; RunningAuthority = request.RunningAuthority }
             persist value
@@ -79,7 +81,8 @@ type AcceptanceScenarioGate(path: string, store: TradingCoreStore,
             invalidOp "acceptance-scenario-not-prepared"
         | Some value ->
             store.Activate value.RunningAuthority
-            let view = AcceptanceScenarioState(value.View.ScenarioId, "Running", value.View.FixtureHash,
+            let view = AcceptanceScenarioState(value.View.ScenarioId, value.View.ScenarioCode,
+                "Running", value.View.FixtureHash,
                 Array.append (value.View.OperationIds |> Seq.toArray) [| request.OperationId |],
                 clock.GetUtcNow().UtcDateTime)
             let updated = { value with View = view }

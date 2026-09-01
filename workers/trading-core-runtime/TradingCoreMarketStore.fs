@@ -11,6 +11,22 @@ open StockTrader.TradingCore.Execution
 [<AutoOpen>]
 module TradingCoreMarketStore =
     type TradingCoreStore with
+        member this.FencePositionEvidenceCorrection(positionId: string, reason: string) =
+            use connection = this.Connect()
+            use command = connection.CreateCommand()
+            command.CommandText <- """INSERT INTO state(key,value) VALUES($key,$value)
+ON CONFLICT(key) DO UPDATE SET value=excluded.value"""
+            command.Parameters.AddWithValue("$key", "position_evidence_correction:" + positionId) |> ignore
+            command.Parameters.AddWithValue("$value", reason) |> ignore
+            command.ExecuteNonQuery() |> ignore
+
+        member this.PositionRequiresReconciliation(positionId: string) =
+            use connection = this.Connect()
+            use command = connection.CreateCommand()
+            command.CommandText <- "SELECT COUNT(*) FROM state WHERE key=$key"
+            command.Parameters.AddWithValue("$key", "position_evidence_correction:" + positionId) |> ignore
+            Convert.ToInt64(command.ExecuteScalar()) > 0L
+
         member this.RefreshRisk(dailyLossLimitPercent: decimal) =
             use connection = this.Connect()
             let accounts = ResizeArray<BrokerAccountEvidence>()
@@ -130,6 +146,9 @@ ON CONFLICT(account_id) DO UPDATE SET payload_json=excluded.payload_json,observe
             command.Parameters.AddWithValue("$awaiting", TradingCommandStatuses.AwaitingBrokerEvidence) |> ignore
             command.Parameters.AddWithValue("$reconcile", TradingCommandStatuses.ReconciliationRequired) |> ignore
             Convert.ToInt64(command.ExecuteScalar()) = 0L
+            && (use correction = connection.CreateCommand()
+                correction.CommandText <- "SELECT COUNT(*) FROM state WHERE key LIKE 'position_evidence_correction:%'"
+                Convert.ToInt64(correction.ExecuteScalar()) = 0L)
             && (use divergence = connection.CreateCommand()
                 divergence.CommandText <- "SELECT COUNT(*) FROM state WHERE key LIKE 'portfolio_divergence:%' AND value='true'"
                 Convert.ToInt64(divergence.ExecuteScalar()) = 0L)

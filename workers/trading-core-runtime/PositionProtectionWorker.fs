@@ -16,7 +16,7 @@ open StockTrader.TradingCore.Execution
 /// Edge is not involved in evaluation, command creation, broker submission, or reconciliation.
 type PositionProtectionWorker(
     store: TradingCoreStore,
-    marketData: MarketDataExecutionClient,
+    marketData: IMarketDataExecutionClient,
     config: ServiceConfig,
     clock: TimeProvider,
     logger: ILogger<PositionProtectionWorker>) =
@@ -31,12 +31,14 @@ type PositionProtectionWorker(
         |> fun value -> value.ToLowerInvariant()
 
     let pending positionId =
-        match store.LatestPositionCommand positionId with
-        | Some value ->
-            value.Status = TradingCommandStatuses.PendingBrokerSubmission
-            || value.Status = TradingCommandStatuses.AwaitingBrokerEvidence
-            || value.Status = TradingCommandStatuses.ReconciliationRequired
-        | None -> false
+        if store.PositionRequiresReconciliation positionId then true
+        else
+            match store.LatestPositionCommand positionId with
+            | Some value ->
+                value.Status = TradingCommandStatuses.PendingBrokerSubmission
+                || value.Status = TradingCommandStatuses.AwaitingBrokerEvidence
+                || value.Status = TradingCommandStatuses.ReconciliationRequired
+            | None -> false
 
     let window (evidence: MarketDataEvidenceContract) symbol required
         (completed: TradingCompletedBarWindow) afterRevision evaluatedThrough =
@@ -137,6 +139,9 @@ type PositionProtectionWorker(
                             position.LastEvaluatedMarketDataRevision
                             position.LastEvaluatedBarUtc, ct)
                     if series.PriorEvaluatedRangeCorrected then
+                        store.FencePositionEvidenceCorrection(
+                            position.PositionId,
+                            "reference-market-data-correction-requires-reconciliation")
                         invalidOp "reference-market-data-correction-requires-reconciliation"
                     references[symbol] <- series
             // Fetch primary last so its global revision is at least every reference response revision.
@@ -145,6 +150,9 @@ type PositionProtectionWorker(
                     position.Symbol management.RequiredBars completed
                     position.LastEvaluatedMarketDataRevision position.LastEvaluatedBarUtc, ct)
             if primary.PriorEvaluatedRangeCorrected then
+                store.FencePositionEvidenceCorrection(
+                    position.PositionId,
+                    "position-market-data-correction-requires-reconciliation")
                 invalidOp "position-market-data-correction-requires-reconciliation"
             let evaluationRevision =
                 references.Values

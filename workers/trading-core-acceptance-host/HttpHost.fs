@@ -59,6 +59,8 @@ module HttpHost =
         builder.Services.AddSingleton<AcceptanceScenarioGate>(fun services ->
             AcceptanceScenarioGate(config.Runtime.DatabasePath + ".acceptance-state",
                 services.GetRequiredService<TradingCoreStore>(), json, clock)) |> ignore
+        builder.Services.AddSingleton<IMarketDataExecutionClient,
+            AcceptanceMarketDataExecutionClient>() |> ignore
         let app = builder.Build()
         let standard (ctx: HttpContext) =
             ctx.Connection.LocalPort = 9443 && not (isNull ctx.Connection.ClientCertificate)

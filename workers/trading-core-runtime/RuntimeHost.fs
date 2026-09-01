@@ -13,6 +13,10 @@ module RuntimeComposition =
     let add (services: IServiceCollection) =
         services.AddSingleton<SecretStore>() |> ignore
         services.AddSingleton<MarketDataExecutionClient>() |> ignore
+        services.AddSingleton<IMarketDataExecutionClient>(
+            Func<IServiceProvider,IMarketDataExecutionClient>(fun provider ->
+                provider.GetRequiredService<MarketDataExecutionClient>()
+                :> IMarketDataExecutionClient)) |> ignore
         services.AddSingleton<TradingCoreStore>() |> ignore
         services.AddHostedService<BrokerWorker>() |> ignore
         services.AddHostedService<PositionProtectionWorker>() |> ignore

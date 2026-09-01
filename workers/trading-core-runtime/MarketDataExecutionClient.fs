@@ -10,6 +10,12 @@ open System.Threading
 open System.Threading.Tasks
 open StockTrader.ServiceContracts.MarketData
 
+type IMarketDataExecutionClient =
+    abstract VerifyAsync:
+        MarketDataEvidenceContract * CancellationToken -> Task<MarketDataEvidenceVerificationResponse>
+    abstract LatestCompletedAsync:
+        MarketDataExecutionWindowRequest * CancellationToken -> Task<MarketDataExecutionWindowResponse>
+
 type MarketDataExecutionClient(config: ServiceConfig, json: JsonSerializerOptions) =
     let handler = new HttpClientHandler()
     let clientCertificate = X509Certificate2.CreateFromPemFile(
@@ -67,6 +73,10 @@ type MarketDataExecutionClient(config: ServiceConfig, json: JsonSerializerOption
             |> Option.map validateRange
             |> Option.defaultWith (fun () -> invalidOp "empty-market-data-execution-response")
     }
+
+    interface IMarketDataExecutionClient with
+        member this.VerifyAsync(evidence, ct) = this.VerifyAsync(evidence, ct)
+        member this.LatestCompletedAsync(request, ct) = this.LatestCompletedAsync(request, ct)
 
     interface IDisposable with
         member _.Dispose() = http.Dispose()

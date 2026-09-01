@@ -118,6 +118,9 @@ WHERE status IN ($pending,$awaiting,$reconcile)"""
             unresolved.Parameters.AddWithValue("$awaiting", TradingCommandStatuses.AwaitingBrokerEvidence) |> ignore
             unresolved.Parameters.AddWithValue("$reconcile", TradingCommandStatuses.ReconciliationRequired) |> ignore
             let unresolvedCount = Convert.ToInt32(unresolved.ExecuteScalar())
+            use corrections = connection.CreateCommand()
+            corrections.CommandText <- "SELECT COUNT(*) FROM state WHERE key LIKE 'position_evidence_correction:%'"
+            let correctionCount = Convert.ToInt32(corrections.ExecuteScalar())
             use journal = connection.CreateCommand()
             journal.CommandText <- "SELECT COUNT(*) FROM outbox"
             let journalCount = Convert.ToInt64(journal.ExecuteScalar())
@@ -130,7 +133,8 @@ WHERE status IN ($pending,$awaiting,$reconcile)"""
                 | value -> Nullable(DateTime.Parse(Convert.ToString value, null,
                     Globalization.DateTimeStyles.RoundtripKind))
             let candidate = AuthorityDrainInventory(
-                unresolvedCount, unresolvedCount, 0, journalCount, 0L,
+                unresolvedCount + correctionCount, unresolvedCount + correctionCount, 0,
+                journalCount, 0L,
                 this.UtcNow, "")
             AuthorityDrainInventory(
                 candidate.UnresolvedIntentCount, candidate.UnresolvedBrokerEffectCount,

@@ -134,6 +134,10 @@ module TradingCoreQueryStore =
                 use divergence = connection.CreateCommand()
                 divergence.CommandText <- "SELECT COUNT(*) FROM state WHERE key LIKE 'portfolio_divergence:%' AND value='true'"
                 Convert.ToInt64(divergence.ExecuteScalar()) > 0L
+            let hasCorrection =
+                use correction = connection.CreateCommand()
+                correction.CommandText <- "SELECT COUNT(*) FROM state WHERE key LIKE 'position_evidence_correction:%'"
+                Convert.ToInt64(correction.ExecuteScalar()) > 0L
             TradingCoreStatus(TradingCoreContractVersions.Current, true, authority.Mode,
                 authority.Generation, Int64.Parse(this.StateValue(connection, "account_generation")),
                 count "SELECT COUNT(*) FROM inbox", count "SELECT COUNT(*) FROM outbox WHERE delivered_at IS NULL",
@@ -141,4 +145,6 @@ module TradingCoreQueryStore =
                 (if String.IsNullOrWhiteSpace reconciledAt then Nullable()
                  else Nullable(DateTime.Parse(reconciledAt, null,
                     Globalization.DateTimeStyles.RoundtripKind))),
-                (if hasDivergence then "broker-canonical-portfolio-divergence" else null))
+                (if hasDivergence then "broker-canonical-portfolio-divergence"
+                 elif hasCorrection then "position-market-data-correction-requires-reconciliation"
+                 else null))

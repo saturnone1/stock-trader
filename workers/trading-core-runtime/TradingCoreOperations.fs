@@ -38,3 +38,8 @@ type TradingCoreOperations(store: TradingCoreStore) =
     member _.SyncBrokerPortfolio(accountId, account, positions, dailyLossLimitPercent) =
         store.SyncBrokerPortfolio(accountId, account, positions, dailyLossLimitPercent)
     member _.RejectIntent(commandId, reason) = store.RejectIntent(commandId, reason)
+    member _.FencePositionEvidenceCorrection(positionId, reason) =
+        store.FencePositionEvidenceCorrection(positionId, reason)
+    member _.PositionRequiresReconciliation(positionId) =
+        store.PositionRequiresReconciliation positionId
+    member _.FinancialStateReady() = store.FinancialStateReady()
