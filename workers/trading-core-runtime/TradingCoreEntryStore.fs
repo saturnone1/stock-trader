@@ -46,6 +46,7 @@ module TradingCoreEntryStore =
                         receipt.Message, receipt.AcceptedAtUtc, true)
                 else
                     reader.Close()
+                    this.RequireCommandAcceptance()
                     let acceptedAt = DateTime.UtcNow
                     let receipt = TradingCommandReceipt(
                         TradingCoreContractVersions.Current, intent.Envelope.CommandId,

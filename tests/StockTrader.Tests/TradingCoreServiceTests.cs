@@ -15,6 +15,56 @@ public sealed class TradingCoreServiceTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"trading-core-{Guid.NewGuid():N}");
 
     [Fact]
+    public void PreCommitAbortConsumesGenerationAndRequiresExplicitRelease()
+    {
+        var path = Path.Combine(_root, "transition.db");
+        var config = CreateConfig(path, TradingAuthorityMode.Shadow);
+        var store = new TradingCoreStore(
+            config, new JsonSerializerOptions(JsonSerializerDefaults.Web), new SecretStore(config));
+        var operations = new TradingCoreOperations(store);
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE state SET value='1' WHERE key='account_generation'";
+            command.ExecuteNonQuery();
+        }
+
+        var now = new DateTime(2026, 9, 1, 12, 0, 0, DateTimeKind.Utc);
+        var transitionId = Guid.NewGuid().ToString();
+        var createOperation = new TradingControlOperation(
+            TradingControlContractVersions.Current, Guid.NewGuid().ToString(), string.Empty,
+            "transition-test", null, now);
+        var create = new AuthorityTransitionRequest(
+            createOperation, transitionId, AuthorityTransitionDirections.Cutover,
+            TradingAuthorityMode.Shadow, TradingAuthorityMode.Remote, 1, 1,
+            now, now.AddMinutes(30));
+        createOperation = createOperation with
+        {
+            PayloadHash = TradingControlIdentity.Transition(create)
+        };
+        create = create with { Operation = createOperation };
+
+        operations.CreateTransition(create).Phase.Should().Be(AuthorityTransitionPhases.Requested);
+        operations.CreateTransition(create).AlreadyApplied.Should().BeTrue();
+        operations.AuthorityV2().CommandAcceptance.Should().Be(AuthorityCommandAcceptanceStates.Fenced);
+
+        var abort = Step(transitionId, AuthorityTransitionOperations.Abort,
+            AuthorityTransitionPhases.Requested, now.AddMinutes(1));
+        var aborted = operations.ApplyTransitionStep(abort);
+        aborted.Phase.Should().Be(AuthorityTransitionPhases.ReadyToRelease);
+        aborted.Outcome.Should().Be(AuthorityTransitionOutcomes.SourceRetained);
+        operations.Authority().Generation.Should().Be(2);
+        operations.Authority().Mode.Should().Be(TradingAuthorityMode.Shadow);
+        operations.AuthorityV2().CommandAcceptance.Should().Be(AuthorityCommandAcceptanceStates.Fenced);
+
+        var release = Step(transitionId, AuthorityTransitionOperations.Release,
+            AuthorityTransitionPhases.ReadyToRelease, now.AddMinutes(2));
+        operations.ApplyTransitionStep(release).Phase.Should().Be(AuthorityTransitionPhases.Completed);
+        operations.AuthorityV2().CommandAcceptance.Should().Be(AuthorityCommandAcceptanceStates.Open);
+    }
+
+    [Fact]
     public void CorruptDatabaseFailsClosedInsteadOfBeingReinitialized()
     {
         Directory.CreateDirectory(_root);
@@ -554,7 +604,22 @@ public sealed class TradingCoreServiceTests : IDisposable
             1, true, contentHash);
     }
 
-    private static ServiceConfig CreateConfig(string databasePath) => new(
+    private static AuthorityTransitionStepRequest Step(
+        string transitionId, string step, string expectedPhase, DateTime observedAt)
+    {
+        var operation = new TradingControlOperation(
+            TradingControlContractVersions.Current, Guid.NewGuid().ToString(), string.Empty,
+            "transition-test", null, observedAt);
+        var request = new AuthorityTransitionStepRequest(
+            operation, transitionId, step, expectedPhase, null, null, null, null,
+            null, null, Array.Empty<string>());
+        operation = operation with { PayloadHash = TradingControlIdentity.Step(request) };
+        return request with { Operation = operation };
+    }
+
+    private static ServiceConfig CreateConfig(
+        string databasePath,
+        TradingAuthorityMode initialMode = TradingAuthorityMode.Projection) => new(
         databasePath,
         "unused-server-cert",
         "unused-server-key",
@@ -568,7 +633,7 @@ public sealed class TradingCoreServiceTests : IDisposable
         TimeSpan.FromSeconds(30),
         Enumerable.Range(1, 32).Select(value => (byte)value).ToArray(),
         "test-generation",
-        TradingAuthorityMode.Projection);
+        initialMode);
 
     private static T Some<T>(FSharpOption<T>? value)
     {
@@ -578,6 +643,7 @@ public sealed class TradingCoreServiceTests : IDisposable
 
     public void Dispose()
     {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 }

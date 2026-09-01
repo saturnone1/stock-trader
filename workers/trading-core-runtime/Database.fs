@@ -88,6 +88,22 @@ CREATE TABLE IF NOT EXISTS account_configuration (
 CREATE TABLE IF NOT EXISTS encryption_key_rotation_audit (
  rotation_id TEXT PRIMARY KEY, old_generation TEXT NOT NULL, new_generation TEXT NOT NULL,
  configuration_hash TEXT NOT NULL, rotated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS authority_transitions (
+ transition_id TEXT PRIMARY KEY, phase TEXT NOT NULL, outcome TEXT NOT NULL,
+ source_generation INTEGER NOT NULL, reserved_generation INTEGER NOT NULL UNIQUE,
+ payload_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_authority_transition_active
+ ON authority_transitions((1)) WHERE phase <> 'Completed';
+CREATE TABLE IF NOT EXISTS authority_transition_operations (
+ operation_id TEXT PRIMARY KEY, transition_id TEXT NOT NULL, payload_hash TEXT NOT NULL,
+ receipt_json TEXT NOT NULL, recorded_at TEXT NOT NULL,
+ FOREIGN KEY(transition_id) REFERENCES authority_transitions(transition_id));
+CREATE TABLE IF NOT EXISTS canonical_financial_imports (
+ transfer_id TEXT NOT NULL, reserved_generation INTEGER NOT NULL,
+ transfer_hash TEXT NOT NULL, receipt_json TEXT NOT NULL, imported_at TEXT NOT NULL,
+ PRIMARY KEY(transfer_id,reserved_generation));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_canonical_financial_import_generation
+ ON canonical_financial_imports(reserved_generation);
 INSERT OR IGNORE INTO state(key,value) VALUES('account_generation','0');
 INSERT OR IGNORE INTO state(key,value) VALUES('last_snapshot_id','');
 INSERT OR IGNORE INTO state(key,value) VALUES('last_broker_reconciliation_at','');

@@ -6,6 +6,11 @@ open StockTrader.TradingCore.Broker
 /// C#-visible facade over the small F# persistence modules. HTTP and broker adapters use the same
 /// operations directly; this facade keeps cross-language integration tests strongly typed.
 type TradingCoreOperations(store: TradingCoreStore) =
+    member _.Authority() = store.Authority()
+    member _.AuthorityV2() = store.AuthorityV2()
+    member _.CreateTransition(request) = store.CreateTransition request
+    member _.ApplyTransitionStep(request) = store.ApplyTransitionStep request
+    member _.Transition(transitionId) = store.Transition transitionId
     member _.Import(snapshot) = store.Import snapshot
     member _.ApplyAccountConfiguration(configuration) = store.ApplyAccountConfiguration configuration
     member _.Activate(authority) = store.Activate authority

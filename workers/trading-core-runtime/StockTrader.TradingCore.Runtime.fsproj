@@ -18,6 +18,7 @@
     <Compile Include="MarketDataExecutionClient.fs" />
     <Compile Include="TradingCoreStore.fs" />
     <Compile Include="TradingCoreAuthorityStore.fs" />
+    <Compile Include="TradingCoreTransitionStore.fs" />
     <Compile Include="TradingCoreRecommendationStore.fs" />
     <Compile Include="TradingCoreEntryStore.fs" />
     <Compile Include="TradingCoreEntryBrokerStore.fs" />

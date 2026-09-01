@@ -152,6 +152,11 @@ module TradingCoreAuthorityStore =
             match Option.ofObj (TradingCoreCompatibilityPolicy.Error next) with
             | Some error -> invalidArg "authority" error
             | None ->
+                use compatibility = this.Connect()
+                use v2 = compatibility.CreateCommand()
+                v2.CommandText <- "SELECT COUNT(*) FROM authority_transitions"
+                if Convert.ToInt64(v2.ExecuteScalar()) > 0L then
+                    invalidOp "v1-authority-mutation-disabled-after-v2-adoption"
                 let current = this.Authority()
                 if next.Generation <> current.Generation + 1L then invalidOp "non-monotonic-authority-generation"
                 if next.Mode = TradingAuthorityMode.Remote then
