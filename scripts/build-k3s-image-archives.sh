@@ -15,9 +15,11 @@ build_archive() {
   local archive_name="$3"
   local target_stage="${4:-}"
   local image="localhost/stock-trader/${image_name}:architecture-${release_tag}"
+  local sbom="$output_dir/${archive_name%.tar}.cdx.json"
   local target_args=()
   [[ -n "$target_stage" ]] && target_args=(--target "$target_stage")
-  buildah bud --layers "${target_args[@]}" -f "$dockerfile" -t "$image" .
+  buildah bud --pull=newer --layers --sbom syft-cyclonedx --sbom-output "$sbom" \
+    "${target_args[@]}" -f "$dockerfile" -t "$image" .
   buildah push "$image" "oci-archive:$output_dir/$archive_name:$image"
 }
 
@@ -40,6 +42,17 @@ oci_archive_digest() {
     | head -n 1)"
   [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
     echo "Cannot derive OCI manifest digest from $archive" >&2
+    exit 1
+  }
+  printf '%s' "$digest"
+}
+
+registry_digest() {
+  local reference="$1"
+  local digest
+  digest="$(skopeo inspect --format '{{.Digest}}' "docker://$reference")"
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+    echo "Cannot resolve immutable base image digest for $reference" >&2
     exit 1
   }
   printf '%s' "$digest"
@@ -94,16 +107,23 @@ if [[ "$scope" == "trading-core-stage5" ]]; then
     printf 'TRADING_CORE_HASH=%s\n' "$trading_core_hash"
     printf 'RUNTIME_HASH=%s\n' "$runtime_hash"
     printf 'EDGE_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/api-remote.tar")"
+    printf 'EDGE_LOCAL_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/api-local.tar")"
     printf 'TRADING_CORE_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core.tar")"
+    printf 'TRADING_CORE_SHADOW_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-shadow.tar")"
     printf 'MARKET_DATA_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/market-data.tar")"
     printf 'ACCEPTANCE_CORE_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-acceptance.tar")"
     printf 'BROKER_EMULATOR_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-broker-emulator.tar")"
     printf 'DRIVER_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-acceptance-driver.tar")"
+    printf 'COORDINATOR_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/trading-core-cutover-coordinator.tar")"
+    printf 'ROLLBACK_IMPORTER_IMAGE_DIGEST=%s\n' "$(oci_archive_digest "$output_dir/edge-rollback-importer.tar")"
+    printf 'DOTNET_SDK_BASE_DIGEST=%s\n' "$(registry_digest mcr.microsoft.com/dotnet/sdk:10.0)"
+    printf 'DOTNET_ASPNET_BASE_DIGEST=%s\n' "$(registry_digest mcr.microsoft.com/dotnet/aspnet:10.0)"
+    printf 'DOTNET_RUNTIME_BASE_DIGEST=%s\n' "$(registry_digest mcr.microsoft.com/dotnet/runtime:10.0)"
   } > "$output_dir/stage5-metadata.env"
 fi
 
 if [[ -f "$output_dir/stage5-metadata.env" ]]; then
-  (cd "$output_dir" && sha256sum -- *.tar stage5-metadata.env > SHA256SUMS)
+  (cd "$output_dir" && sha256sum -- *.tar *.cdx.json stage5-metadata.env > SHA256SUMS)
 else
   (cd "$output_dir" && sha256sum -- *.tar > SHA256SUMS)
 fi

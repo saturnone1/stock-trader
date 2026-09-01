@@ -195,7 +195,10 @@ public sealed record AcceptanceManifestV1(
 public static class TradingCoreAcceptanceImageCatalog
 {
     public static IReadOnlyList<string> Required { get; } =
-    ["edge", "trading-core", "market-data", "acceptance-core", "broker-emulator", "driver"];
+    [
+        "edge-local", "edge", "trading-core", "trading-core-shadow", "market-data",
+        "acceptance-core", "broker-emulator", "driver", "coordinator", "rollback-importer"
+    ];
 }
 
 public static class TradingCoreAcceptanceAssemblyCatalog

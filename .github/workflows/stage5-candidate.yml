@@ -1,0 +1,35 @@
+name: Stage 5 Candidate Images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-stage5-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install OCI build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y buildah skopeo
+
+      - name: Build sealed Stage 5 OCI archives
+        run: |
+          release_tag="$(git rev-parse --short=12 HEAD)"
+          scripts/build-k3s-image-archives.sh "$release_tag" "$RUNNER_TEMP/stage5" trading-core-stage5
+
+      - name: Upload immutable candidate set
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage5-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/stage5/
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 1

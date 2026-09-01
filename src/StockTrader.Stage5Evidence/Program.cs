@@ -2,6 +2,29 @@ using System.Text.Json;
 using StockTrader.ServiceContracts.TradingCore;
 
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
+if (args.Length == 3 && args[0] == "candidate")
+{
+    var input = Read<Stage5CandidateManifestInput>(args[1]);
+    var manifest = Stage5EvidencePolicy.SealCandidate(input);
+    if (Stage5EvidencePolicy.CandidateError(manifest) is { } error)
+        throw new InvalidDataException(error);
+    Write(args[2], manifest);
+    Console.WriteLine(manifest.CandidateId);
+    return;
+}
+
+if (args.Length == 3 && args[0] == "local")
+{
+    var input = Read<Stage5LocalVerificationInput>(args[1]);
+    var manifest = Stage5EvidencePolicy.SealLocal(input);
+    if (Stage5EvidencePolicy.LocalError(manifest) is { } error)
+        throw new InvalidDataException(error);
+    Write(args[2], manifest);
+    Console.WriteLine($"{manifest.ManifestId} passed={manifest.Passed}");
+    Environment.ExitCode = manifest.Passed ? 0 : 2;
+    return;
+}
+
 if (args.Length == 3 && args[0] == "seal")
 {
     var inputPath = args[1];
@@ -15,17 +38,18 @@ if (args.Length == 3 && args[0] == "seal")
     return;
 }
 
-if (args.Length == 10 && args[0] == "index")
+if (args.Length == 11 && args[0] == "index")
 {
-    var candidateId = args[1];
-    var reviewIdentity = args[2];
-    var isolatedPath = args[3];
-    var shadowPath = args[4];
-    var cutoverPath = args[5];
-    var recoveryPath = args[6];
-    var rollbackPath = args[7];
-    var finalRemotePath = args[8];
-    var outputPath = args[9];
+    var candidate = Read<TradingCoreCandidateManifestV1>(args[1]);
+    var local = Read<LocalVerificationManifestV1>(args[2]);
+    var reviewIdentity = args[3];
+    var isolatedPath = args[4];
+    var shadowPath = args[5];
+    var cutoverPath = args[6];
+    var recoveryPath = args[7];
+    var rollbackPath = args[8];
+    var finalRemotePath = args[9];
+    var outputPath = args[10];
     var isolated = Read<AcceptanceManifestV1>(isolatedPath);
     var operational = new[]
     {
@@ -36,7 +60,7 @@ if (args.Length == 10 && args[0] == "index")
         Read<Stage5OperationalManifestV1>(finalRemotePath),
     };
     var index = Stage5EvidencePolicy.DeriveIndex(
-        candidateId, isolated, operational, reviewIdentity, DateTime.UtcNow);
+        candidate, local, isolated, operational, reviewIdentity, DateTime.UtcNow);
     if (Stage5EvidencePolicy.IndexError(index) is { } error)
         throw new InvalidDataException(error);
     Write(outputPath, index);
@@ -46,7 +70,8 @@ if (args.Length == 10 && args[0] == "index")
 }
 
 throw new ArgumentException(
-    "Usage: seal INPUT OUTPUT | index CANDIDATE REVIEW ISOLATED SHADOW CUTOVER RECOVERY ROLLBACK FINAL_REMOTE OUTPUT");
+    "Usage: candidate INPUT OUTPUT | local INPUT OUTPUT | seal INPUT OUTPUT | " +
+    "index CANDIDATE LOCAL REVIEW ISOLATED SHADOW CUTOVER RECOVERY ROLLBACK FINAL_REMOTE OUTPUT");
 
 T Read<T>(string path) => JsonSerializer.Deserialize<T>(File.ReadAllText(path), json)
     ?? throw new InvalidDataException($"Empty evidence document: {Path.GetFileName(path)}");

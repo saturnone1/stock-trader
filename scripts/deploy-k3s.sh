@@ -547,16 +547,22 @@ if $deploy_acceptance; then
   trading_core_hash="$(metadata_value TRADING_CORE_HASH)"
   runtime_hash="$(metadata_value RUNTIME_HASH)"
   edge_image_digest="$(metadata_value EDGE_IMAGE_DIGEST)"
+  edge_local_image_digest="$(metadata_value EDGE_LOCAL_IMAGE_DIGEST)"
   production_core_image_digest="$(metadata_value TRADING_CORE_IMAGE_DIGEST)"
+  shadow_core_image_digest="$(metadata_value TRADING_CORE_SHADOW_IMAGE_DIGEST)"
   market_data_image_digest="$(metadata_value MARKET_DATA_IMAGE_DIGEST)"
   acceptance_core_image_digest="$(metadata_value ACCEPTANCE_CORE_IMAGE_DIGEST)"
   broker_emulator_image_digest="$(metadata_value BROKER_EMULATOR_IMAGE_DIGEST)"
   driver_image_digest="$(metadata_value DRIVER_IMAGE_DIGEST)"
+  coordinator_image_digest="$(metadata_value COORDINATOR_IMAGE_DIGEST)"
+  rollback_importer_image_digest="$(metadata_value ROLLBACK_IMPORTER_IMAGE_DIGEST)"
   for value in "$repository_commit" "$build_id" "$service_contracts_hash" "$engine_hash" \
       "$trading_core_hash" "$runtime_hash" "$edge_image_digest" \
-      "$production_core_image_digest" "$market_data_image_digest" \
+      "$edge_local_image_digest" "$production_core_image_digest" \
+      "$shadow_core_image_digest" "$market_data_image_digest" \
       "$acceptance_core_image_digest" "$broker_emulator_image_digest" \
-      "$driver_image_digest"; do
+      "$driver_image_digest" "$coordinator_image_digest" \
+      "$rollback_importer_image_digest"; do
     [[ -n "$value" ]] || { echo "Incomplete stage5 metadata." >&2; exit 1; }
   done
   rendered_manifest="$archive_dir/acceptance-manifest.yaml"
@@ -566,11 +572,15 @@ if $deploy_acceptance; then
     -e "s|__REPOSITORY_COMMIT__|$repository_commit|g" \
     -e "s|__BUILD_ID__|$build_id|g" \
     -e "s|__EDGE_DIGEST__|$edge_image_digest|g" \
+    -e "s|__EDGE_LOCAL_DIGEST__|$edge_local_image_digest|g" \
     -e "s|__TRADING_CORE_DIGEST__|$production_core_image_digest|g" \
+    -e "s|__TRADING_CORE_SHADOW_DIGEST__|$shadow_core_image_digest|g" \
     -e "s|__MARKET_DATA_DIGEST__|$market_data_image_digest|g" \
     -e "s|__TRADING_CORE_ACCEPTANCE_DIGEST__|$acceptance_core_image_digest|g" \
     -e "s|__BROKER_EMULATOR_DIGEST__|$broker_emulator_image_digest|g" \
     -e "s|__DRIVER_DIGEST__|$driver_image_digest|g" \
+    -e "s|__COORDINATOR_DIGEST__|$coordinator_image_digest|g" \
+    -e "s|__ROLLBACK_IMPORTER_DIGEST__|$rollback_importer_image_digest|g" \
     -e "s|__SERVICE_CONTRACTS_HASH__|$service_contracts_hash|g" \
     -e "s|__ENGINE_HASH__|$engine_hash|g" \
     -e "s|__TRADING_CORE_HASH__|$trading_core_hash|g" \

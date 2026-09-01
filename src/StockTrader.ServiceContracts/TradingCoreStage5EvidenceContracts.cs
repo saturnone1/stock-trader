@@ -13,6 +13,86 @@ public static class Stage5EnvironmentClasses
     [ProductionShadow, ProductionCutover, RemoteRecovery, ProductionRollback, FinalRemote];
 }
 
+public static class Stage5LocalGateCatalog
+{
+    public static IReadOnlyList<string> RequiredCommands { get; } =
+    [
+        "dotnet-build",
+        "dotnet-test",
+        "desktop-api-check",
+        "desktop-test",
+        "desktop-build"
+    ];
+}
+
+public sealed record Stage5CandidateManifestInput(
+    int ContractVersion,
+    string RepositoryCommit,
+    string WorktreeInputHash,
+    string DependencyLockHash,
+    string BuildId,
+    IReadOnlyDictionary<string, string> ImageDigests,
+    IReadOnlyDictionary<string, string> BaseImageDigests,
+    IReadOnlyDictionary<string, string> SharedAssemblyHashes,
+    IReadOnlyDictionary<string, string> AssemblyInventoryHashes,
+    IReadOnlyDictionary<string, string> SbomHashes,
+    IReadOnlyDictionary<string, string> PackageGraphHashes,
+    IReadOnlyDictionary<string, string> MigrationHashes,
+    string OpenApiContractHash,
+    IReadOnlyDictionary<string, string> KubernetesObjectHashes,
+    IReadOnlyDictionary<string, string> CatalogHashes,
+    IReadOnlyList<string> DeploymentScopes,
+    IReadOnlyList<string> RollbackRequirements,
+    DateTime CreatedAtUtc);
+
+public sealed record TradingCoreCandidateManifestV1(
+    int ContractVersion,
+    string CandidateId,
+    string RepositoryCommit,
+    string WorktreeInputHash,
+    string DependencyLockHash,
+    string BuildId,
+    IReadOnlyDictionary<string, string> ImageDigests,
+    IReadOnlyDictionary<string, string> BaseImageDigests,
+    IReadOnlyDictionary<string, string> SharedAssemblyHashes,
+    IReadOnlyDictionary<string, string> AssemblyInventoryHashes,
+    IReadOnlyDictionary<string, string> SbomHashes,
+    IReadOnlyDictionary<string, string> PackageGraphHashes,
+    IReadOnlyDictionary<string, string> MigrationHashes,
+    string OpenApiContractHash,
+    IReadOnlyDictionary<string, string> KubernetesObjectHashes,
+    IReadOnlyDictionary<string, string> CatalogHashes,
+    IReadOnlyList<string> DeploymentScopes,
+    IReadOnlyList<string> RollbackRequirements,
+    DateTime CreatedAtUtc);
+
+public sealed record Stage5LocalCommandResult(
+    string CommandId,
+    int ExitCode,
+    int? TestTotal,
+    string OutputHash,
+    long DurationMilliseconds);
+
+public sealed record Stage5LocalVerificationInput(
+    int ContractVersion,
+    string CandidateId,
+    IReadOnlyList<Stage5LocalCommandResult> Commands,
+    IReadOnlyDictionary<string, string> GeneratedContractHashes,
+    DateTime StartedAtUtc,
+    DateTime EndedAtUtc,
+    IReadOnlyList<string> StopReasons);
+
+public sealed record LocalVerificationManifestV1(
+    int ContractVersion,
+    string ManifestId,
+    string CandidateId,
+    IReadOnlyList<Stage5LocalCommandResult> Commands,
+    IReadOnlyDictionary<string, string> GeneratedContractHashes,
+    DateTime StartedAtUtc,
+    DateTime EndedAtUtc,
+    bool Passed,
+    IReadOnlyList<string> StopReasons);
+
 public sealed record Stage5AuthorityEvidence(
     string Mode,
     string Owner,
@@ -68,6 +148,8 @@ public sealed record Stage5AcceptanceIndexV1(
     int ContractVersion,
     string IndexId,
     string CandidateId,
+    string CandidateManifestId,
+    string LocalVerificationManifestId,
     string IsolatedManifestId,
     IReadOnlyList<string> OperationalManifestIds,
     IReadOnlyList<long> AuthorityGenerations,
@@ -81,6 +163,12 @@ public sealed record Stage5AcceptanceIndexV1(
 
 public static class Stage5EvidenceIdentity
 {
+    public static string Candidate(TradingCoreCandidateManifestV1 manifest) =>
+        CanonicalJsonHash.Compute(manifest, nameof(TradingCoreCandidateManifestV1.CandidateId));
+
+    public static string Local(LocalVerificationManifestV1 manifest) =>
+        CanonicalJsonHash.Compute(manifest, nameof(LocalVerificationManifestV1.ManifestId));
+
     public static string Operational(Stage5OperationalManifestV1 manifest) =>
         CanonicalJsonHash.Compute(manifest, nameof(Stage5OperationalManifestV1.ManifestId));
 
@@ -90,6 +178,70 @@ public static class Stage5EvidenceIdentity
 
 public static class Stage5EvidencePolicy
 {
+    public static TradingCoreCandidateManifestV1 SealCandidate(Stage5CandidateManifestInput input)
+    {
+        var candidate = new TradingCoreCandidateManifestV1(
+            input.ContractVersion, "", input.RepositoryCommit, input.WorktreeInputHash,
+            input.DependencyLockHash, input.BuildId, input.ImageDigests,
+            input.BaseImageDigests, input.SharedAssemblyHashes, input.AssemblyInventoryHashes,
+            input.SbomHashes, input.PackageGraphHashes, input.MigrationHashes,
+            input.OpenApiContractHash, input.KubernetesObjectHashes, input.CatalogHashes,
+            input.DeploymentScopes, input.RollbackRequirements, input.CreatedAtUtc);
+        return candidate with { CandidateId = Stage5EvidenceIdentity.Candidate(candidate) };
+    }
+
+    public static string? CandidateError(TradingCoreCandidateManifestV1 manifest)
+    {
+        if (manifest is null || manifest.ContractVersion != TradingCoreAcceptanceVersions.Current
+            || manifest.CandidateId != Stage5EvidenceIdentity.Candidate(manifest)
+            || string.IsNullOrWhiteSpace(manifest.RepositoryCommit)
+            || string.IsNullOrWhiteSpace(manifest.BuildId)
+            || manifest.CreatedAtUtc.Kind != DateTimeKind.Utc
+            || NotHash(manifest.WorktreeInputHash) || NotHash(manifest.DependencyLockHash)
+            || NotHash(manifest.OpenApiContractHash)
+            || !HasHashes(manifest.ImageDigests, TradingCoreAcceptanceImageCatalog.Required)
+            || !HasHashes(manifest.SharedAssemblyHashes,
+                TradingCoreAcceptanceAssemblyCatalog.Required)
+            || !HasHashSet(manifest.BaseImageDigests)
+            || !HasHashSet(manifest.AssemblyInventoryHashes)
+            || !HasHashSet(manifest.SbomHashes)
+            || !HasHashSet(manifest.PackageGraphHashes)
+            || !HasHashSet(manifest.MigrationHashes)
+            || !HasHashSet(manifest.KubernetesObjectHashes)
+            || !HasHashSet(manifest.CatalogHashes)
+            || manifest.DeploymentScopes.Count == 0
+            || manifest.RollbackRequirements.Count == 0)
+            return "stage5-candidate-manifest-invalid";
+        return null;
+    }
+
+    public static LocalVerificationManifestV1 SealLocal(Stage5LocalVerificationInput input)
+    {
+        var reasons = LocalStopReasons(input).Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal).ToArray();
+        var candidate = new LocalVerificationManifestV1(
+            input.ContractVersion, "", input.CandidateId, input.Commands,
+            input.GeneratedContractHashes, input.StartedAtUtc, input.EndedAtUtc,
+            reasons.Length == 0, reasons);
+        return candidate with { ManifestId = Stage5EvidenceIdentity.Local(candidate) };
+    }
+
+    public static string? LocalError(LocalVerificationManifestV1 manifest)
+    {
+        if (manifest is null || manifest.ContractVersion != TradingCoreAcceptanceVersions.Current
+            || manifest.ManifestId != Stage5EvidenceIdentity.Local(manifest))
+            return "stage5-local-verification-invalid";
+        var input = new Stage5LocalVerificationInput(
+            manifest.ContractVersion, manifest.CandidateId, manifest.Commands,
+            manifest.GeneratedContractHashes, manifest.StartedAtUtc, manifest.EndedAtUtc,
+            manifest.StopReasons);
+        var reasons = LocalStopReasons(input).Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal).ToArray();
+        return manifest.Passed == (reasons.Length == 0)
+            && manifest.StopReasons.SequenceEqual(reasons, StringComparer.Ordinal)
+            ? null : "stage5-local-verdict-invalid";
+    }
+
     public static Stage5OperationalManifestV1 Seal(Stage5OperationalEvidenceInput input)
     {
         var reasons = InputStopReasons(input).Distinct(StringComparer.Ordinal)
@@ -126,13 +278,20 @@ public static class Stage5EvidencePolicy
     }
 
     public static Stage5AcceptanceIndexV1 DeriveIndex(
-        string candidateId,
+        TradingCoreCandidateManifestV1 candidate,
+        LocalVerificationManifestV1 local,
         AcceptanceManifestV1 isolated,
         IReadOnlyList<Stage5OperationalManifestV1> operational,
         string reviewIdentity,
         DateTime reviewedAtUtc)
     {
         var stops = new List<string>();
+        var candidateId = candidate.CandidateId;
+        if (CandidateError(candidate) is not null)
+            stops.Add("candidate-manifest-invalid");
+        if (LocalError(local) is not null || !local.Passed
+            || local.CandidateId != candidateId)
+            stops.Add("local-verification-invalid");
         var isolatedError = TradingCoreAcceptancePolicy.ManifestError(isolated);
         if (isolatedError is not null || !isolated.Passed)
             stops.Add(isolatedError ?? "isolated-acceptance-failed");
@@ -154,7 +313,9 @@ public static class Stage5EvidencePolicy
         }
         if (operational.Count == Stage5EnvironmentClasses.OperationalOrder.Count)
             ValidateAuthorityChain(operational, stops);
-        if (operational.Any(manifest =>
+        if (!SameMap(isolated.ImageDigests, candidate.ImageDigests)
+            || !SameMap(isolated.SharedAssemblyHashes, candidate.SharedAssemblyHashes)
+            || operational.Any(manifest =>
                 !SameMap(manifest.ImageDigests, isolated.ImageDigests)
                 || !SameMap(manifest.SharedAssemblyHashes, isolated.SharedAssemblyHashes)))
             stops.Add("candidate-binary-set-mismatch");
@@ -170,24 +331,47 @@ public static class Stage5EvidencePolicy
             && final.CommandAcceptance == AuthorityCommandAcceptanceStates.Open
             && finalUnresolved == 0;
         if (!accepted && reasons.Length == 0) reasons = ["final-remote-authority-invalid"];
-        var candidate = new Stage5AcceptanceIndexV1(
-            TradingCoreAcceptanceVersions.Current, "", candidateId, isolated.ManifestId,
+        var indexCandidate = new Stage5AcceptanceIndexV1(
+            TradingCoreAcceptanceVersions.Current, "", candidateId, candidate.CandidateId,
+            local.ManifestId, isolated.ManifestId,
             operational.Select(value => value.ManifestId).ToArray(),
             operational.Select(value => value.FinalAuthority.Generation).ToArray(),
             final?.Owner ?? "", final?.Mode ?? "", finalUnresolved, reasons,
             reviewIdentity, reviewedAtUtc, accepted);
-        return candidate with { IndexId = Stage5EvidenceIdentity.Index(candidate) };
+        return indexCandidate with { IndexId = Stage5EvidenceIdentity.Index(indexCandidate) };
     }
 
     public static string? IndexError(Stage5AcceptanceIndexV1 index) =>
         index is null || index.ContractVersion != TradingCoreAcceptanceVersions.Current
         || index.IndexId != Stage5EvidenceIdentity.Index(index)
+        || string.IsNullOrWhiteSpace(index.CandidateManifestId)
+        || string.IsNullOrWhiteSpace(index.LocalVerificationManifestId)
         || index.Accepted != (index.ActiveStopReasons.Count == 0
             && index.OperationalManifestIds.Count == Stage5EnvironmentClasses.OperationalOrder.Count
             && index.FinalAuthorityOwner == AuthorityOwners.TradingCore
             && index.FinalAuthorityMode == TradingAuthorityMode.Remote.ToString()
             && index.FinalUnresolvedCount == 0)
             ? "stage5-acceptance-index-invalid" : null;
+
+    private static IEnumerable<string> LocalStopReasons(Stage5LocalVerificationInput input)
+    {
+        foreach (var reason in input.StopReasons.Where(value => !string.IsNullOrWhiteSpace(value)))
+            yield return reason;
+        if (input.ContractVersion != TradingCoreAcceptanceVersions.Current
+            || string.IsNullOrWhiteSpace(input.CandidateId)
+            || input.StartedAtUtc.Kind != DateTimeKind.Utc
+            || input.EndedAtUtc.Kind != DateTimeKind.Utc
+            || input.EndedAtUtc < input.StartedAtUtc)
+            yield return "local-verification-identity-invalid";
+        var commandIds = input.Commands.Select(value => value.CommandId).ToArray();
+        if (!commandIds.SequenceEqual(Stage5LocalGateCatalog.RequiredCommands,
+                StringComparer.Ordinal)
+            || input.Commands.Any(value => value.ExitCode != 0
+                || value.DurationMilliseconds < 0 || NotHash(value.OutputHash)))
+            yield return "local-verification-command-failed";
+        if (!HasHashSet(input.GeneratedContractHashes))
+            yield return "local-verification-contract-hash-invalid";
+    }
 
     private static IEnumerable<string> InputStopReasons(Stage5OperationalEvidenceInput input)
     {
@@ -288,4 +472,11 @@ public static class Stage5EvidencePolicy
         left.Count == right.Count && left.All(pair =>
             right.TryGetValue(pair.Key, out var value)
             && string.Equals(pair.Value, value, StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasHashes(IReadOnlyDictionary<string, string> values,
+        IReadOnlyList<string> required) =>
+        required.All(values.ContainsKey) && values.Values.All(value => !NotHash(value));
+
+    private static bool HasHashSet(IReadOnlyDictionary<string, string> values) =>
+        values.Count > 0 && values.Values.All(value => !NotHash(value));
 }

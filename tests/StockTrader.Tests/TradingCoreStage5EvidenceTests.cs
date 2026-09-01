@@ -12,10 +12,12 @@ public sealed class TradingCoreStage5EvidenceTests
     public void Complete_ordered_evidence_derives_acceptance()
     {
         var isolated = Isolated();
+        var candidate = Candidate();
+        var local = Local(candidate.CandidateId);
         var manifests = Chain(isolated.ManifestId);
 
         var index = Stage5EvidencePolicy.DeriveIndex(
-            "candidate-1", isolated, manifests, "review-1", Now);
+            candidate, local, isolated, manifests, "review-1", Now);
 
         Stage5EvidencePolicy.IndexError(index).Should().BeNull();
         index.Accepted.Should().BeTrue();
@@ -27,6 +29,8 @@ public sealed class TradingCoreStage5EvidenceTests
     public void Evidence_from_an_unlinked_manifest_cannot_be_combined()
     {
         var isolated = Isolated();
+        var candidate = Candidate();
+        var local = Local(candidate.CandidateId);
         var manifests = Chain(isolated.ManifestId).ToArray();
         manifests[2] = manifests[2] with { PreviousManifestId = "unlinked" };
         manifests[2] = manifests[2] with
@@ -35,11 +39,33 @@ public sealed class TradingCoreStage5EvidenceTests
         };
 
         var index = Stage5EvidencePolicy.DeriveIndex(
-            "candidate-1", isolated, manifests, "review-1", Now);
+            candidate, local, isolated, manifests, "review-1", Now);
 
         index.Accepted.Should().BeFalse();
         index.ActiveStopReasons.Should().Contain(
             "manifest-chain-invalid:RemoteRecovery");
+    }
+
+    [Fact]
+    public void Evidence_from_a_different_binary_set_cannot_be_combined()
+    {
+        var isolated = Isolated();
+        var candidate = Candidate();
+        var local = Local(candidate.CandidateId);
+        var manifests = Chain(isolated.ManifestId).ToArray();
+        var changed = manifests[0].ImageDigests.ToDictionary(pair => pair.Key,
+            pair => pair.Key == "edge" ? new string('b', 64) : pair.Value);
+        manifests[0] = manifests[0] with { ImageDigests = changed, ManifestId = "" };
+        manifests[0] = manifests[0] with
+        {
+            ManifestId = Stage5EvidenceIdentity.Operational(manifests[0])
+        };
+
+        var index = Stage5EvidencePolicy.DeriveIndex(
+            candidate, local, isolated, manifests, "review-1", Now);
+
+        index.Accepted.Should().BeFalse();
+        index.ActiveStopReasons.Should().Contain("candidate-binary-set-mismatch");
     }
 
     private static AcceptanceManifestV1 Isolated()
@@ -55,6 +81,30 @@ public sealed class TradingCoreStage5EvidenceTests
         {
             ManifestId = TradingCoreAcceptanceIdentity.Manifest(candidate)
         };
+    }
+
+    private static TradingCoreCandidateManifestV1 Candidate()
+    {
+        var input = new Stage5CandidateManifestInput(
+            TradingCoreAcceptanceVersions.Current, "commit", Hash, Hash, "build",
+            CandidateImages(), Map("base"), SharedAssemblies(), Map("inventory"),
+            Map("sbom"), Map("package"), Map("migration"), Hash, Map("k8s"),
+            Map("catalog"), ["scope"], ["backup"], Now);
+        var value = Stage5EvidencePolicy.SealCandidate(input);
+        Stage5EvidencePolicy.CandidateError(value).Should().BeNull();
+        return value;
+    }
+
+    private static LocalVerificationManifestV1 Local(string candidateId)
+    {
+        var commands = Stage5LocalGateCatalog.RequiredCommands.Select(command =>
+            new Stage5LocalCommandResult(command, 0, null, Hash, 1)).ToArray();
+        var input = new Stage5LocalVerificationInput(
+            TradingCoreAcceptanceVersions.Current, candidateId, commands,
+            Map("openapi"), Now, Now.AddMinutes(1), []);
+        var value = Stage5EvidencePolicy.SealLocal(input);
+        Stage5EvidencePolicy.LocalError(value).Should().BeNull();
+        return value;
     }
 
     private static IReadOnlyList<Stage5OperationalManifestV1> Chain(string previous)
@@ -82,7 +132,7 @@ public sealed class TradingCoreStage5EvidenceTests
                      initialOwner, initialMode, finalOwner, finalMode) in definitions)
         {
             var input = new Stage5OperationalEvidenceInput(
-                TradingCoreAcceptanceVersions.Current, "candidate-1", environment, previous,
+                TradingCoreAcceptanceVersions.Current, Candidate().CandidateId, environment, previous,
                 "commit", "build", CandidateImages(), SharedAssemblies(),
                 Authority(initialGeneration, initialOwner, initialMode),
                 Authority(finalGeneration, finalOwner, finalMode), [Hash], Map("backup"),
