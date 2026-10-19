@@ -61,7 +61,10 @@ foreach ($file in $contractFiles) {
     $contractHashes[$file.Name] =
         (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
 }
-$stopReasons = if ($failed) { @('required-local-command-failed') } else { @() }
+[string[]]$stopReasons = @()
+if ($failed) {
+    $stopReasons = @('required-local-command-failed')
+}
 $input = [ordered]@{
     contractVersion = 1
     candidateId = $candidate.candidateId

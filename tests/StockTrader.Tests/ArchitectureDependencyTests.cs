@@ -910,8 +910,18 @@ public class ArchitectureDependencyTests
         deploy.Should().Contain("PRAGMA quick_check;");
         deploy.Should().Contain("dotnet StockTrader.dll --migrate-database");
         var migrationIndex = deploy.IndexOf("--migrate-database", StringComparison.Ordinal);
-        var imageImportIndex = deploy.IndexOf("ctr images import", StringComparison.Ordinal);
-        var rolloutIndex = deploy.IndexOf("deployment-api.yaml", StringComparison.Ordinal);
+        var imageImportSectionIndex = deploy.IndexOf(
+            "# Import immediately before the manifests reference these tags.",
+            migrationIndex,
+            StringComparison.Ordinal);
+        var imageImportIndex = deploy.IndexOf(
+            "ctr images import",
+            imageImportSectionIndex,
+            StringComparison.Ordinal);
+        var rolloutIndex = deploy.IndexOf(
+            "sudo k3s kubectl apply -f \"$rendered_api\"",
+            imageImportIndex,
+            StringComparison.Ordinal);
         migrationIndex.Should().BeLessThan(imageImportIndex);
         imageImportIndex.Should().BeLessThan(rolloutIndex);
         deploy.Should().Contain("STOCKTRADER_DATA_DIR:?");
@@ -1228,9 +1238,13 @@ public class ArchitectureDependencyTests
         Directory.EnumerateFiles(repository, "Dockerfile*")
             .Select(Path.GetFileName)
             .Should().BeEquivalentTo(
-                "Dockerfile.api", "Dockerfile.desktop", "Dockerfile.market-data",
-                "Dockerfile.ml-training", "Dockerfile.optimization-worker",
-                "Dockerfile.trading-core");
+                "Dockerfile.api", "Dockerfile.desktop", "Dockerfile.edge-rollback-importer",
+                "Dockerfile.market-data", "Dockerfile.ml-training", "Dockerfile.optimization-worker",
+                "Dockerfile.trading-core", "Dockerfile.trading-core-acceptance",
+                "Dockerfile.trading-core-acceptance-driver",
+                "Dockerfile.trading-core-broker-emulator",
+                "Dockerfile.trading-core-cutover-coordinator",
+                "Dockerfile.trading-core-shadow");
         Directory.EnumerateFiles(repository, "docker-compose*.yml")
             .Select(Path.GetFileName)
             .Should().Equal("docker-compose.yml");
@@ -1335,13 +1349,15 @@ public class ArchitectureDependencyTests
         var shadowAdapter = File.ReadAllText(Path.Combine(
             repository, "Services/Order/TradingCoreShadowOrderService.cs"));
         var shadowStore = File.ReadAllText(Path.Combine(
-            repository, "workers/trading-core-service/TradingCoreShadowStore.fs"));
+            repository, "workers/trading-core-runtime/TradingCoreShadowStore.fs"));
         var positionShadow = File.ReadAllText(Path.Combine(
             repository, "Services/TradingCore/TradingCorePositionShadowCycle.cs"));
         var services = File.ReadAllText(Path.Combine(
             repository, "Extensions/ServiceCollectionExtensions.cs"));
 
-        services.Should().Contain("\"Shadow\" => serviceProvider.GetRequiredService<TradingCoreShadowOrderService>()");
+        services.Should().Contain("tradingCoreMode == \"Shadow\"");
+        services.Should().Contain(
+            "serviceProvider.GetRequiredService<TradingCoreShadowOrderService>()");
         shadowAdapter.Should().Contain("OrderService local");
         shadowAdapter.Should().Contain("Local financial result remains authoritative");
         shadowAdapter.Should().NotContain("IBrokerService");
@@ -3501,14 +3517,11 @@ public class ArchitectureDependencyTests
         registrations.Should().Contain("AddScoped<IRiskOverviewQuery, RiskOverviewQuery>");
         registrations.Should().Contain(
             "AddScoped<IRiskManagementDataSource, RiskManagementDataSource>");
-        registrations.Should().Contain("AddScoped<MultiAccountRiskService>");
-        registrations.Should().Contain("AddScoped<TradingCoreRemoteRiskService>");
+        registrations.Should().Contain("if (isTradingCoreRemote)");
         registrations.Should().Contain(
-            "AddScoped<IRiskManagementService>(serviceProvider =>");
+            "AddScoped<IRiskManagementService, TradingCoreRemoteRiskService>()");
         registrations.Should().Contain(
-            "GetRequiredService<TradingCoreRemoteRiskService>()");
-        registrations.Should().Contain(
-            "GetRequiredService<MultiAccountRiskService>()");
+            "AddScoped<IRiskManagementService, MultiAccountRiskService>()");
         registrations.Should().Contain("AddSingleton<RiskStateStore>");
         registrations.Should().NotContain(
             "AddSingleton<IRiskManagementService, MultiAccountRiskService>");
